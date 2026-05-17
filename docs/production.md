@@ -1,13 +1,13 @@
 # Production
 
-Lemma v1 production is the proof-data loop:
+Production Lemma is the proof-data loop:
 
 1. publish an active task registry;
 2. receive miner proof submissions;
 3. verify each proof with the pinned Lean environment;
 4. score first accepted unique proofs;
 5. set normal Bittensor miner weights;
-6. publish accepted rows to the Lemma Corpus.
+6. publish accepted corpus rows and a small corpus index.
 
 ## Operator Rules
 
@@ -16,19 +16,21 @@ Lemma v1 production is the proof-data loop:
 - Do not score prose, model branding, or claimed effort.
 - Keep task, submission, verifier, scoring, and corpus artifacts replayable.
 - Delay public proof release until the scoring window closes.
+- Keep `.env`, wallets, local state, logs, caches, and machine paths out of commits.
 
-## Verifier Worker
-
-Run a local verifier preflight:
-
-```bash
-uv run lemma validate --check
-```
-
-Run the optional HTTP worker:
+## Commands
 
 ```bash
-uv run lemma validate --worker --host localhost --port 8787
+uv run lemma status
+uv run lemma worker --check
+uv run lemma worker --serve --host localhost --port 8787
+uv run lemma validate --once --no-set-weights
 ```
 
-Non-loopback worker binds require `LEMMA_LEAN_VERIFY_REMOTE_BEARER` unless explicitly allowed for development.
+Corpus deltas are written under `LEMMA_CORPUS_OUTPUT_DIR`. Local receipts are written under `LEMMA_OPERATOR_DATA_DIR`; both paths should remain ignored unless an operator intentionally publishes sanitized artifacts.
+
+Run the leak check before any commit or push:
+
+```bash
+uv run python scripts/leak_check.py
+```

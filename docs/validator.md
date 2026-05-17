@@ -1,38 +1,40 @@
 # Validator Guide
 
-Validators are proof checkers.
+Validators are proof checkers and corpus publishers.
 
-Your job is to verify miner submissions with Lean and set weights according to accepted proof contributions.
+## Basic Flow
 
-## Validator Loop
+```bash
+uv sync --extra btcli
+uv run lemma setup
+uv run lemma worker --check
+uv run lemma validate --once --no-set-weights
+```
 
-1. Fetch or derive active tasks.
-2. Receive miner submissions.
-3. Run policy checks.
-4. Run Lean verification in the pinned environment.
-5. Compute proof identity hashes.
-6. Deduplicate proofs.
-7. Award one credit to the first accepted proof per task.
-8. Set Bittensor weights proportional to credits.
-9. Publish corpus rows for accepted proofs.
+`lemma validate` loads the task registry, validates miner submissions, runs Lean, scores accepted proofs, writes local verification receipts, and publishes corpus JSONL deltas.
 
-## Verification Requirements
+## Runtime Steps
 
-Reject submissions that:
+1. Load the active task registry.
+2. Query or receive miner submissions.
+3. Reject inactive task IDs.
+4. Reject task-version and target-hash mismatches.
+5. Require signatures for live miner responses.
+6. Run the submission policy scan before Lean.
+7. Verify in Docker or a configured Lean worker.
+8. Score first accepted unique proof per task.
+9. Normalize credits into Bittensor weights.
+10. Leave weights unchanged if no miner earns credit.
+11. Write corpus rows for valid unique proofs after the scoring window closes.
 
-- do not compile;
-- use `sorry` or `admit`;
-- change the theorem statement;
-- use custom axioms;
-- use banned imports;
-- exceed resource limits;
-- rely on network access;
-- fail axiom policy checks.
+## Worker
 
-## Corpus Publication
+```bash
+uv run lemma worker --serve --host localhost --port 8787
+```
 
-After scoring closes, publish a JSONL delta for the epoch. Each row should include the task, proof, toolchain, verifier result, hashes, and solver attribution.
+Non-loopback worker binds require `LEMMA_LEAN_VERIFY_REMOTE_BEARER` unless explicitly allowed for development.
 
 ## No Subjective Scoring
 
-Do not score based on style, explanations, model provider, or claimed effort. Score verified artifacts.
+Validators score proof artifacts, not reasoning prose, model names, proof style, or claimed effort.

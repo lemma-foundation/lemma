@@ -2,46 +2,30 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Lemma Submission",
   "type": "object",
+  "additionalProperties": false,
   "required": [
     "schema_version",
     "task_id",
+    "task_version",
     "target_sha256",
     "solver_hotkey",
     "proof_script",
     "proof_sha256",
-    "created_at"
+    "created_at",
+    "signature",
+    "signature_payload_sha256"
   ],
   "properties": {
-    "schema_version": {
-      "type": "integer",
-      "const": 1
-    },
-    "task_id": {
-      "type": "string"
-    },
-    "target_sha256": {
-      "type": "string"
-    },
-    "solver_hotkey": {
-      "type": "string"
-    },
-    "proof_script": {
-      "type": "string"
-    },
-    "proof_sha256": {
-      "type": "string"
-    },
-    "created_at": {
-      "type": "string"
-    },
-    "signature": {
-      "type": [
-        "string",
-        "null"
-      ]
-    },
-    "metadata": {
-      "type": "object"
-    }
+    "schema_version": { "type": "integer", "const": 1 },
+    "task_id": { "type": "string", "minLength": 1 },
+    "task_version": { "type": "integer", "minimum": 1 },
+    "target_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "solver_hotkey": { "type": "string", "minLength": 1 },
+    "proof_script": { "type": "string", "minLength": 1, "maxLength": 200000 },
+    "proof_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "created_at": { "type": "string", "minLength": 1 },
+    "signature": { "type": ["string", "null"] },
+    "signature_payload_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "metadata": { "type": "object" }
   }
 }

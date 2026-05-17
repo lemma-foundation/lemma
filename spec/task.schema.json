@@ -2,76 +2,64 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Lemma Task",
   "type": "object",
+  "additionalProperties": false,
   "required": [
     "schema_version",
     "id",
+    "task_version",
+    "source_stream",
+    "source_ref",
+    "source_license",
     "imports",
     "theorem_name",
     "type_expr",
     "statement",
     "submission_stub",
     "lean_toolchain",
+    "mathlib_rev",
     "policy",
     "target_sha256"
   ],
   "properties": {
-    "schema_version": {
-      "type": "integer",
-      "const": 1
-    },
-    "id": {
-      "type": "string"
-    },
-    "title": {
-      "type": "string"
-    },
+    "schema_version": { "type": "integer", "const": 1 },
+    "id": { "type": "string", "minLength": 1 },
+    "task_version": { "type": "integer", "minimum": 1 },
+    "title": { "type": "string" },
     "source_stream": {
-      "type": "string"
+      "type": "string",
+      "enum": [
+        "generated",
+        "proof_repair",
+        "theorem_variant",
+        "premise_limited",
+        "benchmark_practice",
+        "human_curated"
+      ]
     },
-    "imports": {
-      "type": "array",
-      "items": {
-        "type": "string"
+    "source_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "name"],
+      "properties": {
+        "kind": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "url": { "type": ["string", "null"] },
+        "commit": { "type": ["string", "null"] },
+        "path": { "type": ["string", "null"] }
       }
     },
-    "theorem_name": {
-      "type": "string"
-    },
-    "type_expr": {
-      "type": "string"
-    },
-    "statement": {
-      "type": "string"
-    },
-    "submission_stub": {
-      "type": "string"
-    },
-    "lean_toolchain": {
-      "type": "string"
-    },
-    "mathlib_rev": {
-      "type": "string"
-    },
-    "policy": {
-      "type": "string"
-    },
-    "target_sha256": {
-      "type": "string"
-    },
-    "active_epoch": {
-      "type": [
-        "integer",
-        "null"
-      ]
-    },
-    "expires_epoch": {
-      "type": [
-        "integer",
-        "null"
-      ]
-    },
-    "metadata": {
-      "type": "object"
-    }
+    "source_license": { "type": "string", "minLength": 1 },
+    "imports": { "type": "array", "items": { "type": "string" } },
+    "theorem_name": { "type": "string", "minLength": 1 },
+    "type_expr": { "type": "string", "minLength": 1 },
+    "statement": { "type": "string", "minLength": 1 },
+    "submission_stub": { "type": "string", "minLength": 1 },
+    "lean_toolchain": { "type": "string", "minLength": 1 },
+    "mathlib_rev": { "type": "string", "minLength": 1 },
+    "policy": { "type": "string", "minLength": 1 },
+    "target_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "active_epoch": { "type": ["integer", "null"] },
+    "expires_epoch": { "type": ["integer", "null"] },
+    "metadata": { "type": "object" }
   }
 }

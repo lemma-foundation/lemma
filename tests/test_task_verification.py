@@ -44,8 +44,11 @@ def _proof(theorem_type: str = "True", body: str = "  trivial", imports: tuple[s
 def _task() -> LemmaTask:
     return LemmaTask(
         id="lemma.test.true",
+        task_version=1,
         title="True task",
         source_stream="human_curated",
+        source_ref={"kind": "unit_test", "name": "pytest"},
+        source_license="CC-BY-4.0",
         imports=("Mathlib",),
         theorem_name="test_true",
         type_expr="True",

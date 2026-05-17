@@ -2,123 +2,84 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Lemma Corpus Row",
   "type": "object",
+  "additionalProperties": false,
   "required": [
     "schema_version",
+    "row_id",
     "task_id",
+    "task_version",
     "theorem_name",
     "type_expr",
     "statement",
     "imports",
     "lean_toolchain",
+    "mathlib_rev",
+    "policy",
     "target_sha256",
+    "source_stream",
+    "source_ref",
+    "source_license",
     "proof_script",
     "proof_sha256",
+    "proof_term_hash",
+    "axiom_set",
     "solver_hotkey",
-    "verification"
+    "validator_hotkey",
+    "epoch",
+    "tempo",
+    "accepted_at",
+    "rewarded",
+    "verification",
+    "metadata"
   ],
   "properties": {
-    "schema_version": {
-      "type": "integer",
-      "const": 1
-    },
-    "task_id": {
-      "type": "string"
-    },
-    "theorem_name": {
-      "type": "string"
-    },
-    "type_expr": {
-      "type": "string"
-    },
-    "statement": {
-      "type": "string"
-    },
-    "imports": {
-      "type": "array",
-      "items": {
-        "type": "string"
+    "schema_version": { "type": "integer", "const": 1 },
+    "row_id": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "task_id": { "type": "string", "minLength": 1 },
+    "task_version": { "type": "integer", "minimum": 1 },
+    "theorem_name": { "type": "string", "minLength": 1 },
+    "type_expr": { "type": "string", "minLength": 1 },
+    "statement": { "type": "string", "minLength": 1 },
+    "imports": { "type": "array", "items": { "type": "string" } },
+    "lean_toolchain": { "type": "string", "minLength": 1 },
+    "mathlib_rev": { "type": "string", "minLength": 1 },
+    "policy": { "type": "string", "minLength": 1 },
+    "target_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "source_stream": { "type": "string", "minLength": 1 },
+    "source_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "name"],
+      "properties": {
+        "kind": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "url": { "type": ["string", "null"] },
+        "commit": { "type": ["string", "null"] },
+        "path": { "type": ["string", "null"] }
       }
     },
-    "lean_toolchain": {
-      "type": "string"
-    },
-    "mathlib_rev": {
-      "type": "string"
-    },
-    "policy": {
-      "type": "string"
-    },
-    "target_sha256": {
-      "type": "string"
-    },
-    "axiom_set": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
-    "proof_script": {
-      "type": "string"
-    },
-    "proof_sha256": {
-      "type": "string"
-    },
-    "proof_term_hash": {
-      "type": [
-        "string",
-        "null"
-      ]
-    },
-    "solver_hotkey": {
-      "type": "string"
-    },
-    "epoch": {
-      "type": [
-        "integer",
-        "null"
-      ]
-    },
-    "tempo": {
-      "type": [
-        "integer",
-        "null"
-      ]
-    },
-    "source_stream": {
-      "type": "string"
-    },
-    "verified_at": {
-      "type": "string"
-    },
+    "source_license": { "type": "string", "minLength": 1 },
+    "proof_script": { "type": "string", "minLength": 1 },
+    "proof_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "proof_term_hash": { "type": ["string", "null"] },
+    "axiom_set": { "type": "array", "items": { "type": "string" } },
+    "solver_hotkey": { "type": "string", "minLength": 1 },
+    "validator_hotkey": { "type": "string", "minLength": 1 },
+    "epoch": { "type": ["integer", "null"] },
+    "tempo": { "type": ["integer", "null"] },
+    "accepted_at": { "type": "string", "minLength": 1 },
+    "rewarded": { "type": "boolean" },
     "verification": {
       "type": "object",
-      "required": [
-        "passed",
-        "verifier_version"
-      ],
+      "additionalProperties": false,
+      "required": ["passed", "verifier_version", "elapsed_ms", "reason"],
       "properties": {
-        "passed": {
-          "type": "boolean"
-        },
-        "verifier_version": {
-          "type": "string"
-        },
-        "elapsed_ms": {
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "reason": {
-          "type": [
-            "string",
-            "null"
-          ]
-        }
+        "passed": { "type": "boolean", "const": true },
+        "verifier_version": { "type": "string", "minLength": 1 },
+        "elapsed_ms": { "type": ["integer", "null"] },
+        "reason": { "type": ["string", "null"] }
       }
     },
-    "metadata": {
-      "type": "object"
-    }
+    "metadata": { "type": "object" }
   }
 }

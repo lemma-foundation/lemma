@@ -75,8 +75,17 @@ def test_task_env_names_work(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
             [
                 "LEMMA_TASK_REGISTRY_SHA256_EXPECTED=" + ("a" * 64),
                 "LEMMA_TASK_HTTP_TIMEOUT_S=5",
+                "LEMMA_CORPUS_INDEX_URL=https://example.test/corpus-index.json",
+                "LEMMA_CORPUS_OUTPUT_DIR=out-corpus",
+                "LEMMA_OPERATOR_DATA_DIR=operator-data",
+                "LEMMA_PROVER_COMMAND=python prover.py",
+                "LEMMA_PROVER_BASE_URL=https://example.test/v1",
+                "LEMMA_PROVER_API_KEY=test-key",
+                "LEMMA_PROVER_MODEL=test-model",
+                "LEMMA_PROVER_TIMEOUT_S=11",
                 "BT_WALLET_COLD=cold",
                 "BT_WALLET_HOT=hot",
+                "BT_NETUID=42",
             ],
         ),
         encoding="utf-8",
@@ -87,7 +96,38 @@ def test_task_env_names_work(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
 
     assert s.task_registry_sha256_expected == "a" * 64
     assert s.task_http_timeout_s == 5
+    assert s.corpus_index_url == "https://example.test/corpus-index.json"
+    assert str(s.corpus_output_dir) == "out-corpus"
+    assert str(s.operator_data_dir) == "operator-data"
+    assert s.prover_command == "python prover.py"
+    assert s.prover_base_url == "https://example.test/v1"
+    assert s.prover_api_key == "test-key"
+    assert s.prover_model == "test-model"
+    assert s.prover_timeout_s == 11
     assert (s.wallet_cold, s.wallet_hot) == ("cold", "hot")
+    assert s.netuid == 42
+
+
+def test_stale_bounty_env_names_are_ignored(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    monkeypatch.delenv("LEMMA_PREFER_PROCESS_ENV", raising=False)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "LEMMA_BOUNTY_REGISTRY_URL=https://stale.example/registry.json",
+                "LEMMA_BOUNTY_REWARD_CUSTODY=evm_escrow",
+                "LEMMA_BOUNTY_EVM_RPC_URL=https://stale.example",
+                "LEMMA_BOUNTY_ESCROW_CONTRACT_ADDRESS=0x0000000000000000000000000000000000000000",
+            ],
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    s = LemmaSettings(_env_file=str(env_file))
+
+    assert s.task_registry_url == LemmaSettings.model_fields["task_registry_url"].default
+    assert not hasattr(s, "bounty_registry_url")
 
 
 def test_lean_workspace_cache_defaults_and_env(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:

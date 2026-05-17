@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 from lemma.common.config import LemmaSettings
-from lemma.corpus import build_corpus_row, replay_jsonl, validate_jsonl, write_jsonl
+from lemma.corpus import build_corpus_index, build_corpus_row, replay_jsonl, validate_jsonl, write_jsonl
 from lemma.lean.sandbox import VerifyResult
 from lemma.submissions import build_submission
 from lemma.tasks import LemmaTask
@@ -31,8 +31,11 @@ def _submission_stub() -> str:
 def _task() -> LemmaTask:
     return LemmaTask(
         id="lemma.test.true",
+        task_version=1,
         title="True task",
         source_stream="human_curated",
+        source_ref={"kind": "unit_test", "name": "pytest"},
+        source_license="CC-BY-4.0",
         imports=("Mathlib",),
         theorem_name="test_true",
         type_expr="True",
@@ -55,13 +58,19 @@ def test_corpus_row_jsonl_validates(tmp_path: Path) -> None:
         task,
         submission,
         VerifyResult(passed=True, reason="ok"),
-        verified_at="2026-01-01T00:00:01Z",
+        validator_hotkey="vhk1",
+        rewarded=True,
+        accepted_at="2026-01-01T00:00:01Z",
     )
     path = tmp_path / "corpus.jsonl"
 
     write_jsonl([row], path)
 
     assert validate_jsonl(path) == 1
+    assert row.row_id
+    assert row.task_version == 1
+    assert row.validator_hotkey == "vhk1"
+    assert row.rewarded is True
 
 
 def test_corpus_replay_calls_verifier(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -72,7 +81,9 @@ def test_corpus_replay_calls_verifier(monkeypatch: pytest.MonkeyPatch, tmp_path:
         task,
         submission,
         VerifyResult(passed=True, reason="ok"),
-        verified_at="2026-01-01T00:00:01Z",
+        validator_hotkey="vhk1",
+        rewarded=True,
+        accepted_at="2026-01-01T00:00:01Z",
     )
     path = tmp_path / "corpus.jsonl"
     write_jsonl([row], path)
@@ -89,3 +100,26 @@ def test_corpus_replay_calls_verifier(monkeypatch: pytest.MonkeyPatch, tmp_path:
 
     assert results[0].passed is True
     assert calls == [("lemma.test.true", proof)]
+
+
+def test_corpus_index_and_metadata_sanitize_private_paths(tmp_path: Path) -> None:
+    private_path = "/" + "Users/example/private"
+    task = _task().model_copy(update={"metadata": {"local_path": private_path, "difficulty": "unit"}})
+    proof = _proof()
+    submission = build_submission(task, solver_hotkey="hk1", proof_script=proof, created_at="2026-01-01T00:00:00Z")
+    row = build_corpus_row(
+        task,
+        submission,
+        VerifyResult(passed=True, reason="ok"),
+        validator_hotkey="vhk1",
+        rewarded=False,
+        accepted_at="2026-01-01T00:00:01Z",
+    )
+    path = tmp_path / "epoch-1.jsonl"
+
+    write_jsonl([row], path)
+    index = build_corpus_index(tmp_path)
+
+    assert row.metadata == {"title": "True task", "difficulty": "unit"}
+    assert index["row_count"] == 1
+    assert index["files"][0]["path"] == "epoch-1.jsonl"

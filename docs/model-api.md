@@ -1,46 +1,35 @@
-# Model APIs And Prover Adapters
+# Model API
 
-Lemma should not require a specific model provider.
+Lemma core does not depend on a model provider. Miners choose their own proof-search stack.
 
-Miners may use hosted APIs, local models, theorem-proving agents, LeanDojo, tactic search, or human-written proofs.
+## Local Command
 
-## Network API vs Model API
+The first adapter is a local command:
 
-Lemma provides the network API:
+```bash
+LEMMA_PROVER_COMMAND="python prover.py"
+uv run lemma mine --once
+```
 
-- fetch active tasks;
-- submit proof artifacts;
-- check status;
-- inspect corpus rows.
-
-Miners provide the model API:
-
-- Chutes;
-- Gemini;
-- OpenAI-compatible endpoints;
-- local vLLM/SGLang;
-- custom provers.
-
-## Future Adapter Contract
-
-Input to prover:
+Input on stdin:
 
 ```json
 {
-  "task_id": "...",
-  "submission_stub": "...",
+  "task_id": "lemma.generated.001",
+  "task_version": 1,
   "statement": "...",
   "imports": ["Mathlib"],
+  "submission_stub": "...",
   "timeout_s": 300
 }
 ```
 
-Output from prover:
+Output on stdout:
 
 ```json
 {
-  "task_id": "...",
-  "proof_script": "...",
+  "task_id": "lemma.generated.001",
+  "proof_script": "import Mathlib\n\nnamespace Submission\n...",
   "metadata": {
     "provider": "optional",
     "model": "optional"
@@ -48,4 +37,14 @@ Output from prover:
 }
 ```
 
-The current v1 slice keeps provider logic outside the core CLI. A future adapter should support `local-command` first. Hosted providers are optional.
+## OpenAI-Compatible Endpoints
+
+Optional hosted endpoints use:
+
+```text
+LEMMA_PROVER_BASE_URL
+LEMMA_PROVER_API_KEY
+LEMMA_PROVER_MODEL
+```
+
+This is provider-neutral. Provider metadata is optional and is not part of scoring.

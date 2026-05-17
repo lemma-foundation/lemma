@@ -14,9 +14,7 @@ def test_cache_get_needed_when_cold(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     assert lake_exe_cache_get_needed(w) is True
 
 
-def test_cache_get_skipped_when_mathlib_package_present(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_cache_get_skipped_when_mathlib_package_present(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("LEMMA_LEAN_ALWAYS_CACHE_GET", raising=False)
     w = tmp_path / "ws"
     (w / ".lake" / "packages" / "mathlib").mkdir(parents=True)

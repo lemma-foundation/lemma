@@ -32,7 +32,7 @@ def lean_worker_bind_error(host: str, settings: LemmaSettings) -> str | None:
     if _bind_host_is_loopback(host):
         return None
     return (
-        "lemma validate --worker refuses unauthenticated non-loopback binds. "
+        "lemma worker --serve refuses unauthenticated non-loopback binds. "
         "Set LEMMA_LEAN_VERIFY_REMOTE_BEARER, bind to localhost, or set "
         "LEMMA_LEAN_WORKER_ALLOW_UNAUTHENTICATED_NON_LOOPBACK=1 for explicit dev-only exposure."
     )
@@ -127,7 +127,7 @@ def serve_forever(host: str, port: int, settings: LemmaSettings | None = None) -
     if err:
         raise ValueError(err)
     httpd = ThreadingHTTPServer((host, port), _VerifyHandler)
-    logger.info("lemma validate --worker listening on http://{}:{}/verify (POST)", host, port)
+    logger.info("lemma worker --serve listening on http://{}:{}/verify (POST)", host, port)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

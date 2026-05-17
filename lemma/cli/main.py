@@ -12,7 +12,7 @@ from lemma.cli.style import colors_enabled, rich_help_text, stylize
 from lemma.common.config import LemmaSettings
 from lemma.common.logging import setup_logging
 
-_ROOT_COMMAND_ORDER = ("setup", "status", "tasks", "verify", "submit", "corpus", "validate")
+_ROOT_COMMAND_ORDER = ("setup", "status", "mine", "validate", "tasks", "verify", "submit", "corpus", "worker")
 
 
 class LemmaCommand(click.Command):
@@ -108,12 +108,16 @@ def _print_task_detail(registry, task) -> None:
 @click.option("--env-file", "env_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
 @click.option("--task-registry-url", default=None, help="Task registry JSON URL or path.")
 @click.option("--task-registry-sha256", default=None, help="Optional task registry SHA256 pin.")
+@click.option("--corpus-output-dir", default=None, help="Local directory for corpus JSONL deltas.")
+@click.option("--prover-command", default=None, help="Local prover command for miners.")
 @click.option("--wallet-cold", default=None, help="Bittensor cold wallet name.")
 @click.option("--wallet-hot", default=None, help="Bittensor hotkey name.")
 def setup_cmd(
     env_path: Path | None,
     task_registry_url: str | None,
     task_registry_sha256: str | None,
+    corpus_output_dir: str | None,
+    prover_command: str | None,
     wallet_cold: str | None,
     wallet_hot: str | None,
 ) -> None:
@@ -122,11 +126,14 @@ def setup_cmd(
 
     updates = {
         "LEMMA_TASK_REGISTRY_URL": task_registry_url or LemmaSettings.model_fields["task_registry_url"].default,
+        "LEMMA_CORPUS_OUTPUT_DIR": corpus_output_dir or str(LemmaSettings.model_fields["corpus_output_dir"].default),
         "BT_WALLET_COLD": wallet_cold or LemmaSettings.model_fields["wallet_cold"].default,
         "BT_WALLET_HOT": wallet_hot or LemmaSettings.model_fields["wallet_hot"].default,
     }
     if task_registry_sha256:
         updates["LEMMA_TASK_REGISTRY_SHA256_EXPECTED"] = task_registry_sha256
+    if prover_command:
+        updates["LEMMA_PROVER_COMMAND"] = prover_command
     path = _env_path(env_path)
     merge_dotenv(path, {key: str(value) for key, value in updates.items()})
     click.echo(stylize(f"Wrote {path}", fg="green", bold=True))
@@ -137,11 +144,48 @@ def status_cmd() -> None:
     """Show task registry and verifier status."""
     settings = LemmaSettings()
     click.echo(stylize("Lemma proof-data status", fg="cyan", bold=True))
+    click.echo(stylize("  wallet_cold       ", dim=True) + settings.wallet_cold)
+    click.echo(stylize("  wallet_hot        ", dim=True) + settings.wallet_hot)
+    click.echo(stylize("  netuid            ", dim=True) + str(settings.netuid))
     click.echo(stylize("  task_registry_url ", dim=True) + settings.task_registry_url)
+    click.echo(stylize("  corpus_index_url  ", dim=True) + (settings.corpus_index_url or "(local)"))
+    click.echo(stylize("  corpus_output_dir ", dim=True) + str(settings.corpus_output_dir))
+    click.echo(stylize("  prover_command    ", dim=True) + (settings.prover_command or "(not configured)"))
     click.echo(stylize("  lean_sandbox_image ", dim=True) + settings.lean_sandbox_image)
     click.echo(stylize("  lean_use_docker    ", dim=True) + str(settings.lean_use_docker))
     click.echo("")
     _print_task_summary(_load_registry())
+
+
+@main.command("mine")
+@click.option("--once", is_flag=True, help="Run one local proof-search iteration.")
+@click.option("--task-id", default=None, help="Solve one task id.")
+@click.option("--prover-command", default=None, help="Override LEMMA_PROVER_COMMAND.")
+@click.option("--solver-hotkey", default=None, help="Override solver attribution.")
+@click.option("--output", "output_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+def mine_cmd(
+    once: bool,
+    task_id: str | None,
+    prover_command: str | None,
+    solver_hotkey: str | None,
+    output_path: Path | None,
+) -> None:
+    """Search for Lean proofs and build verified submissions."""
+    from lemma.miner import ProverError, mine_once
+
+    settings = LemmaSettings()
+    if not once:
+        click.echo(stylize("Running one miner iteration. Use a process supervisor to repeat it.", dim=True))
+    try:
+        result = mine_once(settings, task_id=task_id, prover_command=prover_command, solver_hotkey=solver_hotkey)
+    except ProverError as e:
+        raise click.ClickException(str(e)) from e
+    text = result.submission.model_dump_json(indent=2, exclude_none=True)
+    if output_path:
+        output_path.write_text(text + "\n", encoding="utf-8")
+        click.echo(stylize(f"Wrote {output_path}", fg="green", bold=True))
+    else:
+        click.echo(text)
 
 
 @main.group("tasks", cls=LemmaGroup)
@@ -263,26 +307,81 @@ def corpus_replay_cmd(corpus_jsonl: Path) -> None:
         raise SystemExit(1)
 
 
+@corpus_cmd.command("index")
+@click.option("--input", "input_dir", type=click.Path(exists=True, file_okay=False, path_type=Path), required=True)
+@click.option("--output", "output_path", type=click.Path(dir_okay=False, path_type=Path), required=True)
+def corpus_index_cmd(input_dir: Path, output_path: Path) -> None:
+    """Build a small corpus index JSON file."""
+    from lemma.corpus import write_corpus_index
+
+    write_corpus_index(input_dir, output_path)
+    click.echo(stylize(f"Wrote {output_path}", fg="green", bold=True))
+
+
 @main.command("validate")
-@click.option("--check", is_flag=True, help="Check task registry and verifier configuration.")
-@click.option("--worker", is_flag=True, help="Run the Lean verification HTTP worker.")
-@click.option("--host", default="localhost", show_default=True, help="Worker bind host.")
-@click.option("--port", default=8787, type=int, show_default=True, help="Worker bind port.")
-def validate_cmd(check: bool, worker: bool, host: str, port: int) -> None:
-    """Validate verifier readiness or run the Lean worker."""
+@click.option("--once", is_flag=True, help="Run one validator scoring iteration.")
+@click.option("--no-set-weights", is_flag=True, help="Dry run: do not submit Bittensor weights.")
+@click.option("--submissions-jsonl", type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None)
+@click.option("--validator-hotkey", default=None, help="Override validator attribution.")
+@click.option("--require-signatures", is_flag=True, help="Require signed live miner submissions.")
+def validate_cmd(
+    once: bool,
+    no_set_weights: bool,
+    submissions_jsonl: Path | None,
+    validator_hotkey: str | None,
+    require_signatures: bool,
+) -> None:
+    """Run the validator proof-checking and scoring workflow."""
+    from lemma.validator import read_submissions_jsonl, validate_once
+
     settings = LemmaSettings()
     setup_logging(settings.log_level)
-    if worker:
+    submissions = read_submissions_jsonl(submissions_jsonl) if submissions_jsonl else []
+    if not once and submissions_jsonl is None:
+        click.echo(stylize("No live miner intake configured; running a local dry validator iteration.", dim=True))
+    result = validate_once(
+        settings,
+        submissions,
+        validator_hotkey=validator_hotkey,
+        no_set_weights=no_set_weights or not once,
+        require_signatures=require_signatures,
+    )
+    click.echo(
+        json.dumps(
+            {
+                "verified": len(result.verification_records),
+                "accepted_unique": len(result.score.valid_unique_proofs),
+                "credits": result.score.credits,
+                "weights": result.score.weights,
+                "corpus_rows": len(result.corpus_rows),
+                "weights_set": result.weights_set,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+
+
+@main.command("worker")
+@click.option("--check", is_flag=True, help="Check task registry and verifier configuration.")
+@click.option("--serve", is_flag=True, help="Run the Lean verification HTTP worker.")
+@click.option("--host", default="localhost", show_default=True, help="Worker bind host.")
+@click.option("--port", default=8787, type=int, show_default=True, help="Worker bind port.")
+def worker_cmd(check: bool, serve: bool, host: str, port: int) -> None:
+    """Check or serve the Lean verifier worker."""
+    settings = LemmaSettings()
+    setup_logging(settings.log_level)
+    if serve:
         from lemma.lean.worker_http import serve_forever
 
         serve_forever(host, port, settings)
         return
 
     registry = _load_registry()
-    click.echo(stylize("Lemma validate", fg="cyan", bold=True))
+    click.echo(stylize("Lemma worker", fg="cyan", bold=True))
     click.echo(stylize("  registry_sha256 ", dim=True) + registry.sha256)
     click.echo(stylize("  tasks           ", dim=True) + str(len(registry.tasks)))
     if check:
         click.echo(stylize("READY: task registry and Lean verifier settings are present.", fg="green"))
         return
-    click.echo(stylize("Use --check for preflight or --worker to serve /verify.", dim=True))
+    click.echo(stylize("Use --check for preflight or --serve to serve /verify.", dim=True))

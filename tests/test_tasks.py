@@ -30,8 +30,11 @@ def _task_payload() -> dict[str, object]:
     return {
         "schema_version": 1,
         "id": "lemma.test.true",
+        "task_version": 1,
         "title": "True task",
         "source_stream": "human_curated",
+        "source_ref": {"kind": "unit_test", "name": "pytest"},
+        "source_license": "CC-BY-4.0",
         "imports": ["Mathlib"],
         "theorem_name": "test_true",
         "type_expr": "True",
@@ -51,6 +54,8 @@ def test_task_schema_roundtrip_and_target_hash_stability() -> None:
 
     assert restored == task
     assert task.target_sha256 == problem_target_sha256(task.to_problem())
+    assert task.task_version == 1
+    assert task.source_ref.name == "pytest"
 
 
 def test_registry_loads_from_bytes() -> None:
@@ -74,3 +79,11 @@ def test_registry_fetches_from_http(monkeypatch: pytest.MonkeyPatch) -> None:
     registry = fetch_task_registry(settings)
 
     assert registry.tasks[0].id == "lemma.test.true"
+
+
+def test_task_requires_source_metadata() -> None:
+    payload = _task_payload()
+    payload.pop("source_ref")
+
+    with pytest.raises(ValueError):
+        LemmaTask.model_validate(payload)

@@ -26,8 +26,11 @@ def _submission_stub() -> str:
 def _task() -> LemmaTask:
     return LemmaTask(
         id="lemma.test.true",
+        task_version=1,
         title="True task",
         source_stream="human_curated",
+        source_ref={"kind": "unit_test", "name": "pytest"},
+        source_license="CC-BY-4.0",
         imports=("Mathlib",),
         theorem_name="test_true",
         type_expr="True",
@@ -45,6 +48,8 @@ def test_submission_hash_is_deterministic() -> None:
 
     assert package.proof_sha256 == proof_sha256(proof)
     assert package.target_sha256 == _task().target_sha256
+    assert package.task_version == 1
+    assert len(package.signature_payload_sha256) == 64
 
 
 def test_scoring_awards_first_unique_proof_per_task() -> None:
@@ -84,3 +89,65 @@ def test_scoring_awards_first_unique_proof_per_task() -> None:
     assert result.winners == {"task-1": "hk-a", "task-2": "hk-b"}
     assert result.credits == {"hk-a": 1, "hk-b": 1}
     assert result.weights == {"hk-a": 0.5, "hk-b": 0.5}
+    assert [(item.record.task_id, item.rewarded) for item in result.valid_unique_proofs] == [
+        ("task-1", True),
+        ("task-2", True),
+    ]
+
+
+def test_scoring_keeps_valid_alternates_unrewarded() -> None:
+    records = [
+        VerificationRecord(
+            task_id="task-1",
+            solver_hotkey="hk-a",
+            passed=True,
+            proof_sha256="first",
+            received_at="2026-01-01T00:00:01Z",
+        ),
+        VerificationRecord(
+            task_id="task-1",
+            solver_hotkey="hk-b",
+            passed=True,
+            proof_sha256="alternate",
+            received_at="2026-01-01T00:00:02Z",
+        ),
+        VerificationRecord(
+            task_id="task-1",
+            solver_hotkey="hk-c",
+            passed=True,
+            proof_sha256="alternate",
+            received_at="2026-01-01T00:00:03Z",
+        ),
+    ]
+
+    result = score_epoch(records)
+
+    assert result.credits == {"hk-a": 1}
+    assert [(item.record.solver_hotkey, item.rewarded) for item in result.valid_unique_proofs] == [
+        ("hk-a", True),
+        ("hk-b", False),
+    ]
+
+
+def test_scoring_zero_credit_epoch_has_no_weights() -> None:
+    result = score_epoch([VerificationRecord(task_id="task-1", solver_hotkey="hk", passed=False, proof_sha256="x")])
+
+    assert result.credits == {}
+    assert result.weights == {}
+
+
+def test_scoring_rejects_subjective_fields() -> None:
+    payload = {
+        "task_id": "task-1",
+        "solver_hotkey": "hk",
+        "passed": True,
+        "proof_sha256": "x",
+        "reasoning_steps": "nice proof",
+    }
+
+    try:
+        VerificationRecord.model_validate(payload)
+    except ValueError as e:
+        assert "reasoning_steps" in str(e)
+    else:  # pragma: no cover
+        raise AssertionError("subjective scoring field was accepted")

@@ -13,4 +13,3 @@ def test_parse_axioms_none_when_no_print_line() -> None:
     ok, found = axiom_scan_ok(text)
     assert ok is False
     assert found is None
-

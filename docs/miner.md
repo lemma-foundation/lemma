@@ -2,58 +2,51 @@
 
 Miners are proof searchers.
 
-Your job is to solve active Lean tasks and submit proof artifacts that validators can check.
+Your job is to fetch active Lean tasks, produce a `Submission.lean` proof, verify it locally, and serve or package the task-bound submission for validators.
 
 ## Basic Flow
 
 ```bash
-uv sync
+uv sync --extra btcli
 uv run lemma setup
+uv run lemma status
 uv run lemma tasks list
-uv run lemma tasks pull --output tasks.jsonl
-```
-
-Pick a task:
-
-```bash
 uv run lemma tasks inspect <task-id>
 ```
 
-Write `Submission.lean`, then verify locally:
+Configure one prover path:
+
+```bash
+LEMMA_PROVER_COMMAND="python prover.py"
+```
+
+Then run one local iteration:
+
+```bash
+uv run lemma mine --once --task-id <task-id>
+```
+
+The local command receives one JSON task on stdin and returns JSON with `task_id` and `proof_script` on stdout.
+
+## Manual Proof Path
 
 ```bash
 uv run lemma verify <task-id> --submission Submission.lean
-```
-
-Submit:
-
-```bash
 uv run lemma submit <task-id> --submission Submission.lean --solver-hotkey <hotkey>
 ```
 
-## Using A Prover
+## Hosted Provers
 
-Use any prover stack you want. Lemma only needs the final `Submission.lean`.
+Miners may use OpenAI-compatible endpoints through:
 
-One local pattern is:
-
-```bash
-python prover.py --tasks tasks.jsonl --out submissions/
-uv run lemma verify <task-id> --submission submissions/<task-id>/Submission.lean
-uv run lemma submit <task-id> --submission submissions/<task-id>/Submission.lean --solver-hotkey <hotkey>
+```text
+LEMMA_PROVER_BASE_URL
+LEMMA_PROVER_API_KEY
+LEMMA_PROVER_MODEL
 ```
 
-Miners can use hosted providers, Chutes, Gemini, OpenAI-compatible endpoints, local vLLM, LeanDojo, Goedel-Prover, DeepSeek-Prover-style search, or human-written proofs. Lemma does not care how the proof was found.
+The provider is not scored. Lemma only checks the final Lean proof.
 
-## What Gets Paid
+## Reward Rule
 
-The proof must pass Lean for the exact task. The first accepted unique proof for a task earns credit in v1.
-
-## What Does Not Get Paid
-
-- prose explanations;
-- failed proofs;
-- proofs with `sorry`;
-- duplicate proofs;
-- proofs for changed statements;
-- proofs relying on banned axioms or imports.
+The first accepted unique proof for an active task earns credit in the validator epoch. Duplicate proofs, failed proofs, changed targets, prose explanations, and unsigned live submissions do not earn v1 credit.

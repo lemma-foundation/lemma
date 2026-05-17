@@ -1,56 +1,34 @@
 # Task Supply
 
-Lemma needs many theorem tasks that are useful, nontrivial, and verifiable.
+Lemma tasks are exact Lean theorem targets with source and license metadata.
 
-## Good Task Criteria
+## Source Streams
 
-A task should be:
+V1 uses these source streams:
 
-- exact Lean;
-- kernel-checkable;
-- nontrivial under a pinned tactic stack;
-- useful as training data;
-- not easily copied from public proof files;
-- reproducible by validators;
-- licensed for inclusion in the public corpus.
+- `generated`
+- `proof_repair`
+- `theorem_variant`
+- `premise_limited`
+- `benchmark_practice`
+- `human_curated`
 
-## Supply Streams
+## Activation Rules
 
-### Generated State-Graph Tasks
+Every active task must have:
 
-Generate theorem tasks by exploring Lean proof states from pinned Mathlib commits. This is inspired by LeanNavigator-style state-graph exploration.
+- stable `task_id`;
+- integer `task_version`;
+- `target_sha256` computed from the verifier-owned `Challenge.lean`;
+- pinned Lean toolchain and Mathlib revision;
+- explicit `source_ref`;
+- explicit `source_license`;
+- schema validation;
+- baseline tactic gate result;
+- no held-out benchmark status if it is used for public benchmark claims.
 
-### Proof Repair Tasks
+Tasks solved by trivial baseline tactics are excluded from paid activation. Held-out benchmark tasks are kept separate from training and reward streams.
 
-Create tasks from broken Lean files. A valid solution repairs the proof under the pinned environment.
+## Registry
 
-### Theorem Variant Tasks
-
-Generate variants of known theorems that require a real proof rather than a copied public proof.
-
-### Premise-Limited Reproving Tasks
-
-Ask miners to reprove a theorem without using the original theorem or a banned group of nearby lemmas.
-
-### Benchmark-Practice Tasks
-
-Use non-held-out public benchmark tasks for training practice. Keep held-out benchmark tasks separate from paid tasks.
-
-### Human-Curated Tasks
-
-Allow curated tasks, but do not make manual curation the bottleneck.
-
-## Triviality Gate
-
-Before a task becomes active, run baseline tactics under timeout. Skip or downweight tasks solved by the baseline.
-
-Suggested tactics:
-
-- `rfl`
-- `trivial`
-- `simp` / `simp_all`
-- `norm_num`
-- `omega`
-- `linarith`
-- `ring`
-- `aesop` with timeout
+`tasks/registry.json` is a dev seed. Published registries should be signed JSON, pinned by SHA256, and archived so corpus rows can be replayed later.

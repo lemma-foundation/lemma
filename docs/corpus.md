@@ -1,42 +1,61 @@
-# The Lemma Corpus
+# Corpus
 
-The Lemma Corpus is the main product of the subnet.
+The Lemma Corpus is the main product of the subnet: replayable Lean theorem/proof rows that validators accepted.
 
-It is a public dataset of Lean theorem/proof rows that were checked by validators and accepted by the network.
+## Purpose
 
-## Why It Matters
+Corpus rows should be useful for supervised fine-tuning, retrieval, proof repair, reinforcement learning, and evaluation. A row is valuable only if another operator can reconstruct the task and rerun the checker.
 
-Verified proof data trains better theorem provers. The corpus should be replayable, source-attributed, and useful for supervised fine-tuning, retrieval, proof repair, evaluation, and reinforcement learning.
+## Schema
 
-## Row Schema
+The launch schema is `spec/corpus-row.schema.json` with `schema_version: 1`.
 
-See `spec/corpus-row.schema.json`.
+Required fields:
 
-Minimum fields:
+```text
+schema_version
+row_id
+task_id
+task_version
+theorem_name
+type_expr
+statement
+imports
+lean_toolchain
+mathlib_rev
+policy
+target_sha256
+source_stream
+source_ref
+source_license
+proof_script
+proof_sha256
+proof_term_hash
+axiom_set
+solver_hotkey
+validator_hotkey
+epoch
+tempo
+accepted_at
+rewarded
+verification
+metadata
+```
 
-- task id;
-- statement;
-- imports;
-- Lean toolchain;
-- mathlib revision;
-- proof script;
-- proof hash;
-- proof-term hash when available;
-- solver hotkey;
-- epoch/tempo;
-- verifier result;
-- source stream.
+`row_id` is the SHA256 of `target_sha256`, `proof_sha256`, `solver_hotkey`, and `validator_hotkey`. `proof_term_hash` is nullable at launch. `rewarded` is true only for proofs that received epoch credit. Valid alternates can be stored with `rewarded: false`.
+
+Failed proofs are not public corpus rows.
 
 ## Replay
 
-A row should be replayable with:
-
 ```bash
-lemma corpus replay corpus.jsonl
+uv run lemma corpus validate corpus.jsonl
+uv run lemma corpus replay corpus.jsonl
+uv run lemma corpus index --input corpus --output corpus/corpus-index.json
 ```
 
-Replay is critical. The corpus is only trustworthy if anyone can re-run the checker.
+Replay uses the task fields embedded in each row, the pinned toolchain metadata, and the Lean verifier.
 
-## License
+## Licensing
 
-Use a permissive license compatible with training and public reuse. Proposed default: CC-BY 4.0 for corpus rows, with code/proof artifacts under Apache-2.0 where appropriate. Confirm license compatibility for imported sources.
+Every task and row carries `source_license`. The default dev seed uses `CC-BY-4.0`; imported sources must be checked before activation.

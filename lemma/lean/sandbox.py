@@ -91,9 +91,7 @@ def _docker_container_logs_text(container: Any) -> str:
     if isinstance(raw, tuple):
         out_b, err_b = raw
         return (
-            (out_b or b"").decode("utf-8", errors="replace")
-            + "\n"
-            + (err_b or b"").decode("utf-8", errors="replace")
+            (out_b or b"").decode("utf-8", errors="replace") + "\n" + (err_b or b"").decode("utf-8", errors="replace")
         )
     return str(raw.decode("utf-8", errors="replace"))
 
@@ -257,9 +255,8 @@ class LeanSandbox:
 
     def _prune_workspace_cache(self, *, protect_name: str) -> None:
         """Keep warm workspace slots bounded; stale temp dirs are safe to drop after a day."""
-        if (
-            self.workspace_cache_dir is None
-            or (self.workspace_cache_max_dirs <= 0 and self.workspace_cache_max_bytes <= 0)
+        if self.workspace_cache_dir is None or (
+            self.workspace_cache_max_dirs <= 0 and self.workspace_cache_max_bytes <= 0
         ):
             return
         root = self.workspace_cache_dir
@@ -630,9 +627,7 @@ class LeanSandbox:
                 )
             elapsed = time.monotonic() - t0
             text = _docker_container_logs_text(container)
-            exit_status = (
-                int(wait_result["StatusCode"]) if isinstance(wait_result, dict) else int(wait_result)
-            )
+            exit_status = int(wait_result["StatusCode"]) if isinstance(wait_result, dict) else int(wait_result)
             if _env_truthy("LEMMA_LEAN_VERIFY_TIMING"):
                 logger.info(
                     "lean verify timing docker_one_shot wall_s={:.3f} LEAN_NUM_THREADS={}",

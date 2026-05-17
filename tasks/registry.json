@@ -1,23 +1,92 @@
 {
+  "created_at": "2026-05-17T00:00:00Z",
   "schema_version": 1,
+  "signature": null,
+  "signed_by": null,
   "tasks": [
     {
-      "schema_version": 1,
       "id": "lemma.sample.true_intro",
-      "title": "Prove True",
-      "source_stream": "human_curated",
-      "imports": ["Mathlib"],
-      "theorem_name": "true_intro_sample",
-      "type_expr": "True",
-      "statement": "theorem true_intro_sample : True := by\n  sorry",
-      "submission_stub": "import Mathlib\n\nnamespace Submission\n\ntheorem true_intro_sample : True := by\n  sorry\n\nend Submission\n",
+      "imports": [
+        "Mathlib"
+      ],
       "lean_toolchain": "leanprover/lean4:v4.30.0-rc2",
       "mathlib_rev": "5450b53e5ddc",
-      "policy": "restricted_helpers",
-      "target_sha256": "9b4bfc3ff8964ed0bb150c9775d9e974b5ce81560c47c33f38f73b0597a670a9",
       "metadata": {
-        "difficulty": "sample"
-      }
+        "difficulty": "sample",
+        "smoke_proof": "trivial"
+      },
+      "policy": "restricted_helpers",
+      "schema_version": 1,
+      "source_license": "CC-BY-4.0",
+      "source_ref": {
+        "kind": "dev_seed",
+        "name": "lemma-dev-smoke",
+        "path": "tasks/registry.json"
+      },
+      "source_stream": "human_curated",
+      "statement": "theorem true_intro_sample : True := by\n  sorry",
+      "submission_stub": "import Mathlib\n\nnamespace Submission\n\ntheorem true_intro_sample : True := by\n  sorry\n\nend Submission\n",
+      "target_sha256": "9b4bfc3ff8964ed0bb150c9775d9e974b5ce81560c47c33f38f73b0597a670a9",
+      "task_version": 1,
+      "theorem_name": "true_intro_sample",
+      "title": "Smoke-test True",
+      "type_expr": "True"
+    },
+    {
+      "id": "lemma.generated.and_intro",
+      "imports": [
+        "Mathlib"
+      ],
+      "lean_toolchain": "leanprover/lean4:v4.30.0-rc2",
+      "mathlib_rev": "5450b53e5ddc",
+      "metadata": {
+        "baseline_hint": "constructor",
+        "difficulty": "dev"
+      },
+      "policy": "restricted_helpers",
+      "schema_version": 1,
+      "source_license": "CC-BY-4.0",
+      "source_ref": {
+        "kind": "dev_seed",
+        "name": "deterministic-dev-seed",
+        "path": "tasks/registry.json"
+      },
+      "source_stream": "generated",
+      "statement": "theorem generated_and_intro : True \u2227 True := by\n  sorry",
+      "submission_stub": "import Mathlib\n\nnamespace Submission\n\ntheorem generated_and_intro : True \u2227 True := by\n  sorry\n\nend Submission\n",
+      "target_sha256": "d48ef2ace650deff92beaaa99f7b08e22510c507dc139267ce32da1880a01411",
+      "task_version": 1,
+      "theorem_name": "generated_and_intro",
+      "title": "Generated conjunction",
+      "type_expr": "True \u2227 True"
+    },
+    {
+      "id": "lemma.generated.nat_zero_add",
+      "imports": [
+        "Mathlib"
+      ],
+      "lean_toolchain": "leanprover/lean4:v4.30.0-rc2",
+      "mathlib_rev": "5450b53e5ddc",
+      "metadata": {
+        "baseline_hint": "simp",
+        "difficulty": "dev"
+      },
+      "policy": "restricted_helpers",
+      "schema_version": 1,
+      "source_license": "CC-BY-4.0",
+      "source_ref": {
+        "kind": "dev_seed",
+        "name": "deterministic-dev-seed",
+        "path": "tasks/registry.json"
+      },
+      "source_stream": "generated",
+      "statement": "theorem generated_nat_zero_add : \u2200 n : Nat, 0 + n = n := by\n  sorry",
+      "submission_stub": "import Mathlib\n\nnamespace Submission\n\ntheorem generated_nat_zero_add : \u2200 n : Nat, 0 + n = n := by\n  sorry\n\nend Submission\n",
+      "target_sha256": "5c124b21b27d653f737a49a6377ffd56f61bf12984067325877af4849e16b596",
+      "task_version": 1,
+      "theorem_name": "generated_nat_zero_add",
+      "title": "Generated Nat zero-add",
+      "type_expr": "\u2200 n : Nat, 0 + n = n"
     }
   ]
 }

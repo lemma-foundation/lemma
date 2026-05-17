@@ -58,9 +58,19 @@ class LemmaSettings(BaseSettings):
         gt=0.0,
         validation_alias="LEMMA_TASK_HTTP_TIMEOUT_S",
     )
+    corpus_index_url: str = Field(default="", validation_alias="LEMMA_CORPUS_INDEX_URL")
+    corpus_output_dir: Path = Field(default=Path("corpus"), validation_alias="LEMMA_CORPUS_OUTPUT_DIR")
+    operator_data_dir: Path = Field(default=Path("validator-data"), validation_alias="LEMMA_OPERATOR_DATA_DIR")
+
+    prover_command: str = Field(default="", validation_alias="LEMMA_PROVER_COMMAND")
+    prover_base_url: str = Field(default="", validation_alias="LEMMA_PROVER_BASE_URL")
+    prover_api_key: str = Field(default="", validation_alias="LEMMA_PROVER_API_KEY")
+    prover_model: str = Field(default="", validation_alias="LEMMA_PROVER_MODEL")
+    prover_timeout_s: float = Field(default=300.0, gt=0.0, validation_alias="LEMMA_PROVER_TIMEOUT_S")
 
     wallet_cold: str = Field(default="default", validation_alias="BT_WALLET_COLD")
     wallet_hot: str = Field(default="default", validation_alias="BT_WALLET_HOT")
+    netuid: int = Field(default=0, ge=0, validation_alias="BT_NETUID")
 
     lean_sandbox_image: str = Field(default="lemma/lean-sandbox:latest", validation_alias="LEAN_SANDBOX_IMAGE")
     lean_verify_timeout_s: int = Field(default=300, ge=1, validation_alias="LEAN_VERIFY_TIMEOUT_S")

@@ -29,6 +29,8 @@ jobs:
       # -ll: report only medium+ (low-severity e.g. seeded `random` for problem sampling is not a security bug).
       - name: Bandit
         run: uv run bandit -q -r lemma -ll
+      - name: Leak check
+        run: uv run python scripts/leak_check.py
       - name: Pytest
         # Docker golden runs only in docker-lean-sandbox (needs image + disk).
         run: uv run pytest tests/ -q --ignore=tests/test_docker_golden.py

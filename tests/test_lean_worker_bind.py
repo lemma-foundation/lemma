@@ -16,6 +16,7 @@ def test_lean_worker_rejects_non_loopback_without_bearer() -> None:
 
     assert err is not None
     assert "refuses unauthenticated non-loopback binds" in err
+    assert "lemma worker --serve" in err
 
 
 def test_lean_worker_allows_non_loopback_with_bearer() -> None:

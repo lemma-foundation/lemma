@@ -52,4 +52,3 @@ def test_materialize_preserve_lake_keeps_dot_lake(tmp_path: Path) -> None:
     materialize_workspace(dest, p, "namespace Submission\n", preserve_lake=True)
     assert (dest / ".lake" / "warm_marker").read_text() == "ok"
     assert (dest / "Submission.lean").read_text().startswith("namespace Submission")
-

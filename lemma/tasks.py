@@ -29,6 +29,18 @@ class TaskError(RuntimeError):
     """Raised when the task registry or a task row is invalid."""
 
 
+class SourceRef(BaseModel):
+    """Public provenance for a task source."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: str
+    name: str
+    url: str | None = None
+    commit: str | None = None
+    path: str | None = None
+
+
 def _normalize_sha256(value: str | None) -> str | None:
     raw = (value or "").strip().lower()
     if raw.startswith("sha256:"):
@@ -48,8 +60,11 @@ class LemmaTask(BaseModel):
 
     schema_version: int = 1
     id: str
+    task_version: int = Field(default=1, ge=1)
     title: str = ""
     source_stream: SourceStream = "generated"
+    source_ref: SourceRef
+    source_license: str
     imports: tuple[str, ...] = ("Mathlib",)
     theorem_name: str
     type_expr: str
@@ -88,6 +103,9 @@ class LemmaTask(BaseModel):
                 "submission_stub": self.submission_stub,
                 "submission_policy": self.policy,
                 "source_stream": self.source_stream,
+                "source_ref": self.source_ref.model_dump(exclude_none=True),
+                "source_license": self.source_license,
+                "task_version": self.task_version,
                 **self.metadata,
             },
         )
@@ -98,6 +116,9 @@ class TaskRegistry:
     schema_version: int
     tasks: tuple[LemmaTask, ...]
     sha256: str
+    signed_by: str | None = None
+    signature: str | None = None
+    created_at: str | None = None
 
     def get(self, task_id: str) -> LemmaTask:
         wanted = task_id.strip()
@@ -147,7 +168,14 @@ def load_task_registry(raw: bytes, expected_sha256: str | None = None) -> TaskRe
         tasks = tuple(LemmaTask.model_validate(row) for row in rows)
     except ValueError as e:
         raise TaskError(str(e)) from e
-    return TaskRegistry(schema_version=1, tasks=tasks, sha256=digest)
+    return TaskRegistry(
+        schema_version=1,
+        tasks=tasks,
+        sha256=digest,
+        signed_by=payload.get("signed_by") if isinstance(payload.get("signed_by"), str) else None,
+        signature=payload.get("signature") if isinstance(payload.get("signature"), str) else None,
+        created_at=payload.get("created_at") if isinstance(payload.get("created_at"), str) else None,
+    )
 
 
 def fetch_task_registry(settings: LemmaSettings) -> TaskRegistry:

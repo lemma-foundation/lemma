@@ -1,25 +1,38 @@
 # Testing
 
-Run the Python checks:
+Run local checks:
 
 ```bash
 uv run ruff check lemma tests
 uv run mypy lemma
 uv run pytest tests -q
+uv run python scripts/leak_check.py
 ```
 
-Run a local task inspection:
+Task inspection:
 
 ```bash
 uv run lemma tasks list
 uv run lemma tasks inspect lemma.sample.true_intro
 ```
 
-Validate or replay a corpus file:
+Worker and validator smoke:
+
+```bash
+uv run lemma worker --check
+uv run lemma validate --once --no-set-weights
+```
+
+Corpus validation:
 
 ```bash
 uv run lemma corpus validate corpus.jsonl
 uv run lemma corpus replay corpus.jsonl
+uv run lemma corpus index --input corpus --output corpus/corpus-index.json
 ```
 
-Docker-backed Lean checks require the `lemma/lean-sandbox` image and a warm Mathlib cache for reasonable latency.
+Docker-backed Lean checks require the sandbox image:
+
+```bash
+uv run pytest tests/test_docker_golden.py -v --tb=short
+```
