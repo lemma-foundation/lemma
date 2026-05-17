@@ -1,10 +1,10 @@
-"""Environment-driven settings for proof targets and reward custody."""
+"""Environment-driven settings for proof tasks and Lean verification."""
 
 from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -45,34 +45,18 @@ class LemmaSettings(BaseSettings):
             return init_settings, env_settings, dotenv_settings, file_secret_settings
         return init_settings, dotenv_settings, env_settings, file_secret_settings
 
-    bounty_registry_url: str = Field(
-        default="https://raw.githubusercontent.com/spacetime-tao/lemma/main/bounties/registry.json",
-        validation_alias="LEMMA_BOUNTY_REGISTRY_URL",
+    task_registry_url: str = Field(
+        default="tasks/registry.json",
+        validation_alias="LEMMA_TASK_REGISTRY_URL",
     )
-    bounty_registry_sha256_expected: str | None = Field(
+    task_registry_sha256_expected: str | None = Field(
         default=None,
-        validation_alias="LEMMA_BOUNTY_REGISTRY_SHA256_EXPECTED",
+        validation_alias="LEMMA_TASK_REGISTRY_SHA256_EXPECTED",
     )
-    bounty_http_timeout_s: float = Field(
+    task_http_timeout_s: float = Field(
         default=30.0,
         gt=0.0,
-        validation_alias="LEMMA_BOUNTY_HTTP_TIMEOUT_S",
-    )
-    bounty_reward_custody: Literal["evm_escrow"] = Field(
-        default="evm_escrow",
-        validation_alias="LEMMA_BOUNTY_REWARD_CUSTODY",
-    )
-    bounty_evm_rpc_url: str = Field(
-        default="https://test.chain.opentensor.ai",
-        validation_alias="LEMMA_BOUNTY_EVM_RPC_URL",
-    )
-    bounty_evm_chain_id: int = Field(
-        default=945,
-        validation_alias="LEMMA_BOUNTY_EVM_CHAIN_ID",
-    )
-    bounty_escrow_contract_address: str = Field(
-        default="",
-        validation_alias="LEMMA_BOUNTY_ESCROW_CONTRACT_ADDRESS",
+        validation_alias="LEMMA_TASK_HTTP_TIMEOUT_S",
     )
 
     wallet_cold: str = Field(default="default", validation_alias="BT_WALLET_COLD")

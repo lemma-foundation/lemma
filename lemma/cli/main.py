@@ -1,9 +1,8 @@
-"""Proof formalization CLI for Lemma."""
+"""Training-data-first CLI for Lemma."""
 
 from __future__ import annotations
 
 import json
-import secrets
 from pathlib import Path
 
 import click
@@ -13,7 +12,7 @@ from lemma.cli.style import colors_enabled, rich_help_text, stylize
 from lemma.common.config import LemmaSettings
 from lemma.common.logging import setup_logging
 
-_PUBLIC_COMMAND_ORDER = ("setup", "mine", "status", "validate")
+_ROOT_COMMAND_ORDER = ("setup", "status", "tasks", "verify", "submit", "corpus", "validate")
 
 
 class LemmaCommand(click.Command):
@@ -37,7 +36,10 @@ class LemmaGroup(click.Group):
         formatter.write(rich_help)
 
     def list_commands(self, ctx: click.Context) -> list[str]:
-        return [name for name in _PUBLIC_COMMAND_ORDER if name in self.commands]
+        if ctx.parent is None:
+            ordered = [name for name in _ROOT_COMMAND_ORDER if name in self.commands]
+            return ordered + sorted(name for name in self.commands if name not in ordered)
+        return sorted(self.commands)
 
 
 @click.group(
@@ -49,7 +51,7 @@ class LemmaGroup(click.Group):
 @click.pass_context
 @click.version_option(version=__version__)
 def main(ctx: click.Context) -> None:
-    """Lean proof formalization subnet."""
+    """Lean-verified proof data subnet."""
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help(), color=colors_enabled())
 
@@ -58,152 +60,73 @@ def _env_path(env_path: Path | None) -> Path:
     return env_path or Path.cwd() / ".env"
 
 
-def _read_submission(path: Path) -> str:
+def _read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
 def _load_registry():
-    from lemma.bounty.client import BountyError, fetch_registry
+    from lemma.tasks import TaskError, fetch_task_registry
 
     try:
-        return fetch_registry(LemmaSettings())
-    except (BountyError, OSError) as e:
+        return fetch_task_registry(LemmaSettings())
+    except (TaskError, OSError) as e:
         raise click.ClickException(str(e)) from e
 
 
-def _bounty_or_die(bounty_id: str):
-    from lemma.bounty.client import BountyError
+def _task_or_die(task_id: str):
+    from lemma.tasks import TaskError
 
     registry = _load_registry()
     try:
-        return registry, registry.get(bounty_id)
-    except BountyError as e:
+        return registry, registry.get(task_id)
+    except TaskError as e:
         raise click.ClickException(str(e)) from e
 
 
-def _escrow_rows(registry):
-    return [bounty for bounty in registry.bounties if bounty.escrow_backed]
-
-
-def _candidate_rows(registry):
-    return [bounty for bounty in registry.bounties if not bounty.escrow_backed]
-
-
-def _print_bounty_summary(registry) -> None:
-    escrow_rows = _escrow_rows(registry)
-    candidate_rows = _candidate_rows(registry)
-    click.echo(stylize("Lemma proof targets", fg="cyan", bold=True))
+def _print_task_summary(registry) -> None:
+    click.echo(stylize("Lemma proof tasks", fg="cyan", bold=True))
     click.echo(stylize(f"registry_sha256={registry.sha256}", dim=True))
-    click.echo(stylize("Live rewards require confirmed reward custody rows.\n", dim=True), nl=False)
-    if escrow_rows:
-        click.echo(stylize("Live targets", fg="cyan"))
-        for bounty in escrow_rows:
-            click.echo(f"  {stylize(bounty.id, fg='green', bold=True)}  {bounty.title}")
-    else:
-        click.echo(stylize("No live proof rewards are present in this registry.", fg="yellow", bold=True))
-    if candidate_rows:
-        click.echo("")
-        click.echo(stylize("Candidates", fg="cyan"))
-        for bounty in candidate_rows:
-            click.echo(f"  {bounty.id}  {bounty.title}")
-        click.echo(stylize("\nCandidates are not reward offers until custody is confirmed on-chain.", dim=True))
+    for task in registry.tasks:
+        title = f"  {stylize(task.id, fg='green', bold=True)}  {task.title or task.theorem_name}"
+        click.echo(title)
 
 
-def _print_bounty_detail(registry, bounty) -> None:
-    source_name = bounty.source.get("name") or bounty.source.get("project") or "unknown"
-    source_url = bounty.source.get("url")
-    click.echo(stylize(bounty.title, fg="cyan", bold=True))
-    click.echo(stylize("  id              ", dim=True) + bounty.id)
+def _print_task_detail(registry, task) -> None:
+    click.echo(stylize(task.title or task.id, fg="cyan", bold=True))
+    click.echo(stylize("  id              ", dim=True) + task.id)
     click.echo(stylize("  registry_sha256 ", dim=True) + registry.sha256)
-    click.echo(stylize("  target_sha256   ", dim=True) + bounty.target_sha256)
-    click.echo(stylize("  status          ", dim=True) + bounty.status)
-    click.echo(stylize("  source          ", dim=True) + source_name + (f" ({source_url})" if source_url else ""))
-    click.echo(stylize("  theorem_id      ", dim=True) + bounty.problem.id)
-    click.echo(stylize("  theorem_name    ", dim=True) + bounty.problem.theorem_name)
-    click.echo(stylize("  policy          ", dim=True) + bounty.submission_policy)
-    if bounty.escrow_backed:
-        click.echo(stylize("  custody_contract ", dim=True) + bounty.escrow_contract_address)
-        click.echo(stylize("  custody_reward_id", dim=True) + " " + str(bounty.escrow_bounty_id))
-    else:
-        click.echo(stylize("  custody         not funded/confirmed", fg="yellow"))
+    click.echo(stylize("  target_sha256   ", dim=True) + task.target_sha256)
+    click.echo(stylize("  source_stream   ", dim=True) + task.source_stream)
+    click.echo(stylize("  theorem_name    ", dim=True) + task.theorem_name)
+    click.echo(stylize("  policy          ", dim=True) + task.policy)
     click.echo("")
-    click.echo(stylize("Lean target", fg="cyan", bold=True))
-    click.echo(bounty.problem.submission_stub().rstrip())
-
-
-def _hotkey_public_key_hex(settings: LemmaSettings, wallet_cold: str | None, wallet_hot: str | None) -> str:
-    import bittensor as bt
-
-    wallet = bt.Wallet(name=wallet_cold or settings.wallet_cold, hotkey=wallet_hot or settings.wallet_hot)
-    pub = getattr(wallet.hotkey, "public_key", None)
-    if callable(pub):
-        pub = pub()
-    if isinstance(pub, bytes):
-        return "0x" + pub.hex()
-    raw = str(pub or "").strip()
-    if raw.startswith("0x") and len(raw) == 66:
-        return raw
-    raise click.ClickException("Could not read the hotkey public key for payout identity binding.")
-
-
-def _sign_bounty_identity(
-    settings: LemmaSettings,
-    *,
-    wallet_cold: str | None,
-    wallet_hot: str | None,
-    message: bytes,
-) -> str:
-    import bittensor as bt
-
-    wallet = bt.Wallet(name=wallet_cold or settings.wallet_cold, hotkey=wallet_hot or settings.wallet_hot)
-    return wallet.hotkey.sign(message).hex()
-
-
-def _bounty_escrow_values(settings: LemmaSettings, bounty) -> tuple[int, str, int]:
-    chain_id = bounty.escrow_chain_id or int(settings.bounty_evm_chain_id)
-    contract = bounty.escrow_contract_address or (settings.bounty_escrow_contract_address or "").strip()
-    escrow_bounty_id = bounty.escrow_bounty_id
-    if not contract or escrow_bounty_id is None:
-        raise click.ClickException(
-            "This target has no confirmed reward custody. Live rewards require custody metadata.",
-        )
-    return int(chain_id), contract, int(escrow_bounty_id)
+    click.echo(stylize("Submission stub", fg="cyan", bold=True))
+    click.echo(task.submission_stub.rstrip())
 
 
 @main.command("setup")
 @click.option("--env-file", "env_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
-@click.option("--registry-url", default=None, help="Proof target registry JSON URL or path.")
-@click.option("--registry-sha256", default=None, help="Optional registry SHA256 pin.")
-@click.option("--escrow-contract", default=None, help="Deployed LemmaBountyEscrow custody contract address.")
-@click.option("--evm-rpc-url", default=None, help="Bittensor EVM JSON-RPC URL.")
-@click.option("--evm-chain-id", type=int, default=None, help="Bittensor EVM chain id.")
-@click.option("--wallet-cold", default=None, help="Bittensor cold wallet name for hotkey signatures.")
-@click.option("--wallet-hot", default=None, help="Bittensor hotkey name for signatures.")
+@click.option("--task-registry-url", default=None, help="Task registry JSON URL or path.")
+@click.option("--task-registry-sha256", default=None, help="Optional task registry SHA256 pin.")
+@click.option("--wallet-cold", default=None, help="Bittensor cold wallet name.")
+@click.option("--wallet-hot", default=None, help="Bittensor hotkey name.")
 def setup_cmd(
     env_path: Path | None,
-    registry_url: str | None,
-    registry_sha256: str | None,
-    escrow_contract: str | None,
-    evm_rpc_url: str | None,
-    evm_chain_id: int | None,
+    task_registry_url: str | None,
+    task_registry_sha256: str | None,
     wallet_cold: str | None,
     wallet_hot: str | None,
 ) -> None:
-    """Write local target registry and reward custody settings."""
+    """Write local task and wallet settings."""
     from lemma.cli.env_file import merge_dotenv
 
     updates = {
-        "LEMMA_BOUNTY_REWARD_CUSTODY": "evm_escrow",
-        "LEMMA_BOUNTY_REGISTRY_URL": registry_url or LemmaSettings.model_fields["bounty_registry_url"].default,
-        "LEMMA_BOUNTY_EVM_RPC_URL": evm_rpc_url or LemmaSettings.model_fields["bounty_evm_rpc_url"].default,
-        "LEMMA_BOUNTY_EVM_CHAIN_ID": str(evm_chain_id or LemmaSettings.model_fields["bounty_evm_chain_id"].default),
+        "LEMMA_TASK_REGISTRY_URL": task_registry_url or LemmaSettings.model_fields["task_registry_url"].default,
         "BT_WALLET_COLD": wallet_cold or LemmaSettings.model_fields["wallet_cold"].default,
         "BT_WALLET_HOT": wallet_hot or LemmaSettings.model_fields["wallet_hot"].default,
     }
-    if registry_sha256:
-        updates["LEMMA_BOUNTY_REGISTRY_SHA256_EXPECTED"] = registry_sha256
-    if escrow_contract:
-        updates["LEMMA_BOUNTY_ESCROW_CONTRACT_ADDRESS"] = escrow_contract
+    if task_registry_sha256:
+        updates["LEMMA_TASK_REGISTRY_SHA256_EXPECTED"] = task_registry_sha256
     path = _env_path(env_path)
     merge_dotenv(path, {key: str(value) for key, value in updates.items()})
     click.echo(stylize(f"Wrote {path}", fg="green", bold=True))
@@ -211,168 +134,96 @@ def setup_cmd(
 
 @main.command("status")
 def status_cmd() -> None:
-    """Show proof target registry and reward custody status."""
+    """Show task registry and verifier status."""
     settings = LemmaSettings()
-    click.echo(stylize("Lemma proof status", fg="cyan", bold=True))
-    click.echo(stylize("  custody         ", dim=True) + settings.bounty_reward_custody)
-    click.echo(stylize("  evm_chain_id    ", dim=True) + str(settings.bounty_evm_chain_id))
-    click.echo(stylize("  evm_rpc_url     ", dim=True) + settings.bounty_evm_rpc_url)
-    click.echo(
-        stylize("  custody_contract", dim=True)
-        + " "
-        + ((settings.bounty_escrow_contract_address or "").strip() or "not configured"),
-    )
+    click.echo(stylize("Lemma proof-data status", fg="cyan", bold=True))
+    click.echo(stylize("  task_registry_url ", dim=True) + settings.task_registry_url)
+    click.echo(stylize("  lean_sandbox_image ", dim=True) + settings.lean_sandbox_image)
+    click.echo(stylize("  lean_use_docker    ", dim=True) + str(settings.lean_use_docker))
     click.echo("")
-    _print_bounty_summary(_load_registry())
+    _print_task_summary(_load_registry())
 
 
-@main.command("mine")
-@click.argument("bounty_id", required=False, metavar="TARGET_ID")
-@click.option("--submission", "submission_path", type=click.Path(exists=True, dir_okay=False, path_type=Path))
-@click.option("--commit", "make_commit", is_flag=True, help="Build a custody commit transaction package.")
-@click.option("--reveal", "make_reveal", is_flag=True, help="Build a custody reveal transaction package.")
-@click.option("--artifact-uri", default="", help="Public URI for the proof artifact; included in reveal metadata.")
-@click.option("--claimant-evm", default="", help="EVM address that sends the custody transaction.")
-@click.option("--payout-evm", default="", help="EVM address that receives the reward payout.")
-@click.option("--salt", default="", help="32-byte hex salt. Required for --reveal; random default for --commit.")
-@click.option("--wallet-cold", default=None, help="Cold wallet name for hotkey identity binding.")
-@click.option("--wallet-hot", default=None, help="Hotkey name for identity binding.")
-@click.option("--host-lean", "host_lean", is_flag=True, default=False)
-@click.option("--output", "output_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
-def mine_cmd(
-    bounty_id: str | None,
-    submission_path: Path | None,
-    make_commit: bool,
-    make_reveal: bool,
-    artifact_uri: str,
-    claimant_evm: str,
-    payout_evm: str,
-    salt: str,
-    wallet_cold: str | None,
-    wallet_hot: str | None,
-    host_lean: bool,
-    output_path: Path | None,
-) -> None:
-    """Verify a Lean proof and build payout transaction data."""
-    from lemma.bounty.client import BountyError, verify_bounty_proof
-    from lemma.bounty.escrow import (
-        EscrowError,
-        bounty_identity_binding_message,
-        build_commitment,
-        bytes32_from_text,
-        encode_commit_proof_call,
-        encode_reveal_proof_call,
-        proof_artifact_sha256,
-    )
+@main.group("tasks", cls=LemmaGroup)
+def tasks_cmd() -> None:
+    """List, pull, and inspect Lean theorem tasks."""
 
-    if make_commit and make_reveal:
-        raise click.UsageError("Use --commit or --reveal, not both.")
 
+@tasks_cmd.command("list")
+def tasks_list_cmd() -> None:
+    """List active proof tasks."""
+    _print_task_summary(_load_registry())
+
+
+@tasks_cmd.command("pull")
+@click.option("--output", "output_path", type=click.Path(dir_okay=False, path_type=Path), required=True)
+def tasks_pull_cmd(output_path: Path) -> None:
+    """Write active tasks as JSONL."""
     registry = _load_registry()
-    if not bounty_id:
-        _print_bounty_summary(registry)
-        return
-    try:
-        bounty = registry.get(bounty_id)
-    except BountyError as e:
-        raise click.ClickException(str(e)) from e
+    output_path.write_text(
+        "".join(task.model_dump_json(exclude_none=True) + "\n" for task in registry.tasks),
+        encoding="utf-8",
+    )
+    click.echo(stylize(f"Wrote {len(registry.tasks)} tasks to {output_path}", fg="green", bold=True))
 
+
+@tasks_cmd.command("inspect")
+@click.argument("task_id")
+def tasks_inspect_cmd(task_id: str) -> None:
+    """Show one task and its submission stub."""
+    registry, task = _task_or_die(task_id)
+    _print_task_detail(registry, task)
+
+
+@main.command("verify")
+@click.argument("task_id")
+@click.option(
+    "--submission",
+    "submission_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    required=True,
+)
+@click.option("--host-lean", "host_lean", is_flag=True, default=False)
+def verify_cmd(task_id: str, submission_path: Path, host_lean: bool) -> None:
+    """Verify a proof against one exact task."""
+    from lemma.lean.verify_runner import run_lean_verify
+
+    _, task = _task_or_die(task_id)
     settings = LemmaSettings()
-    _print_bounty_detail(registry, bounty)
-    if submission_path is None:
-        click.echo("")
-        click.echo(
-            stylize("Next: ", dim=True)
-            + stylize(f"lemma mine {bounty.id} --submission Submission.lean", fg="green")
+    if host_lean and not settings.allow_host_lean:
+        raise click.ClickException(
+            "Host Lean is disabled. Use Docker (default), or set LEMMA_ALLOW_HOST_LEAN=1 for local debugging."
         )
-        return
-
-    proof_script = _read_submission(submission_path)
-    try:
-        result = verify_bounty_proof(settings, bounty, proof_script, host_lean=host_lean)
-    except BountyError as e:
-        raise click.ClickException(str(e)) from e
-    click.echo("")
+    effective = settings.model_copy(update={"lean_use_docker": (not host_lean and settings.lean_use_docker)})
+    result = run_lean_verify(
+        effective,
+        verify_timeout_s=settings.lean_verify_timeout_s,
+        problem=task.to_problem(),
+        proof_script=_read_text(submission_path),
+        submission_policy=task.policy,
+    )
     click.echo(result.model_dump_json(indent=2))
     if not result.passed:
         raise SystemExit(1)
-    if not (make_commit or make_reveal):
-        click.echo(
-            stylize(
-                (
-                    "Proof verifies locally. Add --commit or --reveal to build payout transaction data."
-                    if bounty.escrow_backed
-                    else "Proof verifies locally. This candidate is not a live reward until custody is confirmed."
-                ),
-                fg="green",
-            )
-        )
-        return
-    chain_id, contract, escrow_bounty_id = _bounty_escrow_values(settings, bounty)
-    if not claimant_evm or not payout_evm:
-        raise click.UsageError("--claimant-evm and --payout-evm are required for payout packages.")
-    if make_reveal and not salt.strip():
-        raise click.UsageError("--salt is required for --reveal.")
 
-    artifact_hash = "0x" + proof_artifact_sha256(submission_path)
-    salt_hex = salt.strip() or "0x" + secrets.token_hex(32)
-    try:
-        hotkey_pubkey = _hotkey_public_key_hex(settings, wallet_cold, wallet_hot)
-        commitment = build_commitment(
-            bounty_id=bounty.id,
-            chain_id=chain_id,
-            contract_address=contract,
-            escrow_bounty_id=escrow_bounty_id,
-            theorem_id=bytes32_from_text(bounty.problem.id),
-            claimant_evm_address=claimant_evm,
-            payout_evm_address=payout_evm,
-            artifact_sha256=artifact_hash,
-            salt=salt_hex,
-            toolchain_id=bytes32_from_text(bounty.toolchain_id),
-            policy_version=bytes32_from_text(bounty.policy_version),
-            registry_sha256="0x" + registry.sha256,
-            submitter_hotkey_pubkey=hotkey_pubkey,
-        )
-        binding_msg = bounty_identity_binding_message(
-            bounty_id=bounty.id,
-            registry_sha256="0x" + registry.sha256,
-            claimant_evm_address=claimant_evm,
-            payout_evm_address=payout_evm,
-            artifact_sha256=artifact_hash,
-            commitment_hash_hex=commitment.commitment_hash,
-        )
-        signature_hex = _sign_bounty_identity(
-            settings,
-            wallet_cold=wallet_cold,
-            wallet_hot=wallet_hot,
-            message=binding_msg,
-        )
-    except EscrowError as e:
-        raise click.ClickException(str(e)) from e
 
-    package = commitment.as_dict()
-    package["identity_binding_signature_hex"] = signature_hex
-    package["artifact_uri"] = artifact_uri.strip()
-    if make_commit:
-        package["transaction"] = {
-            "to": contract,
-            "data": encode_commit_proof_call(escrow_bounty_id, commitment.commitment_hash),
-            "value": "0x0",
-        }
-    else:
-        package["transaction"] = {
-            "to": contract,
-            "data": encode_reveal_proof_call(
-                escrow_bounty_id=escrow_bounty_id,
-                commitment_hash_hex=commitment.commitment_hash,
-                artifact_sha256=artifact_hash,
-                salt=salt_hex,
-                payout_evm_address=payout_evm,
-                submitter_hotkey_pubkey=hotkey_pubkey,
-            ),
-            "value": "0x0",
-        }
-    text = json.dumps(package, indent=2, sort_keys=True)
+@main.command("submit")
+@click.argument("task_id")
+@click.option(
+    "--submission",
+    "submission_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    required=True,
+)
+@click.option("--solver-hotkey", required=True, help="Solver hotkey or public identifier for attribution.")
+@click.option("--output", "output_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+def submit_cmd(task_id: str, submission_path: Path, solver_hotkey: str, output_path: Path | None) -> None:
+    """Build a local submission package."""
+    from lemma.submissions import build_submission
+
+    _, task = _task_or_die(task_id)
+    package = build_submission(task, solver_hotkey=solver_hotkey, proof_script=_read_text(submission_path))
+    text = package.model_dump_json(indent=2, exclude_none=True)
     if output_path:
         output_path.write_text(text + "\n", encoding="utf-8")
         click.echo(stylize(f"Wrote {output_path}", fg="green", bold=True))
@@ -380,14 +231,45 @@ def mine_cmd(
         click.echo(text)
 
 
+@main.group("corpus", cls=LemmaGroup)
+def corpus_cmd() -> None:
+    """Validate and replay Lemma Corpus JSONL files."""
+
+
+@corpus_cmd.command("validate")
+@click.argument("corpus_jsonl", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def corpus_validate_cmd(corpus_jsonl: Path) -> None:
+    """Validate corpus JSONL rows."""
+    from lemma.corpus import validate_jsonl
+
+    try:
+        count = validate_jsonl(corpus_jsonl)
+    except ValueError as e:
+        raise click.ClickException(str(e)) from e
+    click.echo(stylize(f"VALID: {count} corpus rows", fg="green", bold=True))
+
+
+@corpus_cmd.command("replay")
+@click.argument("corpus_jsonl", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def corpus_replay_cmd(corpus_jsonl: Path) -> None:
+    """Replay corpus proofs through the Lean verifier."""
+    from lemma.corpus import replay_jsonl
+
+    settings = LemmaSettings()
+    results = replay_jsonl(settings, corpus_jsonl)
+    passed = sum(1 for result in results if result.passed)
+    click.echo(json.dumps([result.model_dump() for result in results], indent=2))
+    if passed != len(results):
+        raise SystemExit(1)
+
+
 @main.command("validate")
-@click.option("--check", is_flag=True, help="Check target registry and reward custody configuration.")
-@click.option("--once", is_flag=True, help="Run one local readiness pass; no event watcher is bundled.")
+@click.option("--check", is_flag=True, help="Check task registry and verifier configuration.")
 @click.option("--worker", is_flag=True, help="Run the Lean verification HTTP worker.")
 @click.option("--host", default="localhost", show_default=True, help="Worker bind host.")
 @click.option("--port", default=8787, type=int, show_default=True, help="Worker bind port.")
-def validate_cmd(check: bool, once: bool, worker: bool, host: str, port: int) -> None:
-    """Validate proof verifier readiness or run the Lean worker."""
+def validate_cmd(check: bool, worker: bool, host: str, port: int) -> None:
+    """Validate verifier readiness or run the Lean worker."""
     settings = LemmaSettings()
     setup_logging(settings.log_level)
     if worker:
@@ -397,24 +279,10 @@ def validate_cmd(check: bool, once: bool, worker: bool, host: str, port: int) ->
         return
 
     registry = _load_registry()
-    escrow_rows = _escrow_rows(registry)
-    if not (settings.bounty_escrow_contract_address or "").strip() and not escrow_rows:
-        raise click.ClickException("No custody contract is configured and no registry row has confirmed custody.")
     click.echo(stylize("Lemma validate", fg="cyan", bold=True))
     click.echo(stylize("  registry_sha256 ", dim=True) + registry.sha256)
-    click.echo(stylize("  custody_rows    ", dim=True) + str(len(escrow_rows)))
+    click.echo(stylize("  tasks           ", dim=True) + str(len(registry.tasks)))
     if check:
-        click.echo(stylize("READY: target registry and custody settings are present.", fg="green"))
+        click.echo(stylize("READY: task registry and Lean verifier settings are present.", fg="green"))
         return
-    if once:
-        click.echo(stylize("No reveal-event watcher is bundled in this refactor.", fg="yellow"))
-        click.echo(
-            stylize(
-                "Verifier signers should fetch revealed artifacts, run Lean verification, then attest on-chain.",
-                dim=True,
-            )
-        )
-        return
-    click.echo(
-        stylize("Use --check for preflight, --once for a readiness pass, or --worker to serve /verify.", dim=True)
-    )
+    click.echo(stylize("Use --check for preflight or --worker to serve /verify.", dim=True))

@@ -42,7 +42,7 @@ def _strict_source() -> str:
     return _src(_target())
 
 
-def _bounty_source() -> str:
+def _helper_source() -> str:
     return _src(
         "def helperNat : Nat := 2",
         "lemma helperTrue : True := by\n  trivial",
@@ -51,7 +51,8 @@ def _bounty_source() -> str:
 
 
 def _assert_rejected(src: str, *, policy: str = "strict_envelope") -> None:
-    scan = scan_submission_policy(_problem("bounty" if policy == "restricted_helpers" else "easy"), src, policy=policy)
+    problem = _problem("training" if policy == "restricted_helpers" else "easy")
+    scan = scan_submission_policy(problem, src, policy=policy)
     assert not scan.ok
 
 
@@ -87,11 +88,11 @@ def test_strict_envelope_rejects_non_allowlisted_shapes(src: str) -> None:
 
 
 def test_restricted_helpers_accepts_helper_declarations() -> None:
-    problem = _problem("bounty")
-    scan = scan_submission_policy(problem, _bounty_source(), policy="restricted_helpers")
+    problem = _problem("training")
+    scan = scan_submission_policy(problem, _helper_source(), policy="restricted_helpers")
 
     assert scan.ok, scan.reason
-    assert submission_axiom_check_names(problem, _bounty_source(), policy="restricted_helpers") == [
+    assert submission_axiom_check_names(problem, _helper_source(), policy="restricted_helpers") == [
         "helperTrue",
         "target",
     ]

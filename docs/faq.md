@@ -1,59 +1,37 @@
 # FAQ
 
-## What Is Lemma?
+## What is Lemma?
 
-Lemma is a Bittensor subnet for Lean-verified proof discovery. It publishes formal targets, miners submit Lean proof files, validators check them, and verified proofs become eligible for rewards.
+Lemma is a Bittensor subnet that pays miners to produce Lean-verified theorem/proof data for training mathematical AI.
 
-## What Is Lean?
+## Is Lemma a Formal Conjectures bounty subnet?
 
-Lean is an interactive theorem prover. It checks whether formal mathematical statements and proofs are valid under a precise logical environment.
+No. Formal Conjectures is a frontier benchmark and long-run target. Lemma v1 rewards verified training-data production.
 
-## What Is Formal Conjectures?
+## Is Lemma endorsed by Google DeepMind?
 
-Formal Conjectures is a public Lean 4 and mathlib repository containing formalized conjectures and related mathematical statements. Lemma uses public Formal Conjectures statements as target material.
+No. Lemma is independent. It may reference Google DeepMind's public Formal Conjectures project as a benchmark.
 
-## Is Lemma Endorsed By Google DeepMind?
+## What do miners submit?
 
-No. Lemma is independent. It uses public statements from `google-deepmind/formal-conjectures` as source material, but it is not endorsed by Google DeepMind or the Formal Conjectures authors.
+Lean proof artifacts, usually `Submission.lean` files or structured packages containing the proof and metadata.
 
-## What Do Miners Submit?
+## Can miners use AI APIs?
 
-Miners submit a `Submission.lean` proof file for the exact published target.
+Yes. Miners can use any tooling. Lemma only checks the final proof.
 
-## Can Miners Use AI?
+## What do validators score?
 
-Yes. Lemma does not require a specific proof-search method. Models, tactics, retrieval systems, and human-written proofs are all acceptable if the submitted proof passes the verifier.
+Verified proofs for active tasks. Validators should not score prose explanations or claimed effort.
 
-## What Do Validators Do?
+## Why Lean?
 
-Validators fetch the target registry, run the pinned Lean verifier, and use the verification result as the correctness signal.
+Lean provides a mechanical proof checker. The proof either builds under the pinned environment or it does not.
 
-## What Is A Proof Artifact?
+## What is the Lemma Corpus?
 
-A proof artifact is the public record of a solved Lemma target. It should bind the source target, accepted `Submission.lean`, verifier result, hashes, attestation metadata, and upstream PR status when applicable.
+A public dataset of accepted Lean theorem/proof rows produced by the subnet.
 
-## Does Lemma Open Upstream PRs?
+## Are smart contracts needed?
 
-Lemma can prepare upstream PR candidates for solved Formal Conjectures targets. The intended PR marks the target solved and links to the public proof artifact through the upstream `formal_proof` mechanism.
-
-This is a publication path, not upstream acceptance by default. Upstream maintainers retain normal review authority.
-
-## Does Verification Prove The Original Informal Conjecture?
-
-Lean verification proves the published formal target. It does not by itself guarantee that an upstream informal conjecture was perfectly formalized.
-
-## What Is A Candidate Target?
-
-A candidate target is verifier-ready but does not have confirmed reward custody. It is useful for practice, testing, and review.
-
-## What Is A Live Target?
-
-A live target has confirmed custody metadata and can produce reward custody transaction data after a proof verifies locally.
-
-## Are Rewards Guaranteed?
-
-No. Verified proofs become eligible for rewards under subnet and custody rules. Public docs should not promise rewards.
-
-## Does Upstream Merge Control Rewards?
-
-No. Reward eligibility depends on the published target, verifier result, attestation, and active subnet rules. Upstream PR acceptance is independent review after Lemma has verified the target.
+No for v1. Lemma uses normal Bittensor rewards.

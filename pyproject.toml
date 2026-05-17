@@ -1,7 +1,7 @@
 [project]
 name = "lemma"
 version = "0.1.0"
-description = "Lemma: Lean proof formalization subnet"
+description = "Lemma: Lean-verified proof data subnet"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
@@ -15,7 +15,6 @@ dependencies = [
     "httpx>=0.27,<1",
     "docker>=7.1,<8",
     "rich>=14,<15",
-    "eth-hash[pycryptodome]>=0.7,<1",
 ]
 
 [project.optional-dependencies]

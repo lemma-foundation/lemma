@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Lemma Submission",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "task_id",
+    "target_sha256",
+    "solver_hotkey",
+    "proof_script",
+    "proof_sha256",
+    "created_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "target_sha256": {
+      "type": "string"
+    },
+    "solver_hotkey": {
+      "type": "string"
+    },
+    "proof_script": {
+      "type": "string"
+    },
+    "proof_sha256": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "signature": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "metadata": {
+      "type": "object"
+    }
+  }
+}

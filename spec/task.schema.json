@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Lemma Task",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "id",
+    "imports",
+    "theorem_name",
+    "type_expr",
+    "statement",
+    "submission_stub",
+    "lean_toolchain",
+    "policy",
+    "target_sha256"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "id": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "source_stream": {
+      "type": "string"
+    },
+    "imports": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "theorem_name": {
+      "type": "string"
+    },
+    "type_expr": {
+      "type": "string"
+    },
+    "statement": {
+      "type": "string"
+    },
+    "submission_stub": {
+      "type": "string"
+    },
+    "lean_toolchain": {
+      "type": "string"
+    },
+    "mathlib_rev": {
+      "type": "string"
+    },
+    "policy": {
+      "type": "string"
+    },
+    "target_sha256": {
+      "type": "string"
+    },
+    "active_epoch": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "expires_epoch": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "metadata": {
+      "type": "object"
+    }
+  }
+}

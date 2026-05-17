@@ -8,25 +8,18 @@ uv run mypy lemma
 uv run pytest tests -q
 ```
 
-Run Docker Lean verification after building the sandbox image:
+Run a local task inspection:
 
 ```bash
-docker build -f compose/lean.Dockerfile -t lemma-lean-sandbox:ci .
-LEAN_SANDBOX_IMAGE=lemma-lean-sandbox:ci RUN_DOCKER_LEAN=1 uv run pytest tests/test_docker_golden.py -v
+uv run lemma tasks list
+uv run lemma tasks inspect lemma.sample.true_intro
 ```
 
-Run reward custody contract checks:
+Validate or replay a corpus file:
 
 ```bash
-cd contracts
-npm test
-npm run compile
+uv run lemma corpus validate corpus.jsonl
+uv run lemma corpus replay corpus.jsonl
 ```
 
-Useful focused tests:
-
-```bash
-uv run pytest tests/test_bounty_cli.py tests/test_bounty_escrow.py -q
-uv run pytest tests/test_sandbox_host.py tests/test_verify_runner_remote.py -q
-uv run pytest tests/test_submission_policy.py tests/test_problem_codec.py -q
-```
+Docker-backed Lean checks require the `lemma/lean-sandbox` image and a warm Mathlib cache for reasonable latency.

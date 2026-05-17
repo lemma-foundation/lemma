@@ -64,7 +64,7 @@ def submission_policy_for_problem(problem: Problem, policy: str | None = None) -
     """Return the explicit policy, problem metadata policy, or split default."""
     candidate = (policy or problem.extra.get("submission_policy") or "").strip()
     if not candidate:
-        candidate = "restricted_helpers" if problem.split == "bounty" else "strict_envelope"
+        candidate = "strict_envelope"
     if candidate not in VALID_SUBMISSION_POLICIES:
         raise ValueError(f"unknown submission policy: {candidate}")
     return candidate  # type: ignore[return-value]

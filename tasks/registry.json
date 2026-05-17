@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "tasks": [
+    {
+      "schema_version": 1,
+      "id": "lemma.sample.true_intro",
+      "title": "Prove True",
+      "source_stream": "human_curated",
+      "imports": ["Mathlib"],
+      "theorem_name": "true_intro_sample",
+      "type_expr": "True",
+      "statement": "theorem true_intro_sample : True := by\n  sorry",
+      "submission_stub": "import Mathlib\n\nnamespace Submission\n\ntheorem true_intro_sample : True := by\n  sorry\n\nend Submission\n",
+      "lean_toolchain": "leanprover/lean4:v4.30.0-rc2",
+      "mathlib_rev": "5450b53e5ddc",
+      "policy": "restricted_helpers",
+      "target_sha256": "9b4bfc3ff8964ed0bb150c9775d9e974b5ce81560c47c33f38f73b0597a670a9",
+      "metadata": {
+        "difficulty": "sample"
+      }
+    }
+  ]
+}

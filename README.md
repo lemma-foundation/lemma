@@ -1,159 +1,83 @@
 # Lemma
 
-Lemma is a Bittensor subnet for solving open mathematical conjectures from Google DeepMind's public [`formal-conjectures`](https://github.com/google-deepmind/formal-conjectures) repository.
+Lemma is a Bittensor subnet for training open mathematical AI with Lean-verified proof data.
 
-The subnet turns selected Lean statements into proof bounties. Miners compete to produce `Submission.lean` files. Validators run Lean in a pinned environment. When a proof verifies and is attested, the solver becomes eligible for the bounty, Lemma publishes a canonical proof artifact, and an upstream pull request can be prepared for `google-deepmind/formal-conjectures`.
+Miners solve theorem-proving tasks in Lean. Validators check every proof with the Lean kernel. Accepted proofs earn miner rewards through the normal Bittensor validator-weight mechanism and are appended to the public Lemma Corpus.
 
-Lemma is independent and is not endorsed by Google DeepMind. It uses the public Formal Conjectures repository as target material.
+The goal is not to pay for one rare conjecture solve. The goal is to build the largest useful open corpus of verified Lean theorem/proof data, so stronger prover models can be trained and evaluated against frontier benchmarks such as Google DeepMind's Formal Conjectures, lean-eval, PutnamBench, miniF2F, and the IMO Grand Challenge.
+
+AI can guess. Lean can check. Lemma pays for the checked data.
 
 ## Plain English
 
-Google DeepMind maintains a public repository of mathematical conjectures written in Lean.
+A lemma is a stepping stone to a larger proof. Lemma, the subnet, creates many of those stepping stones for mathematical AI.
 
-Lemma picks one of those open conjectures and puts a bounty on it.
+Every epoch, Lemma publishes Lean theorem tasks. Miners try to prove them using any method: local tactics, AI models, retrieval, search, or human insight. Validators run Lean to check whether each proof is correct. Verified proofs are rewarded and added to an open dataset.
 
-Miners try to prove it.
-
-Validators check the submitted proof with Lean.
-
-If the proof checks, the solver can claim the bounty under Lemma's rules.
-
-Then Lemma publishes the proof and prepares a pull request back to the Formal Conjectures repository so the result can become part of the public record.
-
-## Why Lemma Exists
-
-Mathematics is one of the few AI work domains where correctness can be checked mechanically. A proof is not rewarded because it sounds plausible. It is eligible only when it verifies against the exact published formal statement and policy.
-
-Lemma is being centered on public research-level formal statements from Google DeepMind's [Formal Conjectures](https://github.com/google-deepmind/formal-conjectures), an open Lean 4 and mathlib repository of formalized conjectures and related statements.
+That dataset trains better provers. Better provers solve more tasks. Eventually, those provers should be capable of attacking harder open mathematical benchmarks.
 
 ## How The Subnet Works
 
 ```text
-Google DeepMind Formal Conjectures statement
-        |
-        v
-Active Lemma bounty
-        |
-        v
-Miner Submission.lean
-        |
-        v
-Pinned Lean verification
-        |
-        v
-Validator attestation
-        |
-        v
-Reward eligibility
-        |
-        v
-Public proof artifact
-        |
-        v
-Upstream PR candidate
+Lean proof task
+    ↓
+Miner proof search
+    ↓
+Submission.lean
+    ↓
+Lean verification
+    ↓
+Validator score
+    ↓
+Normal Bittensor miner rewards
+    ↓
+Public Lemma Corpus
+    ↓
+Better prover models
 ```
 
-Validators check the proof artifact. They do not score informal reasoning, private notes, or prose explanations.
+## What Miners Do
 
-The upstream PR is a publication path, not a payout oracle. Lemma settlement depends on the published target, verifier, and subnet rules. Formal Conjectures maintainers retain normal review authority over their repository.
+Miners are proof searchers. They fetch active tasks, produce Lean proofs, and submit proof artifacts. They can use any tooling: local models, hosted APIs, LeanDojo-style retrieval, tactic search, custom agents, or human-written proofs.
 
-## Relationship To Google DeepMind
+## What Validators Do
 
-Lemma is not affiliated with or endorsed by Google DeepMind. The subnet uses Google DeepMind's public `formal-conjectures` repository as an open source target corpus. Upstream maintainers retain normal review authority over any pull requests Lemma prepares.
+Validators are proof checkers. They run the pinned Lean environment, reject invalid submissions, deduplicate proofs, score accepted work, and publish corpus rows.
+
+## What Lemma Publishes
+
+Lemma publishes a public corpus of verified Lean theorem/proof data. Each row is designed to be replayable: statement, imports, toolchain, proof, proof hash, verifier result, solver attribution, and source metadata.
+
+## Benchmarks And Frontier Problems
+
+Google DeepMind's Formal Conjectures, lean-eval, miniF2F, PutnamBench, and the IMO Grand Challenge are frontier benchmarks for measuring mathematical AI. Lemma v1 does not use Formal Conjectures solves as the main reward stream. If models trained on Lemma's corpus solve more of those problems, the subnet is doing its job.
+
+Lemma is independent and is not endorsed by Google DeepMind.
 
 ## Quick Start
 
-Install `uv`, sync the project, and inspect the CLI:
-
 ```bash
 uv sync
-uv run lemma --help
-```
-
-Configure local registry, wallet, payout, and verifier settings:
-
-```bash
 uv run lemma setup
 uv run lemma status
+uv run lemma tasks list
+uv run lemma tasks inspect <task-id>
+uv run lemma verify <task-id> --submission Submission.lean
 ```
-
-List targets:
-
-```bash
-uv run lemma mine
-```
-
-Inspect or locally verify a target:
-
-```bash
-uv run lemma mine <target-id>
-uv run lemma mine <target-id> --submission Submission.lean
-```
-
-Check validator readiness:
-
-```bash
-uv run lemma validate --check
-```
-
-## CLI Overview
-
-The visible CLI surface is intentionally small.
-
-| Command | Purpose |
-| --- | --- |
-| `lemma setup` | Writes target registry, wallet, payout, and Lean verifier settings. |
-| `lemma mine` | Lists targets, inspects a target, verifies a proof, and can build reward custody transaction data for live targets. |
-| `lemma status` | Prints target registry, custody, and verifier configuration status. |
-| `lemma validate` | Checks verifier readiness or runs the optional Lean HTTP worker. |
-
-## Target Registry
-
-The target registry is the source of truth for live work. It contains candidate targets and live reward-backed targets.
-
-- Candidate targets are useful for practice, testing, and review. They are not reward offers.
-- Live targets require confirmed reward custody metadata in the registry and matching on-chain custody state.
-- Every target fixes a Lean problem payload, target hash, toolchain, submission policy, policy version, and source metadata.
-
-The checked-in starter registry is deliberately a candidate example, not a fake live Formal Conjectures reward.
-
-See [docs/target-registry.md](docs/target-registry.md).
-
-## Formal Conjectures Focus
-
-Formal Conjectures gives Lemma a public source of real mathematical formalization targets. Lemma should pin exact upstream commits and files, preserve source metadata, and clearly distinguish proof-discovery targets from proof-porting targets.
-
-If a Formal Conjectures source row includes `formal_proof` metadata, Lemma treats it as `kind=proof_porting` rather than a normal proof-discovery target.
-
-See [docs/formal-conjectures.md](docs/formal-conjectures.md).
-
-## Verification Model
-
-Proof verification is binary. A submission either passes Lean under the published problem, toolchain, and submission policy, or it fails.
-
-The verifier core lives in:
-
-- `lemma/bounty/`
-- `lemma/lean/`
-- `lemma/problems/base.py`
-- `contracts/LemmaBountyEscrow.sol`
 
 ## Docs
 
 - [What is Lemma?](docs/what-is-lemma.md)
-- [Formal Conjectures as target supply](docs/formal-conjectures.md)
-- [Target registry](docs/target-registry.md)
-- [Upstream publication](docs/upstream-publication.md)
-- [Proof artifacts](docs/proof-artifacts.md)
-- [Submission and publication terms](docs/submission-terms.md)
+- [Incentive mechanism](docs/incentive-mechanism.md)
 - [Miner guide](docs/miner.md)
 - [Validator guide](docs/validator.md)
-- [Rewards](docs/rewards.md)
+- [The Lemma Corpus](docs/corpus.md)
+- [Task supply](docs/task-supply.md)
+- [Model APIs and prover adapters](docs/model-api.md)
+- [Benchmarks](docs/benchmarks.md)
+- [Security and gaming](docs/security-and-gaming.md)
 - [Architecture](docs/architecture.md)
-- [Production verification](docs/production.md)
-- [Testing](docs/testing.md)
 - [FAQ](docs/faq.md)
-- [Targets and rewards](docs/bounties.md)
 
 ## Development
 
@@ -162,26 +86,6 @@ uv run ruff check lemma tests
 uv run mypy lemma
 uv run pytest tests -q
 ```
-
-## Contracts
-
-```bash
-cd contracts
-npm install
-npm test
-npm run compile
-```
-
-## Lean Sandbox
-
-```bash
-docker build -f compose/lean.Dockerfile -t lemma-lean-sandbox:latest .
-LEAN_SANDBOX_IMAGE=lemma-lean-sandbox:latest uv run pytest tests/test_docker_golden.py -v
-```
-
-## Security And Operator Notes
-
-Do not publish local environment files, wallets, machine paths, hostnames, private deployment notes, credentials, or local handoff files. Registry and reward metadata should contain only public target and custody information.
 
 ## License
 

@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Lemma Corpus Row",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "task_id",
+    "theorem_name",
+    "type_expr",
+    "statement",
+    "imports",
+    "lean_toolchain",
+    "target_sha256",
+    "proof_script",
+    "proof_sha256",
+    "solver_hotkey",
+    "verification"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "theorem_name": {
+      "type": "string"
+    },
+    "type_expr": {
+      "type": "string"
+    },
+    "statement": {
+      "type": "string"
+    },
+    "imports": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "lean_toolchain": {
+      "type": "string"
+    },
+    "mathlib_rev": {
+      "type": "string"
+    },
+    "policy": {
+      "type": "string"
+    },
+    "target_sha256": {
+      "type": "string"
+    },
+    "axiom_set": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "proof_script": {
+      "type": "string"
+    },
+    "proof_sha256": {
+      "type": "string"
+    },
+    "proof_term_hash": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "solver_hotkey": {
+      "type": "string"
+    },
+    "epoch": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "tempo": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "source_stream": {
+      "type": "string"
+    },
+    "verified_at": {
+      "type": "string"
+    },
+    "verification": {
+      "type": "object",
+      "required": [
+        "passed",
+        "verifier_version"
+      ],
+      "properties": {
+        "passed": {
+          "type": "boolean"
+        },
+        "verifier_version": {
+          "type": "string"
+        },
+        "elapsed_ms": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "metadata": {
+      "type": "object"
+    }
+  }
+}
