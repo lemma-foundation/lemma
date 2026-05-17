@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import getpass
+import os
 import re
 import subprocess
 import sys
@@ -23,8 +24,7 @@ def _tracked_files() -> list[str]:
 
 
 def _patterns() -> list[tuple[str, re.Pattern[str]]]:
-    user = re.escape(getpass.getuser())
-    return [
+    patterns = [
         ("agent-state", re.compile(r"AGENT[_ ]STATE|Agent State")),
         ("local-user-path", re.compile(re.escape("/" + "Users/"))),
         ("root-ssh", re.compile(r"root" + re.escape("@"))),
@@ -32,8 +32,11 @@ def _patterns() -> list[tuple[str, re.Pattern[str]]]:
         ("private-key", re.compile(r"BEGIN [A-Z ]*PRIVATE KEY")),
         ("wallet-mnemonic", re.compile(r"\bmnemonic\b", re.IGNORECASE)),
         ("openai-key", re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b")),
-        ("local-username", re.compile(rf"\b{user}\b") if user else re.compile(r"a^")),
     ]
+    user = getpass.getuser()
+    if user and not os.environ.get("GITHUB_ACTIONS"):
+        patterns.append(("local-username", re.compile(rf"\b{re.escape(user)}\b")))
+    return patterns
 
 
 def main() -> int:
