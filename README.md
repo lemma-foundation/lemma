@@ -49,7 +49,7 @@ For manual inspection:
 
 ```bash
 uv run lemma tasks list
-uv run lemma tasks inspect lemma.sample.true_intro
+uv run lemma task show lemma.sample.true_intro
 uv run lemma verify lemma.sample.true_intro --submission Submission.lean
 uv run lemma submit lemma.sample.true_intro --submission Submission.lean --solver-hotkey <hotkey>
 ```
@@ -88,6 +88,16 @@ The validator path fetches active tasks, validates task-bound submissions, runs 
 
 Rows include the theorem statement, imports, toolchain, proof script, hashes, source metadata, validator attribution, and verification summary. Failed proofs are not corpus rows. Valid alternate proofs can be stored with `rewarded: false`.
 
+## Scoring
+
+Each epoch has `K` active tasks. A miner's v1 score is:
+
+```text
+score = verified_unique_wins / K
+```
+
+Bittensor weights are then set proportional to verified wins among miners that earned credit. If nobody earns credit, validators leave weights unchanged.
+
 ## Benchmarks
 
 Google DeepMind Formal Conjectures, lean-eval, miniF2F, PutnamBench, and the IMO Grand Challenge are frontier benchmarks for measuring mathematical AI. They are not the v1 payout path. If models trained on Lemma's corpus solve more of those problems, the subnet is working.
@@ -96,16 +106,19 @@ Lemma is independent and is not endorsed by Google DeepMind.
 
 ## Docs
 
-- [Overview](docs/overview.md)
+- [What is Lemma?](docs/what-is-lemma.md)
+- [How it works](docs/how-it-works.md)
 - [Corpus](docs/corpus.md)
 - [Miner guide](docs/miner.md)
 - [Validator guide](docs/validator.md)
-- [Task supply](docs/task-supply.md)
-- [Incentives](docs/incentives.md)
-- [Security](docs/security.md)
+- [Tasks](docs/tasks.md)
+- [Scoring](docs/scoring.md)
+- [Security and gaming](docs/security-and-gaming.md)
 - [Benchmarks](docs/benchmarks.md)
-- [Model API](docs/model-api.md)
+- [Formal Conjectures](docs/formal-conjectures.md)
+- [Model APIs](docs/model-apis.md)
 - [Architecture](docs/architecture.md)
+- [CLI](docs/cli.md)
 - [Production](docs/production.md)
 - [Testing](docs/testing.md)
 - [FAQ](docs/faq.md)

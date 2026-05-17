@@ -11,7 +11,7 @@ uv run lemma worker --check
 uv run lemma validate --once --no-set-weights
 ```
 
-`lemma validate` loads the task registry, validates miner submissions, runs Lean, scores accepted proofs, writes local verification receipts, and publishes corpus JSONL deltas.
+`lemma validate` loads the task registry, validates miner submissions, runs Lean, writes verification results, writes score events, and publishes corpus JSONL deltas.
 
 ## Runtime Steps
 
@@ -22,8 +22,8 @@ uv run lemma validate --once --no-set-weights
 5. Require signatures for live miner responses.
 6. Run the submission policy scan before Lean.
 7. Verify in Docker or a configured Lean worker.
-8. Score first accepted unique proof per task.
-9. Normalize credits into Bittensor weights.
+8. Score first accepted unique proof per task as `verified_unique_wins / K`.
+9. Normalize credits into Bittensor weights for miners that earned credit.
 10. Leave weights unchanged if no miner earns credit.
 11. Write corpus rows for valid unique proofs after the scoring window closes.
 

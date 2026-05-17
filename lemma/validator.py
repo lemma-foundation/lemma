@@ -113,6 +113,7 @@ def validate_once(
             solver_hotkey=submission.solver_hotkey,
             validator_hotkey=validator,
             passed=result.passed,
+            reason=result.reason,
             proof_sha256=submission.proof_sha256,
             proof_term_hash=None,
             received_at=received_at,
@@ -135,7 +136,9 @@ def validate_once(
 
     append_jsonl(settings.operator_data_dir / "verification-records.jsonl", receipts)
 
-    score = score_epoch(records)
+    score = score_epoch(records, active_task_count=len(tasks))
+    if score.score_events:
+        append_jsonl(settings.operator_data_dir / "score-events.jsonl", score.score_events)
     rows: list[CorpusRow] = []
     for scored in score.valid_unique_proofs:
         key = (scored.record.task_id, scored.record.solver_hotkey, scored.record.proof_sha256)

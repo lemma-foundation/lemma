@@ -4,7 +4,8 @@ Lemma v1 is a small proof-data pipeline.
 
 ```text
 task registry -> miner prover -> task-bound submission -> Lean verifier
-              -> pure scoring -> Bittensor weights -> corpus JSONL
+              -> verification result -> score event -> Bittensor weights
+              -> corpus JSONL
 ```
 
 ## Implemented Modules
@@ -15,7 +16,7 @@ task registry -> miner prover -> task-bound submission -> Lean verifier
 - `lemma.protocol`: task request and proof response payloads.
 - `lemma.miner`: local-command prover adapter, local verification, one-shot submission build.
 - `lemma.validator`: submission validation, Lean verification calls, scoring, corpus writing.
-- `lemma.scoring`: pure first-valid-unique proof scoring.
+- `lemma.scoring`: verification-result and score-event models plus pure first-valid-unique proof scoring.
 - `lemma.corpus`: row building, JSONL validation/replay, corpus index building.
 - `lemma.store`: append-only local JSONL store helpers.
 - `lemma.lean`: Docker or worker-backed Lean verification.

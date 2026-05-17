@@ -12,7 +12,7 @@ from lemma.cli.style import colors_enabled, rich_help_text, stylize
 from lemma.common.config import LemmaSettings
 from lemma.common.logging import setup_logging
 
-_ROOT_COMMAND_ORDER = ("setup", "status", "mine", "validate", "tasks", "verify", "submit", "corpus", "worker")
+_ROOT_COMMAND_ORDER = ("setup", "status", "mine", "validate", "tasks", "task", "verify", "submit", "corpus", "worker")
 
 
 class LemmaCommand(click.Command):
@@ -51,7 +51,12 @@ class LemmaGroup(click.Group):
 @click.pass_context
 @click.version_option(version=__version__)
 def main(ctx: click.Context) -> None:
-    """Lean-verified proof data subnet."""
+    """Lean-verified proof data subnet.
+
+    Examples: lemma setup; lemma status; lemma tasks list; lemma task show
+    lemma.sample.true_intro; lemma mine --once; lemma validate --once
+    --no-set-weights.
+    """
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help(), color=colors_enabled())
 
@@ -104,6 +109,11 @@ def _print_task_detail(registry, task) -> None:
     click.echo(task.submission_stub.rstrip())
 
 
+def _show_task(task_id: str) -> None:
+    registry, task = _task_or_die(task_id)
+    _print_task_detail(registry, task)
+
+
 @main.command("setup")
 @click.option("--env-file", "env_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
 @click.option("--task-registry-url", default=None, help="Task registry JSON URL or path.")
@@ -121,7 +131,13 @@ def setup_cmd(
     wallet_cold: str | None,
     wallet_hot: str | None,
 ) -> None:
-    """Write local task and wallet settings."""
+    """Write local task, wallet, corpus, and prover settings.
+
+    \b
+    Example:
+
+      lemma setup --prover-command "python prover.py"
+    """
     from lemma.cli.env_file import merge_dotenv
 
     updates = {
@@ -141,7 +157,13 @@ def setup_cmd(
 
 @main.command("status")
 def status_cmd() -> None:
-    """Show task registry and verifier status."""
+    """Show task registry, verifier, wallet, and prover status.
+
+    \b
+    Example:
+
+      lemma status
+    """
     settings = LemmaSettings()
     click.echo(stylize("Lemma proof-data status", fg="cyan", bold=True))
     click.echo(stylize("  wallet_cold       ", dim=True) + settings.wallet_cold)
@@ -170,7 +192,14 @@ def mine_cmd(
     solver_hotkey: str | None,
     output_path: Path | None,
 ) -> None:
-    """Search for Lean proofs and build verified submissions."""
+    """Search for Lean proofs and build verified submissions.
+
+    \b
+    Examples:
+
+      lemma mine --once
+      lemma mine --once --task-id lemma.sample.true_intro --output submission.json
+    """
     from lemma.miner import ProverError, mine_once
 
     settings = LemmaSettings()
@@ -190,19 +219,31 @@ def mine_cmd(
 
 @main.group("tasks", cls=LemmaGroup)
 def tasks_cmd() -> None:
-    """List, pull, and inspect Lean theorem tasks."""
+    """List, pull, and show Lean theorem tasks."""
 
 
 @tasks_cmd.command("list")
 def tasks_list_cmd() -> None:
-    """List active proof tasks."""
+    """List active proof tasks.
+
+    \b
+    Example:
+
+      lemma tasks list
+    """
     _print_task_summary(_load_registry())
 
 
 @tasks_cmd.command("pull")
 @click.option("--output", "output_path", type=click.Path(dir_okay=False, path_type=Path), required=True)
 def tasks_pull_cmd(output_path: Path) -> None:
-    """Write active tasks as JSONL."""
+    """Write active tasks as JSONL.
+
+    \b
+    Example:
+
+      lemma tasks pull --output active-tasks.jsonl
+    """
     registry = _load_registry()
     output_path.write_text(
         "".join(task.model_dump_json(exclude_none=True) + "\n" for task in registry.tasks),
@@ -211,12 +252,42 @@ def tasks_pull_cmd(output_path: Path) -> None:
     click.echo(stylize(f"Wrote {len(registry.tasks)} tasks to {output_path}", fg="green", bold=True))
 
 
-@tasks_cmd.command("inspect")
+@tasks_cmd.command("show")
+@click.argument("task_id")
+def tasks_show_cmd(task_id: str) -> None:
+    """Show one task and its submission stub.
+
+    \b
+    Example:
+
+      lemma tasks show lemma.sample.true_intro
+    """
+    _show_task(task_id)
+
+
+@tasks_cmd.command("inspect", hidden=True)
 @click.argument("task_id")
 def tasks_inspect_cmd(task_id: str) -> None:
-    """Show one task and its submission stub."""
-    registry, task = _task_or_die(task_id)
-    _print_task_detail(registry, task)
+    """Backward-compatible alias for `lemma tasks show`."""
+    _show_task(task_id)
+
+
+@main.group("task", cls=LemmaGroup)
+def task_cmd() -> None:
+    """Show one Lean theorem task."""
+
+
+@task_cmd.command("show")
+@click.argument("task_id")
+def task_show_cmd(task_id: str) -> None:
+    """Show one task and its submission stub.
+
+    \b
+    Example:
+
+      lemma task show lemma.sample.true_intro
+    """
+    _show_task(task_id)
 
 
 @main.command("verify")
@@ -229,7 +300,13 @@ def tasks_inspect_cmd(task_id: str) -> None:
 )
 @click.option("--host-lean", "host_lean", is_flag=True, default=False)
 def verify_cmd(task_id: str, submission_path: Path, host_lean: bool) -> None:
-    """Verify a proof against one exact task."""
+    """Verify a proof against one exact task.
+
+    \b
+    Example:
+
+      lemma verify lemma.sample.true_intro --submission Submission.lean
+    """
     from lemma.lean.verify_runner import run_lean_verify
 
     _, task = _task_or_die(task_id)
@@ -262,7 +339,13 @@ def verify_cmd(task_id: str, submission_path: Path, host_lean: bool) -> None:
 @click.option("--solver-hotkey", required=True, help="Solver hotkey or public identifier for attribution.")
 @click.option("--output", "output_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
 def submit_cmd(task_id: str, submission_path: Path, solver_hotkey: str, output_path: Path | None) -> None:
-    """Build a local submission package."""
+    """Build a task-bound local submission package.
+
+    \b
+    Example:
+
+      lemma submit lemma.sample.true_intro --submission Submission.lean --solver-hotkey hk --output submission.json
+    """
     from lemma.submissions import build_submission
 
     _, task = _task_or_die(task_id)
@@ -277,13 +360,19 @@ def submit_cmd(task_id: str, submission_path: Path, solver_hotkey: str, output_p
 
 @main.group("corpus", cls=LemmaGroup)
 def corpus_cmd() -> None:
-    """Validate and replay Lemma Corpus JSONL files."""
+    """Validate, replay, and export Lemma Corpus JSONL files."""
 
 
 @corpus_cmd.command("validate")
 @click.argument("corpus_jsonl", type=click.Path(exists=True, dir_okay=False, path_type=Path))
 def corpus_validate_cmd(corpus_jsonl: Path) -> None:
-    """Validate corpus JSONL rows."""
+    """Validate corpus JSONL rows.
+
+    \b
+    Example:
+
+      lemma corpus validate corpus/epoch-1.jsonl
+    """
     from lemma.corpus import validate_jsonl
 
     try:
@@ -296,7 +385,13 @@ def corpus_validate_cmd(corpus_jsonl: Path) -> None:
 @corpus_cmd.command("replay")
 @click.argument("corpus_jsonl", type=click.Path(exists=True, dir_okay=False, path_type=Path))
 def corpus_replay_cmd(corpus_jsonl: Path) -> None:
-    """Replay corpus proofs through the Lean verifier."""
+    """Replay corpus proofs through the Lean verifier.
+
+    \b
+    Example:
+
+      lemma corpus replay corpus/epoch-1.jsonl
+    """
     from lemma.corpus import replay_jsonl
 
     settings = LemmaSettings()
@@ -307,15 +402,29 @@ def corpus_replay_cmd(corpus_jsonl: Path) -> None:
         raise SystemExit(1)
 
 
-@corpus_cmd.command("index")
+@corpus_cmd.command("export")
 @click.option("--input", "input_dir", type=click.Path(exists=True, file_okay=False, path_type=Path), required=True)
 @click.option("--output", "output_path", type=click.Path(dir_okay=False, path_type=Path), required=True)
-def corpus_index_cmd(input_dir: Path, output_path: Path) -> None:
-    """Build a small corpus index JSON file."""
+def corpus_export_cmd(input_dir: Path, output_path: Path) -> None:
+    """Export a small corpus index JSON file.
+
+    \b
+    Example:
+
+      lemma corpus export --input corpus --output corpus/corpus-index.json
+    """
     from lemma.corpus import write_corpus_index
 
     write_corpus_index(input_dir, output_path)
     click.echo(stylize(f"Wrote {output_path}", fg="green", bold=True))
+
+
+@corpus_cmd.command("index", hidden=True)
+@click.option("--input", "input_dir", type=click.Path(exists=True, file_okay=False, path_type=Path), required=True)
+@click.option("--output", "output_path", type=click.Path(dir_okay=False, path_type=Path), required=True)
+def corpus_index_cmd(input_dir: Path, output_path: Path) -> None:
+    """Backward-compatible alias for `lemma corpus export`."""
+    corpus_export_cmd(input_dir, output_path)
 
 
 @main.command("validate")
@@ -331,7 +440,13 @@ def validate_cmd(
     validator_hotkey: str | None,
     require_signatures: bool,
 ) -> None:
-    """Run the validator proof-checking and scoring workflow."""
+    """Run the validator proof-checking, scoring, and corpus-writing workflow.
+
+    \b
+    Example:
+
+      lemma validate --once --submissions-jsonl submissions.jsonl --no-set-weights
+    """
     from lemma.validator import read_submissions_jsonl, validate_once
 
     settings = LemmaSettings()
@@ -352,6 +467,7 @@ def validate_cmd(
                 "verified": len(result.verification_records),
                 "accepted_unique": len(result.score.valid_unique_proofs),
                 "credits": result.score.credits,
+                "scores": result.score.scores,
                 "weights": result.score.weights,
                 "corpus_rows": len(result.corpus_rows),
                 "weights_set": result.weights_set,
@@ -368,7 +484,14 @@ def validate_cmd(
 @click.option("--host", default="localhost", show_default=True, help="Worker bind host.")
 @click.option("--port", default=8787, type=int, show_default=True, help="Worker bind port.")
 def worker_cmd(check: bool, serve: bool, host: str, port: int) -> None:
-    """Check or serve the Lean verifier worker."""
+    """Check or serve the Lean verifier worker.
+
+    \b
+    Examples:
+
+      lemma worker --check
+      lemma worker --serve --host localhost --port 8787
+    """
     settings = LemmaSettings()
     setup_logging(settings.log_level)
     if serve:

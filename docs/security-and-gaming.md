@@ -1,4 +1,4 @@
-# Security
+# Security And Gaming
 
 Lean gives Lemma a binary correctness signal, but the subnet still needs clear anti-gaming boundaries.
 
@@ -24,6 +24,8 @@ Verification runs in a pinned Lean/mathlib environment. Docker verification disa
 ## Scoring Defenses
 
 Proofs are deduplicated by proof-term hash when available, otherwise proof-script hash. Public proof release should wait until the scoring window closes. Baseline-solved tasks and held-out benchmark claims are kept out of paid activation.
+
+First valid commit wins each task slot. Re-submitting another miner's proof after reveal should not pay. Validators must reproduce the active task set deterministically before scoring.
 
 ## Privacy
 

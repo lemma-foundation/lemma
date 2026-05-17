@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Lemma Verification Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "task_id",
+    "task_version",
+    "target_sha256",
+    "solver_hotkey",
+    "validator_hotkey",
+    "passed",
+    "reason",
+    "proof_sha256",
+    "proof_term_hash",
+    "received_at",
+    "verifier_version"
+  ],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "task_id": { "type": "string", "minLength": 1 },
+    "task_version": { "type": "integer", "minimum": 1 },
+    "target_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "solver_hotkey": { "type": "string", "minLength": 1 },
+    "validator_hotkey": { "type": "string", "minLength": 1 },
+    "passed": { "type": "boolean" },
+    "reason": { "type": "string" },
+    "proof_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "proof_term_hash": { "type": ["string", "null"] },
+    "received_at": { "type": "string", "minLength": 1 },
+    "verifier_version": { "type": "string", "minLength": 1 }
+  }
+}

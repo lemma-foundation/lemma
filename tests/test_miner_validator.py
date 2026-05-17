@@ -109,9 +109,13 @@ def test_validator_scores_and_writes_alternate_corpus_rows(tmp_path: Path) -> No
     )
 
     assert result.score.credits == {"hk-a": 1}
+    assert result.score.scores == {"hk-a": 1.0}
     assert [(row.solver_hotkey, row.rewarded) for row in result.corpus_rows] == [("hk-a", True), ("hk-b", False)]
     assert (tmp_path / "corpus" / "epoch-7.jsonl").exists()
     assert (tmp_path / "corpus" / "corpus-index.json").exists()
+    score_events = (tmp_path / "operator" / "score-events.jsonl").read_text(encoding="utf-8")
+    assert '"score":1.0' in score_events
+    assert '"rewarded":false' in score_events
 
 
 def test_validator_rejects_bad_target_hash_and_unsigned_live_submission(tmp_path: Path) -> None:

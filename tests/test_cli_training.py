@@ -33,12 +33,21 @@ def test_tasks_list_uses_default_registry() -> None:
     assert "lemma.sample.true_intro" in result.output
 
 
+def test_task_show_aliases_match_goal_language() -> None:
+    for args in (["tasks", "show", "lemma.sample.true_intro"], ["task", "show", "lemma.sample.true_intro"]):
+        result = CliRunner().invoke(main, args)
+
+        assert result.exit_code == 0
+        assert "Submission stub" in result.output
+
+
 def test_root_help_prioritizes_normal_commands() -> None:
     result = CliRunner().invoke(main, ["--help"])
 
     assert result.exit_code == 0
     positions = [result.output.index(name) for name in ["setup", "status", "mine", "validate"]]
     assert positions == sorted(positions)
+    assert "Examples:" in result.output
 
 
 def test_submit_writes_task_bound_package(tmp_path) -> None:
@@ -106,4 +115,5 @@ def test_validate_once_no_set_weights() -> None:
     result = CliRunner().invoke(main, ["validate", "--once", "--no-set-weights"])
 
     assert result.exit_code == 0
+    assert '"scores": {}' in result.output
     assert '"weights_set": false' in result.output

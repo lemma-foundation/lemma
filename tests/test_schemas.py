@@ -34,3 +34,33 @@ def test_corpus_schema_requires_identity_attribution_and_reward_status() -> None
         "accepted_at",
         "rewarded",
     } <= required
+
+
+def test_verification_result_schema_captures_replay_identity() -> None:
+    required = set(_schema("verification-result.schema.json")["required"])
+
+    assert {
+        "task_id",
+        "task_version",
+        "target_sha256",
+        "solver_hotkey",
+        "validator_hotkey",
+        "passed",
+        "reason",
+        "proof_sha256",
+        "proof_term_hash",
+        "verifier_version",
+    } <= required
+
+
+def test_score_event_schema_captures_v1_score_rule() -> None:
+    required = set(_schema("score-event.schema.json")["required"])
+
+    assert {
+        "task_id",
+        "task_version",
+        "proof_identity",
+        "rewarded",
+        "credit",
+        "score",
+    } <= required

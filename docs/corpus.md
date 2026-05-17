@@ -51,7 +51,7 @@ Failed proofs are not public corpus rows.
 ```bash
 uv run lemma corpus validate corpus.jsonl
 uv run lemma corpus replay corpus.jsonl
-uv run lemma corpus index --input corpus --output corpus/corpus-index.json
+uv run lemma corpus export --input corpus --output corpus/corpus-index.json
 ```
 
 Replay uses the task fields embedded in each row, the pinned toolchain metadata, and the Lean verifier.

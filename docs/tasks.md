@@ -1,6 +1,8 @@
-# Task Supply
+# Tasks
 
 Lemma tasks are exact Lean theorem targets with source and license metadata.
+
+Miners do not choose arbitrary theorem statements for v1 scoring. Validators publish an active registry, and every submission must bind to one exact task row.
 
 ## Source Streams
 
@@ -32,3 +34,9 @@ Tasks solved by trivial baseline tactics are excluded from paid activation. Held
 ## Registry
 
 `tasks/registry.json` is a dev seed. Published registries should be signed JSON, pinned by SHA256, and archived so corpus rows can be replayed later.
+
+```bash
+uv run lemma tasks list
+uv run lemma task show lemma.sample.true_intro
+uv run lemma tasks pull --output active-tasks.jsonl
+```

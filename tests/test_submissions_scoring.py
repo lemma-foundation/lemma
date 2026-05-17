@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from lemma.scoring import VerificationRecord, score_epoch
+from lemma.scoring import ScoreEvent, VerificationRecord, VerificationResult, score_epoch
 from lemma.submissions import build_submission, proof_sha256
 from lemma.tasks import LemmaTask
 
@@ -84,15 +84,17 @@ def test_scoring_awards_first_unique_proof_per_task() -> None:
         ),
     ]
 
-    result = score_epoch(records)
+    result = score_epoch(records, active_task_count=4)
 
     assert result.winners == {"task-1": "hk-a", "task-2": "hk-b"}
     assert result.credits == {"hk-a": 1, "hk-b": 1}
+    assert result.scores == {"hk-a": 0.25, "hk-b": 0.25}
     assert result.weights == {"hk-a": 0.5, "hk-b": 0.5}
     assert [(item.record.task_id, item.rewarded) for item in result.valid_unique_proofs] == [
         ("task-1", True),
         ("task-2", True),
     ]
+    assert [(event.solver_hotkey, event.score) for event in result.score_events] == [("hk-a", 0.25), ("hk-b", 0.25)]
 
 
 def test_scoring_keeps_valid_alternates_unrewarded() -> None:
@@ -123,9 +125,14 @@ def test_scoring_keeps_valid_alternates_unrewarded() -> None:
     result = score_epoch(records)
 
     assert result.credits == {"hk-a": 1}
+    assert result.scores == {"hk-a": 1.0}
     assert [(item.record.solver_hotkey, item.rewarded) for item in result.valid_unique_proofs] == [
         ("hk-a", True),
         ("hk-b", False),
+    ]
+    assert [(event.solver_hotkey, event.rewarded, event.credit) for event in result.score_events] == [
+        ("hk-a", True, 1),
+        ("hk-b", False, 0),
     ]
 
 
@@ -133,7 +140,44 @@ def test_scoring_zero_credit_epoch_has_no_weights() -> None:
     result = score_epoch([VerificationRecord(task_id="task-1", solver_hotkey="hk", passed=False, proof_sha256="x")])
 
     assert result.credits == {}
+    assert result.scores == {}
     assert result.weights == {}
+
+
+def test_public_scoring_models_reject_unknown_fields() -> None:
+    try:
+        VerificationResult.model_validate(
+            {
+                "task_id": "task-1",
+                "solver_hotkey": "hk",
+                "passed": True,
+                "proof_sha256": "x",
+                "informal_quality": "great",
+            }
+        )
+    except ValueError as e:
+        assert "informal_quality" in str(e)
+    else:  # pragma: no cover
+        raise AssertionError("unknown verification field was accepted")
+
+    try:
+        ScoreEvent.model_validate(
+            {
+                "task_id": "task-1",
+                "target_sha256": "0" * 64,
+                "solver_hotkey": "hk",
+                "proof_identity": "x",
+                "proof_sha256": "0" * 64,
+                "rewarded": True,
+                "credit": 1,
+                "score": 1.0,
+                "reasoning_steps": "not a score",
+            }
+        )
+    except ValueError as e:
+        assert "reasoning_steps" in str(e)
+    else:  # pragma: no cover
+        raise AssertionError("subjective score field was accepted")
 
 
 def test_scoring_rejects_subjective_fields() -> None:

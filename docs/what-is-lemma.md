@@ -1,4 +1,4 @@
-# Overview
+# What Is Lemma?
 
 Lemma is a Bittensor subnet for producing open, Lean-verified proof data.
 
@@ -13,7 +13,7 @@ Mathematical AI needs more than plausible text. It needs checked proof data that
 Lean gives the subnet a mechanical correctness signal. Lemma turns that signal into an open dataset loop:
 
 ```text
-task -> proof -> Lean check -> reward -> corpus -> better prover
+task -> proof -> Lean check -> score -> corpus -> better prover
 ```
 
 ## V1 Boundaries

@@ -1,4 +1,4 @@
-# Model API
+# Model APIs
 
 Lemma core does not depend on a model provider. Miners choose their own proof-search stack.
 
@@ -48,3 +48,9 @@ LEMMA_PROVER_MODEL
 ```
 
 This is provider-neutral. Provider metadata is optional and is not part of scoring.
+
+OpenAI-compatible endpoints can point at OpenAI, Chutes, Gemini-compatible gateways, local vLLM servers, or custom HTTP prover services. The only required output is a Lean proof script for the requested task.
+
+## Custom HTTP Provers
+
+Adapters should keep provider credentials outside submission packages. A validator scores only the task-bound proof and its Lean verification result, not the model name, prompt, chain of thought, or informal explanation.

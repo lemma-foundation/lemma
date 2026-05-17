@@ -13,7 +13,7 @@ Task inspection:
 
 ```bash
 uv run lemma tasks list
-uv run lemma tasks inspect lemma.sample.true_intro
+uv run lemma task show lemma.sample.true_intro
 ```
 
 Worker and validator smoke:
@@ -28,7 +28,7 @@ Corpus validation:
 ```bash
 uv run lemma corpus validate corpus.jsonl
 uv run lemma corpus replay corpus.jsonl
-uv run lemma corpus index --input corpus --output corpus/corpus-index.json
+uv run lemma corpus export --input corpus --output corpus/corpus-index.json
 ```
 
 Docker-backed Lean checks require the sandbox image:

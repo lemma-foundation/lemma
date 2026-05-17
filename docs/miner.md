@@ -11,7 +11,7 @@ uv sync --extra btcli
 uv run lemma setup
 uv run lemma status
 uv run lemma tasks list
-uv run lemma tasks inspect <task-id>
+uv run lemma task show <task-id>
 ```
 
 Configure one prover path:

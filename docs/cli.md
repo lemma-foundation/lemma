@@ -1,0 +1,43 @@
+# CLI
+
+The public CLI follows the miner and validator workflow directly.
+
+## Setup
+
+```bash
+uv run lemma setup
+uv run lemma status
+```
+
+`setup` writes local task, corpus, wallet, and optional prover settings. `status` shows the active registry, verifier settings, wallet names, and prover command.
+
+## Miners
+
+```bash
+uv run lemma tasks list
+uv run lemma task show lemma.sample.true_intro
+uv run lemma verify lemma.sample.true_intro --submission Submission.lean
+uv run lemma submit lemma.sample.true_intro --submission Submission.lean --solver-hotkey <hotkey> --output submission.json
+uv run lemma mine --once --prover-command "python prover.py" --output submission.json
+```
+
+`mine` sends a task JSON object to the configured prover command and expects a JSON proof response on stdout.
+
+## Validators
+
+```bash
+uv run lemma worker --check
+uv run lemma validate --once --submissions-jsonl submissions.jsonl --no-set-weights
+```
+
+`validate` loads active tasks, rejects malformed submissions, runs Lean, scores first unique verified proofs, writes score events, and writes corpus rows.
+
+## Corpus
+
+```bash
+uv run lemma corpus validate corpus/epoch-1.jsonl
+uv run lemma corpus replay corpus/epoch-1.jsonl
+uv run lemma corpus export --input corpus --output corpus/corpus-index.json
+```
+
+Corpus commands are for operators and dataset users who want to validate, replay, or index accepted proof data.
