@@ -9,8 +9,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           version: "latest"
       - name: Sync
@@ -39,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       # Lean+mathlib image is huge; free several GB before build. (Do not wipe
       # $AGENT_TOOLSDIRECTORY before setup-uv — need tool cache for uv.)
       - name: Free disk space
@@ -48,7 +48,7 @@ jobs:
           sudo rm -rf "$AGENT_TOOLSDIRECTORY/CodeQL" || true
           sudo docker system prune -af || true
           df -h /
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           version: "latest"
       - name: Sync (pytest)
