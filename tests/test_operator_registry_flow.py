@@ -9,7 +9,7 @@ import pytest
 from click.testing import CliRunner
 from lemma.cli.main import main
 from lemma.lean.sandbox import VerifyResult
-from lemma.operator import OperatorPreflightReport
+from lemma.operator import OperatorDiagnosticsReport, OperatorPreflightReport
 from lemma.submissions import build_submission
 from lemma.tasks import load_task_registry
 
@@ -88,6 +88,25 @@ def test_operator_registry_flow_smoke(monkeypatch: pytest.MonkeyPatch, tmp_path:
     assert preflight_checks["corpus_output_dir"].ok is True
     assert preflight_checks["operator_data_dir"].ok is True
     assert preflight_checks["lean_verifier"].detail == "host Lean enabled"
+
+    diagnostics_path = tmp_path / "operator-diagnostics.json"
+    diagnostics = runner.invoke(
+        main,
+        ["operator", "diagnostics", "--output", str(diagnostics_path)],
+        env=env,
+    )
+
+    assert diagnostics.exit_code == 0, diagnostics.output
+    diagnostics_summary = json.loads(diagnostics.output)
+    diagnostics_text = diagnostics_path.read_text(encoding="utf-8")
+    diagnostics_payload = OperatorDiagnosticsReport.model_validate_json(diagnostics_text)
+    assert diagnostics_summary["active_task_count"] == 10
+    assert diagnostics_payload.preflight.ok is True
+    assert diagnostics_payload.registry_sha256 == registry_sha256
+    assert active_task.id in diagnostics_payload.active_task_ids
+    assert inactive_task.id not in diagnostics_payload.active_task_ids
+    assert str(tmp_path) not in diagnostics_text
+    assert "LEMMA_TASK_REGISTRY_URL" not in diagnostics_text
 
     submit = runner.invoke(
         main,

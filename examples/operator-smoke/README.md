@@ -47,6 +47,7 @@ Run preflight:
 
 ```bash
 uv run lemma operator preflight
+uv run lemma operator diagnostics --output "$WORK/operator-diagnostics.json"
 ```
 
 Build one task-bound submission:
