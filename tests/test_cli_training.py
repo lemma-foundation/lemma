@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 
 import pytest
@@ -117,3 +118,54 @@ def test_validate_once_no_set_weights() -> None:
     assert result.exit_code == 0
     assert '"scores": {}' in result.output
     assert '"weights_set": false' in result.output
+
+
+def test_tasks_build_mathlib_snapshot_writes_pinned_registry(tmp_path) -> None:
+    manifest = tmp_path / "snapshot.jsonl"
+    manifest.write_text(
+        json.dumps(
+            {
+                "theorem_name": "True.intro",
+                "type_expr": "True",
+                "mathlib_rev": "abc123",
+                "source_path": "Mathlib/Init.lean",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    output = tmp_path / "registry.json"
+
+    result = CliRunner().invoke(
+        main,
+        [
+            "tasks",
+            "build-mathlib-snapshot",
+            "--input",
+            str(manifest),
+            "--output",
+            str(output),
+            "--frontier-depth",
+            "4",
+            "--signed-by",
+            "fixture-signer",
+            "--signature",
+            "fixture-signature",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["registry_sha256"]
+    assert payload["tasks"] == 1
+    from lemma.tasks import load_task_registry
+
+    loaded = load_task_registry(output.read_bytes(), payload["registry_sha256"])
+    assert loaded.sha256 == payload["registry_sha256"]
+    registry = json.loads(output.read_text(encoding="utf-8"))
+    task = registry["tasks"][0]
+    assert registry["signed_by"] == "fixture-signer"
+    assert registry["signature"] == "fixture-signature"
+    assert task["source_stream"] == "mathlib_snapshot"
+    assert task["queue_position"] == 0
+    assert task["frontier_depth"] == 4

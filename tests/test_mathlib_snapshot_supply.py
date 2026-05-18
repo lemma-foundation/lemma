@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 from lemma.supply.mathlib_snapshot import MathlibSnapshotRow, candidate_from_row, candidates_from_jsonl
+from lemma.supply.types import registry_tasks_from_candidates
 
 
 def test_mathlib_snapshot_row_becomes_proof_erased_candidate() -> None:
@@ -53,3 +54,29 @@ def test_mathlib_snapshot_jsonl_loader_is_deterministic(tmp_path) -> None:
 
     assert len(candidates) == 1
     assert candidates[0].theorem_name == "True.intro"
+
+
+def test_mathlib_snapshot_candidates_become_deterministic_registry_tasks() -> None:
+    rows = (
+        MathlibSnapshotRow(
+            theorem_name="Deep.target",
+            type_expr="True",
+            mathlib_rev="abc123",
+            source_path="Mathlib/Deep.lean",
+            queue_depth=3,
+        ),
+        MathlibSnapshotRow(
+            theorem_name="Shallow.target",
+            type_expr="True",
+            mathlib_rev="abc123",
+            source_path="Mathlib/Shallow.lean",
+            queue_depth=0,
+        ),
+    )
+    candidates = tuple(candidate_from_row(row) for row in rows)
+
+    tasks = registry_tasks_from_candidates(candidates, seed="pytest", frontier_depth=2)
+
+    assert [task.queue_position for task in tasks] == [0, 1]
+    assert tasks[0].theorem_name == "Shallow.target"
+    assert all(task.frontier_depth == 2 for task in tasks)

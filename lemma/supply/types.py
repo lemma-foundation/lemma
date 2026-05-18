@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from lemma.task_supply import DEFAULT_MATHLIB_REV, DEFAULT_TOOLCHAIN
+from lemma.task_supply import DEFAULT_MATHLIB_REV, DEFAULT_TOOLCHAIN, deterministic_queue
 from lemma.tasks import LemmaTask, SourceRef, SourceStream
 
 
@@ -91,3 +91,16 @@ def fixture_candidate(
         queue_depth=queue_depth,
         metadata=metadata or {},
     )
+
+
+def registry_tasks_from_candidates(
+    candidates: tuple[TaskCandidate, ...],
+    *,
+    seed: str,
+    frontier_depth: int | None = None,
+) -> tuple[LemmaTask, ...]:
+    queued = deterministic_queue(
+        (candidate.to_task(frontier_depth=frontier_depth) for candidate in candidates),
+        seed=seed,
+    )
+    return tuple(task.model_copy(update={"queue_position": index}) for index, task in enumerate(queued))

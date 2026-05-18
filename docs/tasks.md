@@ -27,6 +27,16 @@ Heavy generators run off-chain. Validators check deterministic task artifacts, n
 
 The importer erases the known proof into a `sorry` target and preserves source revision, file path, license, imports, and optional erased-proof hash as metadata.
 
+Build a pinned registry artifact from those rows with:
+
+```bash
+uv run lemma tasks build-mathlib-snapshot \
+  --input snapshot.jsonl \
+  --output tasks/mathlib-snapshot.registry.json
+```
+
+The command writes deterministic `queue_position` values after shallow-first task ordering and prints the registry SHA256. Operators can attach externally produced `signed_by` / `signature` metadata, but the command does not pretend to provide production signing.
+
 ## Activation Gates
 
 Every active task must have:
@@ -70,4 +80,5 @@ Only tasks in the selected active window are valid for scoring in that validator
 uv run lemma tasks list
 uv run lemma task show lemma.sample.true_intro
 uv run lemma tasks pull --output active-tasks.jsonl
+uv run lemma tasks build-mathlib-snapshot --input snapshot.jsonl --output tasks/mathlib-snapshot.registry.json
 ```

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -250,6 +251,58 @@ def tasks_pull_cmd(output_path: Path) -> None:
         encoding="utf-8",
     )
     click.echo(stylize(f"Wrote {len(registry.tasks)} tasks to {output_path}", fg="green", bold=True))
+
+
+@tasks_cmd.command("build-mathlib-snapshot")
+@click.option(
+    "--input",
+    "input_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    required=True,
+    help="Mathlib snapshot JSONL manifest.",
+)
+@click.option("--output", "output_path", type=click.Path(dir_okay=False, path_type=Path), required=True)
+@click.option("--seed", default="lemma-mathlib-snapshot-v1", show_default=True)
+@click.option("--frontier-depth", type=click.IntRange(min=0), default=None)
+@click.option("--limit", type=click.IntRange(min=1), default=None)
+@click.option("--signed-by", default=None, help="Attach an external signer id; this command does not sign.")
+@click.option("--signature", default=None, help="Attach an external signature; this command does not sign.")
+def tasks_build_mathlib_snapshot_cmd(
+    input_path: Path,
+    output_path: Path,
+    seed: str,
+    frontier_depth: int | None,
+    limit: int | None,
+    signed_by: str | None,
+    signature: str | None,
+) -> None:
+    """Build a deterministic task registry from proof-erased Mathlib rows.
+
+    \b
+    Example:
+
+      lemma tasks build-mathlib-snapshot --input snapshot.jsonl --output tasks/registry.json
+    """
+    from lemma.supply.mathlib_snapshot import candidates_from_jsonl
+    from lemma.supply.types import registry_tasks_from_candidates
+    from lemma.task_supply import write_registry
+
+    if (signed_by is None) != (signature is None):
+        raise click.ClickException("--signed-by and --signature must be provided together")
+    try:
+        candidates = candidates_from_jsonl(input_path, limit=limit)
+    except ValueError as e:
+        raise click.ClickException(str(e)) from e
+    tasks = registry_tasks_from_candidates(candidates, seed=seed, frontier_depth=frontier_depth)
+    write_registry(tasks, output_path, signed_by=signed_by, signature=signature)
+    digest = hashlib.sha256(output_path.read_bytes()).hexdigest()
+    click.echo(
+        json.dumps(
+            {"output": str(output_path), "registry_sha256": digest, "tasks": len(tasks)},
+            indent=2,
+            sort_keys=True,
+        )
+    )
 
 
 @tasks_cmd.command("show")

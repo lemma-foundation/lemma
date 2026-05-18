@@ -32,6 +32,14 @@ uv run lemma validate --once --submissions-jsonl submissions.jsonl --no-set-weig
 
 `validate` loads active tasks, rejects malformed submissions, runs Lean, scores first unique verified proofs, writes score events, and writes corpus rows.
 
+## Task Supply
+
+```bash
+uv run lemma tasks build-mathlib-snapshot --input snapshot.jsonl --output tasks/mathlib-snapshot.registry.json
+```
+
+Task-supply commands are operator tools. The Mathlib snapshot builder converts proof-erased JSONL rows into a deterministic registry and prints the SHA256 pin for validator configuration.
+
 ## Corpus
 
 ```bash

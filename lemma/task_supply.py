@@ -145,10 +145,20 @@ def deterministic_queue(
     )
 
 
-def write_registry(tasks: Iterable[LemmaTask], path: Path) -> None:
+def write_registry(
+    tasks: Iterable[LemmaTask],
+    path: Path,
+    *,
+    signed_by: str | None = None,
+    signature: str | None = None,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
+    payload: dict[str, object] = {
         "schema_version": 1,
         "tasks": [task.model_dump(mode="json", exclude_none=True) for task in tasks],
     }
+    if signed_by is not None:
+        payload["signed_by"] = signed_by
+    if signature is not None:
+        payload["signature"] = signature
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
