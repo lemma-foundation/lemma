@@ -36,6 +36,22 @@ def _patterns() -> list[tuple[str, re.Pattern[str]]]:
     user = getpass.getuser()
     if user and not os.environ.get("GITHUB_ACTIONS"):
         patterns.append(("local-username", re.compile(rf"\b{re.escape(user)}\b")))
+    credential_names = "|".join(("api[_-]?" + "key", "to" + "ken", "sec" + "ret"))
+    patterns.extend(
+        [
+            ("github-credential", re.compile(r"\bgh[pousr]_[A-Za-z0-9_]{20,}\b")),
+            ("slack-credential", re.compile(r"\bxox[abprs]-[A-Za-z0-9-]{20,}\b")),
+            ("aws-access-credential", re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b")),
+            ("google-credential", re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b")),
+            (
+                "credential-assignment",
+                re.compile(
+                    rf"\b(?:{credential_names})\b\s*[:=]\s*['\"]?[A-Za-z0-9][A-Za-z0-9_./+=:-]{{23,}}",
+                    re.IGNORECASE,
+                ),
+            ),
+        ]
+    )
     return patterns
 
 
