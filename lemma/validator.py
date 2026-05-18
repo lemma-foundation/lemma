@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -103,8 +103,20 @@ def active_tasks_for_validation(
 
 
 def read_submissions_jsonl(path: Path) -> list[LemmaSubmission]:
+    text = path.read_text(encoding="utf-8")
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        payload = None
+    if isinstance(payload, dict):
+        return [LemmaSubmission.model_validate(payload)]
+    if isinstance(payload, list):
+        return [LemmaSubmission.model_validate(item) for item in payload]
+    if payload is not None:
+        raise ValueError(f"{path}: expected submission object, array, or JSONL rows")
+
     rows: list[LemmaSubmission] = []
-    for no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+    for no, line in enumerate(text.splitlines(), start=1):
         if not line.strip():
             continue
         try:
@@ -112,6 +124,34 @@ def read_submissions_jsonl(path: Path) -> list[LemmaSubmission]:
         except ValueError as e:
             raise ValueError(f"{path}:{no}: invalid submission: {e}") from e
     return rows
+
+
+def pending_submission_files(spool_dir: Path) -> tuple[Path, ...]:
+    """Return top-level pending submission files in deterministic order."""
+    if not spool_dir.exists():
+        return ()
+    if not spool_dir.is_dir():
+        raise ValueError(f"{spool_dir} is not a directory")
+    return tuple(sorted(path for path in spool_dir.iterdir() if path.is_file() and path.suffix in {".json", ".jsonl"}))
+
+
+def read_submission_spool(spool_dir: Path) -> tuple[list[LemmaSubmission], tuple[Path, ...]]:
+    paths = pending_submission_files(spool_dir)
+    submissions: list[LemmaSubmission] = []
+    for path in paths:
+        submissions.extend(read_submissions_jsonl(path))
+    return submissions, paths
+
+
+def archive_submission_spool(paths: Sequence[Path], spool_dir: Path) -> None:
+    processed = spool_dir / "processed"
+    processed.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    for idx, path in enumerate(paths):
+        if not path.exists():
+            continue
+        target = processed / f"{stamp}-{idx:04d}-{path.name}"
+        path.replace(target)
 
 
 def validate_once(

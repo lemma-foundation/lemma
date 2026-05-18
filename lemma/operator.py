@@ -20,6 +20,7 @@ PreflightCheckName = Literal[
     "active_window",
     "corpus_output_dir",
     "operator_data_dir",
+    "submission_spool_dir",
     "lean_verifier",
 ]
 
@@ -199,6 +200,9 @@ def _build_operator_state(
     checks.append(_check("corpus_output_dir", corpus_ok, corpus_detail))
     operator_ok, operator_detail = _ensure_dir(settings.operator_data_dir)
     checks.append(_check("operator_data_dir", operator_ok, operator_detail))
+    if settings.submission_spool_dir is not None:
+        spool_ok, spool_detail = _ensure_dir(settings.submission_spool_dir)
+        checks.append(_check("submission_spool_dir", spool_ok, spool_detail))
 
     if (settings.lean_verify_remote_url or "").strip():
         verifier_detail = "remote Lean worker configured"

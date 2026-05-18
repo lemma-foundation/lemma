@@ -25,10 +25,10 @@ uv run lemma status
 uv run lemma worker --check
 uv run lemma operator preflight
 uv run lemma worker --serve --host localhost --port 8787
-uv run lemma validate --once --no-set-weights
+uv run lemma validate --once --submission-spool submission-spool --no-set-weights
 ```
 
-Corpus deltas are written under `LEMMA_CORPUS_OUTPUT_DIR`. Local receipts are written under `LEMMA_OPERATOR_DATA_DIR`; both paths should remain ignored unless an operator intentionally publishes sanitized artifacts.
+Corpus deltas are written under `LEMMA_CORPUS_OUTPUT_DIR`. Local receipts are written under `LEMMA_OPERATOR_DATA_DIR`. If `LEMMA_SUBMISSION_SPOOL_DIR` is set, validators consume pending `.json` or `.jsonl` submission files from that directory and move them to `processed/` after a successful pass. These paths should remain ignored unless an operator intentionally publishes sanitized artifacts.
 
 For the full registry-to-validator-to-export sequence, see [Operator Registry Flow](operator-registry-flow.md).
 

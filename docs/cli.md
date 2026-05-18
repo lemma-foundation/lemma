@@ -31,10 +31,11 @@ uv run lemma operator registry-inspect
 uv run lemma operator preflight
 uv run lemma operator diagnostics --output operator-diagnostics-before.json
 uv run lemma validate --once --submissions-jsonl submissions.jsonl --no-set-weights
+uv run lemma validate --once --submission-spool submission-spool --no-set-weights
 uv run lemma operator diagnostics --output operator-diagnostics-after.json
 ```
 
-After configuring a pinned registry hash, `operator registry-inspect` summarizes active, waiting, and parked supply depth. `operator preflight` checks registry hash pinning, active-window size, local output directories, and Lean verifier configuration before a validator pass. `operator diagnostics` writes the preflight report, registry summary, artifact counts, registry hash, and active task ids without env vars or local paths; capture it before and after validation to compare readiness with written artifacts. `validate` loads active tasks, rejects malformed submissions, runs Lean, scores first unique verified proofs, writes score events, appends `validator-runs.jsonl`, and writes corpus rows.
+After configuring a pinned registry hash, `operator registry-inspect` summarizes active, waiting, and parked supply depth. `operator preflight` checks registry hash pinning, active-window size, local output directories, and Lean verifier configuration before a validator pass. `operator diagnostics` writes the preflight report, registry summary, artifact counts, registry hash, and active task ids without env vars or local paths; capture it before and after validation to compare readiness with written artifacts. `validate` loads active tasks, rejects malformed submissions, runs Lean, scores first unique verified proofs, writes score events, appends `validator-runs.jsonl`, and writes corpus rows. A submission spool is a top-level directory of pending `.json` or `.jsonl` files; after a successful validator pass, consumed files move to `processed/`.
 
 ## Task Supply
 

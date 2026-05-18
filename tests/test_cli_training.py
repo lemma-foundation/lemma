@@ -71,6 +71,8 @@ def test_setup_writes_operator_settings(tmp_path) -> None:
             "a" * 64,
             "--operator-data-dir",
             "operator-data",
+            "--submission-spool-dir",
+            "submission-inbox",
             "--active-k",
             "10",
             "--frontier-depth",
@@ -91,6 +93,7 @@ def test_setup_writes_operator_settings(tmp_path) -> None:
     assert 'LEMMA_TASK_REGISTRY_URL="tasks/live.registry.json"' in text
     assert f'LEMMA_TASK_REGISTRY_SHA256_EXPECTED="{"a" * 64}"' in text
     assert 'LEMMA_OPERATOR_DATA_DIR="operator-data"' in text
+    assert 'LEMMA_SUBMISSION_SPOOL_DIR="submission-inbox"' in text
     assert 'LEMMA_ACTIVE_K="10"' in text
     assert 'LEMMA_FRONTIER_DEPTH="2"' in text
     assert 'LEMMA_ACTIVE_QUEUE_SEED="live-seed"' in text
@@ -166,6 +169,51 @@ def test_validate_once_no_set_weights() -> None:
     assert result.exit_code == 0
     assert '"scores": {}' in result.output
     assert '"weights_set": false' in result.output
+
+
+def test_validate_consumes_submission_spool(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    spool = tmp_path / "spool"
+    spool.mkdir()
+    submission = build_submission(
+        make_task(
+            task_id="lemma.sample.true_intro",
+            title="Smoke-test True",
+            theorem_name="true_intro_sample",
+            type_expr="True",
+            source_stream="human_curated",
+            source_name="pytest",
+        ),
+        solver_hotkey="hk-spool",
+        proof_script=_true_intro_proof(),
+    )
+    (spool / "submission.json").write_text(submission.model_dump_json(indent=2) + "\n", encoding="utf-8")
+
+    def fake_verify(*args: object, **kwargs: object) -> VerifyResult:
+        return VerifyResult(passed=True, reason="ok")
+
+    monkeypatch.setattr("lemma.validator.run_lean_verify", fake_verify)
+    env = {
+        "LEMMA_PREFER_PROCESS_ENV": "1",
+        "LEMMA_SUBMISSION_SPOOL_DIR": str(spool),
+        "LEMMA_OPERATOR_DATA_DIR": str(tmp_path / "operator"),
+        "LEMMA_CORPUS_OUTPUT_DIR": str(tmp_path / "corpus"),
+        "LEMMA_ACTIVE_K": "3",
+    }
+
+    first = CliRunner().invoke(main, ["validate", "--once", "--no-set-weights"], env=env)
+
+    assert first.exit_code == 0, first.output
+    payload = json.loads(first.output)
+    assert payload["verified"] == 1
+    assert payload["accepted_unique"] == 1
+    assert payload["submission_files_consumed"] == 1
+    assert not (spool / "submission.json").exists()
+    assert len(list((spool / "processed").glob("*.json"))) == 1
+
+    second = CliRunner().invoke(main, ["validate", "--once", "--no-set-weights"], env=env)
+
+    assert second.exit_code == 0, second.output
+    assert json.loads(second.output)["verified"] == 0
 
 
 def _write_preflight_registry(tmp_path, *, task_count: int = 2) -> tuple[str, str]:

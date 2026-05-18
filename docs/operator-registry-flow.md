@@ -68,6 +68,8 @@ uv run lemma validate \
   --no-set-weights
 ```
 
+For a live file inbox, use `--submission-spool submission-spool` instead. The spool accepts top-level `.json` and `.jsonl` submission files and moves consumed files to `processed/` after a successful validator pass.
+
 The validator rejects submissions outside the active window, task-version mismatches, target-hash mismatches, duplicate winning proofs, and policy failures. Accepted unique proofs earn `credit / K`; unsolved-slot value becomes `unearned_share` and is burned by default. Each pass appends one public-safe row to `validator-runs.jsonl` with the registry hash, active K, frontier depth, verified count, accepted unique count, corpus row count, unearned share, unearned policy, and `weights_set`.
 
 After the validator pass, capture diagnostics again:

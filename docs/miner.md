@@ -24,6 +24,7 @@ Then run one local iteration:
 
 ```bash
 uv run lemma mine --once --task-id <task-id>
+uv run lemma mine --once --task-id <task-id> --output submission.json
 ```
 
 The local command receives one JSON task on stdin and returns JSON with `task_id` and `proof_script` on stdout.
@@ -34,6 +35,8 @@ The local command receives one JSON task on stdin and returns JSON with `task_id
 uv run lemma verify <task-id> --submission Submission.lean
 uv run lemma submit <task-id> --submission Submission.lean --solver-hotkey <hotkey>
 ```
+
+The validator can ingest the resulting `submission.json` through its submission spool.
 
 ## Hosted Provers
 

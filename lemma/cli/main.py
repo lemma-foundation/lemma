@@ -133,6 +133,7 @@ def _show_task(task_id: str) -> None:
 @click.option("--task-registry-sha256", default=None, help="Optional task registry SHA256 pin.")
 @click.option("--corpus-output-dir", default=None, help="Local directory for corpus JSONL deltas.")
 @click.option("--operator-data-dir", default=None, help="Local directory for validator receipts.")
+@click.option("--submission-spool-dir", default=None, help="Validator inbox for pending submission files.")
 @click.option("--active-k", type=int, default=None, help="Paid active task slots.")
 @click.option("--frontier-depth", type=int, default=None, help="Maximum active queue depth.")
 @click.option("--active-queue-seed", default=None, help="Deterministic active-window seed.")
@@ -153,6 +154,7 @@ def setup_cmd(
     task_registry_sha256: str | None,
     corpus_output_dir: str | None,
     operator_data_dir: str | None,
+    submission_spool_dir: str | None,
     active_k: int | None,
     frontier_depth: int | None,
     active_queue_seed: str | None,
@@ -192,6 +194,8 @@ def setup_cmd(
     }
     if task_registry_sha256:
         updates["LEMMA_TASK_REGISTRY_SHA256_EXPECTED"] = task_registry_sha256
+    if submission_spool_dir:
+        updates["LEMMA_SUBMISSION_SPOOL_DIR"] = submission_spool_dir
     if prover_command:
         updates["LEMMA_PROVER_COMMAND"] = prover_command
     path = _env_path(env_path)
@@ -216,6 +220,8 @@ def status_cmd() -> None:
     click.echo(stylize("  task_registry_url ", dim=True) + settings.task_registry_url)
     click.echo(stylize("  corpus_index_url  ", dim=True) + (settings.corpus_index_url or "(local)"))
     click.echo(stylize("  corpus_output_dir ", dim=True) + str(settings.corpus_output_dir))
+    spool = str(settings.submission_spool_dir) if settings.submission_spool_dir else "(not configured)"
+    click.echo(stylize("  submission_spool  ", dim=True) + spool)
     click.echo(stylize("  prover_command    ", dim=True) + (settings.prover_command or "(not configured)"))
     click.echo(stylize("  lean_sandbox_image ", dim=True) + settings.lean_sandbox_image)
     click.echo(stylize("  lean_use_docker    ", dim=True) + str(settings.lean_use_docker))
@@ -654,12 +660,14 @@ def operator_registry_inspect_cmd() -> None:
 @click.option("--once", is_flag=True, help="Run one validator scoring iteration.")
 @click.option("--no-set-weights", is_flag=True, help="Dry run: do not submit Bittensor weights.")
 @click.option("--submissions-jsonl", type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None)
+@click.option("--submission-spool", type=click.Path(file_okay=False, path_type=Path), default=None)
 @click.option("--validator-hotkey", default=None, help="Override validator attribution.")
 @click.option("--require-signatures", is_flag=True, help="Require signed live miner submissions.")
 def validate_cmd(
     once: bool,
     no_set_weights: bool,
     submissions_jsonl: Path | None,
+    submission_spool: Path | None,
     validator_hotkey: str | None,
     require_signatures: bool,
 ) -> None:
@@ -670,12 +678,17 @@ def validate_cmd(
 
       lemma validate --once --submissions-jsonl submissions.jsonl --no-set-weights
     """
-    from lemma.validator import read_submissions_jsonl, validate_once
+    from lemma.validator import archive_submission_spool, read_submission_spool, read_submissions_jsonl, validate_once
 
     settings = LemmaSettings()
     setup_logging(settings.log_level)
     submissions = read_submissions_jsonl(submissions_jsonl) if submissions_jsonl else []
-    if not once and submissions_jsonl is None:
+    spool_dir = submission_spool or settings.submission_spool_dir
+    spool_paths: tuple[Path, ...] = ()
+    if spool_dir is not None:
+        spool_submissions, spool_paths = read_submission_spool(spool_dir)
+        submissions.extend(spool_submissions)
+    if not once and submissions_jsonl is None and spool_dir is None:
         click.echo(stylize("No live miner intake configured; running a local dry validator iteration.", dim=True))
     result = validate_once(
         settings,
@@ -684,6 +697,8 @@ def validate_cmd(
         no_set_weights=no_set_weights or not once,
         require_signatures=require_signatures,
     )
+    if spool_paths and spool_dir is not None:
+        archive_submission_spool(spool_paths, spool_dir)
     click.echo(
         json.dumps(
             {
@@ -691,6 +706,7 @@ def validate_cmd(
                 "accepted_unique": len(result.score.valid_unique_proofs),
                 "credits": result.score.credits,
                 "scores": result.score.scores,
+                "submission_files_consumed": len(spool_paths),
                 "weights": result.score.weights,
                 "corpus_rows": len(result.corpus_rows),
                 "unearned_policy": result.summary.unearned_policy,

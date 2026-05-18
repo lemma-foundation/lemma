@@ -42,7 +42,7 @@ Miners can use local tactics, hosted models, retrieval, search, human-written pr
 uv sync --extra btcli
 uv run lemma setup
 uv run lemma status
-uv run lemma mine --once --prover-command "python prover.py"
+uv run lemma mine --once --prover-command "python prover.py" --output submission.json
 ```
 
 For manual inspection:
@@ -60,10 +60,11 @@ uv run lemma submit lemma.sample.true_intro --submission Submission.lean --solve
 uv sync --extra btcli
 uv run lemma setup
 uv run lemma worker --check
-uv run lemma validate --once --no-set-weights
+uv run lemma validate --once --submission-spool submission-spool --no-set-weights
 ```
 
 The validator path fetches active tasks, validates task-bound submissions, runs Lean, scores accepted proofs, withholds unsolved-slot value from current solvers, and writes local corpus deltas.
+The submission spool is a file inbox for miner submission JSON files; consumed files move to `processed/` after a successful validator pass.
 
 ## Try The Loop Locally
 
