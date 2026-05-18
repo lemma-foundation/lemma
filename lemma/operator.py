@@ -53,20 +53,6 @@ class OperatorPreflightReport(BaseModel):
         return self
 
 
-class OperatorDiagnosticsReport(BaseModel):
-    """Public-safe local support report for operator debugging."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    schema_version: Literal[1]
-    preflight: OperatorPreflightReport
-    registry_sha256: str | None = Field(pattern=r"^[a-f0-9]{64}$")
-    active_K: int = Field(ge=1)
-    frontier_depth: int = Field(ge=0)
-    active_task_ids: tuple[str, ...]
-    registry_inspect: OperatorRegistryInspectReport | None
-
-
 class OperatorRegistryInspectReport(BaseModel):
     """Compact public registry supply summary."""
 
@@ -85,6 +71,33 @@ class OperatorRegistryInspectReport(BaseModel):
     queue_depth_counts: dict[str, int]
 
 
+class OperatorArtifactSummary(BaseModel):
+    """Counts of local replay/support artifacts without paths or contents."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal[1]
+    verification_record_count: int = Field(ge=0)
+    score_event_count: int = Field(ge=0)
+    corpus_jsonl_file_count: int = Field(ge=0)
+    corpus_row_count: int = Field(ge=0)
+
+
+class OperatorDiagnosticsReport(BaseModel):
+    """Public-safe local support report for operator debugging."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal[1]
+    preflight: OperatorPreflightReport
+    registry_sha256: str | None = Field(pattern=r"^[a-f0-9]{64}$")
+    active_K: int = Field(ge=1)
+    frontier_depth: int = Field(ge=0)
+    active_task_ids: tuple[str, ...]
+    registry_inspect: OperatorRegistryInspectReport | None
+    artifacts: OperatorArtifactSummary
+
+
 def _check(name: PreflightCheckName, ok: bool, detail: str) -> OperatorPreflightCheck:
     return OperatorPreflightCheck(name=name, ok=ok, detail=detail)
 
@@ -95,6 +108,23 @@ def _ensure_dir(path: Path) -> tuple[bool, str]:
     except OSError as e:
         return False, f"unavailable: {e.strerror or e.__class__.__name__}"
     return True, "ready"
+
+
+def _count_jsonl_rows(path: Path) -> int:
+    if not path.exists():
+        return 0
+    return sum(1 for line in path.read_text(encoding="utf-8").splitlines() if line.strip())
+
+
+def _summarize_artifacts(settings: LemmaSettings) -> OperatorArtifactSummary:
+    corpus_files = sorted(settings.corpus_output_dir.glob("*.jsonl"))
+    return OperatorArtifactSummary(
+        schema_version=1,
+        verification_record_count=_count_jsonl_rows(settings.operator_data_dir / "verification-records.jsonl"),
+        score_event_count=_count_jsonl_rows(settings.operator_data_dir / "score-events.jsonl"),
+        corpus_jsonl_file_count=len(corpus_files),
+        corpus_row_count=sum(_count_jsonl_rows(path) for path in corpus_files),
+    )
 
 
 def _inspect_registry(
@@ -206,6 +236,7 @@ def build_operator_diagnostics(settings: LemmaSettings) -> OperatorDiagnosticsRe
         frontier_depth=preflight.frontier_depth,
         active_task_ids=active_task_ids,
         registry_inspect=registry_inspect,
+        artifacts=_summarize_artifacts(settings),
     )
 
 

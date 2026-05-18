@@ -55,7 +55,7 @@ For reproducible support/debugging, write a local diagnostics file:
 uv run lemma operator diagnostics --output operator-diagnostics.json
 ```
 
-The diagnostics file contains the preflight report, registry summary, registry hash, and current active task ids. It does not include environment variables, credentials, wallet names, hostnames, IPs, or local filesystem paths.
+The diagnostics file contains the preflight report, registry summary, artifact counts, registry hash, and current active task ids. It does not include environment variables, credentials, wallet names, hostnames, IPs, or local filesystem paths.
 
 ## 3. Validate Submissions
 

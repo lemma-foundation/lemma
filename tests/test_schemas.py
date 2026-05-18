@@ -6,7 +6,12 @@ import json
 from pathlib import Path
 
 import pytest
-from lemma.operator import OperatorDiagnosticsReport, OperatorPreflightReport, OperatorRegistryInspectReport
+from lemma.operator import (
+    OperatorArtifactSummary,
+    OperatorDiagnosticsReport,
+    OperatorPreflightReport,
+    OperatorRegistryInspectReport,
+)
 from pydantic import ValidationError
 
 
@@ -118,6 +123,21 @@ def test_operator_diagnostics_report_contract() -> None:
         "frontier_depth",
         "active_task_ids",
         "registry_inspect",
+        "artifacts",
+    } <= required
+    assert schema["additionalProperties"] is False
+
+
+def test_operator_artifact_summary_contract() -> None:
+    schema = OperatorArtifactSummary.model_json_schema()
+    required = set(schema["required"])
+
+    assert {
+        "schema_version",
+        "verification_record_count",
+        "score_event_count",
+        "corpus_jsonl_file_count",
+        "corpus_row_count",
     } <= required
     assert schema["additionalProperties"] is False
 

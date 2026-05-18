@@ -574,6 +574,9 @@ def operator_diagnostics_cmd(ctx: click.Context, output_path: Path) -> None:
         "ok": report.preflight.ok,
         "registry_sha256": report.registry_sha256,
         "active_task_count": len(report.active_task_ids),
+        "verification_record_count": report.artifacts.verification_record_count,
+        "score_event_count": report.artifacts.score_event_count,
+        "corpus_row_count": report.artifacts.corpus_row_count,
     }
     if report.registry_inspect is not None:
         summary.update(

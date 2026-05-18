@@ -198,6 +198,13 @@ def test_operator_preflight_fails_without_registry_pin(tmp_path) -> None:
 def test_operator_diagnostics_writes_public_safe_report(tmp_path) -> None:
     registry_url, registry_sha256 = _write_preflight_registry(tmp_path)
     output_path = tmp_path / "diagnostics" / "operator.json"
+    operator_dir = tmp_path / "operator"
+    corpus_dir = tmp_path / "corpus"
+    operator_dir.mkdir()
+    corpus_dir.mkdir()
+    (operator_dir / "verification-records.jsonl").write_text("{}\n{}\n", encoding="utf-8")
+    (operator_dir / "score-events.jsonl").write_text("{}\n", encoding="utf-8")
+    (corpus_dir / "epoch-local.jsonl").write_text("{}\n{}\n{}\n", encoding="utf-8")
 
     result = CliRunner().invoke(
         main,
@@ -209,8 +216,8 @@ def test_operator_diagnostics_writes_public_safe_report(tmp_path) -> None:
             "LEMMA_ACTIVE_K": "2",
             "LEMMA_FRONTIER_DEPTH": "0",
             "LEMMA_ACTIVE_QUEUE_SEED": "pytest-preflight",
-            "LEMMA_CORPUS_OUTPUT_DIR": str(tmp_path / "corpus"),
-            "LEMMA_OPERATOR_DATA_DIR": str(tmp_path / "operator"),
+            "LEMMA_CORPUS_OUTPUT_DIR": str(corpus_dir),
+            "LEMMA_OPERATOR_DATA_DIR": str(operator_dir),
         },
     )
 
@@ -223,8 +230,15 @@ def test_operator_diagnostics_writes_public_safe_report(tmp_path) -> None:
     assert summary["eligible_task_count"] == 2
     assert summary["parked_task_count"] == 0
     assert summary["waiting_task_count"] == 0
+    assert summary["verification_record_count"] == 2
+    assert summary["score_event_count"] == 1
+    assert summary["corpus_row_count"] == 3
     assert payload.preflight.ok is True
     assert payload.registry_sha256 == registry_sha256
+    assert payload.artifacts.verification_record_count == 2
+    assert payload.artifacts.score_event_count == 1
+    assert payload.artifacts.corpus_jsonl_file_count == 1
+    assert payload.artifacts.corpus_row_count == 3
     assert payload.registry_inspect is not None
     assert payload.registry_inspect.registry_sha256 == registry_sha256
     assert payload.registry_inspect.active_task_count == 2

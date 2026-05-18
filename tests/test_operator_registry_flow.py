@@ -118,6 +118,9 @@ def test_operator_registry_flow_smoke(monkeypatch: pytest.MonkeyPatch, tmp_path:
     assert diagnostics_payload.preflight.ok is True
     assert diagnostics_payload.registry_sha256 == registry_sha256
     assert diagnostics_payload.registry_inspect == inspect_payload
+    assert diagnostics_payload.artifacts.verification_record_count == 0
+    assert diagnostics_payload.artifacts.score_event_count == 0
+    assert diagnostics_payload.artifacts.corpus_row_count == 0
     assert active_task.id in diagnostics_payload.active_task_ids
     assert inactive_task.id not in diagnostics_payload.active_task_ids
     assert str(tmp_path) not in diagnostics_text
@@ -180,6 +183,22 @@ def test_operator_registry_flow_smoke(monkeypatch: pytest.MonkeyPatch, tmp_path:
     assert validation["weights"] == {"burn_uid:0": 0.9, "miner-active": 0.1}
     assert validation["weights_set"] is False
     assert "inactive_task" in (tmp_path / "operator" / "verification-records.jsonl").read_text(encoding="utf-8")
+
+    post_diagnostics_path = tmp_path / "operator-diagnostics-after.json"
+    post_diagnostics = runner.invoke(
+        main,
+        ["operator", "diagnostics", "--output", str(post_diagnostics_path)],
+        env=env,
+    )
+
+    assert post_diagnostics.exit_code == 0, post_diagnostics.output
+    post_diagnostics_payload = OperatorDiagnosticsReport.model_validate_json(
+        post_diagnostics_path.read_text(encoding="utf-8")
+    )
+    assert post_diagnostics_payload.artifacts.verification_record_count == 2
+    assert post_diagnostics_payload.artifacts.score_event_count == 1
+    assert post_diagnostics_payload.artifacts.corpus_jsonl_file_count == 1
+    assert post_diagnostics_payload.artifacts.corpus_row_count == 1
 
     corpus_jsonl = tmp_path / "corpus" / "epoch-local.jsonl"
     corpus_validate = runner.invoke(main, ["corpus", "validate", str(corpus_jsonl)], env=env)
