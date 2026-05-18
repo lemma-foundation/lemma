@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import sys
 from pathlib import Path
 
@@ -11,7 +13,9 @@ from lemma.lean.sandbox import VerifyResult
 from lemma.miner import ProverError, mine_once, run_prover_command
 from lemma.protocol import ProofResponse, TaskRequest
 from lemma.submissions import build_submission
-from lemma.task_supply import make_task
+from lemma.supply.mathlib_snapshot import candidates_from_jsonl
+from lemma.supply.types import registry_tasks_from_candidates
+from lemma.task_supply import make_task, write_registry
 from lemma.tasks import TaskRegistry
 from lemma.validator import validate_once
 
@@ -51,6 +55,22 @@ def _proof(body: str = "  trivial") -> str:
             "namespace Submission",
             "",
             "theorem test_true : True := by",
+            body,
+            "",
+            "end Submission",
+            "",
+        ]
+    )
+
+
+def _proof_for(theorem_name: str, body: str = "  trivial") -> str:
+    return "\n".join(
+        [
+            "import Mathlib",
+            "",
+            "namespace Submission",
+            "",
+            f"theorem {theorem_name} : True := by",
             body,
             "",
             "end Submission",
@@ -194,6 +214,73 @@ def test_validator_uses_deterministic_active_window_not_full_registry(tmp_path: 
     assert result.corpus_rows[0].queue_depth == 0
     receipts = (tmp_path / "operator" / "verification-records.jsonl").read_text(encoding="utf-8")
     assert "inactive_task" in receipts
+
+
+def test_mathlib_snapshot_registry_loads_through_validator_path(tmp_path: Path) -> None:
+    manifest = tmp_path / "mathlib-snapshot.jsonl"
+    rows = [
+        {
+            "theorem_name": "registry_smoke_active_true",
+            "type_expr": "True",
+            "mathlib_rev": "abc123",
+            "source_path": "Mathlib/Smoke.lean",
+            "source_line": 10,
+            "queue_depth": 0,
+        },
+        {
+            "theorem_name": "registry_smoke_deep_true",
+            "type_expr": "True",
+            "mathlib_rev": "abc123",
+            "source_path": "Mathlib/Smoke.lean",
+            "source_line": 20,
+            "queue_depth": 2,
+        },
+    ]
+    manifest.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+    tasks = registry_tasks_from_candidates(candidates_from_jsonl(manifest), seed="validator-smoke", frontier_depth=0)
+    registry_path = tmp_path / "registry.json"
+    write_registry(tasks, registry_path)
+    registry_sha256 = hashlib.sha256(registry_path.read_bytes()).hexdigest()
+    active_task = next(task for task in tasks if task.queue_depth == 0)
+    deep_task = next(task for task in tasks if task.queue_depth == 2)
+    submissions = [
+        build_submission(active_task, solver_hotkey="hk-a", proof_script=_proof_for(active_task.theorem_name)),
+        build_submission(deep_task, solver_hotkey="hk-b", proof_script=_proof_for(deep_task.theorem_name)),
+    ]
+    settings = _settings(tmp_path).model_copy(
+        update={
+            "task_registry_url": str(registry_path),
+            "task_registry_sha256_expected": registry_sha256,
+            "active_task_count": 2,
+            "frontier_depth": 0,
+            "active_queue_seed": "validator-smoke",
+        }
+    )
+
+    result = validate_once(
+        settings,
+        submissions,
+        verify_submission=lambda task, submission: VerifyResult(passed=True, reason="ok"),
+        validator_hotkey="vhk",
+        epoch=9,
+        tempo=3,
+        no_set_weights=True,
+    )
+
+    assert result.score.credits == {"hk-a": 1}
+    assert result.score.miner_weights == {"hk-a": 1.0}
+    assert result.score.unearned_share == 0.0
+    assert result.score.score_events[0].active_K == 1
+    assert result.corpus_rows[0].task_id == active_task.id
+    assert result.corpus_rows[0].source_stream == "mathlib_snapshot"
+    assert result.corpus_rows[0].source_ref.path == "Mathlib/Smoke.lean"
+    assert result.corpus_rows[0].queue_position == 0
+    assert result.corpus_rows[0].frontier_depth == 0
+    assert result.corpus_rows[0].active_K == 1
+    receipts = (tmp_path / "operator" / "verification-records.jsonl").read_text(encoding="utf-8")
+    assert "inactive_task" in receipts
+    assert (tmp_path / "corpus" / "epoch-9.jsonl").exists()
+    assert (tmp_path / "corpus" / "corpus-index.json").exists()
 
 
 def test_protocol_signing_payloads_are_stable() -> None:
