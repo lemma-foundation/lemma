@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 
 import httpx
 import pytest
 from lemma.common.config import LemmaSettings
-from lemma.tasks import LemmaTask, fetch_task_registry, load_task_registry, problem_target_sha256
+from lemma.tasks import LemmaTask, TaskError, fetch_task_registry, load_task_registry, problem_target_sha256
 
 
 def _submission_stub() -> str:
@@ -64,6 +65,81 @@ def test_registry_loads_from_bytes() -> None:
     registry = load_task_registry(raw)
 
     assert registry.get("lemma.test.true").theorem_name == "test_true"
+    assert registry.signature_status == "unsigned"
+
+
+def test_registry_signature_metadata_is_not_trusted_without_verifier() -> None:
+    raw = json.dumps(
+        {
+            "schema_version": 1,
+            "signed_by": "fixture-signer",
+            "signature": "fixture-signature",
+            "tasks": [_task_payload()],
+        },
+        sort_keys=True,
+    ).encode()
+    digest = hashlib.sha256(raw).hexdigest()
+
+    registry = load_task_registry(raw, digest)
+
+    assert registry.signed_by == "fixture-signer"
+    assert registry.signature == "fixture-signature"
+    assert registry.signature_status == "metadata_only"
+
+    tampered = raw.replace(b"True task", b"False task")
+    with pytest.raises(TaskError, match="sha256 mismatch"):
+        load_task_registry(tampered, digest)
+
+
+def test_registry_signature_fields_must_be_paired() -> None:
+    raw = json.dumps({"schema_version": 1, "signed_by": "fixture-signer", "tasks": [_task_payload()]}).encode()
+
+    with pytest.raises(TaskError, match="provided together"):
+        load_task_registry(raw)
+
+
+def test_registry_signature_verifier_interface_marks_verified() -> None:
+    class FixtureVerifier:
+        def verify_registry(self, *, raw: bytes, signed_by: str, signature: str) -> bool:
+            assert raw
+            return signed_by == "fixture-signer" and signature == "fixture-signature"
+
+    raw = json.dumps(
+        {
+            "schema_version": 1,
+            "signed_by": "fixture-signer",
+            "signature": "fixture-signature",
+            "tasks": [_task_payload()],
+        },
+        sort_keys=True,
+    ).encode()
+
+    registry = load_task_registry(
+        raw,
+        hashlib.sha256(raw).hexdigest(),
+        signature_verifier=FixtureVerifier(),
+    )
+
+    assert registry.signature_status == "verified"
+
+
+def test_registry_signature_verifier_rejects_bad_signature() -> None:
+    class RejectingVerifier:
+        def verify_registry(self, *, raw: bytes, signed_by: str, signature: str) -> bool:
+            return False
+
+    raw = json.dumps(
+        {
+            "schema_version": 1,
+            "signed_by": "fixture-signer",
+            "signature": "bad-signature",
+            "tasks": [_task_payload()],
+        },
+        sort_keys=True,
+    ).encode()
+
+    with pytest.raises(TaskError, match="signature verification failed"):
+        load_task_registry(raw, hashlib.sha256(raw).hexdigest(), signature_verifier=RejectingVerifier())
 
 
 def test_registry_fetches_from_http(monkeypatch: pytest.MonkeyPatch) -> None:

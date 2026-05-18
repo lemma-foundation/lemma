@@ -265,8 +265,8 @@ def tasks_pull_cmd(output_path: Path) -> None:
 @click.option("--seed", default="lemma-mathlib-snapshot-v1", show_default=True)
 @click.option("--frontier-depth", type=click.IntRange(min=0), default=None)
 @click.option("--limit", type=click.IntRange(min=1), default=None)
-@click.option("--signed-by", default=None, help="Attach an external signer id; this command does not sign.")
-@click.option("--signature", default=None, help="Attach an external signature; this command does not sign.")
+@click.option("--signed-by", default=None, help="Attach external signer metadata; this command does not sign.")
+@click.option("--signature", default=None, help="Attach external signature metadata; this command does not verify.")
 def tasks_build_mathlib_snapshot_cmd(
     input_path: Path,
     output_path: Path,

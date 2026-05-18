@@ -21,6 +21,10 @@ Validators reject:
 
 Verification runs in a pinned Lean/mathlib environment. Docker verification disables networking by default. Remote workers require bearer auth for non-loopback binds.
 
+## Registry Pinning
+
+Validators trust task registry bytes pinned by `LEMMA_TASK_REGISTRY_SHA256_EXPECTED`. Registry `signed_by` and `signature` fields are stored as metadata unless an explicit verifier is wired in and tested. Signature metadata must not let a changed registry pass the SHA256 check.
+
 ## Scoring Defenses
 
 Proofs are deduplicated by Lean proof-term hash when available. Script-hash fallback is labelled as `proof_sha256_fallback` and is not treated as exact structural identity. Public proof release should wait until the scoring window closes. Baseline-solved tasks and held-out benchmark claims are kept out of paid activation.

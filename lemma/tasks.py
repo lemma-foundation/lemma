@@ -6,7 +6,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 from urllib.parse import unquote, urlparse
 
 import httpx
@@ -34,6 +34,21 @@ SourceStream = Literal[
 
 class TaskError(RuntimeError):
     """Raised when the task registry or a task row is invalid."""
+
+
+RegistrySignatureStatus = Literal["unsigned", "metadata_only", "verified"]
+
+
+class RegistrySignatureVerifier(Protocol):
+    """Optional registry-signature verifier.
+
+    The production validator path trusts registry byte hashes. Signature
+    verification is explicit so metadata fields cannot silently become trust.
+    """
+
+    def verify_registry(self, *, raw: bytes, signed_by: str, signature: str) -> bool:
+        """Return True when the registry signature is accepted."""
+        ...
 
 
 class SourceRef(BaseModel):
@@ -133,6 +148,7 @@ class TaskRegistry:
     sha256: str
     signed_by: str | None = None
     signature: str | None = None
+    signature_status: RegistrySignatureStatus = "unsigned"
     created_at: str | None = None
 
     def get(self, task_id: str) -> LemmaTask:
@@ -165,7 +181,44 @@ def _read_registry_bytes(source: str, timeout_s: float) -> bytes:
         raise TaskError(f"could not read task registry {path}: {e}") from e
 
 
-def load_task_registry(raw: bytes, expected_sha256: str | None = None) -> TaskRegistry:
+def _signature_metadata(payload: dict[str, Any]) -> tuple[str | None, str | None]:
+    signed_by_raw = payload.get("signed_by")
+    signature_raw = payload.get("signature")
+    signed_by = signed_by_raw.strip() if isinstance(signed_by_raw, str) and signed_by_raw.strip() else None
+    signature = signature_raw.strip() if isinstance(signature_raw, str) and signature_raw.strip() else None
+    if (signed_by is None) != (signature is None):
+        raise TaskError("task registry signed_by and signature must be provided together")
+    return signed_by, signature
+
+
+def _signature_status(
+    *,
+    raw: bytes,
+    signed_by: str | None,
+    signature: str | None,
+    verifier: RegistrySignatureVerifier | None,
+) -> RegistrySignatureStatus:
+    if signed_by is None or signature is None:
+        return "unsigned"
+    if verifier is None:
+        return "metadata_only"
+    try:
+        accepted = verifier.verify_registry(raw=raw, signed_by=signed_by, signature=signature)
+    except TaskError:
+        raise
+    except Exception as e:
+        raise TaskError(f"task registry signature verification failed: {e}") from e
+    if not accepted:
+        raise TaskError("task registry signature verification failed")
+    return "verified"
+
+
+def load_task_registry(
+    raw: bytes,
+    expected_sha256: str | None = None,
+    *,
+    signature_verifier: RegistrySignatureVerifier | None = None,
+) -> TaskRegistry:
     digest = hashlib.sha256(raw).hexdigest()
     expected = _normalize_sha256(expected_sha256)
     if expected and digest != expected:
@@ -179,6 +232,13 @@ def load_task_registry(raw: bytes, expected_sha256: str | None = None) -> TaskRe
     rows = payload.get("tasks")
     if not isinstance(rows, list):
         raise TaskError("task registry must contain a tasks list")
+    signed_by, signature = _signature_metadata(payload)
+    signature_status = _signature_status(
+        raw=raw,
+        signed_by=signed_by,
+        signature=signature,
+        verifier=signature_verifier,
+    )
     try:
         tasks = tuple(LemmaTask.model_validate(row) for row in rows)
     except ValueError as e:
@@ -187,8 +247,9 @@ def load_task_registry(raw: bytes, expected_sha256: str | None = None) -> TaskRe
         schema_version=1,
         tasks=tasks,
         sha256=digest,
-        signed_by=payload.get("signed_by") if isinstance(payload.get("signed_by"), str) else None,
-        signature=payload.get("signature") if isinstance(payload.get("signature"), str) else None,
+        signed_by=signed_by,
+        signature=signature,
+        signature_status=signature_status,
         created_at=payload.get("created_at") if isinstance(payload.get("created_at"), str) else None,
     )
 

@@ -56,7 +56,7 @@ uv run lemma tasks build-mathlib-snapshot \
 
 The builder validates each row, orders shallow tasks before deeper tasks, writes deterministic `queue_position` values, and prints `registry_sha256`. Operators should pin the registry bytes and expected SHA256 before validation.
 
-Externally produced `signed_by` and `signature` metadata can be attached during registry build, but this command does not perform production signing.
+Externally produced `signed_by` and `signature` metadata can be attached during registry build, but this command does not perform production signing or verification. Validators must still pin `registry_sha256`.
 
 ## Validator Boundary
 

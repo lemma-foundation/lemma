@@ -35,7 +35,7 @@ uv run lemma tasks build-mathlib-snapshot \
   --output tasks/mathlib-snapshot.registry.json
 ```
 
-The command writes deterministic `queue_position` values after shallow-first task ordering and prints the registry SHA256. Operators can attach externally produced `signed_by` / `signature` metadata, but the command does not pretend to provide production signing.
+The command writes deterministic `queue_position` values after shallow-first task ordering and prints the registry SHA256. Operators can attach externally produced `signed_by` / `signature` metadata, but the command does not sign or verify the registry.
 
 See [Mathlib Extraction Contract](mathlib-extraction.md) for the JSONL row contract and the off-chain extraction boundary.
 
@@ -76,7 +76,9 @@ Only tasks in the selected active window are valid for scoring in that validator
 
 ## Registry
 
-`tasks/registry.json` is a dev seed. Published registries should be signed JSON, pinned by SHA256, and archived so corpus rows can be replayed later.
+`tasks/registry.json` is a dev seed. Published registries must be pinned by SHA256 and archived so corpus rows can be replayed later.
+
+`signed_by` and `signature` are metadata unless a validator wires an explicit registry-signature verifier. The production trust control today is byte-for-byte SHA256 pinning through `LEMMA_TASK_REGISTRY_SHA256_EXPECTED`; signature metadata must not bypass that check.
 
 ```bash
 uv run lemma tasks list

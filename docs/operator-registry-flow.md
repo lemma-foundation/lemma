@@ -14,6 +14,8 @@ uv run lemma tasks build-mathlib-snapshot \
 
 The command writes deterministic `queue_position` values and prints `registry_sha256`. Keep the JSON artifact and the SHA256 together; validators should pin both.
 
+`signed_by` and `signature` fields are archived metadata unless the validator is configured with an explicit registry-signature verifier. They are not a substitute for `LEMMA_TASK_REGISTRY_SHA256_EXPECTED`.
+
 ## 2. Configure The Active Window
 
 Set the registry, its expected hash, and the deterministic active-window controls:
