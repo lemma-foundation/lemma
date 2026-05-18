@@ -59,9 +59,12 @@ Failed proofs are not public corpus rows. Valid alternates can be stored with `r
 uv run lemma corpus validate corpus.jsonl
 uv run lemma corpus replay corpus.jsonl
 uv run lemma corpus export --input corpus --output corpus/corpus-index.json
+uv run lemma corpus benchmark-export --input corpus --output exports/lemma-proofs.jsonl --index exports/index.json
 ```
 
 Replay uses the task fields embedded in each row, the pinned toolchain metadata, and the Lean verifier.
+
+`benchmark-export` writes compact JSONL records for downstream training or evaluation jobs. Each record contains task metadata, source/license metadata, proof text and hashes, reward context, verification summary, and public provenance. It is an export surface, not a claim that the rows are held-out benchmark tasks.
 
 ## Licensing
 

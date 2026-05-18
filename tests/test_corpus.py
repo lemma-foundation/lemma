@@ -2,11 +2,19 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 from lemma.common.config import LemmaSettings
-from lemma.corpus import build_corpus_index, build_corpus_row, replay_jsonl, validate_jsonl, write_jsonl
+from lemma.corpus import (
+    build_corpus_index,
+    build_corpus_row,
+    replay_jsonl,
+    validate_jsonl,
+    write_benchmark_export,
+    write_jsonl,
+)
 from lemma.lean.sandbox import VerifyResult
 from lemma.submissions import build_submission
 from lemma.tasks import LemmaTask
@@ -123,3 +131,51 @@ def test_corpus_index_and_metadata_sanitize_private_paths(tmp_path: Path) -> Non
     assert row.metadata == {"title": "True task", "difficulty": "unit"}
     assert index["row_count"] == 1
     assert index["files"][0]["path"] == "epoch-1.jsonl"
+
+
+def test_benchmark_export_writes_compact_records_and_index(tmp_path: Path) -> None:
+    task = _task().model_copy(update={"queue_position": 3, "queue_depth": 1, "frontier_depth": 2})
+    proof = _proof()
+    first = build_corpus_row(
+        task,
+        build_submission(task, solver_hotkey="hk1", proof_script=proof, created_at="2026-01-01T00:00:00Z"),
+        VerifyResult(passed=True, reason="ok"),
+        validator_hotkey="vhk1",
+        rewarded=True,
+        epoch=4,
+        active_K=10,
+        accepted_at="2026-01-01T00:00:01Z",
+    )
+    alternate = build_corpus_row(
+        task,
+        build_submission(task, solver_hotkey="hk2", proof_script=proof, created_at="2026-01-01T00:00:02Z"),
+        VerifyResult(passed=True, reason="ok"),
+        validator_hotkey="vhk1",
+        rewarded=False,
+        epoch=4,
+        active_K=10,
+        accepted_at="2026-01-01T00:00:03Z",
+    )
+    write_jsonl([first, alternate], tmp_path / "corpus" / "epoch-4.jsonl")
+
+    index = write_benchmark_export(
+        tmp_path / "corpus",
+        tmp_path / "export" / "proofs.jsonl",
+        index_path=tmp_path / "export" / "index.json",
+        rewarded_only=True,
+    )
+
+    records = [
+        json.loads(line) for line in (tmp_path / "export" / "proofs.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    saved_index = json.loads((tmp_path / "export" / "index.json").read_text(encoding="utf-8"))
+    assert len(records) == 1
+    assert records[0]["task"]["id"] == "lemma.test.true"
+    assert records[0]["task"]["queue_depth"] == 1
+    assert records[0]["proof"]["script"] == proof
+    assert records[0]["source"]["stream"] == "human_curated"
+    assert records[0]["reward"]["active_K"] == 10
+    assert index["format"] == "lemma-benchmark-export-v1"
+    assert saved_index["row_count"] == 1
+    assert saved_index["source_streams"] == {"human_curated": 1}
+    assert saved_index["export"]["path"] == "proofs.jsonl"

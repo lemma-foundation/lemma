@@ -46,6 +46,7 @@ Task-supply commands are operator tools. The Mathlib snapshot builder converts p
 uv run lemma corpus validate corpus/epoch-1.jsonl
 uv run lemma corpus replay corpus/epoch-1.jsonl
 uv run lemma corpus export --input corpus --output corpus/corpus-index.json
+uv run lemma corpus benchmark-export --input corpus --output exports/lemma-proofs.jsonl --index exports/index.json
 ```
 
-Corpus commands are for operators and dataset users who want to validate, replay, or index accepted proof data.
+Corpus commands are for operators and dataset users who want to validate, replay, index, or export accepted proof data.

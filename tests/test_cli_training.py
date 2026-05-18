@@ -8,7 +8,10 @@ import sys
 import pytest
 from click.testing import CliRunner
 from lemma.cli.main import main
+from lemma.corpus import build_corpus_row, write_jsonl
 from lemma.lean.sandbox import VerifyResult
+from lemma.submissions import build_submission
+from lemma.task_supply import make_task
 
 
 def _true_intro_proof() -> str:
@@ -169,3 +172,50 @@ def test_tasks_build_mathlib_snapshot_writes_pinned_registry(tmp_path) -> None:
     assert task["source_stream"] == "mathlib_snapshot"
     assert task["queue_position"] == 0
     assert task["frontier_depth"] == 4
+
+
+def test_corpus_benchmark_export_cli_writes_jsonl_and_index(tmp_path) -> None:
+    task = make_task(
+        task_id="lemma.test.cli_benchmark",
+        title="CLI benchmark",
+        theorem_name="cli_benchmark_true",
+        type_expr="True",
+        source_stream="human_curated",
+        source_name="pytest",
+    )
+    proof = "\n".join(
+        [
+            "import Mathlib",
+            "",
+            "namespace Submission",
+            "",
+            "theorem cli_benchmark_true : True := by",
+            "  trivial",
+            "",
+            "end Submission",
+            "",
+        ]
+    )
+    row = build_corpus_row(
+        task,
+        build_submission(task, solver_hotkey="hk1", proof_script=proof, created_at="2026-01-01T00:00:00Z"),
+        VerifyResult(passed=True, reason="ok"),
+        validator_hotkey="vhk1",
+        rewarded=True,
+        accepted_at="2026-01-01T00:00:01Z",
+    )
+    corpus_dir = tmp_path / "corpus"
+    output = tmp_path / "export" / "proofs.jsonl"
+    index = tmp_path / "export" / "index.json"
+    write_jsonl([row], corpus_dir / "epoch-1.jsonl")
+
+    result = CliRunner().invoke(
+        main,
+        ["corpus", "benchmark-export", "--input", str(corpus_dir), "--output", str(output), "--index", str(index)],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output)["row_count"] == 1
+    record = json.loads(output.read_text(encoding="utf-8").splitlines()[0])
+    assert record["task"]["id"] == "lemma.test.cli_benchmark"
+    assert json.loads(index.read_text(encoding="utf-8"))["export"]["path"] == "proofs.jsonl"

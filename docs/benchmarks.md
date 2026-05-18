@@ -20,6 +20,16 @@ Formal Conjectures is not the v1 payout path. It is useful as a downstream demon
 
 Training tasks, practice tasks, and held-out evaluation tasks must stay separate. Do not pay for a task that is being used as held-out evidence for public benchmark claims.
 
+## Corpus Export
+
+Accepted corpus rows can be frozen into a compact JSONL export:
+
+```bash
+uv run lemma corpus benchmark-export --input corpus --output exports/lemma-proofs.jsonl --index exports/index.json
+```
+
+The export includes task statements, source/license metadata, accepted proof scripts, proof hashes, reward context, and verifier summaries. It is useful for downstream training and reproducible benchmark harnesses, but the command does not mark rows as held-out.
+
 ## Useful Metrics
 
 - corpus rows;

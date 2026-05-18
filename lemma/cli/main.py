@@ -472,6 +472,38 @@ def corpus_export_cmd(input_dir: Path, output_path: Path) -> None:
     click.echo(stylize(f"Wrote {output_path}", fg="green", bold=True))
 
 
+@corpus_cmd.command("benchmark-export")
+@click.option("--input", "input_dir", type=click.Path(exists=True, file_okay=False, path_type=Path), required=True)
+@click.option("--output", "output_path", type=click.Path(dir_okay=False, path_type=Path), required=True)
+@click.option("--index", "index_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
+@click.option("--rewarded-only", is_flag=True, help="Export only proofs that received credit.")
+@click.option("--limit", type=click.IntRange(min=1), default=None)
+def corpus_benchmark_export_cmd(
+    input_dir: Path,
+    output_path: Path,
+    index_path: Path | None,
+    rewarded_only: bool,
+    limit: int | None,
+) -> None:
+    """Export accepted proofs as compact benchmark/training JSONL.
+
+    \b
+    Example:
+
+      lemma corpus benchmark-export --input corpus --output exports/lemma-proofs.jsonl --index exports/index.json
+    """
+    from lemma.corpus import write_benchmark_export
+
+    index = write_benchmark_export(
+        input_dir,
+        output_path,
+        index_path=index_path,
+        rewarded_only=rewarded_only,
+        limit=limit,
+    )
+    click.echo(json.dumps(index, indent=2, sort_keys=True))
+
+
 @corpus_cmd.command("index", hidden=True)
 @click.option("--input", "input_dir", type=click.Path(exists=True, file_okay=False, path_type=Path), required=True)
 @click.option("--output", "output_path", type=click.Path(dir_okay=False, path_type=Path), required=True)

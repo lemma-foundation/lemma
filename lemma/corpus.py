@@ -257,6 +257,111 @@ def write_corpus_index(corpus_dir: Path, output_path: Path) -> None:
     )
 
 
+def benchmark_record(row: CorpusRow) -> dict[str, Any]:
+    """Return the stable researcher-facing view of one accepted proof."""
+    return {
+        "schema_version": 1,
+        "row_id": row.row_id,
+        "task": {
+            "id": row.task_id,
+            "version": row.task_version,
+            "theorem_name": row.theorem_name,
+            "type_expr": row.type_expr,
+            "statement": row.statement,
+            "imports": list(row.imports),
+            "lean_toolchain": row.lean_toolchain,
+            "mathlib_rev": row.mathlib_rev,
+            "policy": row.policy,
+            "target_sha256": row.target_sha256,
+            "queue_position": row.queue_position,
+            "queue_depth": row.queue_depth,
+            "frontier_depth": row.frontier_depth,
+        },
+        "proof": {
+            "script": row.proof_script,
+            "sha256": row.proof_sha256,
+            "term_hash": row.proof_term_hash,
+            "identity": row.proof_identity,
+            "identity_source": row.proof_identity_source,
+            "axiom_set": row.axiom_set,
+        },
+        "source": {
+            "stream": row.source_stream,
+            "ref": row.source_ref.model_dump(exclude_none=True),
+            "license": row.source_license,
+        },
+        "reward": {
+            "rewarded": row.rewarded,
+            "epoch": row.epoch,
+            "tempo": row.tempo,
+            "active_K": row.active_K,
+            "ema_solve_rate": row.ema_solve_rate,
+        },
+        "verification": row.verification.model_dump(exclude_none=True),
+        "provenance": {
+            "accepted_at": row.accepted_at,
+            "solver_hotkey": row.solver_hotkey,
+            "validator_hotkey": row.validator_hotkey,
+        },
+        "metadata": _public_metadata(row.metadata),
+    }
+
+
+def _count(values: Iterable[str]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for value in values:
+        counts[value] = counts.get(value, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def write_benchmark_export(
+    corpus_dir: Path,
+    output_path: Path,
+    *,
+    index_path: Path | None = None,
+    rewarded_only: bool = False,
+    limit: int | None = None,
+) -> dict[str, Any]:
+    """Write accepted corpus proofs as a compact benchmark/training JSONL export."""
+    records: list[dict[str, Any]] = []
+    source_files: list[dict[str, Any]] = []
+    for path in sorted(corpus_dir.glob("*.jsonl")):
+        raw = path.read_bytes()
+        rows = read_jsonl(path)
+        source_files.append({"path": path.name, "rows": len(rows), "sha256": hashlib.sha256(raw).hexdigest()})
+        for row in rows:
+            if rewarded_only and not row.rewarded:
+                continue
+            records.append(benchmark_record(row))
+            if limit is not None and len(records) >= limit:
+                break
+        if limit is not None and len(records) >= limit:
+            break
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(
+        "".join(json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n" for record in records),
+        encoding="utf-8",
+    )
+    raw_export = output_path.read_bytes()
+    index = {
+        "schema_version": 1,
+        "format": "lemma-benchmark-export-v1",
+        "row_count": len(records),
+        "rewarded_only": rewarded_only,
+        "limit": limit,
+        "export": {"path": output_path.name, "sha256": hashlib.sha256(raw_export).hexdigest()},
+        "source_files": source_files,
+        "source_streams": _count(str(record["source"]["stream"]) for record in records),
+        "mathlib_revs": _count(str(record["task"]["mathlib_rev"]) for record in records),
+        "updated_at": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+    }
+    if index_path is not None:
+        index_path.parent.mkdir(parents=True, exist_ok=True)
+        index_path.write_text(json.dumps(index, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return index
+
+
 def replay_jsonl(settings: LemmaSettings, path: Path) -> list[VerifyResult]:
     results: list[VerifyResult] = []
     for row in read_jsonl(path):

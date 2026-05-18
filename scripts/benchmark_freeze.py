@@ -8,9 +8,10 @@ before policy and contamination rules are settled.
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
-from lemma.corpus import read_jsonl
+from lemma.corpus import benchmark_record, read_jsonl
 
 
 def freeze(input_path: Path, output_path: Path, *, limit: int | None = None) -> int:
@@ -18,7 +19,7 @@ def freeze(input_path: Path, output_path: Path, *, limit: int | None = None) -> 
     selected = rows[:limit] if limit is not None else rows
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(
-        "".join(row.model_dump_json(exclude_none=True) + "\n" for row in selected),
+        "".join(json.dumps(benchmark_record(row), sort_keys=True, separators=(",", ":")) + "\n" for row in selected),
         encoding="utf-8",
     )
     return len(selected)
