@@ -25,6 +25,7 @@ uv run pytest tests/test_operator_registry_flow.py -q
 ```
 
 The operator smoke fixture lives in [examples/operator-smoke](../examples/operator-smoke/README.md).
+It also exercises the [Mathlib extraction contract](mathlib-extraction.md) used by the registry builder.
 
 Corpus validation:
 

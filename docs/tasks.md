@@ -22,7 +22,7 @@ Heavy generators run off-chain. Validators check deterministic task artifacts, n
 `mathlib_snapshot` supply starts from JSONL rows exported by an off-chain Mathlib checkout:
 
 ```json
-{"theorem_name":"Nat.zero_add","type_expr":"∀ n : Nat, 0 + n = n","mathlib_rev":"...","source_path":"Mathlib/Data/Nat/Basic.lean"}
+{"theorem_name":"Nat.zero_add","type_expr":"∀ n : Nat, 0 + n = n","mathlib_rev":"...","source_path":"Mathlib/Data/Nat/Basic.lean","source_license":"Apache-2.0"}
 ```
 
 The importer erases the known proof into a `sorry` target and preserves source revision, file path, license, imports, and optional erased-proof hash as metadata.
@@ -36,6 +36,8 @@ uv run lemma tasks build-mathlib-snapshot \
 ```
 
 The command writes deterministic `queue_position` values after shallow-first task ordering and prints the registry SHA256. Operators can attach externally produced `signed_by` / `signature` metadata, but the command does not pretend to provide production signing.
+
+See [Mathlib Extraction Contract](mathlib-extraction.md) for the JSONL row contract and the off-chain extraction boundary.
 
 ## Activation Gates
 

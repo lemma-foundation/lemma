@@ -1,6 +1,6 @@
 # Operator Smoke Example
 
-This example runs the public registry-to-validator-to-corpus loop with a tiny proof-erased Mathlib-style snapshot.
+This example runs the public registry-to-validator-to-corpus loop with a tiny proof-erased Mathlib-style snapshot that follows the [Mathlib extraction contract](../../docs/mathlib-extraction.md).
 
 The fixture has 10 active `True` tasks at `queue_depth=0` and one deeper parked task at `queue_depth=2`. With `LEMMA_ACTIVE_K=10`, one accepted proof earns `0.1`, and the remaining `0.9` routes to the default burn rail.
 

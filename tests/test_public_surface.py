@@ -30,6 +30,7 @@ def test_final_docs_structure_exists() -> None:
         "miner.md",
         "validator.md",
         "tasks.md",
+        "mathlib-extraction.md",
         "operator-registry-flow.md",
         "scoring.md",
         "security-and-gaming.md",

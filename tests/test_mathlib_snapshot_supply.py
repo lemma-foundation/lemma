@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 
+import pytest
 from lemma.supply.mathlib_snapshot import MathlibSnapshotRow, candidate_from_row, candidates_from_jsonl
 from lemma.supply.types import registry_tasks_from_candidates
+from pydantic import ValidationError
 
 
 def test_mathlib_snapshot_row_becomes_proof_erased_candidate() -> None:
@@ -15,6 +17,7 @@ def test_mathlib_snapshot_row_becomes_proof_erased_candidate() -> None:
         imports=("Mathlib.Data.Nat.Basic",),
         mathlib_rev="abc123",
         source_path="Mathlib/Data/Nat/Basic.lean",
+        source_license="Apache-2.0",
         source_line=12,
         proof_sha256="f" * 64,
         queue_depth=2,
@@ -40,12 +43,14 @@ def test_mathlib_snapshot_jsonl_loader_is_deterministic(tmp_path) -> None:
             "type_expr": "True",
             "mathlib_rev": "abc123",
             "source_path": "Mathlib/Init.lean",
+            "source_license": "Apache-2.0",
         },
         {
             "theorem_name": "Eq.refl",
             "type_expr": "∀ a : Nat, a = a",
             "mathlib_rev": "abc123",
             "source_path": "Mathlib/Init.lean",
+            "source_license": "Apache-2.0",
         },
     ]
     path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
@@ -63,6 +68,7 @@ def test_mathlib_snapshot_candidates_become_deterministic_registry_tasks() -> No
             type_expr="True",
             mathlib_rev="abc123",
             source_path="Mathlib/Deep.lean",
+            source_license="Apache-2.0",
             queue_depth=3,
         ),
         MathlibSnapshotRow(
@@ -70,6 +76,7 @@ def test_mathlib_snapshot_candidates_become_deterministic_registry_tasks() -> No
             type_expr="True",
             mathlib_rev="abc123",
             source_path="Mathlib/Shallow.lean",
+            source_license="Apache-2.0",
             queue_depth=0,
         ),
     )
@@ -80,3 +87,52 @@ def test_mathlib_snapshot_candidates_become_deterministic_registry_tasks() -> No
     assert [task.queue_position for task in tasks] == [0, 1]
     assert tasks[0].theorem_name == "Shallow.target"
     assert all(task.frontier_depth == 2 for task in tasks)
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [
+        {"mathlib_rev": ""},
+        {"source_path": ""},
+        {"source_license": ""},
+        {"theorem_name": "bad theorem name"},
+        {"theorem_name": "!!!"},
+        {"queue_depth": -1},
+    ],
+)
+def test_mathlib_snapshot_row_rejects_bad_contract_fields(patch: dict[str, object]) -> None:
+    row: dict[str, object] = {
+        "theorem_name": "Good.name",
+        "type_expr": "True",
+        "mathlib_rev": "abc123",
+        "source_path": "Mathlib/Good.lean",
+        "source_license": "Apache-2.0",
+    }
+    row.update(patch)
+
+    with pytest.raises(ValidationError):
+        MathlibSnapshotRow.model_validate(row)
+
+
+def test_mathlib_snapshot_row_requires_explicit_source_license() -> None:
+    row: dict[str, object] = {
+        "theorem_name": "Good.name",
+        "type_expr": "True",
+        "mathlib_rev": "abc123",
+        "source_path": "Mathlib/Good.lean",
+    }
+
+    with pytest.raises(ValidationError):
+        MathlibSnapshotRow.model_validate(row)
+
+
+@pytest.mark.parametrize("source_path", ["/Mathlib/Good.lean", "Mathlib/../Good.lean", "Mathlib/Good.txt"])
+def test_mathlib_snapshot_row_rejects_non_replayable_source_paths(source_path: str) -> None:
+    with pytest.raises(ValidationError):
+        MathlibSnapshotRow(
+            theorem_name="Good.name",
+            type_expr="True",
+            mathlib_rev="abc123",
+            source_path=source_path,
+            source_license="Apache-2.0",
+        )

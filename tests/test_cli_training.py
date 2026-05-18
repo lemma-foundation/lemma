@@ -132,6 +132,7 @@ def test_tasks_build_mathlib_snapshot_writes_pinned_registry(tmp_path) -> None:
                 "type_expr": "True",
                 "mathlib_rev": "abc123",
                 "source_path": "Mathlib/Init.lean",
+                "source_license": "Apache-2.0",
             }
         )
         + "\n",

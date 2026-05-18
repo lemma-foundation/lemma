@@ -12,13 +12,22 @@ import re
 from collections.abc import Iterable
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
 from lemma.supply.types import TaskCandidate, fixture_candidate, lean_stub
 from lemma.task_supply import DEFAULT_TOOLCHAIN
 from lemma.tasks import SourceRef
 
 _SAFE_ID = re.compile(r"[^A-Za-z0-9_.-]+")
+_LEAN_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*")
+_HEX_SHA256 = re.compile(r"[0-9a-fA-F]{64}")
+
+
+def _required_text(value: str, field: str) -> str:
+    text = value.strip()
+    if not text:
+        raise ValueError(f"{field} must be non-empty")
+    return text
 
 
 class MathlibSnapshotRow(BaseModel):
@@ -32,13 +41,67 @@ class MathlibSnapshotRow(BaseModel):
     mathlib_rev: str
     source_path: str
     source_line: int | None = Field(default=None, ge=1)
-    source_license: str = "Apache-2.0"
+    source_license: str
     proof_sha256: str | None = None
     queue_depth: int = Field(default=0, ge=0)
+
+    @field_validator("theorem_name")
+    @classmethod
+    def _validate_theorem_name(cls, value: str) -> str:
+        text = _required_text(value, "theorem_name")
+        if not _LEAN_NAME.fullmatch(text):
+            raise ValueError("theorem_name must be an ASCII dotted Lean identifier")
+        return text
+
+    @field_validator("type_expr", "mathlib_rev", "source_license")
+    @classmethod
+    def _validate_required_text(cls, value: str, info: ValidationInfo) -> str:
+        return _required_text(value, info.field_name or "value")
+
+    @field_validator("imports")
+    @classmethod
+    def _validate_imports(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if not value:
+            raise ValueError("imports must contain at least one module")
+        cleaned = tuple(_required_text(item, "imports") for item in value)
+        if any(not _LEAN_NAME.fullmatch(item) for item in cleaned):
+            raise ValueError("imports must be ASCII dotted Lean module names")
+        return cleaned
+
+    @field_validator("mathlib_rev")
+    @classmethod
+    def _validate_mathlib_rev(cls, value: str) -> str:
+        text = _required_text(value, "mathlib_rev")
+        if any(ch.isspace() for ch in text):
+            raise ValueError("mathlib_rev must not contain whitespace")
+        return text
+
+    @field_validator("source_path")
+    @classmethod
+    def _validate_source_path(cls, value: str) -> str:
+        text = _required_text(value, "source_path")
+        parts = text.split("/")
+        if text.startswith("/") or "\\" in text or any(part in {"", ".", ".."} for part in parts):
+            raise ValueError("source_path must be a repo-relative Lean path")
+        if not text.endswith(".lean"):
+            raise ValueError("source_path must end with .lean")
+        return text
+
+    @field_validator("proof_sha256")
+    @classmethod
+    def _validate_proof_sha256(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        text = _required_text(value, "proof_sha256")
+        if not _HEX_SHA256.fullmatch(text):
+            raise ValueError("proof_sha256 must be 64 hex characters")
+        return text.lower()
 
 
 def _task_id(theorem_name: str) -> str:
     slug = _SAFE_ID.sub("_", theorem_name.strip()).strip("._-")
+    if not slug:
+        raise ValueError("theorem_name does not contain a safe task id slug")
     return f"lemma.mathlib_snapshot.{slug}"
 
 

@@ -4,7 +4,7 @@ This is the end-to-end path for publishing a deterministic task registry, runnin
 
 ## 1. Build A Registry
 
-Start from proof-erased Mathlib snapshot rows:
+Start from proof-erased Mathlib snapshot rows that follow the [Mathlib Extraction Contract](mathlib-extraction.md):
 
 ```bash
 uv run lemma tasks build-mathlib-snapshot \
