@@ -5,6 +5,17 @@ from __future__ import annotations
 from pathlib import Path
 
 
+def _public_text() -> str:
+    paths = [
+        Path("README.md"),
+        Path(".env.example"),
+        Path("lemma/cli/main.py"),
+        Path("examples/operator-smoke/README.md"),
+        *sorted(Path("docs").glob("*.md")),
+    ]
+    return "\n".join(path.read_text(encoding="utf-8") for path in paths)
+
+
 def test_env_example_has_no_bounty_or_escrow_keys() -> None:
     text = Path(".env.example").read_text(encoding="utf-8")
 
@@ -53,6 +64,25 @@ def test_public_docs_keep_corpus_and_economics_invariant() -> None:
     assert "weight(miner) = credit(miner) / sum(all_credits)" not in scoring
     assert "previous weights" not in scoring.lower()
     assert "unearned_share = 1.0" in scoring
+
+
+def test_public_surfaces_do_not_reintroduce_legacy_protocol_language() -> None:
+    text = _public_text()
+    lowered = text.lower()
+
+    forbidden = [
+        "sum(all_credits)",
+        "previous weights",
+        "reasoning_steps",
+        "lemma-cli",
+        "openai" + "_api" + "_key",
+        "lemma_bounty_",
+    ]
+    for fragment in forbidden:
+        assert fragment not in lowered
+
+    assert "weight = credit / k" in lowered
+    assert "validator-runs.jsonl" in text
 
 
 def test_public_docs_do_not_make_alpha_endorsement_or_payout_claims() -> None:
