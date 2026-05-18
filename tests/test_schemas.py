@@ -117,6 +117,7 @@ def test_operator_diagnostics_report_contract() -> None:
         "active_K",
         "frontier_depth",
         "active_task_ids",
+        "registry_inspect",
     } <= required
     assert schema["additionalProperties"] is False
 

@@ -113,8 +113,11 @@ def test_operator_registry_flow_smoke(monkeypatch: pytest.MonkeyPatch, tmp_path:
     diagnostics_text = diagnostics_path.read_text(encoding="utf-8")
     diagnostics_payload = OperatorDiagnosticsReport.model_validate_json(diagnostics_text)
     assert diagnostics_summary["active_task_count"] == 10
+    assert diagnostics_summary["eligible_task_count"] == 10
+    assert diagnostics_summary["parked_task_count"] == 1
     assert diagnostics_payload.preflight.ok is True
     assert diagnostics_payload.registry_sha256 == registry_sha256
+    assert diagnostics_payload.registry_inspect == inspect_payload
     assert active_task.id in diagnostics_payload.active_task_ids
     assert inactive_task.id not in diagnostics_payload.active_task_ids
     assert str(tmp_path) not in diagnostics_text

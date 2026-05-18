@@ -220,8 +220,16 @@ def test_operator_diagnostics_writes_public_safe_report(tmp_path) -> None:
     payload = OperatorDiagnosticsReport.model_validate_json(payload_text)
     checks = {check.name: check for check in payload.preflight.checks}
     assert summary["active_task_count"] == 2
+    assert summary["eligible_task_count"] == 2
+    assert summary["parked_task_count"] == 0
+    assert summary["waiting_task_count"] == 0
     assert payload.preflight.ok is True
     assert payload.registry_sha256 == registry_sha256
+    assert payload.registry_inspect is not None
+    assert payload.registry_inspect.registry_sha256 == registry_sha256
+    assert payload.registry_inspect.active_task_count == 2
+    assert payload.registry_inspect.eligible_task_count == 2
+    assert payload.registry_inspect.parked_task_count == 0
     assert set(payload.active_task_ids) == {"lemma.test.preflight_0", "lemma.test.preflight_1"}
     assert checks["corpus_output_dir"].detail == "ready"
     assert checks["operator_data_dir"].detail == "ready"

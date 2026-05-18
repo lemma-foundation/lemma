@@ -570,13 +570,22 @@ def operator_diagnostics_cmd(ctx: click.Context, output_path: Path) -> None:
         json.dumps(report.model_dump(mode="json"), indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+    summary = {
+        "ok": report.preflight.ok,
+        "registry_sha256": report.registry_sha256,
+        "active_task_count": len(report.active_task_ids),
+    }
+    if report.registry_inspect is not None:
+        summary.update(
+            {
+                "eligible_task_count": report.registry_inspect.eligible_task_count,
+                "parked_task_count": report.registry_inspect.parked_task_count,
+                "waiting_task_count": report.registry_inspect.waiting_task_count,
+            }
+        )
     click.echo(
         json.dumps(
-            {
-                "ok": report.preflight.ok,
-                "registry_sha256": report.registry_sha256,
-                "active_task_count": len(report.active_task_ids),
-            },
+            summary,
             indent=2,
             sort_keys=True,
         )
