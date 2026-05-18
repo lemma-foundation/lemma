@@ -132,19 +132,38 @@ def _show_task(task_id: str) -> None:
 @click.option("--task-registry-url", default=None, help="Task registry JSON URL or path.")
 @click.option("--task-registry-sha256", default=None, help="Optional task registry SHA256 pin.")
 @click.option("--corpus-output-dir", default=None, help="Local directory for corpus JSONL deltas.")
+@click.option("--operator-data-dir", default=None, help="Local directory for validator receipts.")
+@click.option("--active-k", type=int, default=None, help="Paid active task slots.")
+@click.option("--frontier-depth", type=int, default=None, help="Maximum active queue depth.")
+@click.option("--active-queue-seed", default=None, help="Deterministic active-window seed.")
 @click.option("--prover-command", default=None, help="Local prover command for miners.")
 @click.option("--wallet-cold", default=None, help="Bittensor cold wallet name.")
 @click.option("--wallet-hot", default=None, help="Bittensor hotkey name.")
+@click.option("--netuid", type=int, default=None, help="Bittensor subnet id.")
+@click.option(
+    "--unearned-policy",
+    type=click.Choice(["burn", "recycle", "hold"]),
+    default=None,
+    help="Policy for unsolved-slot value.",
+)
+@click.option("--unearned-uid", type=int, default=None, help="UID used for unearned allocation rails.")
 def setup_cmd(
     env_path: Path | None,
     task_registry_url: str | None,
     task_registry_sha256: str | None,
     corpus_output_dir: str | None,
+    operator_data_dir: str | None,
+    active_k: int | None,
+    frontier_depth: int | None,
+    active_queue_seed: str | None,
     prover_command: str | None,
     wallet_cold: str | None,
     wallet_hot: str | None,
+    netuid: int | None,
+    unearned_policy: str | None,
+    unearned_uid: int | None,
 ) -> None:
-    """Write local task, wallet, corpus, and prover settings.
+    """Write local operator and miner settings.
 
     \b
     Example:
@@ -156,8 +175,20 @@ def setup_cmd(
     updates = {
         "LEMMA_TASK_REGISTRY_URL": task_registry_url or LemmaSettings.model_fields["task_registry_url"].default,
         "LEMMA_CORPUS_OUTPUT_DIR": corpus_output_dir or str(LemmaSettings.model_fields["corpus_output_dir"].default),
+        "LEMMA_OPERATOR_DATA_DIR": operator_data_dir or str(LemmaSettings.model_fields["operator_data_dir"].default),
+        "LEMMA_ACTIVE_K": active_k if active_k is not None else LemmaSettings.model_fields["active_task_count"].default,
+        "LEMMA_FRONTIER_DEPTH": frontier_depth
+        if frontier_depth is not None
+        else LemmaSettings.model_fields["frontier_depth"].default,
+        "LEMMA_ACTIVE_QUEUE_SEED": active_queue_seed or LemmaSettings.model_fields["active_queue_seed"].default,
         "BT_WALLET_COLD": wallet_cold or LemmaSettings.model_fields["wallet_cold"].default,
         "BT_WALLET_HOT": wallet_hot or LemmaSettings.model_fields["wallet_hot"].default,
+        "BT_NETUID": netuid if netuid is not None else LemmaSettings.model_fields["netuid"].default,
+        "LEMMA_UNEARNED_ALLOCATION_POLICY": unearned_policy
+        or LemmaSettings.model_fields["unearned_allocation_policy"].default,
+        "LEMMA_UNEARNED_UID": unearned_uid
+        if unearned_uid is not None
+        else LemmaSettings.model_fields["unearned_uid"].default,
     }
     if task_registry_sha256:
         updates["LEMMA_TASK_REGISTRY_SHA256_EXPECTED"] = task_registry_sha256

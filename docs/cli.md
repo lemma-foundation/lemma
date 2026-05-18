@@ -9,7 +9,7 @@ uv run lemma setup
 uv run lemma status
 ```
 
-`setup` writes local task, corpus, wallet, and optional prover settings. `status` shows the active registry, verifier settings, wallet names, and prover command.
+`setup` writes local task, corpus, active-window, wallet, unearned-allocation, and optional prover settings. `status` shows the active registry, verifier settings, wallet names, and prover command.
 
 ## Miners
 

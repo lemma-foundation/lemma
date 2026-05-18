@@ -56,6 +56,49 @@ def test_root_help_prioritizes_normal_commands() -> None:
     assert "Examples:" in result.output
 
 
+def test_setup_writes_operator_settings(tmp_path) -> None:
+    output = tmp_path / "lemma-env"
+
+    result = CliRunner().invoke(
+        main,
+        [
+            "setup",
+            "--env-file",
+            str(output),
+            "--task-registry-url",
+            "tasks/live.registry.json",
+            "--task-registry-sha256",
+            "a" * 64,
+            "--operator-data-dir",
+            "operator-data",
+            "--active-k",
+            "10",
+            "--frontier-depth",
+            "2",
+            "--active-queue-seed",
+            "live-seed",
+            "--netuid",
+            "42",
+            "--unearned-policy",
+            "hold",
+            "--unearned-uid",
+            "9",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    text = output.read_text(encoding="utf-8")
+    assert 'LEMMA_TASK_REGISTRY_URL="tasks/live.registry.json"' in text
+    assert f'LEMMA_TASK_REGISTRY_SHA256_EXPECTED="{"a" * 64}"' in text
+    assert 'LEMMA_OPERATOR_DATA_DIR="operator-data"' in text
+    assert 'LEMMA_ACTIVE_K="10"' in text
+    assert 'LEMMA_FRONTIER_DEPTH="2"' in text
+    assert 'LEMMA_ACTIVE_QUEUE_SEED="live-seed"' in text
+    assert 'BT_NETUID="42"' in text
+    assert 'LEMMA_UNEARNED_ALLOCATION_POLICY="hold"' in text
+    assert 'LEMMA_UNEARNED_UID="9"' in text
+
+
 def test_submit_writes_task_bound_package(tmp_path) -> None:
     proof = tmp_path / "Submission.lean"
     proof.write_text(_true_intro_proof(), encoding="utf-8")
