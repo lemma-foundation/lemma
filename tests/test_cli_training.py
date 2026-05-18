@@ -11,7 +11,7 @@ from click.testing import CliRunner
 from lemma.cli.main import main
 from lemma.corpus import build_corpus_row, write_jsonl
 from lemma.lean.sandbox import VerifyResult
-from lemma.operator import OperatorPreflightReport
+from lemma.operator import OperatorDiagnosticsReport, OperatorPreflightReport
 from lemma.submissions import build_submission
 from lemma.task_supply import make_task, write_registry
 
@@ -193,6 +193,40 @@ def test_operator_preflight_fails_without_registry_pin(tmp_path) -> None:
     checks = {check.name: check for check in payload.checks}
     assert payload.ok is False
     assert checks["registry_hash_pin"].ok is False
+
+
+def test_operator_diagnostics_writes_public_safe_report(tmp_path) -> None:
+    registry_url, registry_sha256 = _write_preflight_registry(tmp_path)
+    output_path = tmp_path / "diagnostics" / "operator.json"
+
+    result = CliRunner().invoke(
+        main,
+        ["operator", "diagnostics", "--output", str(output_path)],
+        env={
+            "LEMMA_PREFER_PROCESS_ENV": "1",
+            "LEMMA_TASK_REGISTRY_URL": registry_url,
+            "LEMMA_TASK_REGISTRY_SHA256_EXPECTED": registry_sha256,
+            "LEMMA_ACTIVE_K": "2",
+            "LEMMA_FRONTIER_DEPTH": "0",
+            "LEMMA_ACTIVE_QUEUE_SEED": "pytest-preflight",
+            "LEMMA_CORPUS_OUTPUT_DIR": str(tmp_path / "corpus"),
+            "LEMMA_OPERATOR_DATA_DIR": str(tmp_path / "operator"),
+        },
+    )
+
+    assert result.exit_code == 0, result.output
+    summary = json.loads(result.output)
+    payload_text = output_path.read_text(encoding="utf-8")
+    payload = OperatorDiagnosticsReport.model_validate_json(payload_text)
+    checks = {check.name: check for check in payload.preflight.checks}
+    assert summary["active_task_count"] == 2
+    assert payload.preflight.ok is True
+    assert payload.registry_sha256 == registry_sha256
+    assert set(payload.active_task_ids) == {"lemma.test.preflight_0", "lemma.test.preflight_1"}
+    assert checks["corpus_output_dir"].detail == "ready"
+    assert checks["operator_data_dir"].detail == "ready"
+    assert str(tmp_path) not in payload_text
+    assert "LEMMA_TASK_REGISTRY_URL" not in payload_text
 
 
 def test_tasks_build_mathlib_snapshot_writes_pinned_registry(tmp_path) -> None:

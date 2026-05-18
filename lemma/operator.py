@@ -49,6 +49,19 @@ class OperatorPreflightReport(BaseModel):
         return self
 
 
+class OperatorDiagnosticsReport(BaseModel):
+    """Public-safe local support report for operator debugging."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal[1]
+    preflight: OperatorPreflightReport
+    registry_sha256: str | None = Field(pattern=r"^[a-f0-9]{64}$")
+    active_K: int = Field(ge=1)
+    frontier_depth: int = Field(ge=0)
+    active_task_ids: tuple[str, ...]
+
+
 def _check(name: PreflightCheckName, ok: bool, detail: str) -> OperatorPreflightCheck:
     return OperatorPreflightCheck(name=name, ok=ok, detail=detail)
 
@@ -57,16 +70,16 @@ def _ensure_dir(path: Path) -> tuple[bool, str]:
     try:
         path.mkdir(parents=True, exist_ok=True)
     except OSError as e:
-        return False, str(e)
-    return True, str(path)
+        return False, f"unavailable: {e.strerror or e.__class__.__name__}"
+    return True, "ready"
 
 
-def build_operator_preflight(settings: LemmaSettings) -> OperatorPreflightReport:
-    """Build the readiness report without running a scoring pass."""
+def _build_operator_state(settings: LemmaSettings) -> tuple[OperatorPreflightReport, tuple[str, ...]]:
     from lemma.tasks import TaskError, fetch_task_registry
     from lemma.validator import active_tasks_for_validation
 
     checks: list[OperatorPreflightCheck] = []
+    active_task_ids: tuple[str, ...] = ()
     registry = None
 
     try:
@@ -87,6 +100,7 @@ def build_operator_preflight(settings: LemmaSettings) -> OperatorPreflightReport
     if registry is not None:
         checks.append(_check("registry_signature", True, registry.signature_status))
         active_tasks = active_tasks_for_validation(registry, settings)
+        active_task_ids = tuple(task.id for task in active_tasks)
         checks.append(
             _check(
                 "active_window",
@@ -114,11 +128,30 @@ def build_operator_preflight(settings: LemmaSettings) -> OperatorPreflightReport
         verifier_ok = settings.allow_host_lean
     checks.append(_check("lean_verifier", verifier_ok, verifier_detail))
 
-    return OperatorPreflightReport(
+    preflight = OperatorPreflightReport(
         schema_version=1,
         ok=all(check.ok for check in checks),
         registry_sha256=registry.sha256 if registry is not None else None,
         active_K=settings.active_task_count,
         frontier_depth=settings.frontier_depth,
         checks=tuple(checks),
+    )
+    return preflight, active_task_ids
+
+
+def build_operator_preflight(settings: LemmaSettings) -> OperatorPreflightReport:
+    """Build the readiness report without running a scoring pass."""
+    return _build_operator_state(settings)[0]
+
+
+def build_operator_diagnostics(settings: LemmaSettings) -> OperatorDiagnosticsReport:
+    """Build a public-safe diagnostics report for support and replay."""
+    preflight, active_task_ids = _build_operator_state(settings)
+    return OperatorDiagnosticsReport(
+        schema_version=1,
+        preflight=preflight,
+        registry_sha256=preflight.registry_sha256,
+        active_K=preflight.active_K,
+        frontier_depth=preflight.frontier_depth,
+        active_task_ids=active_task_ids,
     )

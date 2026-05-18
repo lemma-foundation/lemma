@@ -27,10 +27,12 @@ uv run lemma mine --once --prover-command "python prover.py" --output submission
 
 ```bash
 uv run lemma worker --check
+uv run lemma operator preflight
+uv run lemma operator diagnostics --output operator-diagnostics.json
 uv run lemma validate --once --submissions-jsonl submissions.jsonl --no-set-weights
 ```
 
-After configuring a pinned registry hash, `operator preflight` checks registry hash pinning, active-window size, local output directories, and Lean verifier configuration before a validator pass. `validate` loads active tasks, rejects malformed submissions, runs Lean, scores first unique verified proofs, writes score events, and writes corpus rows.
+After configuring a pinned registry hash, `operator preflight` checks registry hash pinning, active-window size, local output directories, and Lean verifier configuration before a validator pass. `operator diagnostics` writes the preflight report, registry hash, and active task ids without env vars or local paths. `validate` loads active tasks, rejects malformed submissions, runs Lean, scores first unique verified proofs, writes score events, and writes corpus rows.
 
 ## Task Supply
 

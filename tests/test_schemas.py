@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
-from lemma.operator import OperatorPreflightReport
+from lemma.operator import OperatorDiagnosticsReport, OperatorPreflightReport
 from pydantic import ValidationError
 
 
@@ -104,3 +104,18 @@ def test_operator_preflight_report_rejects_mismatched_ok() -> None:
                 "checks": [{"name": "registry_hash_pin", "ok": False, "detail": "missing"}],
             }
         )
+
+
+def test_operator_diagnostics_report_contract() -> None:
+    schema = OperatorDiagnosticsReport.model_json_schema()
+    required = set(schema["required"])
+
+    assert {
+        "schema_version",
+        "preflight",
+        "registry_sha256",
+        "active_K",
+        "frontier_depth",
+        "active_task_ids",
+    } <= required
+    assert schema["additionalProperties"] is False

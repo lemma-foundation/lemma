@@ -41,6 +41,14 @@ uv run lemma operator preflight
 The command fails if the registry is not SHA-pinned, the active window cannot fill `K`, output directories cannot be prepared, or the Lean verifier backend is not configured.
 It emits a versioned JSON report with `schema_version`, `ok`, `registry_sha256`, `active_K`, `frontier_depth`, and `checks`.
 
+For reproducible support/debugging, write a local diagnostics file:
+
+```bash
+uv run lemma operator diagnostics --output operator-diagnostics.json
+```
+
+The diagnostics file contains the preflight report, registry hash, and current active task ids. It does not include environment variables, credentials, wallet names, hostnames, IPs, or local filesystem paths.
+
 ## 3. Validate Submissions
 
 Run the validator against task-bound miner submissions:

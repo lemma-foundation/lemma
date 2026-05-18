@@ -549,6 +549,42 @@ def operator_preflight_cmd(ctx: click.Context) -> None:
         ctx.exit(1)
 
 
+@operator_cmd.command("diagnostics")
+@click.option("--output", "output_path", type=click.Path(dir_okay=False, path_type=Path), required=True)
+@click.pass_context
+def operator_diagnostics_cmd(ctx: click.Context, output_path: Path) -> None:
+    """Write a public-safe operator diagnostics JSON report.
+
+    \b
+    Example:
+
+      lemma operator diagnostics --output operator-diagnostics.json
+    """
+    from lemma.operator import build_operator_diagnostics
+
+    settings = LemmaSettings()
+    setup_logging(settings.log_level)
+    report = build_operator_diagnostics(settings)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(
+        json.dumps(report.model_dump(mode="json"), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    click.echo(
+        json.dumps(
+            {
+                "ok": report.preflight.ok,
+                "registry_sha256": report.registry_sha256,
+                "active_task_count": len(report.active_task_ids),
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+    if not report.preflight.ok:
+        ctx.exit(1)
+
+
 @main.command("validate")
 @click.option("--once", is_flag=True, help="Run one validator scoring iteration.")
 @click.option("--no-set-weights", is_flag=True, help="Dry run: do not submit Bittensor weights.")
