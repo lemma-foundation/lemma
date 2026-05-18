@@ -17,7 +17,7 @@ from lemma.supply.mathlib_snapshot import candidates_from_jsonl
 from lemma.supply.types import registry_tasks_from_candidates
 from lemma.task_supply import make_task, write_registry
 from lemma.tasks import TaskRegistry
-from lemma.validator import validate_once
+from lemma.validator import ValidatorRunSummary, validate_once
 
 
 def _task(task_id: str = "lemma.test.true", queue_depth: int = 0):
@@ -148,6 +148,21 @@ def test_validator_scores_and_writes_alternate_corpus_rows(tmp_path: Path) -> No
     score_events = (tmp_path / "operator" / "score-events.jsonl").read_text(encoding="utf-8")
     assert '"score":1.0' in score_events
     assert '"rewarded":false' in score_events
+    run_summary = ValidatorRunSummary.model_validate_json(
+        (tmp_path / "operator" / "validator-runs.jsonl").read_text(encoding="utf-8").splitlines()[0]
+    )
+    assert result.summary == run_summary
+    assert run_summary.registry_sha256 == "0" * 64
+    assert run_summary.active_K == 1
+    assert run_summary.frontier_depth == 0
+    assert run_summary.verified_count == 3
+    assert run_summary.accepted_unique_count == 2
+    assert run_summary.rewarded_count == 1
+    assert run_summary.score_event_count == 2
+    assert run_summary.corpus_row_count == 2
+    assert run_summary.unearned_share == 0.0
+    assert run_summary.unearned_policy == "burn"
+    assert run_summary.weights_set is False
 
 
 def test_validator_rejects_bad_target_hash_and_unsigned_live_submission(tmp_path: Path) -> None:
@@ -189,6 +204,13 @@ def test_validator_zero_credit_epoch_routes_unearned_share(tmp_path: Path) -> No
     assert result.score.unearned_share == 1.0
     assert result.weights_set is True
     assert result.corpus_rows == ()
+    run_summary = ValidatorRunSummary.model_validate_json(
+        (tmp_path / "operator" / "validator-runs.jsonl").read_text(encoding="utf-8").splitlines()[0]
+    )
+    assert run_summary.verified_count == 1
+    assert run_summary.accepted_unique_count == 0
+    assert run_summary.unearned_share == 1.0
+    assert run_summary.weights_set is True
 
 
 def test_validator_uses_deterministic_active_window_not_full_registry(tmp_path: Path) -> None:

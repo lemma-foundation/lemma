@@ -12,6 +12,7 @@ from lemma.operator import (
     OperatorPreflightReport,
     OperatorRegistryInspectReport,
 )
+from lemma.validator import ValidatorRunSummary
 from pydantic import ValidationError
 
 
@@ -134,10 +135,33 @@ def test_operator_artifact_summary_contract() -> None:
 
     assert {
         "schema_version",
+        "validator_run_count",
         "verification_record_count",
         "score_event_count",
         "corpus_jsonl_file_count",
         "corpus_row_count",
+    } <= required
+    assert schema["additionalProperties"] is False
+
+
+def test_validator_run_summary_contract() -> None:
+    schema = ValidatorRunSummary.model_json_schema()
+    required = set(schema["required"])
+
+    assert {
+        "schema_version",
+        "run_at",
+        "registry_sha256",
+        "active_K",
+        "frontier_depth",
+        "verified_count",
+        "accepted_unique_count",
+        "rewarded_count",
+        "score_event_count",
+        "corpus_row_count",
+        "unearned_share",
+        "unearned_policy",
+        "weights_set",
     } <= required
     assert schema["additionalProperties"] is False
 

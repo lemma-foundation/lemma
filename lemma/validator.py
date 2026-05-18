@@ -7,13 +7,16 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from lemma.common.config import LemmaSettings
 from lemma.corpus import CorpusRow, build_corpus_row, write_corpus_index, write_jsonl
 from lemma.lean.proof_identity import proof_identity
 from lemma.lean.sandbox import VerifyResult
 from lemma.lean.verify_runner import run_lean_verify
-from lemma.scoring import ScoreResult, VerificationRecord, score_epoch
+from lemma.scoring import ScoreResult, UnearnedPolicy, VerificationRecord, score_epoch
 from lemma.store import append_jsonl
 from lemma.submissions import LemmaSubmission, validate_submission_for_task
 from lemma.supply.queue import initial_active_pool
@@ -22,12 +25,33 @@ from lemma.tasks import LemmaTask, TaskRegistry, fetch_task_registry
 VerifySubmission = Callable[[LemmaTask, LemmaSubmission], VerifyResult]
 
 
+class ValidatorRunSummary(BaseModel):
+    """Public-safe summary of one validator pass."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal[1]
+    run_at: str
+    registry_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    active_K: int = Field(ge=0)
+    frontier_depth: int = Field(ge=0)
+    verified_count: int = Field(ge=0)
+    accepted_unique_count: int = Field(ge=0)
+    rewarded_count: int = Field(ge=0)
+    score_event_count: int = Field(ge=0)
+    corpus_row_count: int = Field(ge=0)
+    unearned_share: float = Field(ge=0.0, le=1.0)
+    unearned_policy: UnearnedPolicy
+    weights_set: bool
+
+
 @dataclass(frozen=True)
 class ValidatorRunResult:
     verification_records: tuple[VerificationRecord, ...]
     score: ScoreResult
     corpus_rows: tuple[CorpusRow, ...]
     weights_set: bool
+    summary: ValidatorRunSummary
 
 
 def _now() -> str:
@@ -206,11 +230,28 @@ def validate_once(
         write_corpus_index(settings.corpus_output_dir, settings.corpus_output_dir / "corpus-index.json")
 
     weights_set = bool(score.weights) and not no_set_weights
+    summary = ValidatorRunSummary(
+        schema_version=1,
+        run_at=_now(),
+        registry_sha256=registry.sha256,
+        active_K=len(active_tasks),
+        frontier_depth=settings.frontier_depth,
+        verified_count=len(records),
+        accepted_unique_count=len(score.valid_unique_proofs),
+        rewarded_count=sum(1 for event in score.score_events if event.rewarded),
+        score_event_count=len(score.score_events),
+        corpus_row_count=len(rows),
+        unearned_share=score.unearned_share,
+        unearned_policy=score.unearned_policy,
+        weights_set=weights_set,
+    )
+    append_jsonl(settings.operator_data_dir / "validator-runs.jsonl", [summary])
     return ValidatorRunResult(
         verification_records=tuple(records),
         score=score,
         corpus_rows=tuple(rows),
         weights_set=weights_set,
+        summary=summary,
     )
 
 

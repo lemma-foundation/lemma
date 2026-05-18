@@ -118,6 +118,7 @@ def test_operator_registry_flow_smoke(monkeypatch: pytest.MonkeyPatch, tmp_path:
     assert diagnostics_payload.preflight.ok is True
     assert diagnostics_payload.registry_sha256 == registry_sha256
     assert diagnostics_payload.registry_inspect == inspect_payload
+    assert diagnostics_payload.artifacts.validator_run_count == 0
     assert diagnostics_payload.artifacts.verification_record_count == 0
     assert diagnostics_payload.artifacts.score_event_count == 0
     assert diagnostics_payload.artifacts.corpus_row_count == 0
@@ -180,9 +181,21 @@ def test_operator_registry_flow_smoke(monkeypatch: pytest.MonkeyPatch, tmp_path:
     assert validation["accepted_unique"] == 1
     assert validation["corpus_rows"] == 1
     assert validation["scores"] == {"miner-active": 0.1}
+    assert validation["unearned_policy"] == "burn"
+    assert validation["unearned_share"] == 0.9
     assert validation["weights"] == {"burn_uid:0": 0.9, "miner-active": 0.1}
     assert validation["weights_set"] is False
     assert "inactive_task" in (tmp_path / "operator" / "verification-records.jsonl").read_text(encoding="utf-8")
+    run_summary = json.loads((tmp_path / "operator" / "validator-runs.jsonl").read_text(encoding="utf-8"))
+    assert run_summary["registry_sha256"] == registry_sha256
+    assert run_summary["active_K"] == 10
+    assert run_summary["verified_count"] == 1
+    assert run_summary["accepted_unique_count"] == 1
+    assert run_summary["rewarded_count"] == 1
+    assert run_summary["score_event_count"] == 1
+    assert run_summary["corpus_row_count"] == 1
+    assert run_summary["unearned_share"] == 0.9
+    assert run_summary["weights_set"] is False
 
     post_diagnostics_path = tmp_path / "operator-diagnostics-after.json"
     post_diagnostics = runner.invoke(
@@ -196,6 +209,7 @@ def test_operator_registry_flow_smoke(monkeypatch: pytest.MonkeyPatch, tmp_path:
         post_diagnostics_path.read_text(encoding="utf-8")
     )
     assert post_diagnostics_payload.artifacts.verification_record_count == 2
+    assert post_diagnostics_payload.artifacts.validator_run_count == 1
     assert post_diagnostics_payload.artifacts.score_event_count == 1
     assert post_diagnostics_payload.artifacts.corpus_jsonl_file_count == 1
     assert post_diagnostics_payload.artifacts.corpus_row_count == 1

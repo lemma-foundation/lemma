@@ -75,6 +75,8 @@ uv run lemma validate \
 uv run lemma operator diagnostics --output "$WORK/operator-diagnostics-after.json"
 ```
 
+The validator pass appends one public-safe run row to `$WORK/operator/validator-runs.jsonl`; the after diagnostics file counts that row with the other local artifacts.
+
 Expected output fragments:
 
 ```json

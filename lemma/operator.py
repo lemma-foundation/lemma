@@ -77,6 +77,7 @@ class OperatorArtifactSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     schema_version: Literal[1]
+    validator_run_count: int = Field(ge=0)
     verification_record_count: int = Field(ge=0)
     score_event_count: int = Field(ge=0)
     corpus_jsonl_file_count: int = Field(ge=0)
@@ -120,6 +121,7 @@ def _summarize_artifacts(settings: LemmaSettings) -> OperatorArtifactSummary:
     corpus_files = sorted(settings.corpus_output_dir.glob("*.jsonl"))
     return OperatorArtifactSummary(
         schema_version=1,
+        validator_run_count=_count_jsonl_rows(settings.operator_data_dir / "validator-runs.jsonl"),
         verification_record_count=_count_jsonl_rows(settings.operator_data_dir / "verification-records.jsonl"),
         score_event_count=_count_jsonl_rows(settings.operator_data_dir / "score-events.jsonl"),
         corpus_jsonl_file_count=len(corpus_files),

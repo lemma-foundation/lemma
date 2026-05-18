@@ -202,6 +202,7 @@ def test_operator_diagnostics_writes_public_safe_report(tmp_path) -> None:
     corpus_dir = tmp_path / "corpus"
     operator_dir.mkdir()
     corpus_dir.mkdir()
+    (operator_dir / "validator-runs.jsonl").write_text("{}\n{}\n", encoding="utf-8")
     (operator_dir / "verification-records.jsonl").write_text("{}\n{}\n", encoding="utf-8")
     (operator_dir / "score-events.jsonl").write_text("{}\n", encoding="utf-8")
     (corpus_dir / "epoch-local.jsonl").write_text("{}\n{}\n{}\n", encoding="utf-8")
@@ -233,8 +234,10 @@ def test_operator_diagnostics_writes_public_safe_report(tmp_path) -> None:
     assert summary["verification_record_count"] == 2
     assert summary["score_event_count"] == 1
     assert summary["corpus_row_count"] == 3
+    assert summary["validator_run_count"] == 2
     assert payload.preflight.ok is True
     assert payload.registry_sha256 == registry_sha256
+    assert payload.artifacts.validator_run_count == 2
     assert payload.artifacts.verification_record_count == 2
     assert payload.artifacts.score_event_count == 1
     assert payload.artifacts.corpus_jsonl_file_count == 1

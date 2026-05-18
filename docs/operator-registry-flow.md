@@ -68,7 +68,7 @@ uv run lemma validate \
   --no-set-weights
 ```
 
-The validator rejects submissions outside the active window, task-version mismatches, target-hash mismatches, duplicate winning proofs, and policy failures. Accepted unique proofs earn `credit / K`; unsolved-slot value becomes `unearned_share` and is burned by default.
+The validator rejects submissions outside the active window, task-version mismatches, target-hash mismatches, duplicate winning proofs, and policy failures. Accepted unique proofs earn `credit / K`; unsolved-slot value becomes `unearned_share` and is burned by default. Each pass appends one public-safe row to `validator-runs.jsonl` with the registry hash, active K, frontier depth, verified count, accepted unique count, corpus row count, unearned share, unearned policy, and `weights_set`.
 
 After the validator pass, capture diagnostics again:
 
@@ -76,7 +76,7 @@ After the validator pass, capture diagnostics again:
 uv run lemma operator diagnostics --output operator-diagnostics-after.json
 ```
 
-The after-run file carries the same public-safe readiness fields plus artifact counts for verification receipts, score events, corpus JSONL files, and corpus rows written by the run.
+The after-run file carries the same public-safe readiness fields plus artifact counts for validator runs, verification receipts, score events, corpus JSONL files, and corpus rows written by the run.
 
 ## 4. Check And Publish Corpus Artifacts
 
