@@ -49,13 +49,13 @@ uv run lemma operator preflight
 The command fails if the registry is not SHA-pinned, the active window cannot fill `K`, output directories cannot be prepared, or the Lean verifier backend is not configured.
 It emits a versioned JSON report with `schema_version`, `ok`, `registry_sha256`, `active_K`, `frontier_depth`, and `checks`.
 
-For reproducible support/debugging, write a local diagnostics file:
+For reproducible support/debugging, write a diagnostics file before accepting submissions:
 
 ```bash
-uv run lemma operator diagnostics --output operator-diagnostics.json
+uv run lemma operator diagnostics --output operator-diagnostics-before.json
 ```
 
-The diagnostics file contains the preflight report, registry summary, artifact counts, registry hash, and current active task ids. It does not include environment variables, credentials, wallet names, hostnames, IPs, or local filesystem paths.
+The diagnostics file contains the preflight report, registry summary, artifact counts, registry hash, and current active task ids. It does not include environment variables, credentials, wallet names, hostnames, IPs, or local filesystem paths. The before-run file proves the validator was configured against the intended pinned registry and active window.
 
 ## 3. Validate Submissions
 
@@ -69,6 +69,14 @@ uv run lemma validate \
 ```
 
 The validator rejects submissions outside the active window, task-version mismatches, target-hash mismatches, duplicate winning proofs, and policy failures. Accepted unique proofs earn `credit / K`; unsolved-slot value becomes `unearned_share` and is burned by default.
+
+After the validator pass, capture diagnostics again:
+
+```bash
+uv run lemma operator diagnostics --output operator-diagnostics-after.json
+```
+
+The after-run file carries the same public-safe readiness fields plus artifact counts for verification receipts, score events, corpus JSONL files, and corpus rows written by the run.
 
 ## 4. Check And Publish Corpus Artifacts
 

@@ -48,7 +48,7 @@ Inspect supply and run preflight:
 ```bash
 uv run lemma operator registry-inspect
 uv run lemma operator preflight
-uv run lemma operator diagnostics --output "$WORK/operator-diagnostics.json"
+uv run lemma operator diagnostics --output "$WORK/operator-diagnostics-before.json"
 ```
 
 Build one task-bound submission:
@@ -71,6 +71,8 @@ uv run lemma validate \
   --submissions-jsonl "$WORK/submissions.jsonl" \
   --validator-hotkey validator-smoke \
   --no-set-weights
+
+uv run lemma operator diagnostics --output "$WORK/operator-diagnostics-after.json"
 ```
 
 Expected output fragments:
