@@ -61,6 +61,9 @@ class LemmaSettings(BaseSettings):
     corpus_index_url: str = Field(default="", validation_alias="LEMMA_CORPUS_INDEX_URL")
     corpus_output_dir: Path = Field(default=Path("corpus"), validation_alias="LEMMA_CORPUS_OUTPUT_DIR")
     operator_data_dir: Path = Field(default=Path("validator-data"), validation_alias="LEMMA_OPERATOR_DATA_DIR")
+    active_task_count: int = Field(default=20, ge=1, validation_alias="LEMMA_ACTIVE_K")
+    frontier_depth: int = Field(default=0, ge=0, validation_alias="LEMMA_FRONTIER_DEPTH")
+    active_queue_seed: str = Field(default="lemma-active-queue-v1", validation_alias="LEMMA_ACTIVE_QUEUE_SEED")
 
     prover_command: str = Field(default="", validation_alias="LEMMA_PROVER_COMMAND")
     prover_base_url: str = Field(default="", validation_alias="LEMMA_PROVER_BASE_URL")

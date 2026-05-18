@@ -16,19 +16,31 @@ from lemma.tasks import TaskRegistry
 from lemma.validator import validate_once
 
 
-def _task():
+def _task(task_id: str = "lemma.test.true", queue_depth: int = 0):
     return make_task(
-        task_id="lemma.test.true",
+        task_id=task_id,
         title="True task",
         theorem_name="test_true",
         type_expr="True",
         source_stream="human_curated",
         source_name="pytest",
+        queue_depth=queue_depth,
     )
 
 
 def _registry() -> TaskRegistry:
     return TaskRegistry(schema_version=1, tasks=(_task(),), sha256="0" * 64)
+
+
+def _two_task_registry() -> TaskRegistry:
+    return TaskRegistry(
+        schema_version=1,
+        tasks=(
+            _task("lemma.test.active", queue_depth=0),
+            _task("lemma.test.deep", queue_depth=2),
+        ),
+        sha256="0" * 64,
+    )
 
 
 def _proof(body: str = "  trivial") -> str:
@@ -157,6 +169,31 @@ def test_validator_zero_credit_epoch_routes_unearned_share(tmp_path: Path) -> No
     assert result.score.unearned_share == 1.0
     assert result.weights_set is True
     assert result.corpus_rows == ()
+
+
+def test_validator_uses_deterministic_active_window_not_full_registry(tmp_path: Path) -> None:
+    registry = _two_task_registry()
+    active, deep = registry.tasks
+    submissions = [
+        build_submission(active, solver_hotkey="hk-a", proof_script=_proof("  trivial")),
+        build_submission(deep, solver_hotkey="hk-b", proof_script=_proof("  exact True.intro")),
+    ]
+
+    result = validate_once(
+        _settings(tmp_path),
+        submissions,
+        registry=registry,
+        verify_submission=lambda task, submission: VerifyResult(passed=True, reason="ok"),
+        validator_hotkey="vhk",
+        no_set_weights=True,
+    )
+
+    assert result.score.credits == {"hk-a": 1}
+    assert result.score.score_events[0].active_K == 1
+    assert result.corpus_rows[0].active_K == 1
+    assert result.corpus_rows[0].queue_depth == 0
+    receipts = (tmp_path / "operator" / "verification-records.jsonl").read_text(encoding="utf-8")
+    assert "inactive_task" in receipts
 
 
 def test_protocol_signing_payloads_are_stable() -> None:

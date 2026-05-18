@@ -44,6 +44,16 @@ The active pool is a deterministic queue window of size `K`.
 - Expired unsolved slots are parked.
 - Zero solve rate halts frontier advancement and requests hard-target variants around stalled tasks.
 
+Validator selection uses:
+
+```text
+LEMMA_ACTIVE_K
+LEMMA_FRONTIER_DEPTH
+LEMMA_ACTIVE_QUEUE_SEED
+```
+
+Only tasks in the selected active window are valid for scoring in that validator pass.
+
 ## Registry
 
 `tasks/registry.json` is a dev seed. Published registries should be signed JSON, pinned by SHA256, and archived so corpus rows can be replayed later.

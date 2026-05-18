@@ -16,16 +16,17 @@ uv run lemma validate --once --no-set-weights
 ## Runtime Steps
 
 1. Load the active task registry.
-2. Query or receive miner submissions.
-3. Reject inactive task IDs.
-4. Reject task-version and target-hash mismatches.
-5. Require signatures for live miner responses.
-6. Run the submission policy scan before Lean.
-7. Verify in Docker or a configured Lean worker.
-8. Score first accepted unique proof per task as `credit / K`.
-9. Track `unearned_share = 1 - sum(miner_weights)`.
-10. Burn unearned share by default; do not redistribute it to current solvers.
-11. Write corpus rows for valid unique proofs after the scoring window closes.
+2. Select the deterministic active window from `LEMMA_ACTIVE_K`, `LEMMA_FRONTIER_DEPTH`, and `LEMMA_ACTIVE_QUEUE_SEED`.
+3. Query or receive miner submissions.
+4. Reject submissions outside the active window.
+5. Reject task-version and target-hash mismatches.
+6. Require signatures for live miner responses.
+7. Run the submission policy scan before Lean.
+8. Verify in Docker or a configured Lean worker.
+9. Score first accepted unique proof per active task as `credit / K`.
+10. Track `unearned_share = 1 - sum(miner_weights)`.
+11. Burn unearned share by default; do not redistribute it to current solvers.
+12. Write corpus rows for valid unique proofs after the scoring window closes.
 
 ## Worker
 

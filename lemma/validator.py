@@ -16,6 +16,7 @@ from lemma.lean.verify_runner import run_lean_verify
 from lemma.scoring import ScoreResult, VerificationRecord, score_epoch
 from lemma.store import append_jsonl
 from lemma.submissions import LemmaSubmission, validate_submission_for_task
+from lemma.supply.queue import initial_active_pool
 from lemma.tasks import LemmaTask, TaskRegistry, fetch_task_registry
 
 VerifySubmission = Callable[[LemmaTask, LemmaSubmission], VerifyResult]
@@ -46,6 +47,37 @@ def _default_verify(settings: LemmaSettings) -> VerifySubmission:
     return verify
 
 
+def active_tasks_for_validation(
+    registry: TaskRegistry,
+    settings: LemmaSettings,
+    *,
+    tempo: int | None = None,
+) -> tuple[LemmaTask, ...]:
+    """Select the deterministic active K-window from a registry."""
+    candidates = tuple(task for task in registry.tasks if task.queue_depth <= settings.frontier_depth)
+    active_k = min(settings.active_task_count, len(candidates))
+    if active_k == 0:
+        return ()
+    pool = initial_active_pool(
+        candidates,
+        active_K=active_k,
+        tempo=tempo or 0,
+        seed=settings.active_queue_seed,
+        frontier_depth=settings.frontier_depth,
+    )
+    by_id = {task.id: task for task in pool.queue}
+    return tuple(
+        by_id[slot.task_id].model_copy(
+            update={
+                "queue_position": slot.queue_position,
+                "queue_depth": slot.queue_depth,
+                "frontier_depth": settings.frontier_depth,
+            }
+        )
+        for slot in pool.slots
+    )
+
+
 def read_submissions_jsonl(path: Path) -> list[LemmaSubmission]:
     rows: list[LemmaSubmission] = []
     for no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
@@ -72,7 +104,8 @@ def validate_once(
 ) -> ValidatorRunResult:
     """Verify submissions, score unique proofs, and write local corpus artifacts."""
     registry = registry or fetch_task_registry(settings)
-    tasks = {task.id: task for task in registry.tasks}
+    active_tasks = active_tasks_for_validation(registry, settings, tempo=tempo)
+    tasks = {task.id: task for task in active_tasks}
     verify = verify_submission or _default_verify(settings)
     validator = validator_hotkey or settings.wallet_hot
 
@@ -141,7 +174,7 @@ def validate_once(
 
     score = score_epoch(
         records,
-        active_task_count=len(tasks),
+        active_task_count=len(active_tasks),
         unearned_policy=settings.unearned_allocation_policy,
         unearned_uid=settings.unearned_uid,
     )
@@ -162,7 +195,7 @@ def validate_once(
                 tempo=tempo,
                 proof_term_hash=scored.record.proof_term_hash,
                 proof_identity_source=scored.record.proof_identity_source,
-                active_K=len(tasks),
+                active_K=len(active_tasks),
                 accepted_at=scored.record.received_at,
             )
         )
