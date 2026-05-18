@@ -65,6 +65,10 @@ uv run lemma validate --once --no-set-weights
 
 The validator path fetches active tasks, validates task-bound submissions, runs Lean, scores accepted proofs, withholds unsolved-slot value from current solvers, and writes local corpus deltas.
 
+## Try The Loop Locally
+
+Use [examples/operator-smoke](examples/operator-smoke/README.md) to build a pinned registry, package one proof submission, run a validator pass, and export corpus artifacts.
+
 ## Corpus Row
 
 ```json

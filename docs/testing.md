@@ -24,6 +24,8 @@ uv run lemma validate --once --no-set-weights
 uv run pytest tests/test_operator_registry_flow.py -q
 ```
 
+The operator smoke fixture lives in [examples/operator-smoke](../examples/operator-smoke/README.md).
+
 Corpus validation:
 
 ```bash

@@ -1,5 +1,6 @@
 .venv/
 .lemma-lean-cache/
+.lemma-operator-smoke/
 __pycache__/
 *.py[cod]
 *.egg-info/

@@ -64,6 +64,8 @@ Run the fixture-backed smoke for this full path with:
 uv run pytest tests/test_operator_registry_flow.py -q
 ```
 
+For copy-paste CLI commands against a tiny public fixture, see [Operator Smoke Example](../examples/operator-smoke/README.md).
+
 ## 5. Before Commit Or Push
 
 Run the normal mechanical checks:

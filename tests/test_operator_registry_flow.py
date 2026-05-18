@@ -13,17 +13,6 @@ from lemma.submissions import build_submission
 from lemma.tasks import load_task_registry
 
 
-def _snapshot_row(theorem_name: str, *, queue_depth: int) -> dict[str, object]:
-    return {
-        "theorem_name": theorem_name,
-        "type_expr": "True",
-        "mathlib_rev": "operator-smoke-rev",
-        "source_path": "Mathlib/OperatorSmoke.lean",
-        "source_license": "Apache-2.0",
-        "queue_depth": queue_depth,
-    }
-
-
 def _proof_for(theorem_name: str) -> str:
     return "\n".join(
         [
@@ -42,12 +31,9 @@ def _proof_for(theorem_name: str) -> str:
 
 def test_operator_registry_flow_smoke(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     runner = CliRunner()
-    snapshot = tmp_path / "snapshot.jsonl"
+    fixture_dir = Path("examples/operator-smoke")
+    snapshot = fixture_dir / "snapshot.jsonl"
     registry_path = tmp_path / "tasks" / "mathlib-snapshot.registry.json"
-    active_names = [f"operator_smoke_true_{index}" for index in range(10)]
-    rows = [_snapshot_row(name, queue_depth=0) for name in active_names]
-    rows.append(_snapshot_row("operator_smoke_deep_true", queue_depth=2))
-    snapshot.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
 
     build = runner.invoke(
         main,
@@ -69,8 +55,8 @@ def test_operator_registry_flow_smoke(monkeypatch: pytest.MonkeyPatch, tmp_path:
     assert build.exit_code == 0, build.output
     registry_sha256 = json.loads(build.output)["registry_sha256"]
     registry = load_task_registry(registry_path.read_bytes(), registry_sha256)
-    active_task = next(task for task in registry.tasks if task.theorem_name in active_names)
-    inactive_task = next(task for task in registry.tasks if task.theorem_name == "operator_smoke_deep_true")
+    active_task = registry.get("lemma.mathlib_snapshot.operator_smoke_true_0")
+    inactive_task = registry.get("lemma.mathlib_snapshot.operator_smoke_deep_true")
 
     env = {
         "LEMMA_PREFER_PROCESS_ENV": "1",
@@ -84,8 +70,7 @@ def test_operator_registry_flow_smoke(monkeypatch: pytest.MonkeyPatch, tmp_path:
         "LEMMA_USE_DOCKER": "0",
         "BT_WALLET_HOT": "validator-smoke",
     }
-    proof_path = tmp_path / "Submission.lean"
-    proof_path.write_text(_proof_for(active_task.theorem_name), encoding="utf-8")
+    proof_path = fixture_dir / "Submission.lean"
     package_path = tmp_path / "submission.json"
 
     submit = runner.invoke(
