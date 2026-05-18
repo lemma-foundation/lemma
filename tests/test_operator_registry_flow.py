@@ -68,10 +68,25 @@ def test_operator_registry_flow_smoke(monkeypatch: pytest.MonkeyPatch, tmp_path:
         "LEMMA_CORPUS_OUTPUT_DIR": str(tmp_path / "corpus"),
         "LEMMA_OPERATOR_DATA_DIR": str(tmp_path / "operator"),
         "LEMMA_USE_DOCKER": "0",
+        "LEMMA_ALLOW_HOST_LEAN": "1",
         "BT_WALLET_HOT": "validator-smoke",
     }
     proof_path = fixture_dir / "Submission.lean"
     package_path = tmp_path / "submission.json"
+
+    preflight = runner.invoke(main, ["operator", "preflight"], env=env)
+
+    assert preflight.exit_code == 0, preflight.output
+    preflight_payload = json.loads(preflight.output)
+    preflight_checks = {check["name"]: check for check in preflight_payload["checks"]}
+    assert preflight_payload["ok"] is True
+    assert preflight_payload["registry_sha256"] == registry_sha256
+    assert preflight_payload["active_K"] == 10
+    assert preflight_checks["registry_hash_pin"]["ok"] is True
+    assert preflight_checks["active_window"]["detail"].startswith("10 active / K=10")
+    assert preflight_checks["corpus_output_dir"]["ok"] is True
+    assert preflight_checks["operator_data_dir"]["ok"] is True
+    assert preflight_checks["lean_verifier"]["detail"] == "host Lean enabled"
 
     submit = runner.invoke(
         main,
