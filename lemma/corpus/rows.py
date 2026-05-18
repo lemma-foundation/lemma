@@ -9,8 +9,11 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from lemma.lean.proof_identity import canonical_proof_term_hash
+from lemma.graph import build_dependencies, build_row_graph
+from lemma.lean.proof_identity import proof_identity
 from lemma.lean.sandbox import VerifyResult
+from lemma.license import license_state_for
+from lemma.quality import build_row_quality
 from lemma.submissions import LemmaSubmission
 from lemma.tasks import LemmaTask
 from lemma.verifiers.base import VerificationResult
@@ -32,6 +35,8 @@ class CorpusRowV2(BaseModel):
     accepted_artifact: dict[str, Any]
     verification: dict[str, Any]
     provenance: dict[str, Any]
+    dependencies: dict[str, Any] = Field(default_factory=dict)
+    graph: dict[str, Any] = Field(default_factory=dict)
     license: str = "CC-BY-4.0"
     metadata: dict[str, Any] = Field(default_factory=dict)
 
@@ -85,15 +90,34 @@ def build_corpus_row_v2(
 ) -> CorpusRowV2:
     """Build the canonical v2 row for an accepted Lean proof."""
     accepted, verifier_id, verifier_version, stdout, stderr, metrics = _result_parts(task, result)
-    proof_term_hash = str(metrics.get("proof_term_hash") or canonical_proof_term_hash(submission.proof_script))
+    identity = proof_identity(
+        proof_sha256=submission.proof_sha256,
+        proof_term_hash=str(metrics.get("proof_term_hash") or "") or None,
+        proof_script=submission.proof_script,
+    )
     prompt = task.to_v2()["prompt"]
     artifact = {
         "proof": submission.proof_script,
         "imports": list(task.imports),
         "full_file": submission.proof_script,
         "proof_sha256": submission.proof_sha256,
-        "proof_term_hash": proof_term_hash,
+        "proof_term_hash": identity.proof_term_hash,
+        "proof_identity": identity.value,
+        "proof_identity_source": identity.source,
+        "proof_identity_strength": identity.strength,
     }
+    dependencies = build_dependencies(task)
+    license_state = license_state_for(task.source_license, str(task.metadata.get("license_state") or ""))
+    quality = build_row_quality(
+        triviality_checked=task.triviality_status != "unknown" or bool(task.metadata.get("triviality_checked")),
+        baseline_solvers_failed=not bool(task.metadata.get("baseline_solved")),
+        difficulty_band=task.difficulty_band,
+        near_duplicate_score=float(task.metadata.get("near_duplicate_score") or 0.0),
+        dependency_depth=dependencies.dependency_depth,
+        license_state=license_state,
+        proof_identity_strength=identity.strength,
+        model_lift_release=task.metadata.get("model_lift_release"),
+    )
     return CorpusRowV2(
         task_id=task.id,
         domain_id=task.domain_id,
@@ -115,10 +139,20 @@ def build_corpus_row_v2(
             "timestamp": timestamp or datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
             "repo_commit": repo_commit,
         },
+        dependencies=dependencies.model_dump(),
+        graph=build_row_graph(
+            task=task,
+            proof_identity=identity.value,
+            proof_sha256=submission.proof_sha256,
+            solver_hotkey=submission.solver_hotkey,
+            validator_hotkey=validator_hotkey,
+        ).model_dump(),
         metadata={
             "task_hash": task_hash(prompt),
             "normalized_artifact_hash": normalized_artifact_hash(artifact),
             "rewarded": rewarded,
+            "full_reward_eligible": rewarded and identity.strength == "strong" and quality.useful_verified_row,
+            "quality": quality.model_dump(),
             "source": task.source_stream,
             "source_license": task.source_license,
         },

@@ -31,7 +31,14 @@ def test_task_schema_requires_source_and_version() -> None:
 
     assert {"task_version", "source_ref", "source_license", "source_stream"} <= required
     assert schema["properties"]["domain_id"]["const"] == "lean"
-    assert {"queue_position", "queue_depth", "frontier_depth", "triviality_status"} <= props
+    assert {
+        "queue_position",
+        "queue_depth",
+        "frontier_depth",
+        "triviality_status",
+        "activation_status",
+        "difficulty_band",
+    } <= props
 
 
 def test_submission_schema_requires_live_signature_fields() -> None:
@@ -71,7 +78,11 @@ def test_verification_result_schema_captures_replay_identity() -> None:
         "reason",
         "proof_sha256",
         "proof_term_hash",
+        "proof_identity",
         "proof_identity_source",
+        "proof_identity_strength",
+        "reward_eligible",
+        "reward_ineligibility_reason",
         "verifier_version",
     } <= required
 
@@ -84,6 +95,10 @@ def test_score_event_schema_captures_v1_score_rule() -> None:
         "task_version",
         "proof_identity",
         "proof_identity_source",
+        "proof_identity_strength",
+        "full_reward_eligible",
+        "reward_eligible",
+        "reward_ineligibility_reason",
         "rewarded",
         "credit",
         "score",
@@ -101,7 +116,9 @@ def test_schema_v2_contracts_are_domain_neutral() -> None:
     assert {"domain_id", "artifact", "declared_verifier_id", "declared_verifier_version"} <= set(
         submission["required"]
     )
-    assert {"domain_id", "accepted_artifact", "verification", "provenance", "license"} <= set(corpus_row["required"])
+    assert {"domain_id", "accepted_artifact", "verification", "provenance", "dependencies", "graph", "license"} <= set(
+        corpus_row["required"]
+    )
 
 
 def test_operator_preflight_report_contract() -> None:

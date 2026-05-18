@@ -27,6 +27,8 @@ Required fields:
     "timestamp": "string",
     "repo_commit": "string"
   },
+  "dependencies": {},
+  "graph": {},
   "license": "CC-BY-4.0",
   "metadata": {}
 }
@@ -38,4 +40,4 @@ Required fields:
 sha256(domain_id + "\n" + task_id + "\n" + normalized_artifact_hash)
 ```
 
-For Lean, `accepted_artifact` stores the proof and replayable full file.
+For Lean, `accepted_artifact` stores the proof, replayable full file, proof identity, and proof identity strength. `dependencies` and `graph` make each row a node in the corpus substrate instead of a flat record.

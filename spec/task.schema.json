@@ -75,6 +75,14 @@
       "type": "string",
       "enum": ["unknown", "trivial_curriculum", "paid_easy", "paid_medium", "paid_frontier"]
     },
+    "activation_status": {
+      "type": "string",
+      "enum": ["paid", "curriculum", "benchmark", "quarantine", "rejected"]
+    },
+    "difficulty_band": {
+      "type": "string",
+      "enum": ["easy", "medium", "hard", "frontier"]
+    },
     "active_epoch": { "type": ["integer", "null"] },
     "expires_epoch": { "type": ["integer", "null"] },
     "metadata": { "type": "object" }

@@ -51,6 +51,11 @@ def test_final_docs_structure_exists() -> None:
             "architecture.md",
             "domain-adapter-spec.md",
             "cli.md",
+        "PROTOCOL_INVARIANTS.md",
+        "dependency-graph.md",
+        "license-policy.md",
+        "proof-identity.md",
+        "useful-verified-row.md",
         "production.md",
         "testing.md",
         "faq.md",
@@ -61,7 +66,7 @@ def test_public_docs_keep_corpus_and_economics_invariant() -> None:
     readme = Path("README.md").read_text(encoding="utf-8")
     scoring = Path("docs/scoring.md").read_text(encoding="utf-8")
 
-    assert "The corpus is the product" in readme
+    assert "The graph-shaped corpus is the substrate" in readme
     assert "weight(miner) = credit(miner) / sum(all_credits)" not in scoring
     assert "previous weights" not in scoring.lower()
     assert "unearned_share = 1.0" in scoring

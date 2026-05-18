@@ -15,10 +15,12 @@ from lemma.common.config import LemmaSettings
 from lemma.corpus import CorpusRow, build_corpus_row, write_corpus_index, write_jsonl
 from lemma.lean.proof_identity import proof_identity
 from lemma.lean.sandbox import VerifyResult
+from lemma.protocol_invariants import enforce_production_invariants
 from lemma.scoring import ScoreResult, UnearnedPolicy, VerificationRecord, score_epoch
 from lemma.store import append_jsonl
 from lemma.submissions import LemmaSubmission, validate_submission_for_task
 from lemma.supply.queue import initial_active_pool
+from lemma.task_activation import task_reward_eligibility
 from lemma.tasks import LemmaTask, TaskRegistry, fetch_task_registry
 from lemma.verifiers.lean import verify_result_from_adapter_result
 from lemma.verifiers.registry import get_verifier
@@ -164,6 +166,7 @@ def validate_once(
 ) -> ValidatorRunResult:
     """Verify submissions, score unique proofs, and write local corpus artifacts."""
     registry = registry or fetch_task_registry(settings)
+    enforce_production_invariants(settings, registry)
     active_tasks = active_tasks_for_validation(registry, settings, tempo=tempo)
     tasks = {task.id: task for task in active_tasks}
     verify = verify_submission or _default_verify(settings)
@@ -200,7 +203,12 @@ def validate_once(
             continue
 
         result = verify(task, submission)
-        identity = proof_identity(proof_sha256=submission.proof_sha256, proof_term_hash=result.proof_term_hash)
+        identity = proof_identity(
+            proof_sha256=submission.proof_sha256,
+            proof_term_hash=result.proof_term_hash,
+            proof_script=submission.proof_script,
+        )
+        eligibility = task_reward_eligibility(task)
         record = VerificationRecord(
             task_id=task.id,
             task_version=task.task_version,
@@ -210,8 +218,12 @@ def validate_once(
             passed=result.passed,
             reason=result.reason,
             proof_sha256=submission.proof_sha256,
+            proof_identity=identity.value,
             proof_term_hash=identity.proof_term_hash,
             proof_identity_source=identity.source,
+            proof_identity_strength=identity.strength,
+            reward_eligible=eligibility.eligible,
+            reward_ineligibility_reason=eligibility.reason,
             received_at=received_at,
         )
         records.append(record)
@@ -237,6 +249,7 @@ def validate_once(
         active_task_count=len(active_tasks),
         unearned_policy=settings.unearned_allocation_policy,
         unearned_uid=settings.unearned_uid,
+        require_strong_identity_for_reward=settings.protocol_mode == "production",
     )
     if score.score_events:
         append_jsonl(settings.operator_data_dir / "score-events.jsonl", score.score_events)

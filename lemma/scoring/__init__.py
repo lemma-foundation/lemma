@@ -6,7 +6,9 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from lemma.lean.proof_identity import full_reward_eligible, identity_strength
 
 UnearnedPolicy = Literal["burn", "recycle", "hold"]
 
@@ -26,13 +28,20 @@ class VerificationResult(BaseModel):
     reason: str = ""
     proof_sha256: str
     proof_term_hash: str | None = None
-    proof_identity_source: str = "proof_sha256_fallback"
+    proof_identity: str = ""
+    proof_identity_source: str = "script_sha256"
+    proof_identity_strength: Literal["weak", "medium", "strong"] = "weak"
+    reward_eligible: bool = True
+    reward_ineligibility_reason: str = ""
     received_at: str = ""
     verifier_version: str = "lemma-lean-v1"
 
-    @property
-    def proof_identity(self) -> str:
-        return self.proof_term_hash or self.proof_sha256
+    @model_validator(mode="after")
+    def _fill_identity(self) -> VerificationResult:
+        if not self.proof_identity:
+            self.proof_identity = self.proof_term_hash or self.proof_sha256
+        self.proof_identity_strength = identity_strength(self.proof_identity_source)
+        return self
 
 
 VerificationRecord = VerificationResult
@@ -52,7 +61,11 @@ class ScoreEvent(BaseModel):
     proof_identity: str
     proof_sha256: str
     proof_term_hash: str | None = None
-    proof_identity_source: str = "proof_sha256_fallback"
+    proof_identity_source: str = "script_sha256"
+    proof_identity_strength: Literal["weak", "medium", "strong"] = "weak"
+    full_reward_eligible: bool = False
+    reward_eligible: bool = True
+    reward_ineligibility_reason: str = ""
     rewarded: bool
     credit: int
     score: float
@@ -87,6 +100,7 @@ def score_epoch(
     active_task_count: int | None = None,
     unearned_policy: UnearnedPolicy = "burn",
     unearned_uid: int | None = 0,
+    require_strong_identity_for_reward: bool = False,
 ) -> ScoreResult:
     """Award one fixed-price credit per active slot.
 
@@ -115,10 +129,15 @@ def score_epoch(
             if record.proof_identity in seen:
                 continue
             seen.add(record.proof_identity)
-            rewarded = not rewarded_this_task
+            identity_ok = full_reward_eligible(record.proof_identity_strength)
+            eligible = record.reward_eligible and (identity_ok or not require_strong_identity_for_reward)
+            rewarded = eligible and not rewarded_this_task
             if rewarded:
                 winners[task_id] = record.solver_hotkey
                 rewarded_this_task = True
+            reason = record.reward_ineligibility_reason
+            if require_strong_identity_for_reward and not identity_ok:
+                reason = reason or "weak_proof_identity"
             scored.append(ScoredProof(record=record, proof_identity=record.proof_identity, rewarded=rewarded))
             score_events.append(
                 ScoreEvent(
@@ -131,6 +150,10 @@ def score_epoch(
                     proof_sha256=record.proof_sha256,
                     proof_term_hash=record.proof_term_hash,
                     proof_identity_source=record.proof_identity_source,
+                    proof_identity_strength=record.proof_identity_strength,
+                    full_reward_eligible=identity_ok and record.reward_eligible,
+                    reward_eligible=record.reward_eligible,
+                    reward_ineligibility_reason=reason,
                     rewarded=rewarded,
                     credit=1 if rewarded else 0,
                     score=(1 / task_count) if rewarded and task_count else 0.0,

@@ -18,7 +18,14 @@ from lemma.submissions import build_submission
 ExportFormat = Literal["jsonl", "parquet", "hf"]
 
 
-def rows_v2_from_legacy_dir(corpus_dir: Path, *, domain: str = "lean") -> list[CorpusRowV2]:
+def rows_v2_from_legacy_dir(
+    corpus_dir: Path,
+    *,
+    domain: str = "lean",
+    useful_only: bool = False,
+    license_filter: str | None = None,
+    exclude_near_duplicates: bool = False,
+) -> list[CorpusRowV2]:
     rows: list[CorpusRowV2] = []
     for path in sorted(corpus_dir.glob("*.jsonl")):
         if path.name == "corpus-index.json":
@@ -26,6 +33,17 @@ def rows_v2_from_legacy_dir(corpus_dir: Path, *, domain: str = "lean") -> list[C
         for row in read_jsonl(path):
             task = row.to_task()
             if task.domain_id != domain:
+                continue
+            if useful_only and not row.quality.useful_verified_row:
+                continue
+            if license_filter:
+                wanted = license_filter.strip().lower()
+                if wanted == "commercial-safe":
+                    if row.quality.license_state not in {"clean_open", "attribution_required"}:
+                        continue
+                elif row.quality.license_state != wanted and row.source_license.lower() != wanted:
+                    continue
+            if exclude_near_duplicates and row.quality.near_duplicate_score >= 0.9:
                 continue
             submission = build_submission(
                 task,
@@ -78,7 +96,18 @@ def export_metadata(rows: list[CorpusRowV2]) -> dict[str, Any]:
         "verifier_id": verifier_id,
         "verifier_version": verifier_version,
         "license": "CC-BY-4.0",
+        "quality": _count(str(row.metadata.get("quality", {}).get("useful_verified_row", False)) for row in rows),
+        "proof_identity_strength": _count(
+            str(row.accepted_artifact.get("proof_identity_strength", "weak")) for row in rows
+        ),
     }
+
+
+def _count(values: Iterable[str]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for value in values:
+        counts[value] = counts.get(value, 0) + 1
+    return dict(sorted(counts.items()))
 
 
 def _write_jsonl(rows: list[CorpusRowV2], output: Path) -> None:

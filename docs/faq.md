@@ -2,7 +2,7 @@
 
 ## What is Lemma?
 
-Lemma is a Bittensor subnet that pays miners to produce verifier-grounded training data. Lean theorem proving is the first production domain.
+Lemma is a Bittensor subnet that pays miners to produce verifier-grounded training data. Lean theorem proving is the only production launch domain.
 
 ## What gets rewarded?
 

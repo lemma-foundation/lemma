@@ -35,9 +35,14 @@ proof_sha256
 proof_term_hash
 proof_identity
 proof_identity_source
+proof_identity_strength
+full_reward_eligible
 solver_hotkey
 validator_hotkey
 rewarded
+quality
+dependencies
+graph
 verification
 ```
 
@@ -51,7 +56,9 @@ frontier_depth
 ema_solve_rate
 ```
 
-`row_id` is the SHA256 of `target_sha256`, `proof_sha256`, `solver_hotkey`, and `validator_hotkey`. `proof_sha256` is the script hash. `proof_term_hash` is filled when the Lean proof-term extractor provides it. Until then, `proof_identity_source` must make any fallback explicit.
+`row_id` is the SHA256 of `target_sha256`, `proof_sha256`, `solver_hotkey`, and `validator_hotkey`. `proof_sha256` is the script hash. `proof_term_hash` is filled only when the Lean proof-term extractor provides it. Until then, `proof_identity_source` is `normalized_script_sha256` or `script_sha256`, and `proof_identity_strength` is `weak`.
+
+`dependencies` and `graph` make each row part of the corpus substrate. The initial graph links task, proof, proof identity, source, verifier, solver, and validator nodes. Future mechanisms should extend this graph rather than creating disconnected state.
 
 Failed proofs are not public corpus rows. Valid alternates can be stored with `rewarded: false`.
 
@@ -67,7 +74,7 @@ uv run lemma export-corpus --domain lean --format jsonl --out data/lean_corpus.j
 
 Replay uses the task fields embedded in each row, the pinned toolchain metadata, and the domain verifier. Lean is the only production domain today.
 
-`benchmark-export` writes compact JSONL records for downstream training or evaluation jobs. Each record contains task metadata, source/license metadata, proof text and hashes, reward context, verification summary, and public provenance. It is an export surface, not a claim that the rows are held-out benchmark tasks.
+`benchmark-export` writes compact JSONL records for downstream training or evaluation jobs. Each record contains task metadata, source/license metadata, proof text and hashes, quality metadata, graph links, reward context, verification summary, and public provenance. It is an export surface, not a claim that the rows are held-out benchmark tasks.
 
 `lemma.corpus.affine_export` converts v2 rows into simple `input` / `target` JSONL records for model-training consumers. The Affine relationship is data-consumer oriented: Affine-style miners can train on Lemma corpora, but Lemma does not depend on Affine for validation or payouts.
 

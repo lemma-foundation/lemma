@@ -530,12 +530,18 @@ def corpus_export_cmd(input_dir: Path, output_path: Path) -> None:
 @click.option("--output", "output_path", type=click.Path(dir_okay=False, path_type=Path), required=True)
 @click.option("--index", "index_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
 @click.option("--rewarded-only", is_flag=True, help="Export only proofs that received credit.")
+@click.option("--useful-only", is_flag=True, help="Export only rows that passed useful-row gates.")
+@click.option("--license", "license_filter", default=None, help="Filter by license state or use commercial-safe.")
+@click.option("--exclude-near-duplicates", is_flag=True, help="Drop rows with near_duplicate_score >= 0.9.")
 @click.option("--limit", type=click.IntRange(min=1), default=None)
 def corpus_benchmark_export_cmd(
     input_dir: Path,
     output_path: Path,
     index_path: Path | None,
     rewarded_only: bool,
+    useful_only: bool,
+    license_filter: str | None,
+    exclude_near_duplicates: bool,
     limit: int | None,
 ) -> None:
     """Export accepted proofs as compact benchmark/training JSONL.
@@ -552,6 +558,9 @@ def corpus_benchmark_export_cmd(
         output_path,
         index_path=index_path,
         rewarded_only=rewarded_only,
+        useful_only=useful_only,
+        license_filter=license_filter,
+        exclude_near_duplicates=exclude_near_duplicates,
         limit=limit,
     )
     click.echo(json.dumps(index, indent=2, sort_keys=True))
@@ -577,7 +586,18 @@ def corpus_index_cmd(input_dir: Path, output_path: Path) -> None:
 )
 @click.option("--input", "input_dir", type=click.Path(exists=True, file_okay=False, path_type=Path), default=None)
 @click.option("--out", "output_path", type=click.Path(path_type=Path), required=True)
-def export_corpus_cmd(domain: str, fmt: str, input_dir: Path | None, output_path: Path) -> None:
+@click.option("--useful-only", is_flag=True, help="Export only rows that passed useful-row gates.")
+@click.option("--license", "license_filter", default=None, help="Filter by license state or use commercial-safe.")
+@click.option("--exclude-near-duplicates", is_flag=True, help="Drop rows with near_duplicate_score >= 0.9.")
+def export_corpus_cmd(
+    domain: str,
+    fmt: str,
+    input_dir: Path | None,
+    output_path: Path,
+    useful_only: bool,
+    license_filter: str | None,
+    exclude_near_duplicates: bool,
+) -> None:
     """Export accepted artifacts as a domain-neutral dataset.
 
     \b
@@ -588,7 +608,13 @@ def export_corpus_cmd(domain: str, fmt: str, input_dir: Path | None, output_path
     from lemma.corpus.export import ExportFormat, export_rows, rows_v2_from_legacy_dir
 
     settings = LemmaSettings()
-    rows = rows_v2_from_legacy_dir(input_dir or settings.corpus_output_dir, domain=domain)
+    rows = rows_v2_from_legacy_dir(
+        input_dir or settings.corpus_output_dir,
+        domain=domain,
+        useful_only=useful_only,
+        license_filter=license_filter,
+        exclude_near_duplicates=exclude_near_duplicates,
+    )
     metadata = export_rows(rows, output=output_path, fmt=cast(ExportFormat, fmt))
     click.echo(stylize(f"Wrote {metadata['num_rows']} {domain} rows to {output_path}", fg="green", bold=True))
 

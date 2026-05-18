@@ -30,7 +30,8 @@ The previous-weight fallback rule is removed from scoring.
 
 - An artifact must pass the pinned verifier environment.
 - An artifact is task-bound by `task_id`, `task_version`, and `target_sha256`.
-- A proof is unique by Lean `proof_term_hash` when available, with a clearly labelled `proof_sha256` fallback until canonical proof-term extraction is production-ready.
+- A proof is unique by Lean `proof_term_hash` when available, with a clearly labelled weak script fallback until canonical proof-term extraction is production-ready.
+- In production mode, full reward requires `proof_identity_strength: strong`.
 - Each task pays at most one miner per validator epoch.
 - Valid alternates become corpus rows with `rewarded: false`.
 - Duplicate proof identities do not create extra rows or credit.

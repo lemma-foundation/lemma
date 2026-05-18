@@ -6,7 +6,7 @@ Miners search for accepted artifacts on active tasks. Validators check those art
 
 The design is intentionally binary. A proof passes the pinned verifier or it fails. Lemma does not reward prose, model branding, claimed effort, or subjective reasoning quality.
 
-Lean theorem proving is the first production domain. Math is the wedge; verified data is the product.
+Lean theorem proving is the only production launch domain. Math is the wedge; verified data is the product.
 
 ## Why It Exists
 

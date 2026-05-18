@@ -14,7 +14,11 @@
     "reason",
     "proof_sha256",
     "proof_term_hash",
+    "proof_identity",
     "proof_identity_source",
+    "proof_identity_strength",
+    "reward_eligible",
+    "reward_ineligibility_reason",
     "received_at",
     "verifier_version"
   ],
@@ -29,7 +33,11 @@
     "reason": { "type": "string" },
     "proof_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "proof_term_hash": { "type": ["string", "null"] },
+    "proof_identity": { "type": "string", "minLength": 1 },
     "proof_identity_source": { "type": "string", "minLength": 1 },
+    "proof_identity_strength": { "type": "string", "enum": ["weak", "medium", "strong"] },
+    "reward_eligible": { "type": "boolean" },
+    "reward_ineligibility_reason": { "type": "string" },
     "received_at": { "type": "string", "minLength": 1 },
     "verifier_version": { "type": "string", "minLength": 1 }
   }

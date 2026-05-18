@@ -68,6 +68,10 @@ class LemmaSettings(BaseSettings):
     schema_version: str = Field(default="v2", validation_alias="LEMMA_SCHEMA_VERSION")
     enabled_domains: tuple[str, ...] = Field(default=("lean",), validation_alias="LEMMA_ENABLED_DOMAINS")
     experimental_domains: tuple[str, ...] = Field(default=(), validation_alias="LEMMA_EXPERIMENTAL_DOMAINS")
+    protocol_mode: Literal["dev", "testnet", "production"] = Field(
+        default="dev",
+        validation_alias="LEMMA_PROTOCOL_MODE",
+    )
     enable_experimental_verus: bool = Field(
         default=False,
         validation_alias="LEMMA_ENABLE_EXPERIMENTAL_VERUS",

@@ -9,7 +9,6 @@ from loguru import logger
 
 from lemma.common.config import LemmaSettings
 from lemma.lean.problem_codec import problem_to_payload
-from lemma.lean.proof_identity import canonical_proof_term_hash
 from lemma.lean.sandbox import LeanSandbox, VerifyResult
 from lemma.lean.submission_policy import (
     scan_submission_policy,
@@ -63,8 +62,7 @@ def run_lean_verify(
 
 
 def _with_proof_identity(result: VerifyResult, proof_script: str) -> VerifyResult:
-    if result.passed and not result.proof_term_hash:
-        return result.model_copy(update={"proof_term_hash": canonical_proof_term_hash(proof_script)})
+    _ = proof_script
     return result
 
 

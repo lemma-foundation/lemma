@@ -1,27 +1,30 @@
 # Lemma
 
-Lemma is a verifier-grounded data subnet: a permissionless market where miners produce artifacts accepted by deterministic verifiers, and validators publish the accepted artifacts as open training corpora.
+Lemma v1 is a Lean-only proof-data subnet: a permissionless market where miners produce Lean proofs accepted by a deterministic verifier, and validators publish the accepted proofs as open training-data rows.
 
 AI can guess. Verifiers can check. Lemma pays for checked data.
 
-The first Lemma domain is Lean theorem proving. Lean demonstrates the mechanism because its verifier is deterministic, mature, and produces high-quality theorem-proof pairs.
+Lean theorem proving is the production foundation. Lean demonstrates the mechanism because its verifier is deterministic, mature, and produces high-quality theorem-proof pairs.
 
-Miners produce artifacts for active tasks. Validators check those artifacts with a pinned verifier, reward accepted proof units, burn unsolved-slot value by default, and publish accepted artifacts as replayable corpus rows.
+Miners produce proofs for active Lean tasks. Validators check those proofs with a pinned Lean verifier, reward accepted proof units, burn unsolved-slot value by default, and publish accepted proofs as replayable graph rows.
 
-Math is the wedge. Verified data is the product. The corpus is the product. The market is the means.
+Math is the wedge. Verified data is the product. The graph-shaped corpus is the substrate. The market is the means.
 
 ## What Lemma Is
 
 - a Bittensor subnet;
 - a continuous source of verifier-grounded training data;
 - a binary artifact-checking system: pass or fail;
-- a public corpus of verified rows that can be replayed later;
+- a public graph of verified rows that can be replayed later;
 - a path toward stronger open reasoning, theorem-proving, and code-verification models.
 
 ## What Lemma Is Not
 
 - not a Google DeepMind Formal Conjectures payout path;
 - not endorsed by Google DeepMind;
+- not a generic code benchmark;
+- not a production multi-domain verifier subnet yet;
+- not a test-only programming subnet;
 - not a smart-contract escrow product;
 - not an owner-cut router;
 - not a contract custody system;
@@ -40,7 +43,7 @@ For v1, the artifact is a Lean proof and the verifier is `lake build` in the pin
 
 ## Mechanism Class
 
-Lemma is not limited to Lean. Any domain with a deterministic verifier can become a Lemma domain:
+The row contract is graph-native so future deterministic verifier domains can attach to the same substrate. They are roadmap domains, not production launch mechanisms:
 
 - Lean: theorem-proof pairs
 - Verus: Rust programs, specifications, and proofs
@@ -92,9 +95,19 @@ Use [examples/operator-smoke](examples/operator-smoke/README.md) to build a pinn
   "target_sha256": "9b4b...",
   "proof_sha256": "14ae...",
   "proof_identity": "14ae...",
-  "proof_identity_source": "proof_sha256_fallback",
+  "proof_identity_source": "normalized_script_sha256",
+  "proof_identity_strength": "weak",
+  "full_reward_eligible": false,
   "source_stream": "human_curated",
   "source_license": "CC-BY-4.0",
+  "quality": {
+    "useful_verified_row": false,
+    "license_state": "attribution_required"
+  },
+  "dependencies": {
+    "mathlib_imports": ["Mathlib"],
+    "dependency_depth": 0
+  },
   "solver_hotkey": "miner-hotkey",
   "validator_hotkey": "validator-hotkey",
   "rewarded": true,
@@ -105,7 +118,7 @@ Use [examples/operator-smoke](examples/operator-smoke/README.md) to build a pinn
 }
 ```
 
-Rows include the theorem statement, imports, toolchain, proof script, hashes, source metadata, validator attribution, and verification summary. Failed proofs are not corpus rows. Valid alternate proofs can be stored with `rewarded: false`.
+Rows include the theorem statement, imports, toolchain, proof script, identity strength, source/license metadata, graph links, validator attribution, and verification summary. Failed proofs are not corpus rows. Valid alternate proofs can be stored with `rewarded: false`.
 
 Export the current Lean domain corpus:
 
@@ -139,6 +152,11 @@ Affine is the model competition layer. Lemma is the verifier-grounded data produ
 
 - [What is Lemma?](docs/what-is-lemma.md)
 - [Roadmap](ROADMAP.md)
+- [Protocol invariants](docs/PROTOCOL_INVARIANTS.md)
+- [Dependency graph](docs/dependency-graph.md)
+- [Proof identity](docs/proof-identity.md)
+- [Useful verified row](docs/useful-verified-row.md)
+- [License policy](docs/license-policy.md)
 - [Domain adapter spec](docs/domain-adapter-spec.md)
 - [Affine integration](docs/integrations/affine.md)
 - [Lean domain](docs/domains/lean.md)

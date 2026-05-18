@@ -12,9 +12,14 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from lemma.common.config import LemmaSettings
+from lemma.graph import RowDependencies, RowGraph, build_dependencies, build_row_graph
+from lemma.lean.proof_identity import proof_identity
 from lemma.lean.sandbox import VerifyResult
 from lemma.lean.verify_runner import run_lean_verify
+from lemma.license import license_state_for
+from lemma.quality import RowQuality, build_row_quality
 from lemma.submissions import LemmaSubmission
+from lemma.task_activation import task_reward_eligibility
 from lemma.tasks import LemmaTask, SourceRef
 
 
@@ -49,7 +54,9 @@ class CorpusRow(BaseModel):
     proof_sha256: str
     proof_term_hash: str | None = None
     proof_identity: str = ""
-    proof_identity_source: str = "proof_sha256_fallback"
+    proof_identity_source: str = "script_sha256"
+    proof_identity_strength: str = "weak"
+    full_reward_eligible: bool = False
     solver_hotkey: str
     validator_hotkey: str
     epoch: int | None = None
@@ -64,6 +71,9 @@ class CorpusRow(BaseModel):
     source_license: str
     accepted_at: str
     rewarded: bool
+    quality: RowQuality = Field(default_factory=RowQuality)
+    dependencies: RowDependencies = Field(default_factory=RowDependencies)
+    graph: RowGraph | None = None
     verification: VerificationSummary
     metadata: dict[str, Any] = Field(default_factory=dict)
 
@@ -75,6 +85,15 @@ class CorpusRow(BaseModel):
             raise ValueError("failed proofs are not corpus rows")
         if not self.proof_identity:
             self.proof_identity = self.proof_term_hash or self.proof_sha256
+        if self.graph is None:
+            task = self.to_task()
+            self.graph = build_row_graph(
+                task=task,
+                proof_identity=self.proof_identity,
+                proof_sha256=self.proof_sha256,
+                solver_hotkey=self.solver_hotkey,
+                validator_hotkey=self.validator_hotkey,
+            )
         expected = row_id_for(
             target_sha256=self.target_sha256,
             proof_sha256=self.proof_sha256,
@@ -157,12 +176,31 @@ def build_corpus_row(
     axiom_set: list[str] | None = None,
     active_K: int | None = None,
     ema_solve_rate: float | None = None,
-    proof_identity_source: str = "proof_sha256_fallback",
+    proof_identity_source: str = "script_sha256",
 ) -> CorpusRow:
     """Create a replayable corpus row from an accepted submission."""
     term_hash = proof_term_hash or result.proof_term_hash
-    identity = term_hash or submission.proof_sha256
-    source = proof_identity_source if term_hash is None else "lean_proof_term"
+    identity = proof_identity(
+        proof_sha256=submission.proof_sha256,
+        proof_term_hash=term_hash,
+        proof_script=submission.proof_script,
+    )
+    source = identity.source if term_hash is not None else proof_identity_source
+    if source == "script_sha256":
+        source = identity.source
+    eligibility = task_reward_eligibility(task)
+    dependencies = build_dependencies(task)
+    license_state = license_state_for(task.source_license, str(task.metadata.get("license_state") or ""))
+    quality = build_row_quality(
+        triviality_checked=task.triviality_status != "unknown" or bool(task.metadata.get("triviality_checked")),
+        baseline_solvers_failed=not bool(task.metadata.get("baseline_solved")),
+        difficulty_band=task.difficulty_band,
+        near_duplicate_score=float(task.metadata.get("near_duplicate_score") or 0.0),
+        dependency_depth=dependencies.dependency_depth,
+        license_state=license_state,
+        proof_identity_strength=identity.strength,
+        model_lift_release=task.metadata.get("model_lift_release"),
+    )
     return CorpusRow(
         task_id=task.id,
         task_version=task.task_version,
@@ -177,8 +215,12 @@ def build_corpus_row(
         proof_script=submission.proof_script,
         proof_sha256=submission.proof_sha256,
         proof_term_hash=term_hash,
-        proof_identity=identity,
+        proof_identity=identity.value,
         proof_identity_source=source,
+        proof_identity_strength=identity.strength,
+        full_reward_eligible=(
+            rewarded and eligibility.eligible and identity.strength == "strong" and quality.useful_verified_row
+        ),
         solver_hotkey=submission.solver_hotkey,
         validator_hotkey=validator_hotkey,
         epoch=epoch,
@@ -193,6 +235,15 @@ def build_corpus_row(
         source_license=task.source_license,
         accepted_at=accepted_at or datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         rewarded=rewarded,
+        quality=quality,
+        dependencies=dependencies,
+        graph=build_row_graph(
+            task=task,
+            proof_identity=identity.value,
+            proof_sha256=submission.proof_sha256,
+            solver_hotkey=submission.solver_hotkey,
+            validator_hotkey=validator_hotkey,
+        ),
         axiom_set=axiom_set or [],
         verification=VerificationSummary(
             passed=result.passed,
@@ -283,6 +334,7 @@ def benchmark_record(row: CorpusRow) -> dict[str, Any]:
             "term_hash": row.proof_term_hash,
             "identity": row.proof_identity,
             "identity_source": row.proof_identity_source,
+            "identity_strength": row.proof_identity_strength,
             "axiom_set": row.axiom_set,
         },
         "source": {
@@ -298,6 +350,9 @@ def benchmark_record(row: CorpusRow) -> dict[str, Any]:
             "ema_solve_rate": row.ema_solve_rate,
         },
         "verification": row.verification.model_dump(exclude_none=True),
+        "quality": row.quality.model_dump(exclude_none=True),
+        "dependencies": row.dependencies.model_dump(exclude_none=True),
+        "graph": row.graph.model_dump(exclude_none=True) if row.graph is not None else None,
         "provenance": {
             "accepted_at": row.accepted_at,
             "solver_hotkey": row.solver_hotkey,
@@ -320,6 +375,9 @@ def write_benchmark_export(
     *,
     index_path: Path | None = None,
     rewarded_only: bool = False,
+    useful_only: bool = False,
+    license_filter: str | None = None,
+    exclude_near_duplicates: bool = False,
     limit: int | None = None,
 ) -> dict[str, Any]:
     """Write accepted corpus proofs as a compact benchmark/training JSONL export."""
@@ -331,6 +389,17 @@ def write_benchmark_export(
         source_files.append({"path": path.name, "rows": len(rows), "sha256": hashlib.sha256(raw).hexdigest()})
         for row in rows:
             if rewarded_only and not row.rewarded:
+                continue
+            if useful_only and not row.quality.useful_verified_row:
+                continue
+            if license_filter:
+                wanted = license_filter.strip().lower()
+                if wanted == "commercial-safe":
+                    if row.quality.license_state not in {"clean_open", "attribution_required"}:
+                        continue
+                elif row.quality.license_state != wanted and row.source_license.lower() != wanted:
+                    continue
+            if exclude_near_duplicates and row.quality.near_duplicate_score >= 0.9:
                 continue
             records.append(benchmark_record(row))
             if limit is not None and len(records) >= limit:
@@ -349,6 +418,9 @@ def write_benchmark_export(
         "format": "lemma-benchmark-export-v1",
         "row_count": len(records),
         "rewarded_only": rewarded_only,
+        "useful_only": useful_only,
+        "license_filter": license_filter,
+        "exclude_near_duplicates": exclude_near_duplicates,
         "limit": limit,
         "export": {"path": output_path.name, "sha256": hashlib.sha256(raw_export).hexdigest()},
         "source_files": source_files,

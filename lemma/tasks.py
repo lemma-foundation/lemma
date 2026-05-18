@@ -107,6 +107,8 @@ class LemmaTask(BaseModel):
     queue_depth: int = Field(default=0, ge=0)
     frontier_depth: int | None = Field(default=None, ge=0)
     triviality_status: Literal["unknown", "trivial_curriculum", "paid_easy", "paid_medium", "paid_frontier"] = "unknown"
+    activation_status: Literal["paid", "curriculum", "benchmark", "quarantine", "rejected"] = "paid"
+    difficulty_band: Literal["easy", "medium", "hard", "frontier"] = "easy"
     active_epoch: int | None = None
     expires_epoch: int | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -146,6 +148,8 @@ class LemmaTask(BaseModel):
                 "queue_depth": self.queue_depth,
                 "frontier_depth": self.frontier_depth,
                 "triviality_status": self.triviality_status,
+                "activation_status": self.activation_status,
+                "difficulty_band": self.difficulty_band,
                 **self.metadata,
             },
         )
@@ -189,6 +193,8 @@ class LemmaTask(BaseModel):
                 "queue_depth": self.queue_depth,
                 "frontier_depth": self.frontier_depth,
                 "triviality_status": self.triviality_status,
+                "activation_status": self.activation_status,
+                "difficulty_band": self.difficulty_band,
                 **self.metadata,
             },
         }
