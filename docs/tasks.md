@@ -19,6 +19,14 @@ Launch interfaces cover these streams:
 
 Heavy generators run off-chain. Validators check deterministic task artifacts, not model inference.
 
+`mathlib_snapshot` supply starts from JSONL rows exported by an off-chain Mathlib checkout:
+
+```json
+{"theorem_name":"Nat.zero_add","type_expr":"∀ n : Nat, 0 + n = n","mathlib_rev":"...","source_path":"Mathlib/Data/Nat/Basic.lean"}
+```
+
+The importer erases the known proof into a `sorry` target and preserves source revision, file path, license, imports, and optional erased-proof hash as metadata.
+
 ## Activation Gates
 
 Every active task must have:
