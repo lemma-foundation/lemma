@@ -1,8 +1,8 @@
 # What Is Lemma?
 
-Lemma is a Bittensor subnet for producing open, Lean-verified proof data.
+Lemma is an open AlphaProof-style proof-data engine for Lean.
 
-Miners search for proofs of active Lean theorem tasks. Validators check those proofs with Lean. Accepted proofs are rewarded through normal Bittensor weights and appended to the Lemma Corpus.
+Miners search for proofs of active Lean theorem tasks. Validators check those proofs with Lean. Accepted proof units are rewarded through normal Bittensor weights and appended to the Lemma Corpus.
 
 The design is intentionally binary. A proof passes the pinned verifier or it fails. Lemma does not reward prose, model branding, claimed effort, or subjective reasoning quality.
 
@@ -13,7 +13,7 @@ Mathematical AI needs more than plausible text. It needs checked proof data that
 Lean gives the subnet a mechanical correctness signal. Lemma turns that signal into an open dataset loop:
 
 ```text
-task -> proof -> Lean check -> score -> corpus -> better prover
+formal tasks -> proof search -> Lean check -> public corpus -> better prover
 ```
 
 ## V1 Boundaries

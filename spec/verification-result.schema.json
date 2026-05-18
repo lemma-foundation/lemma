@@ -14,6 +14,7 @@
     "reason",
     "proof_sha256",
     "proof_term_hash",
+    "proof_identity_source",
     "received_at",
     "verifier_version"
   ],
@@ -28,6 +29,7 @@
     "reason": { "type": "string" },
     "proof_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "proof_term_hash": { "type": ["string", "null"] },
+    "proof_identity_source": { "type": "string", "minLength": 1 },
     "received_at": { "type": "string", "minLength": 1 },
     "verifier_version": { "type": "string", "minLength": 1 }
   }

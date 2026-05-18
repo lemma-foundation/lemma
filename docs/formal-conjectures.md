@@ -2,7 +2,7 @@
 
 Google DeepMind Formal Conjectures is a public collection of formal mathematical statements.
 
-Lemma references it as a frontier benchmark and downstream demonstration layer. Lemma v1 does not primarily pay miners to solve Formal Conjectures tasks, does not custody bounties for those statements, and is not endorsed by Google DeepMind.
+Lemma references it as a frontier benchmark and downstream demonstration layer. Lemma v1 does not primarily pay miners to solve Formal Conjectures tasks, does not custody funds for those statements, and is not endorsed by Google DeepMind.
 
 The intended relationship is:
 

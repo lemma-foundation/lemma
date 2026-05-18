@@ -12,8 +12,10 @@ def _schema(name: str) -> dict[str, object]:
 
 def test_task_schema_requires_source_and_version() -> None:
     required = set(_schema("task.schema.json")["required"])
+    props = set(_schema("task.schema.json")["properties"])
 
     assert {"task_version", "source_ref", "source_license", "source_stream"} <= required
+    assert {"queue_position", "queue_depth", "frontier_depth", "triviality_status"} <= props
 
 
 def test_submission_schema_requires_live_signature_fields() -> None:
@@ -24,6 +26,7 @@ def test_submission_schema_requires_live_signature_fields() -> None:
 
 def test_corpus_schema_requires_identity_attribution_and_reward_status() -> None:
     required = set(_schema("corpus-row.schema.json")["required"])
+    props = set(_schema("corpus-row.schema.json")["properties"])
 
     assert {
         "row_id",
@@ -33,7 +36,10 @@ def test_corpus_schema_requires_identity_attribution_and_reward_status() -> None
         "validator_hotkey",
         "accepted_at",
         "rewarded",
+        "proof_identity",
+        "proof_identity_source",
     } <= required
+    assert {"active_K", "queue_position", "queue_depth", "frontier_depth", "ema_solve_rate"} <= props
 
 
 def test_verification_result_schema_captures_replay_identity() -> None:
@@ -49,6 +55,7 @@ def test_verification_result_schema_captures_replay_identity() -> None:
         "reason",
         "proof_sha256",
         "proof_term_hash",
+        "proof_identity_source",
         "verifier_version",
     } <= required
 
@@ -60,7 +67,9 @@ def test_score_event_schema_captures_v1_score_rule() -> None:
         "task_id",
         "task_version",
         "proof_identity",
+        "proof_identity_source",
         "rewarded",
         "credit",
         "score",
+        "active_K",
     } <= required

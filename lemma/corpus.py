@@ -48,10 +48,17 @@ class CorpusRow(BaseModel):
     proof_script: str
     proof_sha256: str
     proof_term_hash: str | None = None
+    proof_identity: str = ""
+    proof_identity_source: str = "proof_sha256_fallback"
     solver_hotkey: str
     validator_hotkey: str
     epoch: int | None = None
     tempo: int | None = None
+    active_K: int | None = None
+    queue_position: int | None = None
+    queue_depth: int | None = None
+    frontier_depth: int | None = None
+    ema_solve_rate: float | None = None
     source_stream: str
     source_ref: SourceRef
     source_license: str
@@ -66,6 +73,8 @@ class CorpusRow(BaseModel):
             raise ValueError("corpus row schema_version must be 1")
         if not self.verification.passed:
             raise ValueError("failed proofs are not corpus rows")
+        if not self.proof_identity:
+            self.proof_identity = self.proof_term_hash or self.proof_sha256
         expected = row_id_for(
             target_sha256=self.target_sha256,
             proof_sha256=self.proof_sha256,
@@ -107,6 +116,9 @@ class CorpusRow(BaseModel):
             mathlib_rev=self.mathlib_rev,
             policy=self.policy,
             target_sha256=self.target_sha256,
+            queue_position=self.queue_position,
+            queue_depth=self.queue_depth or 0,
+            frontier_depth=self.frontier_depth,
             metadata=dict(self.metadata),
         )
 
@@ -143,8 +155,14 @@ def build_corpus_row(
     proof_term_hash: str | None = None,
     accepted_at: str | None = None,
     axiom_set: list[str] | None = None,
+    active_K: int | None = None,
+    ema_solve_rate: float | None = None,
+    proof_identity_source: str = "proof_sha256_fallback",
 ) -> CorpusRow:
     """Create a replayable corpus row from an accepted submission."""
+    term_hash = proof_term_hash or result.proof_term_hash
+    identity = term_hash or submission.proof_sha256
+    source = proof_identity_source if term_hash is None else "lean_proof_term"
     return CorpusRow(
         task_id=task.id,
         task_version=task.task_version,
@@ -158,11 +176,18 @@ def build_corpus_row(
         target_sha256=task.target_sha256,
         proof_script=submission.proof_script,
         proof_sha256=submission.proof_sha256,
-        proof_term_hash=proof_term_hash,
+        proof_term_hash=term_hash,
+        proof_identity=identity,
+        proof_identity_source=source,
         solver_hotkey=submission.solver_hotkey,
         validator_hotkey=validator_hotkey,
         epoch=epoch,
         tempo=tempo,
+        active_K=active_K,
+        queue_position=task.queue_position,
+        queue_depth=task.queue_depth,
+        frontier_depth=task.frontier_depth,
+        ema_solve_rate=ema_solve_rate,
         source_stream=task.source_stream,
         source_ref=task.source_ref,
         source_license=task.source_license,

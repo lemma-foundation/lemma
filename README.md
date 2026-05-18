@@ -1,10 +1,10 @@
 # Lemma
 
-Lemma is a Bittensor subnet for producing open, Lean-verified proof data for training mathematical AI.
+Lemma is an open AlphaProof-style proof-data engine for Lean: a Bittensor subnet where miners produce machine-checked proofs, validators verify them with the Lean kernel, and every accepted proof becomes public training data.
 
 AI can guess. Lean can check. Lemma pays for the checked data.
 
-Miners produce Lean proofs for active theorem tasks. Validators check those proofs with the pinned Lean environment, score the first accepted unique proof for each task, set normal Bittensor miner weights, and publish accepted proofs as replayable corpus rows.
+Miners produce Lean proofs for active theorem tasks. Validators check those proofs with the pinned Lean environment, reward accepted proof units, burn unsolved-slot value by default, and publish accepted proofs as replayable corpus rows.
 
 The corpus is the product. The market is the means.
 
@@ -18,7 +18,7 @@ The corpus is the product. The market is the means.
 
 ## What Lemma Is Not
 
-- not a Google DeepMind Formal Conjectures bounty subnet;
+- not a Google DeepMind Formal Conjectures payout path;
 - not endorsed by Google DeepMind;
 - not a smart-contract escrow product;
 - not an owner-cut router;
@@ -30,8 +30,8 @@ Lemma v1 uses normal Bittensor validator and miner emissions. Subnet owner emiss
 ## The Loop
 
 ```text
-task -> proof search -> Lean verification -> validator score
-     -> Bittensor weights -> public corpus -> stronger prover models
+formal task -> proof search -> Lean verification -> fixed-price proof unit
+     -> unearned-share burn/recycle policy -> public corpus -> stronger prover models
 ```
 
 Miners can use local tactics, hosted models, retrieval, search, human-written proofs, or custom agents. Validators only score the final checked proof artifact.
@@ -63,7 +63,7 @@ uv run lemma worker --check
 uv run lemma validate --once --no-set-weights
 ```
 
-The validator path fetches active tasks, validates task-bound submissions, runs Lean, scores accepted proofs, and writes local corpus deltas.
+The validator path fetches active tasks, validates task-bound submissions, runs Lean, scores accepted proofs, withholds unsolved-slot value from current solvers, and writes local corpus deltas.
 
 ## Corpus Row
 
@@ -74,6 +74,8 @@ The validator path fetches active tasks, validates task-bound submissions, runs 
   "task_version": 1,
   "target_sha256": "9b4b...",
   "proof_sha256": "14ae...",
+  "proof_identity": "14ae...",
+  "proof_identity_source": "proof_sha256_fallback",
   "source_stream": "human_curated",
   "source_license": "CC-BY-4.0",
   "solver_hotkey": "miner-hotkey",
@@ -88,7 +90,7 @@ The validator path fetches active tasks, validates task-bound submissions, runs 
 
 Rows include the theorem statement, imports, toolchain, proof script, hashes, source metadata, validator attribution, and verification summary. Failed proofs are not corpus rows. Valid alternate proofs can be stored with `rewarded: false`.
 
-## Scoring
+## Scoring And Unearned Share
 
 Each epoch has `K` active tasks. A miner's v1 score is:
 
@@ -96,7 +98,7 @@ Each epoch has `K` active tasks. A miner's v1 score is:
 score = verified_unique_wins / K
 ```
 
-Bittensor weights are then set proportional to verified wins among miners that earned credit. If nobody earns credit, validators leave weights unchanged.
+Bittensor miner weights use the same denominator: `weight = credit / K`. The unearned share is not redistributed to current solvers. It is burned by default and can only be routed to future proof-production rails by an explicit policy.
 
 ## Benchmarks
 
@@ -107,6 +109,8 @@ Lemma is independent and is not endorsed by Google DeepMind.
 ## Docs
 
 - [What is Lemma?](docs/what-is-lemma.md)
+- [Open AlphaProof-style engine](docs/open-alphaproof-engine.md)
+- [Open AlphaProof execution plan](docs/exec-plan-open-alphaproof.md)
 - [How it works](docs/how-it-works.md)
 - [Corpus](docs/corpus.md)
 - [Miner guide](docs/miner.md)

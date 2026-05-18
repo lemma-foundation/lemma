@@ -16,6 +16,13 @@ from lemma.common.config import LemmaSettings
 from lemma.problems.base import Problem
 
 SourceStream = Literal[
+    "mathlib_snapshot",
+    "mathlib_perturbation",
+    "state_graph",
+    "auto_formalized",
+    "conjecture_generated",
+    "hard_target_variant",
+    "trivial_curriculum",
     "generated",
     "proof_repair",
     "theorem_variant",
@@ -74,6 +81,10 @@ class LemmaTask(BaseModel):
     mathlib_rev: str
     policy: str = "restricted_helpers"
     target_sha256: str = ""
+    queue_position: int | None = Field(default=None, ge=0)
+    queue_depth: int = Field(default=0, ge=0)
+    frontier_depth: int | None = Field(default=None, ge=0)
+    triviality_status: Literal["unknown", "trivial_curriculum", "paid_easy", "paid_medium", "paid_frontier"] = "unknown"
     active_epoch: int | None = None
     expires_epoch: int | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -106,6 +117,10 @@ class LemmaTask(BaseModel):
                 "source_ref": self.source_ref.model_dump(exclude_none=True),
                 "source_license": self.source_license,
                 "task_version": self.task_version,
+                "queue_position": self.queue_position,
+                "queue_depth": self.queue_depth,
+                "frontier_depth": self.frontier_depth,
+                "triviality_status": self.triviality_status,
                 **self.metadata,
             },
         )

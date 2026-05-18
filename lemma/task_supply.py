@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Callable, Iterable
 from pathlib import Path
@@ -41,6 +42,10 @@ def make_task(
     source_name: str,
     source_license: str = "CC-BY-4.0",
     metadata: dict[str, Any] | None = None,
+    queue_position: int | None = None,
+    queue_depth: int = 0,
+    frontier_depth: int | None = None,
+    triviality_status: str = "unknown",
 ) -> LemmaTask:
     """Build a registry task with required provenance and computed target hash."""
     return LemmaTask(
@@ -58,6 +63,10 @@ def make_task(
         lean_toolchain=DEFAULT_TOOLCHAIN,
         mathlib_rev=DEFAULT_MATHLIB_REV,
         policy="restricted_helpers",
+        queue_position=queue_position,
+        queue_depth=queue_depth,
+        frontier_depth=frontier_depth,
+        triviality_status=triviality_status,  # type: ignore[arg-type]
         metadata=metadata or {},
     )
 
@@ -90,9 +99,11 @@ def generated_tasks(count: int) -> list[LemmaTask]:
             type_expr=type_expr,
             source_stream="generated",
             source_name="deterministic-dev-seed",
+            queue_position=offset,
+            queue_depth=offset // 2,
             metadata={"difficulty": "dev", "baseline_hint": hint},
         )
-        for task_id, title, theorem, type_expr, hint in templates[:count]
+        for offset, (task_id, title, theorem, type_expr, hint) in enumerate(templates[:count])
     ]
 
 
@@ -115,6 +126,23 @@ def eligible_tasks(tasks: Iterable[LemmaTask], baseline_gate: BaselineGate = def
             continue
         out.append(task)
     return out
+
+
+def deterministic_queue(
+    tasks: Iterable[LemmaTask],
+    *,
+    seed: str,
+    max_frontier_depth: int | None = None,
+) -> list[LemmaTask]:
+    """Return a deterministic shallow-first task queue."""
+    eligible = [task for task in tasks if max_frontier_depth is None or task.queue_depth <= max_frontier_depth]
+    return sorted(
+        eligible,
+        key=lambda task: (
+            task.queue_depth,
+            hashlib.sha256(f"{seed}:{task.id}:{task.target_sha256}".encode()).hexdigest(),
+        ),
+    )
 
 
 def write_registry(tasks: Iterable[LemmaTask], path: Path) -> None:

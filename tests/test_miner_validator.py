@@ -140,7 +140,7 @@ def test_validator_rejects_bad_target_hash_and_unsigned_live_submission(tmp_path
     assert "unsigned" in receipts
 
 
-def test_validator_zero_credit_epoch_leaves_weights_unset(tmp_path: Path) -> None:
+def test_validator_zero_credit_epoch_routes_unearned_share(tmp_path: Path) -> None:
     task = _task()
     submission = build_submission(task, solver_hotkey="hk-a", proof_script=_proof())
 
@@ -152,8 +152,10 @@ def test_validator_zero_credit_epoch_leaves_weights_unset(tmp_path: Path) -> Non
         no_set_weights=False,
     )
 
-    assert result.score.weights == {}
-    assert result.weights_set is False
+    assert result.score.miner_weights == {}
+    assert result.score.weights == {"burn_uid:0": 1.0}
+    assert result.score.unearned_share == 1.0
+    assert result.weights_set is True
     assert result.corpus_rows == ()
 
 

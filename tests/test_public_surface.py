@@ -23,6 +23,8 @@ def test_final_docs_structure_exists() -> None:
 
     assert docs == {
         "what-is-lemma.md",
+        "open-alphaproof-engine.md",
+        "exec-plan-open-alphaproof.md",
         "how-it-works.md",
         "corpus.md",
         "miner.md",
@@ -39,3 +41,21 @@ def test_final_docs_structure_exists() -> None:
         "testing.md",
         "faq.md",
     }
+
+
+def test_public_docs_keep_corpus_and_economics_invariant() -> None:
+    readme = Path("README.md").read_text(encoding="utf-8")
+    scoring = Path("docs/scoring.md").read_text(encoding="utf-8")
+
+    assert "The corpus is the product" in readme
+    assert "weight(miner) = credit(miner) / sum(all_credits)" not in scoring
+    assert "previous weights" not in scoring.lower()
+    assert "unearned_share = 1.0" in scoring
+
+
+def test_public_docs_do_not_make_alpha_endorsement_or_payout_claims() -> None:
+    text = "\n".join(path.read_text(encoding="utf-8") for path in Path("docs").glob("*.md"))
+
+    assert "is endorsed by Google DeepMind" not in text
+    assert "official AlphaProof" not in text
+    assert "pays Formal Conjectures" not in text

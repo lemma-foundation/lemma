@@ -23,7 +23,7 @@ Verification runs in a pinned Lean/mathlib environment. Docker verification disa
 
 ## Scoring Defenses
 
-Proofs are deduplicated by proof-term hash when available, otherwise proof-script hash. Public proof release should wait until the scoring window closes. Baseline-solved tasks and held-out benchmark claims are kept out of paid activation.
+Proofs are deduplicated by Lean proof-term hash when available. Script-hash fallback is labelled as `proof_sha256_fallback` and is not treated as exact structural identity. Public proof release should wait until the scoring window closes. Baseline-solved tasks and held-out benchmark claims are kept out of paid activation.
 
 First valid commit wins each task slot. Re-submitting another miner's proof after reveal should not pay. Validators must reproduce the active task set deterministically before scoring.
 

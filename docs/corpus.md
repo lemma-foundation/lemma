@@ -10,7 +10,7 @@ Corpus rows should be useful for supervised fine-tuning, retrieval, proof repair
 
 The launch schema is `spec/corpus-row.schema.json` with `schema_version: 1`.
 
-Required fields:
+Core fields:
 
 ```text
 schema_version
@@ -31,20 +31,27 @@ source_license
 proof_script
 proof_sha256
 proof_term_hash
-axiom_set
+proof_identity
+proof_identity_source
 solver_hotkey
 validator_hotkey
-epoch
-tempo
-accepted_at
 rewarded
 verification
-metadata
 ```
 
-`row_id` is the SHA256 of `target_sha256`, `proof_sha256`, `solver_hotkey`, and `validator_hotkey`. `proof_term_hash` is nullable at launch. `rewarded` is true only for proofs that received epoch credit. Valid alternates can be stored with `rewarded: false`.
+Queue and difficulty metadata can include:
 
-Failed proofs are not public corpus rows.
+```text
+active_K
+queue_position
+queue_depth
+frontier_depth
+ema_solve_rate
+```
+
+`row_id` is the SHA256 of `target_sha256`, `proof_sha256`, `solver_hotkey`, and `validator_hotkey`. `proof_sha256` is the script hash. `proof_term_hash` is filled when the Lean proof-term extractor provides it. Until then, `proof_identity_source` must make any fallback explicit.
+
+Failed proofs are not public corpus rows. Valid alternates can be stored with `rewarded: false`.
 
 ## Replay
 

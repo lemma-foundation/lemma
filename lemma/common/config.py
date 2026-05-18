@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -71,6 +71,11 @@ class LemmaSettings(BaseSettings):
     wallet_cold: str = Field(default="default", validation_alias="BT_WALLET_COLD")
     wallet_hot: str = Field(default="default", validation_alias="BT_WALLET_HOT")
     netuid: int = Field(default=0, ge=0, validation_alias="BT_NETUID")
+    unearned_allocation_policy: Literal["burn", "recycle", "hold"] = Field(
+        default="burn",
+        validation_alias="LEMMA_UNEARNED_ALLOCATION_POLICY",
+    )
+    unearned_uid: int | None = Field(default=0, ge=0, validation_alias="LEMMA_UNEARNED_UID")
 
     lean_sandbox_image: str = Field(default="lemma/lean-sandbox:latest", validation_alias="LEAN_SANDBOX_IMAGE")
     lean_verify_timeout_s: int = Field(default=300, ge=1, validation_alias="LEAN_VERIFY_TIMEOUT_S")

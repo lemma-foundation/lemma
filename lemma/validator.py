@@ -10,6 +10,7 @@ from pathlib import Path
 
 from lemma.common.config import LemmaSettings
 from lemma.corpus import CorpusRow, build_corpus_row, write_corpus_index, write_jsonl
+from lemma.lean.proof_identity import proof_identity
 from lemma.lean.sandbox import VerifyResult
 from lemma.lean.verify_runner import run_lean_verify
 from lemma.scoring import ScoreResult, VerificationRecord, score_epoch
@@ -106,6 +107,7 @@ def validate_once(
             continue
 
         result = verify(task, submission)
+        identity = proof_identity(proof_sha256=submission.proof_sha256, proof_term_hash=result.proof_term_hash)
         record = VerificationRecord(
             task_id=task.id,
             task_version=task.task_version,
@@ -115,7 +117,8 @@ def validate_once(
             passed=result.passed,
             reason=result.reason,
             proof_sha256=submission.proof_sha256,
-            proof_term_hash=None,
+            proof_term_hash=identity.proof_term_hash,
+            proof_identity_source=identity.source,
             received_at=received_at,
         )
         records.append(record)
@@ -136,7 +139,12 @@ def validate_once(
 
     append_jsonl(settings.operator_data_dir / "verification-records.jsonl", receipts)
 
-    score = score_epoch(records, active_task_count=len(tasks))
+    score = score_epoch(
+        records,
+        active_task_count=len(tasks),
+        unearned_policy=settings.unearned_allocation_policy,
+        unearned_uid=settings.unearned_uid,
+    )
     if score.score_events:
         append_jsonl(settings.operator_data_dir / "score-events.jsonl", score.score_events)
     rows: list[CorpusRow] = []
@@ -153,6 +161,8 @@ def validate_once(
                 epoch=epoch,
                 tempo=tempo,
                 proof_term_hash=scored.record.proof_term_hash,
+                proof_identity_source=scored.record.proof_identity_source,
+                active_K=len(tasks),
                 accepted_at=scored.record.received_at,
             )
         )

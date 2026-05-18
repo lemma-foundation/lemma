@@ -8,7 +8,7 @@ Lemma is a Bittensor subnet that pays miners to produce Lean-verified theorem/pr
 
 The first accepted unique Lean proof for an active task in a validator epoch.
 
-## Is Lemma a Formal Conjectures bounty subnet?
+## Is Lemma a Formal Conjectures payout subnet?
 
 No. Google DeepMind Formal Conjectures is a frontier benchmark and downstream demonstration layer. Lemma v1 rewards verified training-data production.
 

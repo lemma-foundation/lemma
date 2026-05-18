@@ -13,9 +13,11 @@
     "proof_identity",
     "proof_sha256",
     "proof_term_hash",
+    "proof_identity_source",
     "rewarded",
     "credit",
     "score",
+    "active_K",
     "received_at"
   ],
   "properties": {
@@ -28,9 +30,11 @@
     "proof_identity": { "type": "string", "minLength": 1 },
     "proof_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "proof_term_hash": { "type": ["string", "null"] },
+    "proof_identity_source": { "type": "string", "minLength": 1 },
     "rewarded": { "type": "boolean" },
     "credit": { "type": "integer", "minimum": 0, "maximum": 1 },
     "score": { "type": "number", "minimum": 0 },
+    "active_K": { "type": "integer", "minimum": 0 },
     "received_at": { "type": "string", "minLength": 1 }
   }
 }

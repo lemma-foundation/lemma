@@ -22,9 +22,9 @@ uv run lemma validate --once --no-set-weights
 5. Require signatures for live miner responses.
 6. Run the submission policy scan before Lean.
 7. Verify in Docker or a configured Lean worker.
-8. Score first accepted unique proof per task as `verified_unique_wins / K`.
-9. Normalize credits into Bittensor weights for miners that earned credit.
-10. Leave weights unchanged if no miner earns credit.
+8. Score first accepted unique proof per task as `credit / K`.
+9. Track `unearned_share = 1 - sum(miner_weights)`.
+10. Burn unearned share by default; do not redistribute it to current solvers.
 11. Write corpus rows for valid unique proofs after the scoring window closes.
 
 ## Worker

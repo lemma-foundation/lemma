@@ -126,6 +126,7 @@ class VerifyResult(BaseModel):
     stderr_tail: str = ""
     stdout_tail: str = ""
     build_seconds: float = 0.0
+    proof_term_hash: str | None = None
 
 
 class LeanSandbox:

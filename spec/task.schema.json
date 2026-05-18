@@ -33,7 +33,14 @@
         "theorem_variant",
         "premise_limited",
         "benchmark_practice",
-        "human_curated"
+        "human_curated",
+        "mathlib_snapshot",
+        "mathlib_perturbation",
+        "state_graph",
+        "auto_formalized",
+        "conjecture_generated",
+        "hard_target_variant",
+        "trivial_curriculum"
       ]
     },
     "source_ref": {
@@ -58,6 +65,13 @@
     "mathlib_rev": { "type": "string", "minLength": 1 },
     "policy": { "type": "string", "minLength": 1 },
     "target_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "queue_position": { "type": ["integer", "null"], "minimum": 0 },
+    "queue_depth": { "type": "integer", "minimum": 0 },
+    "frontier_depth": { "type": ["integer", "null"], "minimum": 0 },
+    "triviality_status": {
+      "type": "string",
+      "enum": ["unknown", "trivial_curriculum", "paid_easy", "paid_medium", "paid_frontier"]
+    },
     "active_epoch": { "type": ["integer", "null"] },
     "expires_epoch": { "type": ["integer", "null"] },
     "metadata": { "type": "object" }
