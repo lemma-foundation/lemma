@@ -269,7 +269,9 @@ def validate_once(
         write_jsonl(rows, settings.corpus_output_dir / filename)
         write_corpus_index(settings.corpus_output_dir, settings.corpus_output_dir / "corpus-index.json")
 
-    weights_set = bool(score.weights) and not no_set_weights
+    # Chain weight submission is intentionally not wired in this rewrite.
+    # Keep computed weights visible without claiming a live chain write.
+    weights_set = False
     summary = ValidatorRunSummary(
         schema_version=1,
         run_at=_now(),

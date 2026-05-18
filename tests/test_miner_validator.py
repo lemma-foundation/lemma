@@ -202,7 +202,7 @@ def test_validator_zero_credit_epoch_routes_unearned_share(tmp_path: Path) -> No
     assert result.score.miner_weights == {}
     assert result.score.weights == {"burn_uid:0": 1.0}
     assert result.score.unearned_share == 1.0
-    assert result.weights_set is True
+    assert result.weights_set is False
     assert result.corpus_rows == ()
     run_summary = ValidatorRunSummary.model_validate_json(
         (tmp_path / "operator" / "validator-runs.jsonl").read_text(encoding="utf-8").splitlines()[0]
@@ -210,7 +210,7 @@ def test_validator_zero_credit_epoch_routes_unearned_share(tmp_path: Path) -> No
     assert run_summary.verified_count == 1
     assert run_summary.accepted_unique_count == 0
     assert run_summary.unearned_share == 1.0
-    assert run_summary.weights_set is True
+    assert run_summary.weights_set is False
 
 
 def test_validator_uses_deterministic_active_window_not_full_registry(tmp_path: Path) -> None:

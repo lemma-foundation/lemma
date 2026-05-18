@@ -658,7 +658,7 @@ def operator_registry_inspect_cmd() -> None:
 
 @main.command("validate")
 @click.option("--once", is_flag=True, help="Run one validator scoring iteration.")
-@click.option("--no-set-weights", is_flag=True, help="Dry run: do not submit Bittensor weights.")
+@click.option("--no-set-weights", is_flag=True, help="Chain-write guard; current build computes weights only.")
 @click.option("--submissions-jsonl", type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None)
 @click.option("--submission-spool", type=click.Path(file_okay=False, path_type=Path), default=None)
 @click.option("--validator-hotkey", default=None, help="Override validator attribution.")
