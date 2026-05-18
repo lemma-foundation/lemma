@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from pathlib import Path
 from typing import Literal
 
@@ -60,6 +61,24 @@ class OperatorDiagnosticsReport(BaseModel):
     active_K: int = Field(ge=1)
     frontier_depth: int = Field(ge=0)
     active_task_ids: tuple[str, ...]
+
+
+class OperatorRegistryInspectReport(BaseModel):
+    """Compact public registry supply summary."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal[1]
+    registry_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    total_task_count: int = Field(ge=0)
+    active_K: int = Field(ge=1)
+    frontier_depth: int = Field(ge=0)
+    active_task_count: int = Field(ge=0)
+    eligible_task_count: int = Field(ge=0)
+    waiting_task_count: int = Field(ge=0)
+    parked_task_count: int = Field(ge=0)
+    max_queue_depth: int = Field(ge=0)
+    queue_depth_counts: dict[str, int]
 
 
 def _check(name: PreflightCheckName, ok: bool, detail: str) -> OperatorPreflightCheck:
@@ -154,4 +173,29 @@ def build_operator_diagnostics(settings: LemmaSettings) -> OperatorDiagnosticsRe
         active_K=preflight.active_K,
         frontier_depth=preflight.frontier_depth,
         active_task_ids=active_task_ids,
+    )
+
+
+def build_operator_registry_inspect(settings: LemmaSettings) -> OperatorRegistryInspectReport:
+    """Summarize registry supply depth using the validator's active-window logic."""
+    from lemma.tasks import fetch_task_registry
+    from lemma.validator import active_tasks_for_validation
+
+    registry = fetch_task_registry(settings)
+    active_tasks = active_tasks_for_validation(registry, settings)
+    eligible_count = sum(1 for task in registry.tasks if task.queue_depth <= settings.frontier_depth)
+    parked_count = len(registry.tasks) - eligible_count
+    queue_depth_counts = Counter(str(task.queue_depth) for task in registry.tasks)
+    return OperatorRegistryInspectReport(
+        schema_version=1,
+        registry_sha256=registry.sha256,
+        total_task_count=len(registry.tasks),
+        active_K=settings.active_task_count,
+        frontier_depth=settings.frontier_depth,
+        active_task_count=len(active_tasks),
+        eligible_task_count=eligible_count,
+        waiting_task_count=max(0, eligible_count - len(active_tasks)),
+        parked_task_count=parked_count,
+        max_queue_depth=max((task.queue_depth for task in registry.tasks), default=0),
+        queue_depth_counts=dict(sorted(queue_depth_counts.items(), key=lambda item: int(item[0]))),
     )

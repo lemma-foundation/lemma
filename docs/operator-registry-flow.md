@@ -32,6 +32,14 @@ LEMMA_OPERATOR_DATA_DIR=validator-data
 
 `LEMMA_ACTIVE_K` is the paid throughput denominator. `LEMMA_FRONTIER_DEPTH` and registry depth control difficulty. Increasing queue depth must not change the reward denominator.
 
+Inspect registry depth before accepting submissions:
+
+```bash
+uv run lemma operator registry-inspect
+```
+
+The command reports total, active, eligible, waiting, parked, and per-depth task counts from the configured registry.
+
 Run the operator preflight before accepting submissions:
 
 ```bash

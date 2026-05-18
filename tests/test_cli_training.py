@@ -11,7 +11,7 @@ from click.testing import CliRunner
 from lemma.cli.main import main
 from lemma.corpus import build_corpus_row, write_jsonl
 from lemma.lean.sandbox import VerifyResult
-from lemma.operator import OperatorDiagnosticsReport, OperatorPreflightReport
+from lemma.operator import OperatorDiagnosticsReport, OperatorPreflightReport, OperatorRegistryInspectReport
 from lemma.submissions import build_submission
 from lemma.task_supply import make_task, write_registry
 
@@ -227,6 +227,48 @@ def test_operator_diagnostics_writes_public_safe_report(tmp_path) -> None:
     assert checks["operator_data_dir"].detail == "ready"
     assert str(tmp_path) not in payload_text
     assert "LEMMA_TASK_REGISTRY_URL" not in payload_text
+
+
+def test_operator_registry_inspect_counts_active_waiting_and_parked(tmp_path) -> None:
+    tasks = [
+        make_task(
+            task_id=f"lemma.test.inspect_{idx}",
+            title=f"Inspect {idx}",
+            theorem_name=f"inspect_true_{idx}",
+            type_expr="True",
+            source_stream="human_curated",
+            source_name="pytest",
+            queue_depth=queue_depth,
+        )
+        for idx, queue_depth in enumerate((0, 0, 0, 2))
+    ]
+    registry_path = tmp_path / "registry.json"
+    write_registry(tasks, registry_path)
+    registry_sha256 = hashlib.sha256(registry_path.read_bytes()).hexdigest()
+
+    result = CliRunner().invoke(
+        main,
+        ["operator", "registry-inspect"],
+        env={
+            "LEMMA_PREFER_PROCESS_ENV": "1",
+            "LEMMA_TASK_REGISTRY_URL": str(registry_path),
+            "LEMMA_TASK_REGISTRY_SHA256_EXPECTED": registry_sha256,
+            "LEMMA_ACTIVE_K": "2",
+            "LEMMA_FRONTIER_DEPTH": "0",
+            "LEMMA_ACTIVE_QUEUE_SEED": "pytest-inspect",
+        },
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = OperatorRegistryInspectReport.model_validate_json(result.output)
+    assert payload.registry_sha256 == registry_sha256
+    assert payload.total_task_count == 4
+    assert payload.active_task_count == 2
+    assert payload.eligible_task_count == 3
+    assert payload.waiting_task_count == 1
+    assert payload.parked_task_count == 1
+    assert payload.max_queue_depth == 2
+    assert payload.queue_depth_counts == {"0": 3, "2": 1}
 
 
 def test_tasks_build_mathlib_snapshot_writes_pinned_registry(tmp_path) -> None:

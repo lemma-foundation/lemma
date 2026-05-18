@@ -9,7 +9,7 @@ import pytest
 from click.testing import CliRunner
 from lemma.cli.main import main
 from lemma.lean.sandbox import VerifyResult
-from lemma.operator import OperatorDiagnosticsReport, OperatorPreflightReport
+from lemma.operator import OperatorDiagnosticsReport, OperatorPreflightReport, OperatorRegistryInspectReport
 from lemma.submissions import build_submission
 from lemma.tasks import load_task_registry
 
@@ -74,6 +74,18 @@ def test_operator_registry_flow_smoke(monkeypatch: pytest.MonkeyPatch, tmp_path:
     }
     proof_path = fixture_dir / "Submission.lean"
     package_path = tmp_path / "submission.json"
+
+    inspect = runner.invoke(main, ["operator", "registry-inspect"], env=env)
+
+    assert inspect.exit_code == 0, inspect.output
+    inspect_payload = OperatorRegistryInspectReport.model_validate_json(inspect.output)
+    assert inspect_payload.registry_sha256 == registry_sha256
+    assert inspect_payload.total_task_count == 11
+    assert inspect_payload.active_task_count == 10
+    assert inspect_payload.eligible_task_count == 10
+    assert inspect_payload.waiting_task_count == 0
+    assert inspect_payload.parked_task_count == 1
+    assert inspect_payload.queue_depth_counts == {"0": 10, "2": 1}
 
     preflight = runner.invoke(main, ["operator", "preflight"], env=env)
 

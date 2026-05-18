@@ -585,6 +585,27 @@ def operator_diagnostics_cmd(ctx: click.Context, output_path: Path) -> None:
         ctx.exit(1)
 
 
+@operator_cmd.command("registry-inspect")
+def operator_registry_inspect_cmd() -> None:
+    """Inspect active and parked supply in the configured registry.
+
+    \b
+    Example:
+
+      lemma operator registry-inspect
+    """
+    from lemma.operator import build_operator_registry_inspect
+    from lemma.tasks import TaskError
+
+    settings = LemmaSettings()
+    setup_logging(settings.log_level)
+    try:
+        report = build_operator_registry_inspect(settings)
+    except (TaskError, OSError) as e:
+        raise click.ClickException(str(e)) from e
+    click.echo(json.dumps(report.model_dump(mode="json"), indent=2, sort_keys=True))
+
+
 @main.command("validate")
 @click.option("--once", is_flag=True, help="Run one validator scoring iteration.")
 @click.option("--no-set-weights", is_flag=True, help="Dry run: do not submit Bittensor weights.")

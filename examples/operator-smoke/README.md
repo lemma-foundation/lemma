@@ -43,9 +43,10 @@ export LEMMA_CORPUS_OUTPUT_DIR="$WORK/corpus"
 export LEMMA_OPERATOR_DATA_DIR="$WORK/operator"
 ```
 
-Run preflight:
+Inspect supply and run preflight:
 
 ```bash
+uv run lemma operator registry-inspect
 uv run lemma operator preflight
 uv run lemma operator diagnostics --output "$WORK/operator-diagnostics.json"
 ```
