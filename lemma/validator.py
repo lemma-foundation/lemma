@@ -15,12 +15,13 @@ from lemma.common.config import LemmaSettings
 from lemma.corpus import CorpusRow, build_corpus_row, write_corpus_index, write_jsonl
 from lemma.lean.proof_identity import proof_identity
 from lemma.lean.sandbox import VerifyResult
-from lemma.lean.verify_runner import run_lean_verify
 from lemma.scoring import ScoreResult, UnearnedPolicy, VerificationRecord, score_epoch
 from lemma.store import append_jsonl
 from lemma.submissions import LemmaSubmission, validate_submission_for_task
 from lemma.supply.queue import initial_active_pool
 from lemma.tasks import LemmaTask, TaskRegistry, fetch_task_registry
+from lemma.verifiers.lean import verify_result_from_adapter_result
+from lemma.verifiers.registry import get_verifier
 
 VerifySubmission = Callable[[LemmaTask, LemmaSubmission], VerifyResult]
 
@@ -60,13 +61,8 @@ def _now() -> str:
 
 def _default_verify(settings: LemmaSettings) -> VerifySubmission:
     def verify(task: LemmaTask, submission: LemmaSubmission) -> VerifyResult:
-        return run_lean_verify(
-            settings,
-            verify_timeout_s=settings.lean_verify_timeout_s,
-            problem=task.to_problem(),
-            proof_script=submission.proof_script,
-            submission_policy=task.policy,
-        )
+        verifier = get_verifier(task.domain_id, settings=settings)
+        return verify_result_from_adapter_result(verifier.verify(task, submission))
 
     return verify
 

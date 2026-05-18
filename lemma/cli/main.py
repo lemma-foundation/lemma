@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+from typing import cast
 
 import click
 
@@ -24,6 +25,7 @@ _ROOT_COMMAND_ORDER = (
     "verify",
     "submit",
     "corpus",
+    "export-corpus",
     "worker",
 )
 
@@ -64,7 +66,7 @@ class LemmaGroup(click.Group):
 @click.pass_context
 @click.version_option(version=__version__)
 def main(ctx: click.Context) -> None:
-    """Lean-verified proof data subnet.
+    """Verifier-grounded training data subnet.
 
     Examples: lemma setup; lemma status; lemma tasks list; lemma task show
     lemma.sample.true_intro; lemma mine --once; lemma validate --once
@@ -213,13 +215,15 @@ def status_cmd() -> None:
       lemma status
     """
     settings = LemmaSettings()
-    click.echo(stylize("Lemma proof-data status", fg="cyan", bold=True))
+    click.echo(stylize("Lemma verifier-data status", fg="cyan", bold=True))
     click.echo(stylize("  wallet_cold       ", dim=True) + settings.wallet_cold)
     click.echo(stylize("  wallet_hot        ", dim=True) + settings.wallet_hot)
     click.echo(stylize("  netuid            ", dim=True) + str(settings.netuid))
     click.echo(stylize("  task_registry_url ", dim=True) + settings.task_registry_url)
     click.echo(stylize("  corpus_index_url  ", dim=True) + (settings.corpus_index_url or "(local)"))
     click.echo(stylize("  corpus_output_dir ", dim=True) + str(settings.corpus_output_dir))
+    click.echo(stylize("  schema_version    ", dim=True) + settings.schema_version)
+    click.echo(stylize("  enabled_domains   ", dim=True) + ",".join(settings.enabled_domains))
     spool = str(settings.submission_spool_dir) if settings.submission_spool_dir else "(not configured)"
     click.echo(stylize("  submission_spool  ", dim=True) + spool)
     click.echo(stylize("  prover_command    ", dim=True) + (settings.prover_command or "(not configured)"))
@@ -559,6 +563,34 @@ def corpus_benchmark_export_cmd(
 def corpus_index_cmd(input_dir: Path, output_path: Path) -> None:
     """Backward-compatible alias for `lemma corpus export`."""
     corpus_export_cmd(input_dir, output_path)
+
+
+@main.command("export-corpus")
+@click.option("--domain", default="lean", show_default=True, help="Domain to export.")
+@click.option(
+    "--format",
+    "fmt",
+    type=click.Choice(["jsonl", "parquet", "hf"]),
+    default="jsonl",
+    show_default=True,
+    help="Export format.",
+)
+@click.option("--input", "input_dir", type=click.Path(exists=True, file_okay=False, path_type=Path), default=None)
+@click.option("--out", "output_path", type=click.Path(path_type=Path), required=True)
+def export_corpus_cmd(domain: str, fmt: str, input_dir: Path | None, output_path: Path) -> None:
+    """Export accepted artifacts as a domain-neutral dataset.
+
+    \b
+    Example:
+
+      lemma export-corpus --domain lean --format jsonl --out data/lean_corpus.jsonl
+    """
+    from lemma.corpus.export import ExportFormat, export_rows, rows_v2_from_legacy_dir
+
+    settings = LemmaSettings()
+    rows = rows_v2_from_legacy_dir(input_dir or settings.corpus_output_dir, domain=domain)
+    metadata = export_rows(rows, output=output_path, fmt=cast(ExportFormat, fmt))
+    click.echo(stylize(f"Wrote {metadata['num_rows']} {domain} rows to {output_path}", fg="green", bold=True))
 
 
 @main.group("operator")

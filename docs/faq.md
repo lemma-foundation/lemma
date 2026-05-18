@@ -2,11 +2,11 @@
 
 ## What is Lemma?
 
-Lemma is a Bittensor subnet that pays miners to produce Lean-verified theorem/proof data for training mathematical AI.
+Lemma is a Bittensor subnet that pays miners to produce verifier-grounded training data. Lean theorem proving is the first production domain.
 
 ## What gets rewarded?
 
-The first accepted unique Lean proof for an active task in a validator epoch.
+The first accepted unique artifact for an active task in a validator epoch. Today that artifact is a Lean proof.
 
 ## Is Lemma a Formal Conjectures payout subnet?
 
@@ -22,12 +22,12 @@ No for v1. Lemma uses normal Bittensor rewards and does not custody funds.
 
 ## Can miners use AI APIs?
 
-Yes. Miners can use local commands, OpenAI-compatible endpoints, tactic search, retrieval, hosted models, or human-written proofs. Validators only check the final proof.
+Yes. Miners can use local commands, OpenAI-compatible endpoints, tactic search, retrieval, hosted models, or human-written proofs. Validators only check the final artifact.
 
 ## What do validators score?
 
-Proof artifacts that pass Lean for active tasks. Validators do not score prose explanations, model names, or claimed effort.
+Artifacts that pass the pinned verifier for active tasks. Validators do not score prose explanations, model names, or claimed effort.
 
 ## What is the corpus?
 
-A public JSONL dataset of accepted Lean theorem/proof rows with source metadata, proof hashes, verifier results, and reward status.
+A public dataset of accepted verifier-grounded rows with source metadata, artifact hashes, verifier results, and reward status. The current corpus is the Lean domain corpus.

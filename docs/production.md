@@ -1,11 +1,11 @@
 # Production
 
-Production Lemma is the proof-data loop:
+Production Lemma is the verifier-grounded data loop:
 
 1. publish an active task registry;
-2. receive miner proof submissions;
-3. verify each proof with the pinned Lean environment;
-4. score first accepted unique proofs;
+2. receive miner artifact submissions;
+3. verify each artifact with the pinned domain environment;
+4. score first accepted unique artifacts;
 5. compute miner weights as `credit / K` and burn unearned share by default;
 6. publish accepted corpus rows and a small corpus index.
 
@@ -26,6 +26,7 @@ uv run lemma worker --check
 uv run lemma operator preflight
 uv run lemma worker --serve --host localhost --port 8787
 uv run lemma validate --once --submission-spool submission-spool --no-set-weights
+uv run lemma export-corpus --domain lean --format jsonl --out data/lean_corpus.jsonl
 ```
 
 Corpus deltas are written under `LEMMA_CORPUS_OUTPUT_DIR`. Local receipts are written under `LEMMA_OPERATOR_DATA_DIR`. If `LEMMA_SUBMISSION_SPOOL_DIR` is set, validators consume pending `.json` or `.jsonl` submission files from that directory and move them to `processed/` after a successful pass. These paths should remain ignored unless an operator intentionally publishes sanitized artifacts.

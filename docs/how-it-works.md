@@ -1,17 +1,19 @@
 # How It Works
 
-Lemma turns proof search into checked training data.
+Lemma turns artifact search into checked training data.
 
 ```text
-tasks -> proof search -> Lean check -> proof-unit score -> unearned-share policy -> corpus rows
+tasks -> artifact search -> deterministic verifier -> verified-unit score -> unearned-share policy -> corpus rows
 ```
 
-1. Validators publish a deterministic set of active Lean theorem tasks.
-2. Miners use any proof-search stack they want: tactics, retrieval, local models, hosted APIs, or human insight.
-3. Miners submit a proof package bound to `task_id`, `task_version`, and `target_sha256`.
-4. Validators run the pinned Lean verifier.
-5. The first unique passing proof for each active task earns epoch credit.
+1. Validators publish a deterministic set of active tasks.
+2. Miners use any search stack they want: tactics, retrieval, local models, hosted APIs, or human insight.
+3. Miners submit an artifact package bound to the task and declared verifier.
+4. Validators run the pinned domain verifier.
+5. The first unique passing artifact for each active task earns epoch credit.
 6. Validators compute miner weights as `credit / K`; unsolved-slot value is burned by default instead of redistributed.
-7. Accepted unique proofs become replayable public corpus rows.
+7. Accepted unique artifacts become replayable public corpus rows.
 
-The correctness boundary is Lean. Explanations, model names, and claimed effort are not scored.
+Lean theorem proving is the only active production domain today. The correctness boundary is the pinned Lean verifier. Explanations, model names, and claimed effort are not scored.
+
+The architecture is domain-neutral: a future domain must provide a deterministic verifier, task schema, submission schema, sandboxing policy, scoring rule, and corpus row normalization before it can become an active Lemma domain.

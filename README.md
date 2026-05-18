@@ -1,20 +1,22 @@
 # Lemma
 
-Lemma is an open AlphaProof-style proof-data engine for Lean: a Bittensor subnet where miners produce machine-checked proofs, validators verify them with the Lean kernel, and every accepted proof becomes public training data.
+Lemma is a verifier-grounded data subnet: a permissionless market where miners produce artifacts accepted by deterministic verifiers, and validators publish the accepted artifacts as open training corpora.
 
-AI can guess. Lean can check. Lemma pays for the checked data.
+AI can guess. Verifiers can check. Lemma pays for checked data.
 
-Miners produce Lean proofs for active theorem tasks. Validators check those proofs with the pinned Lean environment, reward accepted proof units, burn unsolved-slot value by default, and publish accepted proofs as replayable corpus rows.
+The first Lemma domain is Lean theorem proving. Lean demonstrates the mechanism because its verifier is deterministic, mature, and produces high-quality theorem-proof pairs.
 
-The corpus is the product. The market is the means.
+Miners produce artifacts for active tasks. Validators check those artifacts with a pinned verifier, reward accepted proof units, burn unsolved-slot value by default, and publish accepted artifacts as replayable corpus rows.
+
+Math is the wedge. Verified data is the product. The corpus is the product. The market is the means.
 
 ## What Lemma Is
 
 - a Bittensor subnet;
-- a continuous source of Lean theorem/proof training data;
-- a binary proof-checking system: pass or fail;
+- a continuous source of verifier-grounded training data;
+- a binary artifact-checking system: pass or fail;
 - a public corpus of verified rows that can be replayed later;
-- a path toward stronger open mathematical provers.
+- a path toward stronger open reasoning, theorem-proving, and code-verification models.
 
 ## What Lemma Is Not
 
@@ -34,7 +36,17 @@ formal task -> proof search -> Lean verification -> fixed-price proof unit
      -> unearned-share burn/recycle policy -> public corpus -> stronger prover models
 ```
 
-Miners can use local tactics, hosted models, retrieval, search, human-written proofs, or custom agents. Validators only score the final checked proof artifact.
+For v1, the artifact is a Lean proof and the verifier is `lake build` in the pinned Lean environment. Miners can use local tactics, hosted models, retrieval, search, human-written proofs, or custom agents. Validators only score the final checked artifact.
+
+## Mechanism Class
+
+Lemma is not limited to Lean. Any domain with a deterministic verifier can become a Lemma domain:
+
+- Lean: theorem-proof pairs
+- Verus: Rust programs, specifications, and proofs
+- SAT/SMT: formulas, assignments, solver traces, or certificates
+- LP/SDP: optimization instances plus primal/dual certificates
+- Cryptanalysis: instances plus verifiable witnesses
 
 ## Quick Start: Miners
 
@@ -95,6 +107,12 @@ Use [examples/operator-smoke](examples/operator-smoke/README.md) to build a pinn
 
 Rows include the theorem statement, imports, toolchain, proof script, hashes, source metadata, validator attribution, and verification summary. Failed proofs are not corpus rows. Valid alternate proofs can be stored with `rewarded: false`.
 
+Export the current Lean domain corpus:
+
+```bash
+uv run lemma export-corpus --domain lean --format jsonl --out data/lean_corpus.jsonl
+```
+
 ## Scoring And Unearned Share
 
 Each epoch has `K` active tasks. A miner's v1 score is:
@@ -111,9 +129,20 @@ Google DeepMind Formal Conjectures, lean-eval, miniF2F, PutnamBench, and the IMO
 
 Lemma is independent and is not endorsed by Google DeepMind.
 
+## For Model Miners
+
+Lemma corpora are intended for model training. Reasoning/model subnets can train on Lemma's accepted artifacts to improve theorem proving, code reasoning, program synthesis, SAT/SMT, and formal verification performance.
+
+Affine is the model competition layer. Lemma is the verifier-grounded data production layer. Affine-style miners can consume Lemma's public corpora; Lemma does not require a transactional Affine dependency.
+
 ## Docs
 
 - [What is Lemma?](docs/what-is-lemma.md)
+- [Roadmap](ROADMAP.md)
+- [Domain adapter spec](docs/domain-adapter-spec.md)
+- [Affine integration](docs/integrations/affine.md)
+- [Lean domain](docs/domains/lean.md)
+- [Verus domain](docs/domains/verus.md)
 - [Open AlphaProof-style engine](docs/open-alphaproof-engine.md)
 - [Open AlphaProof execution plan](docs/exec-plan-open-alphaproof.md)
 - [How it works](docs/how-it-works.md)

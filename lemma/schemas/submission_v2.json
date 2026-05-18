@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Lemma Submission v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "task_id",
+    "domain_id",
+    "miner_hotkey",
+    "artifact",
+    "created_at_block",
+    "declared_verifier_id",
+    "declared_verifier_version",
+    "metadata"
+  ],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 2 },
+    "task_id": { "type": "string", "minLength": 1 },
+    "domain_id": { "type": "string", "minLength": 1 },
+    "miner_hotkey": { "type": "string", "minLength": 1 },
+    "artifact": { "type": "object" },
+    "created_at_block": { "type": "integer", "minimum": 0 },
+    "declared_verifier_id": { "type": "string", "minLength": 1 },
+    "declared_verifier_version": { "type": "string", "minLength": 1 },
+    "metadata": { "type": "object" }
+  }
+}

@@ -1,14 +1,16 @@
 # Corpus
 
-The Lemma Corpus is the main product of the subnet: replayable Lean theorem/proof rows that validators accepted.
+The Lemma Corpus is the main product of the subnet: replayable verifier-grounded rows that validators accepted.
 
 ## Purpose
 
-Corpus rows should be useful for supervised fine-tuning, retrieval, proof repair, reinforcement learning, and evaluation. A row is valuable only if another operator can reconstruct the task and rerun the checker.
+Corpus rows should be useful for supervised fine-tuning, retrieval, repair loops, reinforcement learning, and evaluation. A row is valuable only if another operator can reconstruct the task and rerun the deterministic verifier.
 
 ## Schema
 
-The launch schema is `spec/corpus-row.schema.json` with `schema_version: 1`.
+The compatibility schema is `spec/corpus-row.schema.json` with `schema_version: 1`. It is the Lean domain corpus row used by the current validator path.
+
+The domain-neutral dataset schema is `lemma/schemas/corpus_row_v2.json` with `schema_version: 2`.
 
 Core fields:
 
@@ -60,11 +62,14 @@ uv run lemma corpus validate corpus.jsonl
 uv run lemma corpus replay corpus.jsonl
 uv run lemma corpus export --input corpus --output corpus/corpus-index.json
 uv run lemma corpus benchmark-export --input corpus --output exports/lemma-proofs.jsonl --index exports/index.json
+uv run lemma export-corpus --domain lean --format jsonl --out data/lean_corpus.jsonl
 ```
 
-Replay uses the task fields embedded in each row, the pinned toolchain metadata, and the Lean verifier.
+Replay uses the task fields embedded in each row, the pinned toolchain metadata, and the domain verifier. Lean is the only production domain today.
 
 `benchmark-export` writes compact JSONL records for downstream training or evaluation jobs. Each record contains task metadata, source/license metadata, proof text and hashes, reward context, verification summary, and public provenance. It is an export surface, not a claim that the rows are held-out benchmark tasks.
+
+`lemma.corpus.affine_export` converts v2 rows into simple `input` / `target` JSONL records for model-training consumers. The Affine relationship is data-consumer oriented: Affine-style miners can train on Lemma corpora, but Lemma does not depend on Affine for validation or payouts.
 
 ## Licensing
 

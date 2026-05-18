@@ -116,7 +116,7 @@ def test_mine_once_rejects_local_verify_failure(monkeypatch: pytest.MonkeyPatch,
     def fake_verify(*args: object, **kwargs: object) -> VerifyResult:
         return VerifyResult(passed=False, reason="compile_error")
 
-    monkeypatch.setattr("lemma.miner.run_lean_verify", fake_verify)
+    monkeypatch.setattr("lemma.verifiers.lean.run_lean_verify", fake_verify)
 
     with pytest.raises(ProverError, match="local verification failed"):
         mine_once(_settings(tmp_path), prover_command=f"{sys.executable} {script}", registry=_registry())

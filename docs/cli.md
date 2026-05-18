@@ -35,7 +35,7 @@ uv run lemma validate --once --submission-spool submission-spool --no-set-weight
 uv run lemma operator diagnostics --output operator-diagnostics-after.json
 ```
 
-After configuring a pinned registry hash, `operator registry-inspect` summarizes active, waiting, and parked supply depth. `operator preflight` checks registry hash pinning, active-window size, local output directories, and Lean verifier configuration before a validator pass. `operator diagnostics` writes the preflight report, registry summary, artifact counts, registry hash, and active task ids without env vars or local paths; capture it before and after validation to compare readiness with written artifacts. `validate` loads active tasks, rejects malformed submissions, runs Lean, scores first unique verified proofs, writes score events, appends `validator-runs.jsonl`, and writes corpus rows. A submission spool is a top-level directory of pending `.json` or `.jsonl` files; after a successful validator pass, consumed files move to `processed/`.
+After configuring a pinned registry hash, `operator registry-inspect` summarizes active, waiting, and parked supply depth. `operator preflight` checks registry hash pinning, active-window size, local output directories, and Lean verifier configuration before a validator pass. `operator diagnostics` writes the preflight report, registry summary, artifact counts, registry hash, and active task ids without env vars or local paths; capture it before and after validation to compare readiness with written artifacts. `validate` loads active tasks, rejects malformed submissions, dispatches to the verifier registry, scores first unique verified artifacts, writes score events, appends `validator-runs.jsonl`, and writes corpus rows. A submission spool is a top-level directory of pending `.json` or `.jsonl` files; after a successful validator pass, consumed files move to `processed/`.
 
 ## Task Supply
 
@@ -54,6 +54,7 @@ uv run lemma corpus validate corpus/epoch-1.jsonl
 uv run lemma corpus replay corpus/epoch-1.jsonl
 uv run lemma corpus export --input corpus --output corpus/corpus-index.json
 uv run lemma corpus benchmark-export --input corpus --output exports/lemma-proofs.jsonl --index exports/index.json
+uv run lemma export-corpus --domain lean --format jsonl --out data/lean_corpus.jsonl
 ```
 
-Corpus commands are for operators and dataset users who want to validate, replay, index, or export accepted proof data.
+Corpus commands are for operators and dataset users who want to validate, replay, index, or export accepted verifier-grounded data.

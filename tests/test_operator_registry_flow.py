@@ -160,7 +160,7 @@ def test_operator_registry_flow_smoke(monkeypatch: pytest.MonkeyPatch, tmp_path:
     def fake_verify(*args: object, **kwargs: object) -> VerifyResult:
         return VerifyResult(passed=True, reason="ok")
 
-    monkeypatch.setattr("lemma.validator.run_lean_verify", fake_verify)
+    monkeypatch.setattr("lemma.verifiers.lean.run_lean_verify", fake_verify)
 
     validate = runner.invoke(
         main,

@@ -14,11 +14,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from lemma.common.config import LemmaSettings
 from lemma.lean.sandbox import VerifyResult
-from lemma.lean.verify_runner import run_lean_verify
 from lemma.store import append_jsonl
 from lemma.submissions import LemmaSubmission, build_submission
 from lemma.task_supply import eligible_tasks
 from lemma.tasks import LemmaTask, TaskRegistry, fetch_task_registry
+from lemma.verifiers.lean import verify_result_from_adapter_result
+from lemma.verifiers.registry import get_verifier
 
 
 class ProverError(RuntimeError):
@@ -132,22 +133,18 @@ def mine_once(
         raise ProverError("no eligible active tasks")
 
     proof = solve_task(settings, task, prover_command=prover_command)
-    verification = run_lean_verify(
-        settings,
-        verify_timeout_s=settings.lean_verify_timeout_s,
-        problem=task.to_problem(),
-        proof_script=proof.proof_script,
-        submission_policy=task.policy,
-    )
-    if not verification.passed:
-        raise ProverError(f"local verification failed: {verification.reason}")
-
-    submission = build_submission(
+    verifier = get_verifier(task.domain_id, settings=settings)
+    draft_submission = build_submission(
         task,
         solver_hotkey=solver_hotkey or settings.wallet_hot,
         proof_script=proof.proof_script,
         metadata=proof.metadata,
     )
+    verification = verify_result_from_adapter_result(verifier.verify(task, draft_submission))
+    if not verification.passed:
+        raise ProverError(f"local verification failed: {verification.reason}")
+
+    submission = draft_submission
     append_jsonl(
         settings.operator_data_dir / "miner-attempts.jsonl",
         [

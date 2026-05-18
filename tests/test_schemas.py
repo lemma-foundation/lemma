@@ -20,11 +20,17 @@ def _schema(name: str) -> dict[str, object]:
     return json.loads(Path("spec", name).read_text(encoding="utf-8"))
 
 
+def _schema_v2(name: str) -> dict[str, object]:
+    return json.loads(Path("lemma", "schemas", name).read_text(encoding="utf-8"))
+
+
 def test_task_schema_requires_source_and_version() -> None:
     required = set(_schema("task.schema.json")["required"])
-    props = set(_schema("task.schema.json")["properties"])
+    schema = _schema("task.schema.json")
+    props = set(schema["properties"])
 
     assert {"task_version", "source_ref", "source_license", "source_stream"} <= required
+    assert schema["properties"]["domain_id"]["const"] == "lean"
     assert {"queue_position", "queue_depth", "frontier_depth", "triviality_status"} <= props
 
 
@@ -83,6 +89,19 @@ def test_score_event_schema_captures_v1_score_rule() -> None:
         "score",
         "active_K",
     } <= required
+
+
+def test_schema_v2_contracts_are_domain_neutral() -> None:
+    task = _schema_v2("task_v2.json")
+    submission = _schema_v2("submission_v2.json")
+    corpus_row = _schema_v2("corpus_row_v2.json")
+
+    assert {"domain_id", "verifier_id", "verifier_version", "prompt", "constraints"} <= set(task["required"])
+    assert "verus" in task["properties"]["domain_id"]["enum"]
+    assert {"domain_id", "artifact", "declared_verifier_id", "declared_verifier_version"} <= set(
+        submission["required"]
+    )
+    assert {"domain_id", "accepted_artifact", "verification", "provenance", "license"} <= set(corpus_row["required"])
 
 
 def test_operator_preflight_report_contract() -> None:

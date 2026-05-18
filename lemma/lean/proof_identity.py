@@ -7,7 +7,11 @@ fallback so downstream data does not confuse it for structural identity.
 
 from __future__ import annotations
 
+import hashlib
+import re
 from dataclasses import dataclass
+
+_SPACE_RE = re.compile(r"\s+")
 
 
 @dataclass(frozen=True)
@@ -22,3 +26,9 @@ def proof_identity(*, proof_sha256: str, proof_term_hash: str | None = None) -> 
     if term:
         return ProofIdentity(value=term, source="lean_proof_term", proof_term_hash=term)
     return ProofIdentity(value=proof_sha256, source="proof_sha256_fallback", proof_term_hash=None)
+
+
+def canonical_proof_term_hash(proof_script: str) -> str:
+    """Return a deterministic source-normalized proof identity fallback."""
+    normalized = _SPACE_RE.sub(" ", proof_script.strip())
+    return hashlib.sha256(normalized.encode()).hexdigest()

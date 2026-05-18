@@ -6,7 +6,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, Protocol
+from typing import Any, Final, Literal, Protocol
 from urllib.parse import unquote, urlparse
 
 import httpx
@@ -14,6 +14,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from lemma.common.config import LemmaSettings
 from lemma.problems.base import Problem
+
+LEAN_DOMAIN_ID: Final[Literal["lean"]] = "lean"
+LEAN_VERIFIER_ID: Final = "lake-build"
+LEAN_VERIFIER_VERSION: Final = "lemma-lean-v1"
 
 SourceStream = Literal[
     "mathlib_snapshot",
@@ -83,6 +87,9 @@ class LemmaTask(BaseModel):
     schema_version: int = 1
     id: str
     task_version: int = Field(default=1, ge=1)
+    domain_id: Literal["lean"] = LEAN_DOMAIN_ID
+    verifier_id: str = LEAN_VERIFIER_ID
+    verifier_version: str = LEAN_VERIFIER_VERSION
     title: str = ""
     source_stream: SourceStream = "generated"
     source_ref: SourceRef
@@ -132,6 +139,9 @@ class LemmaTask(BaseModel):
                 "source_ref": self.source_ref.model_dump(exclude_none=True),
                 "source_license": self.source_license,
                 "task_version": self.task_version,
+                "domain_id": self.domain_id,
+                "verifier_id": self.verifier_id,
+                "verifier_version": self.verifier_version,
                 "queue_position": self.queue_position,
                 "queue_depth": self.queue_depth,
                 "frontier_depth": self.frontier_depth,
@@ -139,6 +149,54 @@ class LemmaTask(BaseModel):
                 **self.metadata,
             },
         )
+
+    def to_v2(self) -> dict[str, Any]:
+        """Return the domain-neutral task row used by schema v2 exports."""
+        created_at_block = self.active_epoch or int(self.metadata.get("created_at_block") or 0)
+        return {
+            "schema_version": 2,
+            "task_id": self.id,
+            "domain_id": self.domain_id,
+            "verifier_id": self.verifier_id,
+            "verifier_version": self.verifier_version,
+            "task_type": "theorem_proving",
+            "created_at_block": created_at_block,
+            "source": self.source_stream,
+            "prompt": {
+                "theorem_name": self.theorem_name,
+                "imports": list(self.imports),
+                "statement": self.statement,
+                "type_expr": self.type_expr,
+                "submission_stub": self.submission_stub,
+            },
+            "constraints": {
+                "policy": self.policy,
+                "lean_toolchain": self.lean_toolchain,
+                "mathlib_rev": self.mathlib_rev,
+                "target_sha256": self.target_sha256,
+            },
+            "scoring": {
+                "rule": "first_valid_unique_verified_artifact",
+                "reward_unit": "proof_unit",
+                "denominator": "active_task_count",
+            },
+            "metadata": {
+                "task_version": self.task_version,
+                "title": self.title,
+                "source_ref": self.source_ref.model_dump(exclude_none=True),
+                "source_license": self.source_license,
+                "queue_position": self.queue_position,
+                "queue_depth": self.queue_depth,
+                "frontier_depth": self.frontier_depth,
+                "triviality_status": self.triviality_status,
+                **self.metadata,
+            },
+        }
+
+
+def upgrade_task_v1_to_v2(old_task: dict[str, Any]) -> dict[str, Any]:
+    """Upgrade a legacy Lean task row into the domain-neutral v2 shape."""
+    return LemmaTask.model_validate(old_task).to_v2()
 
 
 @dataclass(frozen=True)

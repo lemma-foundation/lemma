@@ -24,6 +24,9 @@
     "schema_version": { "type": "integer", "const": 1 },
     "id": { "type": "string", "minLength": 1 },
     "task_version": { "type": "integer", "minimum": 1 },
+    "domain_id": { "type": "string", "const": "lean" },
+    "verifier_id": { "type": "string", "minLength": 1 },
+    "verifier_version": { "type": "string", "minLength": 1 },
     "title": { "type": "string" },
     "source_stream": {
       "type": "string",

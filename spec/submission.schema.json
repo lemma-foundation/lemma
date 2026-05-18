@@ -24,6 +24,8 @@
     "proof_script": { "type": "string", "minLength": 1, "maxLength": 200000 },
     "proof_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "created_at": { "type": "string", "minLength": 1 },
+    "timelock_ciphertext": { "type": ["string", "null"] },
+    "drand_round": { "type": ["integer", "null"], "minimum": 0 },
     "signature": { "type": ["string", "null"] },
     "signature_payload_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "metadata": { "type": "object" }

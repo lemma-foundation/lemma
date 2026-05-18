@@ -141,7 +141,7 @@ def test_mine_once_with_fake_prover(monkeypatch: pytest.MonkeyPatch, tmp_path) -
     def fake_verify(*args: object, **kwargs: object) -> VerifyResult:
         return VerifyResult(passed=True, reason="ok")
 
-    monkeypatch.setattr("lemma.miner.run_lean_verify", fake_verify)
+    monkeypatch.setattr("lemma.verifiers.lean.run_lean_verify", fake_verify)
 
     result = CliRunner().invoke(
         main,
@@ -191,7 +191,7 @@ def test_validate_consumes_submission_spool(monkeypatch: pytest.MonkeyPatch, tmp
     def fake_verify(*args: object, **kwargs: object) -> VerifyResult:
         return VerifyResult(passed=True, reason="ok")
 
-    monkeypatch.setattr("lemma.validator.run_lean_verify", fake_verify)
+    monkeypatch.setattr("lemma.verifiers.lean.run_lean_verify", fake_verify)
     env = {
         "LEMMA_PREFER_PROCESS_ENV": "1",
         "LEMMA_SUBMISSION_SPOOL_DIR": str(spool),

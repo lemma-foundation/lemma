@@ -9,6 +9,7 @@ from loguru import logger
 
 from lemma.common.config import LemmaSettings
 from lemma.lean.problem_codec import problem_to_payload
+from lemma.lean.proof_identity import canonical_proof_term_hash
 from lemma.lean.sandbox import LeanSandbox, VerifyResult
 from lemma.lean.submission_policy import (
     scan_submission_policy,
@@ -58,7 +59,13 @@ def run_lean_verify(
         return _verify_via_http(settings, verify_timeout_s, problem, proof_script, base.rstrip("/"), policy)
 
     sb = lean_sandbox_from_settings(settings, verify_timeout_s)
-    return sb.verify(problem, proof_script, submission_policy=policy)
+    return _with_proof_identity(sb.verify(problem, proof_script, submission_policy=policy), proof_script)
+
+
+def _with_proof_identity(result: VerifyResult, proof_script: str) -> VerifyResult:
+    if result.passed and not result.proof_term_hash:
+        return result.model_copy(update={"proof_term_hash": canonical_proof_term_hash(proof_script)})
+    return result
 
 
 def _verify_via_http(
@@ -127,7 +134,7 @@ def _verify_via_http(
         )
 
     try:
-        return VerifyResult.model_validate(data)
+        return _with_proof_identity(VerifyResult.model_validate(data), proof_script)
     except Exception as e:  # noqa: BLE001
         return VerifyResult(
             passed=False,

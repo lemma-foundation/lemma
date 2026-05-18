@@ -1,0 +1,152 @@
+"""Domain-neutral corpus row v2 helpers."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from datetime import UTC, datetime
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from lemma.lean.proof_identity import canonical_proof_term_hash
+from lemma.lean.sandbox import VerifyResult
+from lemma.submissions import LemmaSubmission
+from lemma.tasks import LemmaTask
+from lemma.verifiers.base import VerificationResult
+
+
+class CorpusRowV2(BaseModel):
+    """One accepted verifier-grounded artifact row."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: int = 2
+    row_id: str = ""
+    task_id: str
+    domain_id: str
+    verifier_id: str
+    verifier_version: str
+    task_type: str
+    prompt: dict[str, Any]
+    accepted_artifact: dict[str, Any]
+    verification: dict[str, Any]
+    provenance: dict[str, Any]
+    license: str = "CC-BY-4.0"
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _validate_row(self) -> CorpusRowV2:
+        if self.schema_version != 2:
+            raise ValueError("corpus row schema_version must be 2")
+        if self.verification.get("accepted") is not True:
+            raise ValueError("corpus row v2 requires an accepted verifier result")
+        expected = row_id_for_v2(
+            domain_id=self.domain_id,
+            task_id=self.task_id,
+            normalized_artifact_hash=normalized_artifact_hash(self.accepted_artifact),
+        )
+        if self.row_id and self.row_id != expected:
+            raise ValueError(f"row_id mismatch: got {expected}, expected {self.row_id}")
+        self.row_id = expected
+        return self
+
+
+def stable_json(data: Any) -> str:
+    return json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def normalized_artifact_hash(artifact: dict[str, Any]) -> str:
+    return sha256_text(stable_json(artifact))
+
+
+def task_hash(prompt: dict[str, Any]) -> str:
+    return sha256_text(stable_json(prompt))
+
+
+def row_id_for_v2(*, domain_id: str, task_id: str, normalized_artifact_hash: str) -> str:
+    return sha256_text("\n".join([domain_id, task_id, normalized_artifact_hash]))
+
+
+def build_corpus_row_v2(
+    task: LemmaTask,
+    submission: LemmaSubmission,
+    result: VerificationResult | VerifyResult,
+    *,
+    validator_hotkey: str,
+    block: int = 0,
+    timestamp: str | None = None,
+    repo_commit: str = "",
+    rewarded: bool = True,
+) -> CorpusRowV2:
+    """Build the canonical v2 row for an accepted Lean proof."""
+    accepted, verifier_id, verifier_version, stdout, stderr, metrics = _result_parts(task, result)
+    proof_term_hash = str(metrics.get("proof_term_hash") or canonical_proof_term_hash(submission.proof_script))
+    prompt = task.to_v2()["prompt"]
+    artifact = {
+        "proof": submission.proof_script,
+        "imports": list(task.imports),
+        "full_file": submission.proof_script,
+        "proof_sha256": submission.proof_sha256,
+        "proof_term_hash": proof_term_hash,
+    }
+    return CorpusRowV2(
+        task_id=task.id,
+        domain_id=task.domain_id,
+        verifier_id=verifier_id,
+        verifier_version=verifier_version,
+        task_type="theorem_proving",
+        prompt=prompt,
+        accepted_artifact=artifact,
+        verification={
+            "accepted": accepted,
+            "stdout_hash": sha256_text(stdout),
+            "stderr_hash": sha256_text(stderr),
+            "metrics": metrics,
+        },
+        provenance={
+            "miner_hotkey": submission.solver_hotkey,
+            "validator_hotkey": validator_hotkey,
+            "block": block,
+            "timestamp": timestamp or datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+            "repo_commit": repo_commit,
+        },
+        metadata={
+            "task_hash": task_hash(prompt),
+            "normalized_artifact_hash": normalized_artifact_hash(artifact),
+            "rewarded": rewarded,
+            "source": task.source_stream,
+            "source_license": task.source_license,
+        },
+    )
+
+
+def _result_parts(
+    task: LemmaTask,
+    result: VerificationResult | VerifyResult,
+) -> tuple[bool, str, str, str, str, dict[str, Any]]:
+    if isinstance(result, VerificationResult):
+        return (
+            result.accepted,
+            result.verifier_id,
+            result.verifier_version,
+            result.stdout,
+            result.stderr,
+            result.metrics,
+        )
+    return (
+        result.passed,
+        task.verifier_id,
+        task.verifier_version,
+        result.stdout_tail,
+        result.stderr_tail,
+        {
+            "build_seconds": result.build_seconds,
+            "proof_term_hash": result.proof_term_hash,
+            "legacy_reason": result.reason,
+        },
+    )

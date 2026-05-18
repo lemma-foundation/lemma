@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Lemma Corpus Row v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "row_id",
+    "task_id",
+    "domain_id",
+    "verifier_id",
+    "verifier_version",
+    "task_type",
+    "prompt",
+    "accepted_artifact",
+    "verification",
+    "provenance",
+    "license",
+    "metadata"
+  ],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 2 },
+    "row_id": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "task_id": { "type": "string", "minLength": 1 },
+    "domain_id": { "type": "string", "minLength": 1 },
+    "verifier_id": { "type": "string", "minLength": 1 },
+    "verifier_version": { "type": "string", "minLength": 1 },
+    "task_type": { "type": "string", "minLength": 1 },
+    "prompt": { "type": "object" },
+    "accepted_artifact": { "type": "object" },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["accepted", "stdout_hash", "stderr_hash", "metrics"],
+      "properties": {
+        "accepted": { "type": "boolean", "const": true },
+        "stdout_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "stderr_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "metrics": { "type": "object" }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["miner_hotkey", "validator_hotkey", "block", "timestamp", "repo_commit"],
+      "properties": {
+        "miner_hotkey": { "type": "string", "minLength": 1 },
+        "validator_hotkey": { "type": "string", "minLength": 1 },
+        "block": { "type": "integer", "minimum": 0 },
+        "timestamp": { "type": "string", "minLength": 1 },
+        "repo_commit": { "type": "string" }
+      }
+    },
+    "license": { "type": "string", "const": "CC-BY-4.0" },
+    "metadata": { "type": "object" }
+  }
+}

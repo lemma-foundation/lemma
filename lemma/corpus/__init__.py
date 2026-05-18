@@ -376,3 +376,23 @@ def replay_jsonl(settings: LemmaSettings, path: Path) -> list[VerifyResult]:
             ),
         )
     return results
+
+
+from lemma.corpus.rows import CorpusRowV2, build_corpus_row_v2  # noqa: E402
+
+__all__ = [
+    "CorpusRow",
+    "CorpusRowV2",
+    "VerificationSummary",
+    "benchmark_record",
+    "build_corpus_index",
+    "build_corpus_row",
+    "build_corpus_row_v2",
+    "read_jsonl",
+    "replay_jsonl",
+    "row_id_for",
+    "validate_jsonl",
+    "write_benchmark_export",
+    "write_corpus_index",
+    "write_jsonl",
+]

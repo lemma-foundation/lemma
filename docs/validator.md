@@ -1,6 +1,6 @@
 # Validator Guide
 
-Validators are proof checkers and corpus publishers.
+Validators are verifier runners and corpus publishers.
 
 ## Basic Flow
 
@@ -11,7 +11,7 @@ uv run lemma worker --check
 uv run lemma validate --once --submission-spool submission-spool --no-set-weights
 ```
 
-`lemma validate` loads the task registry, validates miner submissions, runs Lean, writes verification results, writes score events, writes a public-safe `validator-runs.jsonl` summary row, and publishes corpus JSONL deltas.
+`lemma validate` loads the task registry, validates miner submissions, dispatches to the domain verifier adapter, writes verification results, writes score events, writes a public-safe `validator-runs.jsonl` summary row, and publishes corpus JSONL deltas.
 After configuring a pinned registry hash, `lemma operator preflight` checks registry pinning, active-window size, local output directories, and Lean verifier configuration.
 Use `lemma operator diagnostics --output operator-diagnostics-before.json` before a validator pass and `lemma operator diagnostics --output operator-diagnostics-after.json` after it. The before file captures registry readiness; the after file adds public-safe artifact counts for the run.
 For a file-based live loop, set `LEMMA_SUBMISSION_SPOOL_DIR` or pass `--submission-spool`. Pending top-level `.json` and `.jsonl` files are read once and moved to `processed/` after validation succeeds.
@@ -24,12 +24,12 @@ For a file-based live loop, set `LEMMA_SUBMISSION_SPOOL_DIR` or pass `--submissi
 4. Reject submissions outside the active window.
 5. Reject task-version and target-hash mismatches.
 6. Require signatures for live miner responses.
-7. Run the submission policy scan before Lean.
-8. Verify in Docker or a configured Lean worker.
-9. Score first accepted unique proof per active task as `credit / K`.
+7. Run the domain submission policy scan before the verifier.
+8. Verify with the adapter-selected pinned runtime.
+9. Score first accepted unique artifact per active task as `credit / K`.
 10. Track `unearned_share = 1 - sum(miner_weights)`.
 11. Burn unearned share by default; do not redistribute it to current solvers.
-12. Write corpus rows for valid unique proofs after the scoring window closes.
+12. Write corpus rows for valid unique artifacts after the scoring window closes.
 
 ## Worker
 
@@ -41,4 +41,4 @@ Non-loopback worker binds require `LEMMA_LEAN_VERIFY_REMOTE_BEARER` unless expli
 
 ## No Subjective Scoring
 
-Validators score proof artifacts, not reasoning prose, model names, proof style, or claimed effort.
+Validators score artifacts, not reasoning prose, model names, proof style, or claimed effort. Lean remains the only production verifier today.
