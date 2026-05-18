@@ -21,6 +21,8 @@ class TempoResult:
     active_K: int
     frontier_depth: int
     solved_slots: int
+    solve_rate: float
+    ema_solve_rate: float
     unearned_share: float
     miner_weights: dict[str, float]
 
@@ -75,20 +77,25 @@ def simulate_tempos(
                 )
             )
         score = score_epoch(records, active_task_count=state.active_K)
+        solved_slots = len(score.winners)
+        solve_rate = solved_slots / state.active_K
+        decision = retarget_curriculum(
+            state,
+            solved_slots=solved_slots,
+            validator_capacity=validator_capacity,
+            config=cfg,
+        )
         out.append(
             TempoResult(
                 tempo=tempo,
                 active_K=state.active_K,
                 frontier_depth=state.frontier_depth,
-                solved_slots=len(score.winners),
+                solved_slots=solved_slots,
+                solve_rate=solve_rate,
+                ema_solve_rate=decision.state.ema_solve_rate,
                 unearned_share=score.unearned_share,
                 miner_weights=score.miner_weights,
             )
         )
-        state = retarget_curriculum(
-            state,
-            solved_slots=len(score.winners),
-            validator_capacity=validator_capacity,
-            config=cfg,
-        ).state
+        state = decision.state
     return out

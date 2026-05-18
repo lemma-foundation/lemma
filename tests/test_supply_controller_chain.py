@@ -78,6 +78,8 @@ def test_economic_simulator_never_redistributes_unsolved_slots() -> None:
 
     assert len(rows) == 100
     assert all(sum(row.miner_weights.values()) <= 1.0 for row in rows)
+    assert all(row.solve_rate == row.solved_slots / row.active_K for row in rows)
+    assert all(0.0 <= row.ema_solve_rate <= 1.0 for row in rows)
     assert any(row.unearned_share > 0 for row in rows)
 
 
