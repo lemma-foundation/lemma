@@ -23,6 +23,7 @@ Production Lemma is the proof-data loop:
 ```bash
 uv run lemma status
 uv run lemma worker --check
+uv run lemma operator preflight
 uv run lemma worker --serve --host localhost --port 8787
 uv run lemma validate --once --no-set-weights
 ```

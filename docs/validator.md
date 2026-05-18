@@ -12,6 +12,7 @@ uv run lemma validate --once --no-set-weights
 ```
 
 `lemma validate` loads the task registry, validates miner submissions, runs Lean, writes verification results, writes score events, and publishes corpus JSONL deltas.
+After configuring a pinned registry hash, `lemma operator preflight` checks registry pinning, active-window size, local output directories, and Lean verifier configuration.
 
 ## Runtime Steps
 

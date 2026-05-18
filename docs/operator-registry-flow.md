@@ -32,6 +32,14 @@ LEMMA_OPERATOR_DATA_DIR=validator-data
 
 `LEMMA_ACTIVE_K` is the paid throughput denominator. `LEMMA_FRONTIER_DEPTH` and registry depth control difficulty. Increasing queue depth must not change the reward denominator.
 
+Run the operator preflight before accepting submissions:
+
+```bash
+uv run lemma operator preflight
+```
+
+The command fails if the registry is not SHA-pinned, the active window cannot fill `K`, output directories cannot be prepared, or the Lean verifier backend is not configured.
+
 ## 3. Validate Submissions
 
 Run the validator against task-bound miner submissions:

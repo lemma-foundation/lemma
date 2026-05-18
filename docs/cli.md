@@ -30,7 +30,7 @@ uv run lemma worker --check
 uv run lemma validate --once --submissions-jsonl submissions.jsonl --no-set-weights
 ```
 
-`validate` loads active tasks, rejects malformed submissions, runs Lean, scores first unique verified proofs, writes score events, and writes corpus rows.
+After configuring a pinned registry hash, `operator preflight` checks registry hash pinning, active-window size, local output directories, and Lean verifier configuration before a validator pass. `validate` loads active tasks, rejects malformed submissions, runs Lean, scores first unique verified proofs, writes score events, and writes corpus rows.
 
 ## Task Supply
 

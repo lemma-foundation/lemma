@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 
@@ -11,7 +12,7 @@ from lemma.cli.main import main
 from lemma.corpus import build_corpus_row, write_jsonl
 from lemma.lean.sandbox import VerifyResult
 from lemma.submissions import build_submission
-from lemma.task_supply import make_task
+from lemma.task_supply import make_task, write_registry
 
 
 def _true_intro_proof() -> str:
@@ -121,6 +122,76 @@ def test_validate_once_no_set_weights() -> None:
     assert result.exit_code == 0
     assert '"scores": {}' in result.output
     assert '"weights_set": false' in result.output
+
+
+def _write_preflight_registry(tmp_path, *, task_count: int = 2) -> tuple[str, str]:
+    tasks = [
+        make_task(
+            task_id=f"lemma.test.preflight_{idx}",
+            title=f"Preflight {idx}",
+            theorem_name=f"preflight_true_{idx}",
+            type_expr="True",
+            source_stream="human_curated",
+            source_name="pytest",
+            queue_depth=0,
+        )
+        for idx in range(task_count)
+    ]
+    path = tmp_path / "registry.json"
+    write_registry(tasks, path)
+    return str(path), hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def test_operator_preflight_passes_with_pinned_registry(tmp_path) -> None:
+    registry_url, registry_sha256 = _write_preflight_registry(tmp_path)
+
+    result = CliRunner().invoke(
+        main,
+        ["operator", "preflight"],
+        env={
+            "LEMMA_PREFER_PROCESS_ENV": "1",
+            "LEMMA_TASK_REGISTRY_URL": registry_url,
+            "LEMMA_TASK_REGISTRY_SHA256_EXPECTED": registry_sha256,
+            "LEMMA_ACTIVE_K": "2",
+            "LEMMA_FRONTIER_DEPTH": "0",
+            "LEMMA_ACTIVE_QUEUE_SEED": "pytest-preflight",
+            "LEMMA_CORPUS_OUTPUT_DIR": str(tmp_path / "corpus"),
+            "LEMMA_OPERATOR_DATA_DIR": str(tmp_path / "operator"),
+        },
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    checks = {check["name"]: check for check in payload["checks"]}
+    assert payload["ok"] is True
+    assert payload["registry_sha256"] == registry_sha256
+    assert checks["registry_hash_pin"]["ok"] is True
+    assert checks["active_window"]["detail"].startswith("2 active / K=2")
+    assert (tmp_path / "corpus").is_dir()
+    assert (tmp_path / "operator").is_dir()
+
+
+def test_operator_preflight_fails_without_registry_pin(tmp_path) -> None:
+    registry_url, _ = _write_preflight_registry(tmp_path, task_count=1)
+
+    result = CliRunner().invoke(
+        main,
+        ["operator", "preflight"],
+        env={
+            "LEMMA_PREFER_PROCESS_ENV": "1",
+            "LEMMA_TASK_REGISTRY_URL": registry_url,
+            "LEMMA_ACTIVE_K": "1",
+            "LEMMA_FRONTIER_DEPTH": "0",
+            "LEMMA_CORPUS_OUTPUT_DIR": str(tmp_path / "corpus"),
+            "LEMMA_OPERATOR_DATA_DIR": str(tmp_path / "operator"),
+        },
+    )
+
+    assert result.exit_code == 1, result.output
+    payload = json.loads(result.output)
+    checks = {check["name"]: check for check in payload["checks"]}
+    assert payload["ok"] is False
+    assert checks["registry_hash_pin"]["ok"] is False
 
 
 def test_tasks_build_mathlib_snapshot_writes_pinned_registry(tmp_path) -> None:

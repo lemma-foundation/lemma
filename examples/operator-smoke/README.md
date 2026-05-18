@@ -43,6 +43,12 @@ export LEMMA_CORPUS_OUTPUT_DIR="$WORK/corpus"
 export LEMMA_OPERATOR_DATA_DIR="$WORK/operator"
 ```
 
+Run preflight:
+
+```bash
+uv run lemma operator preflight
+```
+
 Build one task-bound submission:
 
 ```bash
