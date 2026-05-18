@@ -116,6 +116,7 @@ Lemma is independent and is not endorsed by Google DeepMind.
 - [Miner guide](docs/miner.md)
 - [Validator guide](docs/validator.md)
 - [Tasks](docs/tasks.md)
+- [Operator registry flow](docs/operator-registry-flow.md)
 - [Scoring](docs/scoring.md)
 - [Security and gaming](docs/security-and-gaming.md)
 - [Benchmarks](docs/benchmarks.md)

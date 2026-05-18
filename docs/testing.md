@@ -29,6 +29,7 @@ Corpus validation:
 uv run lemma corpus validate corpus.jsonl
 uv run lemma corpus replay corpus.jsonl
 uv run lemma corpus export --input corpus --output corpus/corpus-index.json
+uv run lemma corpus benchmark-export --input corpus --output exports/lemma-proofs.jsonl --index exports/index.json
 ```
 
 Docker-backed Lean checks require the sandbox image:

@@ -82,3 +82,5 @@ uv run lemma task show lemma.sample.true_intro
 uv run lemma tasks pull --output active-tasks.jsonl
 uv run lemma tasks build-mathlib-snapshot --input snapshot.jsonl --output tasks/mathlib-snapshot.registry.json
 ```
+
+See [Operator Registry Flow](operator-registry-flow.md) for the production sequence that pins the registry hash, configures the active window, validates submissions, and exports corpus data.

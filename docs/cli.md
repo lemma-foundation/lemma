@@ -40,6 +40,8 @@ uv run lemma tasks build-mathlib-snapshot --input snapshot.jsonl --output tasks/
 
 Task-supply commands are operator tools. The Mathlib snapshot builder converts proof-erased JSONL rows into a deterministic registry and prints the SHA256 pin for validator configuration.
 
+The production registry flow is documented in [Operator Registry Flow](operator-registry-flow.md).
+
 ## Corpus
 
 ```bash

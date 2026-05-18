@@ -29,6 +29,8 @@ uv run lemma validate --once --no-set-weights
 
 Corpus deltas are written under `LEMMA_CORPUS_OUTPUT_DIR`. Local receipts are written under `LEMMA_OPERATOR_DATA_DIR`; both paths should remain ignored unless an operator intentionally publishes sanitized artifacts.
 
+For the full registry-to-validator-to-export sequence, see [Operator Registry Flow](operator-registry-flow.md).
+
 Run the leak check before any commit or push:
 
 ```bash

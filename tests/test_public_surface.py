@@ -30,6 +30,7 @@ def test_final_docs_structure_exists() -> None:
         "miner.md",
         "validator.md",
         "tasks.md",
+        "operator-registry-flow.md",
         "scoring.md",
         "security-and-gaming.md",
         "benchmarks.md",
@@ -59,3 +60,23 @@ def test_public_docs_do_not_make_alpha_endorsement_or_payout_claims() -> None:
     assert "is endorsed by Google DeepMind" not in text
     assert "official AlphaProof" not in text
     assert "pays Formal Conjectures" not in text
+
+
+def test_operator_registry_flow_covers_registry_validation_and_export() -> None:
+    text = Path("docs/operator-registry-flow.md").read_text(encoding="utf-8")
+
+    required = [
+        "uv run lemma tasks build-mathlib-snapshot",
+        "LEMMA_TASK_REGISTRY_SHA256_EXPECTED=<registry_sha256>",
+        "LEMMA_ACTIVE_K=10",
+        "uv run lemma validate",
+        "--submissions-jsonl submissions.jsonl",
+        "Accepted unique proofs earn `credit / K`",
+        "unearned_share",
+        "uv run lemma corpus benchmark-export",
+        "uv run python scripts/leak_check.py",
+    ]
+    for fragment in required:
+        assert fragment in text
+
+    assert "must not change the reward denominator" in text
