@@ -529,18 +529,6 @@ def operator_cmd() -> None:
     """Operator preflight and registry tools."""
 
 
-def _preflight_check(name: str, ok: bool, detail: str) -> dict[str, object]:
-    return {"name": name, "ok": ok, "detail": detail}
-
-
-def _ensure_dir(path: Path) -> tuple[bool, str]:
-    try:
-        path.mkdir(parents=True, exist_ok=True)
-    except OSError as e:
-        return False, str(e)
-    return True, str(path)
-
-
 @operator_cmd.command("preflight")
 @click.pass_context
 def operator_preflight_cmd(ctx: click.Context) -> None:
@@ -551,69 +539,13 @@ def operator_preflight_cmd(ctx: click.Context) -> None:
 
       lemma operator preflight
     """
-    from lemma.tasks import TaskError, fetch_task_registry
-    from lemma.validator import active_tasks_for_validation
+    from lemma.operator import build_operator_preflight
 
     settings = LemmaSettings()
     setup_logging(settings.log_level)
-    checks: list[dict[str, object]] = []
-    registry = None
-
-    try:
-        registry = fetch_task_registry(settings)
-        checks.append(_preflight_check("registry_load", True, f"{len(registry.tasks)} tasks"))
-    except (TaskError, OSError) as e:
-        checks.append(_preflight_check("registry_load", False, str(e)))
-
-    expected_pin = (settings.task_registry_sha256_expected or "").strip()
-    checks.append(
-        _preflight_check(
-            "registry_hash_pin",
-            bool(expected_pin),
-            "LEMMA_TASK_REGISTRY_SHA256_EXPECTED is set" if expected_pin else "missing registry SHA256 pin",
-        )
-    )
-
-    if registry is not None:
-        checks.append(_preflight_check("registry_signature", True, registry.signature_status))
-        active_tasks = active_tasks_for_validation(registry, settings)
-        checks.append(
-            _preflight_check(
-                "active_window",
-                len(active_tasks) == settings.active_task_count,
-                (
-                    f"{len(active_tasks)} active / K={settings.active_task_count} "
-                    f"at frontier_depth={settings.frontier_depth}"
-                ),
-            )
-        )
-
-    corpus_ok, corpus_detail = _ensure_dir(settings.corpus_output_dir)
-    checks.append(_preflight_check("corpus_output_dir", corpus_ok, corpus_detail))
-    operator_ok, operator_detail = _ensure_dir(settings.operator_data_dir)
-    checks.append(_preflight_check("operator_data_dir", operator_ok, operator_detail))
-
-    if (settings.lean_verify_remote_url or "").strip():
-        verifier_detail = "remote Lean worker configured"
-        verifier_ok = True
-    elif settings.lean_use_docker:
-        verifier_detail = f"Docker verifier image {settings.lean_sandbox_image}"
-        verifier_ok = bool(settings.lean_sandbox_image.strip())
-    else:
-        verifier_detail = "host Lean enabled" if settings.allow_host_lean else "no Lean verifier backend configured"
-        verifier_ok = settings.allow_host_lean
-    checks.append(_preflight_check("lean_verifier", verifier_ok, verifier_detail))
-
-    ok = all(bool(check["ok"]) for check in checks)
-    payload = {
-        "ok": ok,
-        "registry_sha256": registry.sha256 if registry is not None else None,
-        "active_K": settings.active_task_count,
-        "frontier_depth": settings.frontier_depth,
-        "checks": checks,
-    }
-    click.echo(json.dumps(payload, indent=2, sort_keys=True))
-    if not ok:
+    report = build_operator_preflight(settings)
+    click.echo(json.dumps(report.model_dump(mode="json"), indent=2, sort_keys=True))
+    if not report.ok:
         ctx.exit(1)
 
 

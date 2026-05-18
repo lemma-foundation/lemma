@@ -39,6 +39,7 @@ uv run lemma operator preflight
 ```
 
 The command fails if the registry is not SHA-pinned, the active window cannot fill `K`, output directories cannot be prepared, or the Lean verifier backend is not configured.
+It emits a versioned JSON report with `schema_version`, `ok`, `registry_sha256`, `active_K`, `frontier_depth`, and `checks`.
 
 ## 3. Validate Submissions
 

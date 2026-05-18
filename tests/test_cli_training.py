@@ -11,6 +11,7 @@ from click.testing import CliRunner
 from lemma.cli.main import main
 from lemma.corpus import build_corpus_row, write_jsonl
 from lemma.lean.sandbox import VerifyResult
+from lemma.operator import OperatorPreflightReport
 from lemma.submissions import build_submission
 from lemma.task_supply import make_task, write_registry
 
@@ -161,12 +162,12 @@ def test_operator_preflight_passes_with_pinned_registry(tmp_path) -> None:
     )
 
     assert result.exit_code == 0, result.output
-    payload = json.loads(result.output)
-    checks = {check["name"]: check for check in payload["checks"]}
-    assert payload["ok"] is True
-    assert payload["registry_sha256"] == registry_sha256
-    assert checks["registry_hash_pin"]["ok"] is True
-    assert checks["active_window"]["detail"].startswith("2 active / K=2")
+    payload = OperatorPreflightReport.model_validate_json(result.output)
+    checks = {check.name: check for check in payload.checks}
+    assert payload.ok is True
+    assert payload.registry_sha256 == registry_sha256
+    assert checks["registry_hash_pin"].ok is True
+    assert checks["active_window"].detail.startswith("2 active / K=2")
     assert (tmp_path / "corpus").is_dir()
     assert (tmp_path / "operator").is_dir()
 
@@ -188,10 +189,10 @@ def test_operator_preflight_fails_without_registry_pin(tmp_path) -> None:
     )
 
     assert result.exit_code == 1, result.output
-    payload = json.loads(result.output)
-    checks = {check["name"]: check for check in payload["checks"]}
-    assert payload["ok"] is False
-    assert checks["registry_hash_pin"]["ok"] is False
+    payload = OperatorPreflightReport.model_validate_json(result.output)
+    checks = {check.name: check for check in payload.checks}
+    assert payload.ok is False
+    assert checks["registry_hash_pin"].ok is False
 
 
 def test_tasks_build_mathlib_snapshot_writes_pinned_registry(tmp_path) -> None:

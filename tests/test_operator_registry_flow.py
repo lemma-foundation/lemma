@@ -9,6 +9,7 @@ import pytest
 from click.testing import CliRunner
 from lemma.cli.main import main
 from lemma.lean.sandbox import VerifyResult
+from lemma.operator import OperatorPreflightReport
 from lemma.submissions import build_submission
 from lemma.tasks import load_task_registry
 
@@ -77,16 +78,16 @@ def test_operator_registry_flow_smoke(monkeypatch: pytest.MonkeyPatch, tmp_path:
     preflight = runner.invoke(main, ["operator", "preflight"], env=env)
 
     assert preflight.exit_code == 0, preflight.output
-    preflight_payload = json.loads(preflight.output)
-    preflight_checks = {check["name"]: check for check in preflight_payload["checks"]}
-    assert preflight_payload["ok"] is True
-    assert preflight_payload["registry_sha256"] == registry_sha256
-    assert preflight_payload["active_K"] == 10
-    assert preflight_checks["registry_hash_pin"]["ok"] is True
-    assert preflight_checks["active_window"]["detail"].startswith("10 active / K=10")
-    assert preflight_checks["corpus_output_dir"]["ok"] is True
-    assert preflight_checks["operator_data_dir"]["ok"] is True
-    assert preflight_checks["lean_verifier"]["detail"] == "host Lean enabled"
+    preflight_payload = OperatorPreflightReport.model_validate_json(preflight.output)
+    preflight_checks = {check.name: check for check in preflight_payload.checks}
+    assert preflight_payload.ok is True
+    assert preflight_payload.registry_sha256 == registry_sha256
+    assert preflight_payload.active_K == 10
+    assert preflight_checks["registry_hash_pin"].ok is True
+    assert preflight_checks["active_window"].detail.startswith("10 active / K=10")
+    assert preflight_checks["corpus_output_dir"].ok is True
+    assert preflight_checks["operator_data_dir"].ok is True
+    assert preflight_checks["lean_verifier"].detail == "host Lean enabled"
 
     submit = runner.invoke(
         main,

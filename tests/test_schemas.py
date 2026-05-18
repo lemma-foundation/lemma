@@ -5,6 +5,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+from lemma.operator import OperatorPreflightReport
+from pydantic import ValidationError
+
 
 def _schema(name: str) -> dict[str, object]:
     return json.loads(Path("spec", name).read_text(encoding="utf-8"))
@@ -73,3 +77,30 @@ def test_score_event_schema_captures_v1_score_rule() -> None:
         "score",
         "active_K",
     } <= required
+
+
+def test_operator_preflight_report_contract() -> None:
+    schema = OperatorPreflightReport.model_json_schema()
+    required = set(schema["required"])
+    props = set(schema["properties"])
+    check_schema = schema["$defs"]["OperatorPreflightCheck"]
+
+    assert {"schema_version", "ok", "registry_sha256", "active_K", "frontier_depth", "checks"} <= required
+    assert schema["additionalProperties"] is False
+    assert {"schema_version", "registry_sha256", "active_K", "frontier_depth"} <= props
+    assert {"name", "ok", "detail"} <= set(check_schema["required"])
+    assert check_schema["additionalProperties"] is False
+
+
+def test_operator_preflight_report_rejects_mismatched_ok() -> None:
+    with pytest.raises(ValidationError):
+        OperatorPreflightReport.model_validate(
+            {
+                "schema_version": 1,
+                "ok": True,
+                "registry_sha256": None,
+                "active_K": 1,
+                "frontier_depth": 0,
+                "checks": [{"name": "registry_hash_pin", "ok": False, "detail": "missing"}],
+            }
+        )
