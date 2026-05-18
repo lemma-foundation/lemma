@@ -21,6 +21,7 @@ Worker and validator smoke:
 ```bash
 uv run lemma worker --check
 uv run lemma validate --once --no-set-weights
+uv run pytest tests/test_operator_registry_flow.py -q
 ```
 
 Corpus validation:

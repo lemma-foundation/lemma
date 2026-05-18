@@ -58,6 +58,12 @@ uv run lemma corpus benchmark-export \
 
 The benchmark export is a dataset surface for downstream training and evaluation jobs. It is not a held-out benchmark claim.
 
+Run the fixture-backed smoke for this full path with:
+
+```bash
+uv run pytest tests/test_operator_registry_flow.py -q
+```
+
 ## 5. Before Commit Or Push
 
 Run the normal mechanical checks:
