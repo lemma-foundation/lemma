@@ -1,6 +1,6 @@
 # Protocol Invariants
 
-Lemma v1 launches as a Lean proof-data subnet. The graph is the substrate shape, but the paid production path remains Lean-only until the Lean wedge is reliable.
+Lemma launches as a Lean proof-data subnet. The graph is the substrate shape, but the paid production path remains Lean-only until the Lean wedge is reliable.
 
 Production invariants:
 

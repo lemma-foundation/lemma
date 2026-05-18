@@ -12,7 +12,7 @@ Production Lemma is the verifier-grounded data loop:
 ## Operator Rules
 
 - Do not route subnet owner emissions through a contract.
-- Do not use escrow-style reward custody for v1 rewards.
+- Do not use escrow-style reward custody for Lemma rewards.
 - Do not score prose, model branding, or claimed effort.
 - Keep task, submission, verifier, scoring, and corpus artifacts replayable.
 - Delay public proof release until the scoring window closes.

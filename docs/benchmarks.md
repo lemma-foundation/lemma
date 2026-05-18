@@ -2,7 +2,7 @@
 
 Benchmarks measure whether Lemma-trained provers are improving.
 
-They are not the base v1 reward stream.
+They are not the base reward stream.
 
 ## Frontier Benchmarks
 

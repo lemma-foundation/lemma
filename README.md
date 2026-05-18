@@ -1,6 +1,6 @@
 # Lemma
 
-Lemma v1 is a Lean-only proof-data subnet: a permissionless market where miners produce Lean proofs accepted by a deterministic verifier, and validators publish the accepted proofs as open training-data rows.
+Lemma is a Lean-only proof-data subnet: a permissionless market where miners produce Lean proofs accepted by a deterministic verifier, and validators publish the accepted proofs as open training-data rows.
 
 AI can guess. Verifiers can check. Lemma pays for checked data.
 
@@ -30,7 +30,7 @@ Math is the wedge. Verified data is the product. The graph-shaped corpus is the 
 - not a contract custody system;
 - not a prose-judging subnet.
 
-Lemma v1 uses normal Bittensor validator and miner emissions. Subnet owner emission routing is left alone.
+Lemma uses normal Bittensor validator and miner emissions. Subnet owner emission routing is left alone.
 
 ## The Loop
 
@@ -43,7 +43,7 @@ For v1, the artifact is a Lean proof and the verifier is `lake build` in the pin
 
 ## Mechanism Class
 
-The row contract is graph-native so future deterministic verifier domains can attach to the same substrate. They are roadmap domains, not production launch mechanisms:
+The row contract is graph-native so future deterministic verifier domains can attach to the same substrate. They are roadmap domains, not live production mechanisms:
 
 - Lean: theorem-proof pairs
 - Verus: Rust programs, specifications, and proofs

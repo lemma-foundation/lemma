@@ -1,6 +1,6 @@
 # Architecture
 
-Lemma is a verifier-grounded data engine. Lean theorem proving is the only production launch domain.
+Lemma is a verifier-grounded data engine. Lean theorem proving is the only production domain for now.
 
 ```text
 supply streams
@@ -36,6 +36,6 @@ supply streams
 
 Scoring is pure. Verifiers do not know about Bittensor weights. Provider/model logic stays on the miner side. Validators score artifacts, not providers.
 
-Lemma v1 does not custody funds and does not route owner emissions through contracts. Rewards flow through normal Bittensor miner and validator mechanics.
+Lemma does not custody funds and does not route owner emissions through contracts. Rewards flow through normal Bittensor miner and validator mechanics.
 
 Lean is the only enabled production domain. Any future domain has to enter through the verifier adapter contract and publish the same graph-shaped corpus row v2 shape.

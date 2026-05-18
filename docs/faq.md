@@ -2,7 +2,7 @@
 
 ## What is Lemma?
 
-Lemma is a Bittensor subnet that pays miners to produce verifier-grounded training data. Lean theorem proving is the only production launch domain.
+Lemma is a Bittensor subnet that pays miners to produce verifier-grounded training data. Lean theorem proving is the only production domain for now.
 
 ## What gets rewarded?
 
@@ -10,7 +10,7 @@ The first accepted unique artifact for an active task in a validator epoch. Toda
 
 ## Is Lemma a Formal Conjectures payout subnet?
 
-No. Google DeepMind Formal Conjectures is a frontier benchmark and downstream demonstration layer. Lemma v1 rewards verified training-data production.
+No. Google DeepMind Formal Conjectures is a frontier benchmark and downstream demonstration layer. Lemma rewards verified training-data production.
 
 ## Is Lemma endorsed by Google DeepMind?
 

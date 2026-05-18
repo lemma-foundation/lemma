@@ -1,4 +1,4 @@
-"""Task activation gates for the Lean v1 paid path."""
+"""Task activation gates for the Lean paid path."""
 
 from __future__ import annotations
 
