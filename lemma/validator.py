@@ -11,6 +11,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from lemma.chain.weights import ChainWeightSubmission
 from lemma.common.config import LemmaSettings
 from lemma.corpus import CorpusRow, build_corpus_row, write_corpus_index, write_jsonl
 from lemma.lean.proof_identity import proof_identity
@@ -26,7 +27,7 @@ from lemma.verifiers.lean import verify_result_from_adapter_result
 from lemma.verifiers.registry import get_verifier
 
 VerifySubmission = Callable[[LemmaTask, LemmaSubmission], VerifyResult]
-SubmitWeights = Callable[[LemmaSettings, dict[str, float]], bool]
+SubmitWeights = Callable[[LemmaSettings, dict[str, float]], ChainWeightSubmission]
 
 
 class ValidatorRunSummary(BaseModel):
@@ -47,6 +48,8 @@ class ValidatorRunSummary(BaseModel):
     unearned_share: float = Field(ge=0.0, le=1.0)
     unearned_policy: UnearnedPolicy
     weights_set: bool
+    chain_weight_uids: tuple[int, ...] | None = None
+    chain_weight_values: tuple[float, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -55,11 +58,44 @@ class ValidatorRunResult:
     score: ScoreResult
     corpus_rows: tuple[CorpusRow, ...]
     weights_set: bool
+    weight_submission: ChainWeightSubmission | None
     summary: ValidatorRunSummary
 
 
 def _now() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _weight_receipt(
+    *,
+    submitted_at: str,
+    settings: LemmaSettings,
+    registry_sha256: str,
+    submission: ChainWeightSubmission,
+) -> dict[str, object]:
+    receipt: dict[str, object] = {
+        "schema_version": 1,
+        "submitted_at": submitted_at,
+        "registry_sha256": registry_sha256,
+        "netuid": settings.netuid,
+        "bt_network": settings.bt_network or "default",
+        "success": submission.success,
+        "uids": submission.uids,
+        "weights": submission.weights,
+    }
+    if submission.extrinsic_function:
+        receipt["extrinsic_function"] = submission.extrinsic_function
+    if submission.extrinsic_hash:
+        receipt["extrinsic_hash"] = submission.extrinsic_hash
+    if submission.block_hash:
+        receipt["block_hash"] = submission.block_hash
+    if submission.block_number is not None:
+        receipt["block_number"] = submission.block_number
+    if submission.extrinsic_fee_rao is not None:
+        receipt["extrinsic_fee_rao"] = submission.extrinsic_fee_rao
+    if submission.message:
+        receipt["message"] = submission.message
+    return receipt
 
 
 def _default_verify(settings: LemmaSettings) -> VerifySubmission:
@@ -297,11 +333,27 @@ def validate_once(
         write_corpus_index(settings.corpus_output_dir, settings.corpus_output_dir / "corpus-index.json")
 
     weights_set = False
+    weight_submission: ChainWeightSubmission | None = None
     if not no_set_weights and settings.enable_set_weights:
         from lemma.chain.weights import submit_bittensor_weights
 
         writer = submit_weights or submit_bittensor_weights
-        weights_set = writer(settings, score.weights)
+        weight_submission = writer(settings, score.weights)
+        append_jsonl(
+            settings.operator_data_dir / "weight-submissions.jsonl",
+            [
+                _weight_receipt(
+                    submitted_at=_now(),
+                    settings=settings,
+                    registry_sha256=registry.sha256,
+                    submission=weight_submission,
+                )
+            ],
+        )
+        if not weight_submission.success:
+            message = weight_submission.message or "unknown set_weights failure"
+            raise RuntimeError(f"set_weights failed: {message}")
+        weights_set = True
     summary = ValidatorRunSummary(
         schema_version=1,
         run_at=_now(),
@@ -316,6 +368,8 @@ def validate_once(
         unearned_share=score.unearned_share,
         unearned_policy=score.unearned_policy,
         weights_set=weights_set,
+        chain_weight_uids=weight_submission.uids if weight_submission else None,
+        chain_weight_values=weight_submission.weights if weight_submission else None,
     )
     append_jsonl(settings.operator_data_dir / "validator-runs.jsonl", [summary])
     return ValidatorRunResult(
@@ -323,6 +377,7 @@ def validate_once(
         score=score,
         corpus_rows=tuple(rows),
         weights_set=weights_set,
+        weight_submission=weight_submission,
         summary=summary,
     )
 

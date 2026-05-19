@@ -763,24 +763,22 @@ def validate_cmd(
     )
     if spool_paths and spool_dir is not None:
         archive_submission_spool(spool_paths, spool_dir)
-    click.echo(
-        json.dumps(
-            {
-                "verified": len(result.verification_records),
-                "accepted_unique": len(result.score.valid_unique_proofs),
-                "credits": result.score.credits,
-                "scores": result.score.scores,
-                "submission_files_consumed": len(spool_paths),
-                "weights": result.score.weights,
-                "corpus_rows": len(result.corpus_rows),
-                "unearned_policy": result.summary.unearned_policy,
-                "unearned_share": result.summary.unearned_share,
-                "weights_set": result.weights_set,
-            },
-            indent=2,
-            sort_keys=True,
-        )
-    )
+    output = {
+        "verified": len(result.verification_records),
+        "accepted_unique": len(result.score.valid_unique_proofs),
+        "credits": result.score.credits,
+        "scores": result.score.scores,
+        "submission_files_consumed": len(spool_paths),
+        "weights": result.score.weights,
+        "corpus_rows": len(result.corpus_rows),
+        "unearned_policy": result.summary.unearned_policy,
+        "unearned_share": result.summary.unearned_share,
+        "weights_set": result.weights_set,
+    }
+    if result.weight_submission:
+        output["chain_weight_uids"] = list(result.weight_submission.uids)
+        output["chain_weight_values"] = list(result.weight_submission.weights)
+    click.echo(json.dumps(output, indent=2, sort_keys=True))
 
 
 @main.command("worker")

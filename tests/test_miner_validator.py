@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from lemma.chain.weights import ChainWeightSubmission
 from lemma.common.config import LemmaSettings
 from lemma.lean.sandbox import VerifyResult
 from lemma.miner import ProverError, mine_once, run_prover_command
@@ -242,9 +243,21 @@ def test_validator_submits_weights_only_when_enabled(tmp_path: Path) -> None:
     submission = build_submission(_task(), solver_hotkey="hk-a", proof_script=_proof())
     calls: list[dict[str, float]] = []
 
-    def fake_submit_weights(settings: LemmaSettings, weights: dict[str, float]) -> bool:  # noqa: ARG001
+    def fake_submit_weights(
+        _settings_arg: LemmaSettings, weights: dict[str, float]
+    ) -> ChainWeightSubmission:
         calls.append(weights)
-        return True
+        return ChainWeightSubmission(
+            success=True,
+            uids=(3,),
+            weights=(1.0,),
+            message="included",
+            extrinsic_function="set_weights_extrinsic",
+            extrinsic_hash="0xabc",
+            block_hash="0xdef",
+            block_number=42,
+            extrinsic_fee_rao=123,
+        )
 
     result = validate_once(
         _settings(tmp_path).model_copy(update={"enable_set_weights": True}),
@@ -256,7 +269,69 @@ def test_validator_submits_weights_only_when_enabled(tmp_path: Path) -> None:
     )
 
     assert result.weights_set is True
+    assert result.weight_submission == ChainWeightSubmission(
+        success=True,
+        uids=(3,),
+        weights=(1.0,),
+        message="included",
+        extrinsic_function="set_weights_extrinsic",
+        extrinsic_hash="0xabc",
+        block_hash="0xdef",
+        block_number=42,
+        extrinsic_fee_rao=123,
+    )
+    assert result.summary.chain_weight_uids == (3,)
+    assert result.summary.chain_weight_values == (1.0,)
     assert calls == [{"hk-a": 1.0}]
+    receipt_path = tmp_path / "operator" / "weight-submissions.jsonl"
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert receipt == {
+        "bt_network": "default",
+        "block_hash": "0xdef",
+        "block_number": 42,
+        "extrinsic_fee_rao": 123,
+        "extrinsic_function": "set_weights_extrinsic",
+        "extrinsic_hash": "0xabc",
+        "message": "included",
+        "netuid": 0,
+        "registry_sha256": "0" * 64,
+        "schema_version": 1,
+        "submitted_at": receipt["submitted_at"],
+        "success": True,
+        "uids": [3],
+        "weights": [1.0],
+    }
+    run_summary = ValidatorRunSummary.model_validate_json(
+        (tmp_path / "operator" / "validator-runs.jsonl").read_text(encoding="utf-8").splitlines()[0]
+    )
+    assert run_summary.chain_weight_uids == (3,)
+    assert run_summary.chain_weight_values == (1.0,)
+
+
+def test_validator_logs_failed_weight_submission_before_raising(tmp_path: Path) -> None:
+    submission = build_submission(_task(), solver_hotkey="hk-a", proof_script=_proof())
+
+    def fake_submit_weights(
+        _settings_arg: LemmaSettings, _weights: dict[str, float]
+    ) -> ChainWeightSubmission:
+        return ChainWeightSubmission(success=False, uids=(0,), weights=(1.0,), message="rejected")
+
+    with pytest.raises(RuntimeError, match="set_weights failed: rejected"):
+        validate_once(
+            _settings(tmp_path).model_copy(update={"enable_set_weights": True}),
+            [submission],
+            registry=_registry(),
+            verify_submission=lambda task, submission: VerifyResult(passed=True, reason="ok"),
+            no_set_weights=False,
+            submit_weights=fake_submit_weights,
+        )
+
+    receipt_path = tmp_path / "operator" / "weight-submissions.jsonl"
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert receipt["success"] is False
+    assert receipt["uids"] == [0]
+    assert receipt["weights"] == [1.0]
+    assert not (tmp_path / "operator" / "validator-runs.jsonl").exists()
 
 
 def test_validator_uses_deterministic_active_window_not_full_registry(tmp_path: Path) -> None:

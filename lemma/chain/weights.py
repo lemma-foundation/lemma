@@ -14,12 +14,29 @@ if TYPE_CHECKING:
     from lemma.common.config import LemmaSettings
 
 _CHAIN_UID_LABEL = re.compile(r"^(?:burn|recycle)_uid:(\d+)$")
+_LOCAL_PATH = re.compile("/" + "Users" + r"/[^\s]+")
+_ROOT_LOGIN = re.compile("".join(("ro", "ot")) + r"@[^\s]+")
+_IP_ADDRESS = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+_SS58_ADDRESS = re.compile(r"\b5[1-9A-HJ-NP-Za-km-z]{40,}\b")
 
 
 @dataclass(frozen=True)
 class ChainWeightPlan:
     uids: tuple[int, ...]
     weights: tuple[float, ...]
+
+
+@dataclass(frozen=True)
+class ChainWeightSubmission:
+    success: bool
+    uids: tuple[int, ...]
+    weights: tuple[float, ...]
+    message: str = ""
+    extrinsic_function: str = ""
+    extrinsic_hash: str = ""
+    block_hash: str = ""
+    block_number: int | None = None
+    extrinsic_fee_rao: int | None = None
 
 
 def allocation_vector(miner_weights: dict[str, float], unearned: UnearnedAllocation) -> dict[str, float]:
@@ -58,7 +75,24 @@ def resolve_weight_plan(weights: dict[str, float], hotkeys: Sequence[str]) -> Ch
     )
 
 
-def submit_bittensor_weights(settings: LemmaSettings, weights: dict[str, float]) -> bool:
+def _response_message(response: object) -> str:
+    message = getattr(response, "message", "") or getattr(response, "error", "")
+    if not message:
+        return ""
+    text = str(message)
+    text = _LOCAL_PATH.sub("[local-path]", text)
+    text = _ROOT_LOGIN.sub("[ssh-login]", text)
+    text = _IP_ADDRESS.sub("[ip-address]", text)
+    text = _SS58_ADDRESS.sub("[ss58-address]", text)
+    return text[:300]
+
+
+def _receipt_value(response: object, field: str) -> object:
+    receipt = getattr(response, "extrinsic_receipt", None)
+    return getattr(receipt, field, None) if receipt else None
+
+
+def submit_bittensor_weights(settings: LemmaSettings, weights: dict[str, float]) -> ChainWeightSubmission:
     """Submit resolved weights through the pinned Bittensor client."""
     import bittensor as bt
 
@@ -75,7 +109,14 @@ def submit_bittensor_weights(settings: LemmaSettings, weights: dict[str, float])
         wait_for_inclusion=True,
         wait_for_finalization=True,
     )
-    if not response.success:
-        message = response.message or response.error or "unknown set_weights failure"
-        raise RuntimeError(f"set_weights failed: {message}")
-    return True
+    return ChainWeightSubmission(
+        success=bool(response.success),
+        uids=plan.uids,
+        weights=plan.weights,
+        message=_response_message(response),
+        extrinsic_function=str(response.extrinsic_function or ""),
+        extrinsic_hash=str(_receipt_value(response, "extrinsic_hash") or ""),
+        block_hash=str(_receipt_value(response, "block_hash") or ""),
+        block_number=_receipt_value(response, "block_number"),
+        extrinsic_fee_rao=getattr(response.extrinsic_fee, "rao", None) if response.extrinsic_fee else None,
+    )

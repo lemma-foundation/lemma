@@ -85,6 +85,7 @@ uv run lemma validate --once --submission-spool submission-spool --no-set-weight
 The validator path fetches active tasks, validates task-bound submissions, runs Lean, scores accepted proofs, withholds unsolved-slot value from current solvers, and writes local corpus deltas.
 The submission spool is a file inbox for miner submission JSON files; consumed files move to `processed/` after a successful validator pass.
 Live weight writes require both `LEMMA_ENABLE_SET_WEIGHTS=1` and `--set-weights`; smoke passes should stay on `--no-set-weights`.
+When a live write is attempted, the validator appends a public-safe local receipt to `weight-submissions.jsonl` under `LEMMA_OPERATOR_DATA_DIR`, including the resolved UID vector and extrinsic hash when the Bittensor client returns one.
 
 ## Try The Loop Locally
 
