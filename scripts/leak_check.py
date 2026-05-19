@@ -12,6 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SKIP_CONTENT = {".gitignore", ".env.example", "scripts/leak_check.py"}
+PRIVATE_PATH_PARTS = ("wallets/", ".bittensor/", ".ssh/")
 
 
 def _git(*args: str) -> str:
@@ -21,6 +22,18 @@ def _git(*args: str) -> str:
 def _tracked_files() -> list[str]:
     raw = subprocess.check_output(["git", "ls-files", "-z"], cwd=ROOT)  # noqa: S603, S607
     return [item.decode("utf-8") for item in raw.split(b"\0") if item]
+
+
+def _private_path_label(path: str) -> str | None:
+    name = Path(path).name
+    lowered = path.lower()
+    if name == ".env" or (name.startswith(".env.") and name != ".env.example"):
+        return "env-path"
+    if re.search(r"agent[-_ ]?state", lowered):
+        return "agent-state-path"
+    if any(part in lowered for part in PRIVATE_PATH_PARTS):
+        return "private-operator-path"
+    return None
 
 
 def _patterns() -> list[tuple[str, re.Pattern[str]]]:
@@ -58,12 +71,8 @@ def _patterns() -> list[tuple[str, re.Pattern[str]]]:
 def main() -> int:
     findings: list[str] = []
     for path in _tracked_files():
-        name = Path(path).name
-        if (name == ".env" or name.startswith(".env.")) and name != ".env.example":
-            findings.append(f"path:{path}")
-            continue
-        if "AGENT" + "_STATE" in path:
-            findings.append(f"path:{path}")
+        if label := _private_path_label(path):
+            findings.append(f"{label}:{path}")
             continue
         if path in SKIP_CONTENT:
             continue
@@ -77,9 +86,8 @@ def main() -> int:
 
     staged = _git("diff", "--cached", "--name-only")
     for path in staged.splitlines():
-        name = Path(path).name
-        if name == ".env" or (name.startswith(".env.") and name != ".env.example") or "AGENT" + "_STATE" in path:
-            findings.append(f"staged-path:{path}")
+        if label := _private_path_label(path):
+            findings.append(f"staged-{label}:{path}")
 
     if findings:
         print("Leak check failed:", file=sys.stderr)
