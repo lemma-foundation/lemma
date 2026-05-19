@@ -7,12 +7,25 @@ import re
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, cast
 
 from lemma.chain.burn_or_recycle import UnearnedAllocation
 
 if TYPE_CHECKING:
     from lemma.common.config import LemmaSettings
+
+
+class _SubnetHyperparameters(Protocol):
+    tempo: int
+
+
+class _CommitRevealSubtensor(Protocol):
+    def commit_reveal_enabled(self, *, netuid: int) -> bool: ...
+
+    def get_current_block(self) -> int: ...
+
+    def get_subnet_hyperparameters(self, netuid: int, block: int | None = None) -> object: ...
+
 
 _CHAIN_UID_LABEL = re.compile(r"^(?:burn|recycle)_uid:(\d+)$")
 _LOCAL_PATH = re.compile("/" + "Users" + r"/[^\s]+")
@@ -93,12 +106,19 @@ def _receipt_value(response: object, field: str) -> object:
     return getattr(receipt, field, None) if receipt else None
 
 
-def _wait_for_commit_reveal_window(subtensor: object, netuid: int, *, block_time: float = 12.0) -> None:
+def _receipt_int_value(response: object, field: str) -> int | None:
+    value = _receipt_value(response, field)
+    return value if isinstance(value, int) else None
+
+
+def _wait_for_commit_reveal_window(
+    subtensor: _CommitRevealSubtensor, netuid: int, *, block_time: float = 12.0
+) -> None:
     if not subtensor.commit_reveal_enabled(netuid=netuid):
         return
     while True:
         block = subtensor.get_current_block()
-        tempo = subtensor.get_subnet_hyperparameters(netuid, block=block).tempo
+        tempo = cast(_SubnetHyperparameters, subtensor.get_subnet_hyperparameters(netuid, block=block)).tempo
         window_start = max(0, tempo - 10)
         remaining_blocks = window_start - (block % tempo)
         if remaining_blocks <= 0:
@@ -132,6 +152,6 @@ def submit_bittensor_weights(settings: LemmaSettings, weights: dict[str, float])
         extrinsic_function=str(response.extrinsic_function or ""),
         extrinsic_hash=str(_receipt_value(response, "extrinsic_hash") or ""),
         block_hash=str(_receipt_value(response, "block_hash") or ""),
-        block_number=_receipt_value(response, "block_number"),
+        block_number=_receipt_int_value(response, "block_number"),
         extrinsic_fee_rao=getattr(response.extrinsic_fee, "rao", None) if response.extrinsic_fee else None,
     )
