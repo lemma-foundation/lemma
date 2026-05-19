@@ -1,6 +1,6 @@
 # Dependency Graph
 
-Lemma is Lean-only, but corpus rows are graph-shaped from the beginning.
+Lean is the only production domain today, but corpus rows are graph-shaped from the beginning.
 
 Each accepted row links these nodes:
 

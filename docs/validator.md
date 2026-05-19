@@ -1,6 +1,8 @@
 # Validator Guide
 
-Validators are verifier runners and corpus publishers.
+Validators verify and publish accepted solutions.
+
+In v1, validators run the pinned Lean checker, score accepted proofs, and write replayable corpus rows.
 
 ## Basic Flow
 
@@ -26,10 +28,10 @@ For a file-based live loop, set `LEMMA_SUBMISSION_SPOOL_DIR` or pass `--submissi
 6. Require signatures for live miner responses.
 7. Run the domain submission policy scan before the verifier.
 8. Verify with the adapter-selected pinned runtime.
-9. Score first accepted unique artifact per active task as `credit / K`.
+9. Score first accepted unique proof per active task as `credit / K`.
 10. Track `unearned_share = 1 - sum(miner_weights)`.
 11. Burn unearned share by default; do not redistribute it to current solvers.
-12. Write corpus rows for valid unique artifacts after the scoring window closes.
+12. Write corpus rows for valid unique proofs after the scoring window closes.
 
 ## Worker
 
@@ -41,4 +43,4 @@ Non-loopback worker binds require `LEMMA_LEAN_VERIFY_REMOTE_BEARER` unless expli
 
 ## No Subjective Scoring
 
-Validators score artifacts, not reasoning prose, model names, proof style, or claimed effort. Lean remains the only production verifier today.
+Validators score proofs, not reasoning prose, model names, proof style, or claimed effort. Lean remains the only production verifier today.

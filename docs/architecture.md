@@ -1,16 +1,18 @@
 # Architecture
 
-Lemma is a verifier-grounded data engine. Lean theorem proving is the only production domain for now.
+Lemma has three layers: task supply, verification, and verified data publication.
+
+Lean theorem proving is the only production domain today.
 
 ```text
 supply streams
   -> task filter
   -> deterministic active pool
-  -> miners search for accepted artifacts
+  -> miners search for accepted proofs
   -> validators dispatch to the verifier adapter
-  -> verified-unit scoring
+  -> proof-unit scoring
   -> unearned-share burn/recycle policy
-  -> replayable graph-shaped public corpus
+  -> replayable public corpus rows
 ```
 
 ## Implemented Spine
@@ -34,8 +36,8 @@ supply streams
 
 ## Boundaries
 
-Scoring is pure. Verifiers do not know about Bittensor weights. Provider/model logic stays on the miner side. Validators score artifacts, not providers.
+Scoring is pure. Verifiers do not know about Bittensor weights. Provider/model logic stays on the miner side. Validators score proofs, not providers.
 
 Lemma does not custody funds and does not route owner emissions through contracts. Rewards flow through normal Bittensor miner and validator mechanics.
 
-Lean is the only enabled production domain. Any future domain has to enter through the verifier adapter contract and publish the same graph-shaped corpus row v2 shape.
+Lean is the only enabled production domain. Any future domain has to enter through the verifier adapter contract and publish the same verified reasoning data row shape.

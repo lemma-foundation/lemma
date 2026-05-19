@@ -1,6 +1,6 @@
 # Open AlphaProof-Style Engine
 
-Lemma is an open AlphaProof-style proof-data engine for Lean. Miners produce machine-checked proofs. Validators verify them with the Lean kernel. Every accepted proof becomes public replayable training data.
+Lemma is a Verified Reasoning Network that starts with Lean proofs. Miners produce machine-checked proofs. Validators verify them with the Lean kernel. Every accepted proof becomes public replayable training data.
 
 The product is the corpus: source-attributed Lean theorem/proof rows with enough metadata to replay the check later. The market is the mechanism that produces those rows.
 
@@ -9,7 +9,7 @@ The product is the corpus: source-attributed Lean theorem/proof rows with enough
 ```text
 Lean checks truth.
 Miners produce proofs.
-Validators score artifacts.
+Validators score proofs.
 Rewards scale with verified proof units.
 Unsolved slots do not inflate solved-slot payouts.
 Difficulty adapts from observed solve rate.
@@ -27,7 +27,7 @@ supply streams -> task filters -> deterministic active pool
                -> downstream benchmarks and prover training
 ```
 
-Supply streams include Mathlib proof erasure, Mathlib perturbations, proof-state graph extraction, auto-formalization candidates, conjecture generation, and hard-target variant generation. Heavy generators run off-chain. Validators check deterministic task artifacts: syntax, type validity, policy, novelty, triviality label, source/license metadata, and queue inclusion.
+Supply streams include Mathlib proof erasure, Mathlib perturbations, proof-state graph extraction, auto-formalization candidates, conjecture generation, and hard-target variant generation. Heavy generators run off-chain. Validators check deterministic task files: syntax, type validity, policy, novelty, triviality label, source/license metadata, and queue inclusion.
 
 The active pool has two separate controls:
 

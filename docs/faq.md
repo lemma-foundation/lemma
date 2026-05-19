@@ -2,15 +2,17 @@
 
 ## What is Lemma?
 
-Lemma is a Bittensor subnet that pays miners to produce verifier-grounded training data. Lean theorem proving is the only production domain for now.
+Lemma is a Verified Reasoning Network. Miners solve hard reasoning tasks, validators check the answers with deterministic verifiers, and accepted solutions become open training data for stronger AI.
+
+Lean theorem proving is the only production domain today.
 
 ## What gets rewarded?
 
-The first accepted unique artifact for an active task in a validator epoch. Today that artifact is a Lean proof.
+The first accepted unique proof for an active task in a validator epoch.
 
 ## Is Lemma a Formal Conjectures payout subnet?
 
-No. Google DeepMind Formal Conjectures is a frontier benchmark and downstream demonstration layer. Lemma rewards verified training-data production.
+No. Google DeepMind Formal Conjectures is a frontier benchmark and downstream demonstration layer. Lemma rewards verified reasoning data production.
 
 ## Is Lemma endorsed by Google DeepMind?
 
@@ -22,12 +24,12 @@ No for v1. Lemma uses normal Bittensor rewards and does not custody funds.
 
 ## Can miners use AI APIs?
 
-Yes. Miners can use local commands, OpenAI-compatible endpoints, tactic search, retrieval, hosted models, or human-written proofs. Validators only check the final artifact.
+Yes. Miners can use local commands, OpenAI-compatible endpoints, tactic search, retrieval, hosted models, or human-written proofs. Validators only check the final proof.
 
 ## What do validators score?
 
-Artifacts that pass the pinned verifier for active tasks. Validators do not score prose explanations, model names, or claimed effort.
+Proofs that pass the pinned verifier for active tasks. Validators do not score prose explanations, model names, or claimed effort.
 
 ## What is the corpus?
 
-A public dataset of accepted verifier-grounded rows with source metadata, artifact hashes, verifier results, and reward status. The current corpus is the Lean domain corpus.
+A public dataset of accepted verified reasoning rows with source metadata, proof hashes, verifier results, and reward status. The current corpus is the Lean domain corpus.

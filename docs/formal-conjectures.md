@@ -6,7 +6,7 @@ Lemma references it as a frontier benchmark and downstream demonstration layer. 
 
 The intended relationship is:
 
-1. Lemma miners produce broad verifier-grounded data. The current production domain is Lean theorem/proof data.
+1. Lemma miners produce broad verified reasoning data. The current production domain is Lean theorem/proof data.
 2. Validators check the data and publish the open corpus.
 3. Provers trained on that corpus are evaluated against held-out frontier benchmarks such as Formal Conjectures.
 

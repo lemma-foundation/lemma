@@ -66,7 +66,8 @@ def test_public_docs_keep_corpus_and_economics_invariant() -> None:
     readme = Path("README.md").read_text(encoding="utf-8")
     scoring = Path("docs/scoring.md").read_text(encoding="utf-8")
 
-    assert "The graph-shaped corpus is the substrate" in readme
+    assert "Lemma is a Verified Reasoning Network" in readme
+    assert "The product is verified reasoning data" in readme
     assert "weight(miner) = credit(miner) / sum(all_credits)" not in scoring
     assert "previous weights" not in scoring.lower()
     assert "unearned_share = 1.0" in scoring

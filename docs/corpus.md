@@ -1,10 +1,30 @@
-# Corpus
+# Verified Reasoning Data
 
-The Lemma Corpus is the main product of the subnet: replayable verifier-grounded rows that validators accepted.
+The Lemma Corpus is the main product of the network: replayable rows of verified reasoning data that validators accepted.
+
+A corpus row is a replayable record of a verified solution.
 
 ## Purpose
 
 Corpus rows should be useful for supervised fine-tuning, retrieval, repair loops, reinforcement learning, and evaluation. A row is valuable only if another operator can reconstruct the task and rerun the deterministic verifier.
+
+## Simple Example
+
+```json
+{
+  "task_id": "lemma.sample.true_intro",
+  "domain_id": "lean",
+  "proof_script": "by trivial",
+  "verification": {
+    "passed": true,
+    "verifier_version": "lemma-lean-v1"
+  },
+  "source_license": "CC-BY-4.0",
+  "rewarded": true
+}
+```
+
+The full row carries more replay and attribution metadata, but the meaning is simple: this task had a proof, the deterministic verifier accepted it, and the row can be used as verified reasoning data.
 
 ## Schema
 
@@ -58,7 +78,7 @@ ema_solve_rate
 
 `row_id` is the SHA256 of `target_sha256`, `proof_sha256`, `solver_hotkey`, and `validator_hotkey`. `proof_sha256` is the script hash. `proof_term_hash` is filled only when the Lean proof-term extractor provides it. Until then, `proof_identity_source` is `normalized_script_sha256` or `script_sha256`, and `proof_identity_strength` is `weak`.
 
-`dependencies` and `graph` make each row part of the corpus substrate. The initial graph links task, proof, proof identity, source, verifier, solver, and validator nodes. Future mechanisms should extend this graph rather than creating disconnected state.
+`dependencies` and `graph` make each row part of the verified reasoning data graph. The initial graph links task, proof, proof identity, source, verifier, solver, and validator nodes. Future mechanisms should extend this graph rather than creating disconnected state.
 
 Failed proofs are not public corpus rows. Valid alternates can be stored with `rewarded: false`.
 

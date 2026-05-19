@@ -66,7 +66,7 @@ class LemmaGroup(click.Group):
 @click.pass_context
 @click.version_option(version=__version__)
 def main(ctx: click.Context) -> None:
-    """Verifier-grounded training data subnet.
+    """Verified Reasoning Network.
 
     Examples: lemma setup; lemma status; lemma tasks list; lemma task show
     lemma.sample.true_intro; lemma mine --once; lemma validate --once
@@ -142,7 +142,7 @@ def _show_task(task_id: str) -> None:
 @click.option("--prover-command", default=None, help="Local prover command for miners.")
 @click.option("--wallet-cold", default=None, help="Bittensor cold wallet name.")
 @click.option("--wallet-hot", default=None, help="Bittensor hotkey name.")
-@click.option("--netuid", type=int, default=None, help="Bittensor subnet id.")
+@click.option("--netuid", type=int, default=None, help="Bittensor netuid.")
 @click.option(
     "--unearned-policy",
     type=click.Choice(["burn", "recycle", "hold"]),

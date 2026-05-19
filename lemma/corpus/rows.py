@@ -20,7 +20,7 @@ from lemma.verifiers.base import VerificationResult
 
 
 class CorpusRowV2(BaseModel):
-    """One accepted verifier-grounded artifact row."""
+    """One accepted verified reasoning row."""
 
     model_config = ConfigDict(extra="forbid")
 

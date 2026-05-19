@@ -1,13 +1,15 @@
 # Scoring
 
-Lemma rewards verified artifacts through normal Bittensor miner and validator emissions.
+Lemma rewards verified work through normal Bittensor miner and validator emissions.
+
+Each epoch has `K` paid task slots. A miner earns one credit for being first to submit a unique accepted proof for a slot. Unsolved slots remain unearned by default.
+
+The reward is attached to verified work, not prose, claimed effort, or model identity.
 
 ## Proof-Unit Rule
 
-Each validator epoch has `K` active paid task slots. A miner earns one credit when they are the first miner in that epoch to submit a unique artifact that passes the task's deterministic verifier.
-
 ```text
-credit(miner) = count(first_valid_unique_verified_artifact_per_task_by_miner)
+credit(miner) = count(first_valid_unique_verified_proof_per_task_by_miner)
 score(miner) = credit(miner) / K
 weight(miner) = credit(miner) / K
 unearned_share = 1 - sum(miner_weights)
@@ -28,8 +30,8 @@ The previous-weight fallback rule is removed from scoring.
 
 ## Exact Behavior
 
-- An artifact must pass the pinned verifier environment.
-- An artifact is task-bound by `task_id`, `task_version`, and `target_sha256`.
+- A proof must pass the pinned verifier environment.
+- A proof is task-bound by `task_id`, `task_version`, and `target_sha256`.
 - A proof is unique by Lean `proof_term_hash` when available, with a clearly labelled weak script fallback until canonical proof-term extraction is production-ready.
 - In production mode, full reward requires `proof_identity_strength: strong`.
 - Each task pays at most one miner per validator epoch.

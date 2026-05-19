@@ -1,6 +1,8 @@
-# Domain Adapter Spec
+# Future Verified Domains
 
-A Lemma domain is a verifier-backed task market that can produce replayable public corpus rows.
+The same network pattern can apply outside Lean only when a domain has deterministic verifiers and replayable outputs.
+
+These are roadmap directions, not live production mechanisms.
 
 ## Required Contract
 
@@ -18,6 +20,15 @@ A Lemma domain must provide:
 - scoring function;
 - adversarial tests.
 
+No artifact can enter the corpus unless the deterministic verifier accepts it.
+
+## Examples
+
+- **Verus:** Rust programs plus formal specifications and proofs.
+- **SAT/SMT:** Logic formulas with satisfying assignments, solver traces, or unsat certificates.
+- **LP/SDP:** Optimization problems with primal/dual certificates.
+- **Cryptanalysis:** Security puzzles with verifiable witnesses such as factors, collisions, keys, or attack artifacts.
+
 ## Adapter Interface
 
 Each production domain enters through `lemma.verifiers.base.VerifierAdapter`:
@@ -32,8 +43,6 @@ class VerifierAdapter:
     def task_schema(self) -> dict: ...
     def submission_schema(self) -> dict: ...
 ```
-
-No artifact can enter the corpus unless the deterministic verifier accepts it.
 
 ## Domain Maturity Levels
 

@@ -1,10 +1,10 @@
 # Affine Integration
 
-Affine rewards model dominance. Lemma produces verifier-grounded corpora that can help models become dominant.
+Affine rewards model dominance. Lemma produces verified reasoning corpora that can help models become dominant.
 
 The relationship is data-consumer oriented:
 
-- Lemma miners produce accepted artifacts.
+- Lemma miners produce accepted proofs.
 - Lemma validators publish public corpus rows.
 - Affine-style miners can train reasoning models on those rows.
 - Improved models can perform better in model competitions and can also mine future Lemma tasks.
@@ -23,6 +23,8 @@ Lemma does not need Affine in its validation loop, and Affine does not need a tr
 ```
 
 ## Future Verus Export Shape
+
+This is a roadmap example, not a live production export.
 
 ```json
 {

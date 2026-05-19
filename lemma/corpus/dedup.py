@@ -1,4 +1,4 @@
-"""Duplicate detection for verifier-grounded artifacts."""
+"""Duplicate detection for verified reasoning artifacts."""
 
 from __future__ import annotations
 

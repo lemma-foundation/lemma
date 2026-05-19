@@ -12,7 +12,7 @@ def enforce_production_invariants(settings: LemmaSettings, registry: TaskRegistr
     if settings.protocol_mode != "production":
         return
     if tuple(settings.enabled_domains) != ("lean",):
-        raise RuntimeError("production mode is Lean-only: LEMMA_ENABLED_DOMAINS must be lean")
+        raise RuntimeError("production mode currently supports only lean: LEMMA_ENABLED_DOMAINS must be lean")
     if not settings.task_registry_sha256_expected:
         raise RuntimeError("production mode requires LEMMA_TASK_REGISTRY_SHA256_EXPECTED")
     if registry.signature_status != "verified":

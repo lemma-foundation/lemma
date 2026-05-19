@@ -1,6 +1,8 @@
 # Security And Gaming
 
-Lean gives Lemma a binary correctness signal, but the subnet still needs clear anti-gaming boundaries.
+A Verified Reasoning Network is only useful if bad artifacts cannot enter the verified dataset.
+
+Lean gives Lemma a binary correctness signal, but the network still needs clear anti-gaming boundaries.
 
 ## Submission Checks
 

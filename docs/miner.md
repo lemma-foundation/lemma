@@ -1,8 +1,8 @@
 # Miner Guide
 
-Miners are artifact searchers. In the current production domain, that means Lean proof search.
+Miners solve reasoning tasks. In the current production domain, that means Lean proof search.
 
-Your job is to fetch active tasks, produce a verifier-accepted artifact, verify it locally, and serve or package the task-bound submission for validators. For Lean tasks, the artifact is a `Submission.lean` proof.
+Your job is to fetch active tasks, produce a verifier-accepted proof, verify it locally, and serve or package the task-bound submission for validators. For Lean tasks, the proof is a `Submission.lean` file.
 
 ## Basic Flow
 
@@ -48,8 +48,8 @@ LEMMA_PROVER_API_KEY
 LEMMA_PROVER_MODEL
 ```
 
-The provider is not scored. Lemma only checks the final artifact. For v1, that artifact is a Lean proof.
+The provider is not scored. Lemma only checks the final proof. For v1, that proof is Lean.
 
 ## Reward Rule
 
-The first accepted unique artifact for an active task earns one fixed-price verified unit in the validator epoch. Duplicate proofs, failed proofs, changed targets, prose explanations, and unsigned live submissions do not earn v1 credit. Unsolved slots do not increase the payout for solved slots.
+The first accepted unique proof for an active task earns one fixed-price verified unit in the validator epoch. Duplicate proofs, failed proofs, changed targets, prose explanations, and unsigned live submissions do not earn v1 credit. Unsolved slots do not increase the payout for solved slots.

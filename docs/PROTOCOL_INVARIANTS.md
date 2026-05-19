@@ -1,6 +1,8 @@
 # Protocol Invariants
 
-Lemma launches as a Lean proof-data subnet. The graph is the substrate shape, but the paid production path remains Lean-only until the Lean wedge is reliable.
+These invariants protect Lemma's core promise: accepted rows must be mechanically verified, replayable, licensed, and safe to use as training data.
+
+Lemma launches with Lean as the only paid production domain. Future domains can reuse the verified reasoning data row contract, but they do not enter production rewards until they have the same deterministic verifier, replay, license, identity, and corpus guarantees.
 
 Production invariants:
 
@@ -16,5 +18,3 @@ Production invariants:
 10. No production registry without explicit signature verification.
 
 `LEMMA_PROTOCOL_MODE=production` fails closed if the active configuration violates the launch boundary: enabled domains must be exactly `lean`, the registry must be SHA-pinned and signature-verified, and the Lean verifier network mode must be disabled.
-
-Future domains can reuse the graph-shaped row contract, but they do not enter production rewards until they have the same deterministic verifier, replay, license, identity, and corpus guarantees.
