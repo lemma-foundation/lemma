@@ -1,8 +1,8 @@
 # Lemma Litepaper
 
-## A Verified Reasoning Network
+## A Permissionless Incentive Network For Machine-Verified Mathematics
 
-**Version:** v0.1
+**Version:** v0.2
 **Date:** May 2026
 **Repository:** Lemma
 
@@ -10,159 +10,84 @@
 
 ## Abstract
 
-Lemma is a Verified Reasoning Network: a network for producing reasoning that can be checked, not merely believed.
+Lemma is a permissionless incentive network for growing open, machine-verified mathematics.
 
-Most AI systems generate text. Some of that text is useful, but fluent answers can still be wrong. Lemma focuses on a different kind of output: reasoning that passes deterministic verifiers.
+Miners submit Lean proofs. Validators verify them with a pinned Lean toolchain. Accepted theorems become part of an open, citation-structured corpus of formal mathematics.
 
-In its first production domain, Lemma uses Lean theorem proving. Miners search for formal proofs, validators check those proofs in a pinned Lean environment, and accepted proofs become open training data for stronger AI systems.
+Lemma's core thesis is simple:
 
-Lemma's thesis is simple:
+**Proof correctness can be checked mechanically. A network can reward the work that passes.**
 
-**AI can guess. Verifiers can check. Lemma pays for checked reasoning.**
+Bittensor supplies the open miner and validator incentive layer. Lemma supplies the mathematical target: correct Lean proofs for exact theorem tasks.
 
 ---
 
 ## Plain-English Summary
 
-Lemma is like a factory for verified reasoning examples.
+Lemma pays for verified mathematical work.
 
-Miners try to solve hard problems. Validators run the answers through mechanical checkers. If the checker accepts an answer, that answer becomes part of a public library of correct reasoning.
+A theorem enters the active pool. Miners try to produce a Lean proof. Validators run Lean. If the proof passes and wins the task slot, the miner earns credit and the theorem/proof record is added to the public corpus.
 
-Future AI systems can train on that library, retrieve from it, and use it to become better at math, code, logic, and other forms of reasoning.
-
----
-
-## Why Verified Reasoning Matters
-
-Large language models have become increasingly capable at mathematical reasoning, code generation, and formal problem solving. But most model outputs remain probabilistic text. They may be useful, elegant, or convincing while still being wrong.
-
-Formal verification offers a different kind of signal. A Lean proof either passes the checker in a specific environment or it does not. That binary signal is valuable because it can transform model-generated reasoning into an auditable proof. A verified theorem-proof pair can be replayed, indexed, deduplicated, attributed, and used as supervised training data.
-
-The bottleneck is not only evaluation. The field needs a continuous source of verified reasoning data: open rows that contain enough metadata for future operators to reconstruct the task, replay the verifier, and train better systems. Lemma exists to create that source.
+The output is not just a score. It is a growing library of machine-verified mathematics: statements, proofs, verifier metadata, attribution, license metadata, and dependency links.
 
 ---
 
-## Lemma as a Verified Reasoning Network
+## Why Mathematics
+
+Mathematics is unusually clean for incentive design because proof correctness is mechanical. A Lean proof either verifies in the pinned environment or it does not.
+
+That binary signal gives Lemma a concrete unit of work to reward: a task-bound theorem/proof record that can be replayed, audited, retrieved, deduplicated, attributed, and reused.
+
+Math is also broad enough to stand on its own. Algebra, analysis, number theory, topology, probability, logic, and computer science provide years of useful formalization and proof work without broadening the v1 identity.
+
+Lemma's v1 public focus is therefore narrow and deep: grow open formal mathematics.
+
+---
+
+## Why Lean
+
+Lean gives Lemma a mature production verifier for formal mathematics.
+
+For Lemma v1:
+
+- the task is an exact Lean theorem statement;
+- the submission is a Lean proof bound to that task;
+- the validator runs a pinned Lean/mathlib environment;
+- the proof either passes or fails;
+- accepted proofs become replayable corpus records.
+
+The verifier is the correctness boundary. Validators do not score prose explanations, claimed effort, model identity, or informal reasoning. They score the final proof.
+
+---
+
+## The Lemma Loop
 
 Lemma coordinates three roles:
 
-1. **Task supply:** a deterministic active set of formal reasoning tasks.
-2. **Miners:** participants that search for valid solutions, beginning with Lean proofs.
-3. **Validators:** participants that run pinned deterministic verifiers, score accepted solutions, and publish corpus rows.
+1. **Task supply:** a deterministic active set of Lean theorem-proving tasks.
+2. **Miners:** participants that search for valid Lean proofs.
+3. **Validators:** participants that verify submissions, score accepted proofs, and publish corpus rows.
 
-The Lemma loop is:
-
-```text
-task -> solution search -> deterministic verification -> proof-unit credit -> public verified data -> stronger prover models
-```
-
-For v1, the solution is a Lean proof and the verifier is a pinned Lean/mathlib environment. Miners may use any method to discover proofs: local tactics, retrieval, hosted models, custom agents, human-written proofs, or hybrid systems. Validators do not score effort, model identity, prose quality, or claimed reasoning process. They score only the final proof.
-
-This makes Lemma a data-production mechanism rather than a subjective competition. Its output is not a leaderboard alone; it is a growing corpus of verified solutions designed for model training, retrieval, repair, and evaluation.
-
----
-
-## What Lemma Is Not
-
-Clear boundaries matter. Lemma v1 is not:
-
-- a general natural-language reasoning benchmark;
-- a generic code-task subnet;
-- a prose-judging system;
-- a smart-contract escrow product;
-- an owner-cut routing mechanism;
-- a contract-custody system;
-- a Google DeepMind Formal Conjectures payout path;
-- endorsed by Google DeepMind;
-- a production system for non-Lean verifier domains yet.
-
-Google DeepMind Formal Conjectures, miniF2F, PutnamBench, lean-eval, and related benchmarks are useful downstream measurement surfaces. They are not the v1 payout path. If models trained on Lemma's corpus later solve more frontier benchmark problems, Lemma is working. But the subnet itself pays for verified production rows, not benchmark branding.
-
----
-
-## Why Start With Lean
-
-Lean is the first production domain because it offers a mature deterministic verifier and a high-value output type: theorem-proof pairs. A Lean proof can be checked mechanically in a pinned environment. This gives Lemma a clean correctness boundary.
-
-Lean also sits at a strategic point in the development of reasoning AI. It connects mathematical problem solving, symbolic reasoning, program verification, proof search, retrieval, curriculum learning, and model-assisted repair. A large open corpus of verified Lean rows can support:
-
-- supervised fine-tuning of theorem provers;
-- retrieval systems for proof search;
-- proof repair and self-correction loops;
-- reinforcement learning from verifier feedback;
-- evaluation of formal reasoning models;
-- transfer into code reasoning and program verification.
-
-Lemma starts with math because math provides a clean wedge. The broader product is verified reasoning data.
-
----
-
-## How the Network Works
-
-Each validator epoch contains `K` active paid task slots. A miner earns credit when it is the first miner in that epoch to submit a unique proof that passes the deterministic verifier for a task.
-
-The v1 scoring rule is:
+The loop is:
 
 ```text
-credit(miner) = count(first_valid_unique_verified_proof_per_task_by_miner)
-score(miner) = credit(miner) / K
-weight(miner) = credit(miner) / K
-unearned_share = 1 - sum(miner_weights)
+Lean theorem task
+  -> proof search
+  -> task-bound Lean submission
+  -> pinned Lean verification
+  -> proof-unit credit
+  -> public mathematical corpus
 ```
 
-This creates a fixed-denominator system. If only some tasks are solved, only those solved slots pay current miners. The unsolved portion is not redistributed to current solvers by default. Instead, the default policy is burn, with explicit future policy rails for recycle or hold.
-
-This matters because redistribution can overpay easy tasks and reduce pressure on frontier proof production. Lemma's default design preserves the signal that unsolved work remains unsolved.
+Miners may use any method to discover proofs: tactics, retrieval, local models, hosted APIs, custom agents, human-written proofs, or hybrid systems. Lemma intentionally keeps search strategy on the miner side. The network only needs the proof artifact and the verification result.
 
 ---
 
-## What Miners Do
+## What Lemma Produces
 
-A miner's job is to produce a valid solution for an active task. For Lean v1, that means producing a proof script bound to the task identity, task version, and target hash.
+Lemma produces the Lemma Corpus: an open corpus of verified Lean theorem/proof records.
 
-A miner may use any search stack:
-
-- handcrafted Lean proofs;
-- tactic search;
-- retrieval from prior corpora;
-- local language models;
-- hosted model APIs;
-- tree search and repair loops;
-- hybrid human-in-the-loop systems;
-- specialized proof agents.
-
-Lemma intentionally keeps provider and model logic on the miner side. The subnet should not care whether a proof came from a frontier model, a small local model, an automated tactic, or a human. If the submitted proof passes the pinned verifier and satisfies protocol rules, it can earn credit.
-
-The miner interface is therefore solution-oriented. A miner receives or fetches active tasks, attempts proof search, packages a submission, signs or binds it as required, and submits it for validator checking.
-
----
-
-## What Validators Do
-
-Validators maintain the active task set, receive task-bound submissions, run verifier adapters, compute weights, and write accepted rows to the corpus.
-
-A valid validator path includes:
-
-1. loading the pinned task registry;
-2. reconstructing the active task set deterministically;
-3. validating submission metadata;
-4. dispatching the proof to the domain verifier;
-5. enforcing security and anti-gaming rules;
-6. deduplicating accepted proofs;
-7. assigning proof-unit credit;
-8. computing miner weights as `credit / K`;
-9. accounting for unsolved-slot value;
-10. writing replayable corpus rows.
-
-The validator does not need to understand the miner's search process. It only needs to reproduce the task, run the pinned verifier, and determine whether the submitted proof passes.
-
----
-
-## The Product: Verified Reasoning Data
-
-The Lemma Corpus is the main product of the subnet. Each accepted row is designed to be replayable, attributable, and useful for model training.
-
-A row can include:
+Each accepted entry can include:
 
 - schema version;
 - row ID;
@@ -176,51 +101,70 @@ A row can include:
 - proof hash;
 - proof identity and identity strength;
 - source stream and source license;
-- solver hotkey;
-- validator hotkey;
+- solver attribution;
+- validator attribution;
 - reward status;
 - dependency metadata;
 - graph links;
 - verification summary.
 
-Failed proofs are not corpus rows. Valid alternate proofs can be stored with `rewarded: false`, allowing the corpus to preserve useful diversity without paying duplicate credit for the same slot.
+Failed proofs are not public corpus rows. Valid alternate proofs can be stored with `rewarded: false`, allowing the corpus to preserve proof diversity without paying duplicate credit for the same task slot.
 
-The value of a row depends on replayability. Another operator should be able to reconstruct the task, load the pinned environment, and rerun the verifier. Without replay metadata, a row is not production-quality verified reasoning data.
+The value of a row depends on replayability. Another operator should be able to reconstruct the task, load the pinned environment, and rerun the verifier.
 
 ---
 
-## The Verified Reasoning Data Graph
+## Corpus Graph
 
 Lemma rows are graph-shaped from the start. Each accepted proof links task, proof, proof identity, source, verifier, solver, validator, dependencies, and verification metadata.
 
-This graph structure is not cosmetic. It enables future systems to ask richer questions:
+This structure lets downstream users ask useful questions:
 
 - Which proofs solve related theorem families?
 - Which imports and dependencies are common among solved tasks?
-- Which sources produce high-value verified rows?
+- Which sources produce valuable theorem/proof records?
 - Which proof identities are duplicates or near-duplicates?
 - Which validators accepted which rows under which verifier versions?
-- Which corpus regions are useful for downstream training or retrieval?
+- Which corpus regions are useful for proof search, retrieval, or evaluation?
 
-Lean is the first production domain, but the row contract is designed so future deterministic verifier domains can attach to the same verified data graph after they meet the same production standards.
-
----
-
-## Proof Identity and Deduplication
-
-A proof market needs deduplication. Without it, miners could resubmit the same solution repeatedly or make superficial script changes that do not represent distinct verified work.
-
-Lemma's preferred identity is a strong proof-term identity when available. During early Lean operation, the system may fall back to script-based hashes such as normalized script SHA256 or script SHA256. These fallbacks are explicitly labelled as weak identity.
-
-The distinction matters. Weak script identity is useful for early operation, but it is not a full structural proof identity. In production mode, full reward requires strong proof identity. This pushes the system toward better canonicalization and stronger deduplication as the corpus matures.
+The graph is part of the product because mathematics is cumulative. A theorem is most useful when its dependencies, provenance, and replay context are visible.
 
 ---
 
-## Security and Anti-Gaming Boundaries
+## Scoring
 
-A Verified Reasoning Network is only useful if bad submissions cannot enter the verified dataset. Validators reject submissions that violate task, verifier, or corpus integrity.
+Each validator epoch contains `K` active paid theorem slots. A miner earns credit when it is first to submit a unique proof that passes the pinned Lean verifier for a slot.
 
-Examples of rejected behavior include:
+The v1 scoring rule is:
+
+```text
+credit(miner) = count(first_valid_unique_verified_proof_per_task_by_miner)
+score(miner) = credit(miner) / K
+weight(miner) = credit(miner) / K
+unearned_share = 1 - sum(miner_weights)
+```
+
+This is a fixed-denominator system. If only some theorem slots are solved, only those solved slots pay current miners. The unsolved share is not redistributed to current solvers by default.
+
+The default unearned-share policy is burn. That keeps the reward signal tied to accepted proof production and prevents easy solved tasks from absorbing the value of unsolved work.
+
+---
+
+## Proof Identity And Deduplication
+
+Lemma rewards unique accepted proofs. Without deduplication, miners could resubmit the same proof or make superficial script changes that do not represent distinct mathematical work.
+
+The preferred identity is a strong Lean proof-term identity when available. During early operation, the system may fall back to script-based hashes such as normalized script SHA256 or script SHA256. These fallbacks are labelled as weak identity.
+
+The distinction matters. Weak script identity is useful for local operation, but it is not a full structural proof identity. Production rewards should move toward strong proof identity as canonicalization matures.
+
+---
+
+## Security And Anti-Gaming
+
+An incentive network for formal mathematics is only useful if bad submissions cannot enter the corpus.
+
+Validators reject submissions that violate task, verifier, or corpus integrity. Examples include:
 
 - `sorry` or `admit`;
 - custom axioms or constants;
@@ -235,13 +179,13 @@ Examples of rejected behavior include:
 
 Production verification should run in a pinned Lean/mathlib environment with networking disabled. Registry bytes should be pinned, and production registry signature checks should fail closed.
 
-The goal is not merely to prevent invalid proofs. It is to ensure that accepted rows remain useful public records rather than contaminated data.
+The goal is not only to prevent invalid proofs. It is to ensure that accepted rows remain useful public mathematical records.
 
 ---
 
 ## Architecture
 
-Lemma has three layers: task supply, verification, and verified data publication.
+Lemma has three production layers: Lean theorem supply, Lean proof verification, and verified mathematics publication.
 
 The implemented architecture includes:
 
@@ -249,12 +193,11 @@ The implemented architecture includes:
 - deterministic task queues and activation gates;
 - task-bound submission schemas;
 - miner-side local command adapters;
-- validator-side submission validation, verifier dispatch, scoring, and corpus writing;
+- validator-side submission validation, Lean verifier dispatch, scoring, and corpus writing;
 - first-valid-unique scoring;
-- verifier adapter interfaces and a Lean adapter;
 - corpus validation, replay, indexing, and export helpers;
 - graph nodes and dependency edges;
-- typed future interfaces for commitments, randomness, weights, and burn/recycle rails.
+- typed interfaces for commitments, randomness, weights, and burn/recycle rails.
 
 Two controllers shape the active task frontier:
 
@@ -263,92 +206,60 @@ Two controllers shape the active task frontier:
 
 A low or zero solve rate should halt frontier advancement and request hard-target variants rather than pushing the queue backward into already exposed tasks.
 
----
-
-## Beyond Lean: Future Verified Domains
-
-Lemma is designed to generalize beyond Lean, but not prematurely. A future production domain must satisfy a strict contract:
-
-- deterministic verifier;
-- pinned verifier version;
-- task schema;
-- submission schema;
-- normalized corpus row format;
-- sandboxing rules;
-- timeout and memory limits;
-- duplicate policy;
-- public license;
-- scoring function;
-- adversarial tests.
-
-A future domain cannot enter production rewards merely because it is interesting. It must provide the same guarantees that make Lean useful: deterministic checking, replayability, provenance, licensing, identity, and corpus value.
-
-Potential future domains include:
-
-- **Verus:** Rust programs plus formal specifications and proofs.
-- **SAT/SMT:** Logic formulas with satisfying assignments, solver traces, or unsat certificates.
-- **LP/SDP:** Optimization problems with primal/dual certificates.
-- **Cryptanalysis:** Security puzzles with verifiable witnesses such as factors, collisions, keys, or attack artifacts.
-
-These are roadmap directions, not live production mechanisms.
+Production mode is Lean-only. Research for other verifier domains belongs outside the v1 public thesis.
 
 ---
 
-## Proof-Unit Economics
+## Bittensor Role
 
-Lemma uses normal Bittensor miner and validator emissions. It does not custody funds, route owner emissions through contracts, or introduce a smart-contract escrow layer.
+Bittensor gives Lemma an open miner/validator network. Lemma gives that network a clean mathematical target: produce Lean proofs that verify.
 
-The economic design is centered on verified proof units. Each active task slot contributes one unit of possible credit. If a miner is first to submit a unique passing proof for a task, that miner earns the unit for the epoch. If no one solves a task, the slot remains unearned.
+The reward is tied to checked work:
 
-The unearned-share policy is important. By default, unearned share is burned rather than redistributed to successful miners. This keeps the denominator honest and prevents a small number of solved tasks from absorbing the value of the unsolved frontier.
+- miners compete to produce accepted Lean proofs;
+- validators verify with the pinned Lean environment;
+- accepted unique proofs earn credit;
+- accepted theorem/proof records become public infrastructure.
 
-Future recycle or hold policies can route value toward additional proof-production rails, but such policies should be explicit. The default is conservative: pay verified production, do not pay unsolved work, and do not inflate easy wins.
+Lemma does not need a separate custody system for v1 rewards. Rewards flow through normal Bittensor miner and validator mechanics.
 
 ---
 
-## Who Uses Lemma Data
+## Downstream Use
 
-Lemma's immediate participants are miners and validators, but its downstream customers are model builders.
+The corpus can train theorem provers and reasoning models, support retrieval systems, power proof-repair loops, and make evaluation easier to audit.
 
-The corpus is intended for:
+Those uses matter, but they are downstream. Lemma's primary identity is open formal mathematics. The core mission is simpler:
 
-- theorem-proving models;
-- formal-reasoning agents;
-- retrieval-augmented proof search;
-- proof-repair systems;
-- code-reasoning and program-verification models;
-- benchmark and evaluation pipelines;
-- other Bittensor networks that consume verified reasoning data.
-
-Affine-style model miners can consume Lemma's public corpora, but Lemma does not require a transactional dependency on Affine or any specific model competition layer. Lemma is the verified reasoning data production layer.
+**Grow an open corpus of machine-verified mathematics.**
 
 ---
 
 ## Roadmap
 
-### Phase 1: Lean Corpus Engine
+### Phase 1: Reliable Lean Proof Network
 
-Stabilize the Lean verifier path, improve miner and validator reliability, preserve binary accepted/rejected scoring, and export replayable Lean-domain corpus rows.
+Stabilize Lean verification, improve miner and validator reliability, harden task-bound submissions, and keep scoring binary.
 
-### Phase 2: Corpus Productization
+### Phase 2: Better Mathematical Task Supply
 
-Add dataset cards, JSONL and Parquet exports, Hugging Face-style releases, train/validation/test splits, exact duplicate detection, and near-duplicate metadata.
+Improve active theorem pool construction, expand useful Lean task fixtures, add Mathlib-derived task supply, and improve novelty and triviality filtering.
 
-### Phase 3: Verifier Adapter Architecture
+### Phase 3: Corpus Quality
 
-Generalize the adapter interface, domain registry, schema v2, and runtime metadata for pinned verifier containers.
+Export replayable JSONL and Parquet releases, add dataset cards, include source/license metadata, add train/validation/test splits, and improve duplicate flags.
 
-### Phase 4: Verus Pilot
+### Phase 4: Citation Graph And Reuse
 
-Introduce an experimental Verus adapter for Rust specifications and proofs, including sandboxing requirements and sample fixtures. This is a roadmap pilot, not a live production domain.
+Improve dependency extraction, expose graph queries, support citation-aware rewards if production-ready, and package proof chains for downstream theorem-prover training.
 
-### Phase 5: Additional Verified Domains
+### Phase 5: Open Theorem-Prover Ecosystem
 
-Expand only after Lean works reliably. Candidate roadmap domains include SAT/SMT certificates, optimization certificates, cryptanalysis witnesses, and other domains with deterministic verifiers and clear corpus value.
+Support downstream training pipelines, contamination-resistant evaluation by block or time cutoff, and replay/audit workflows.
 
 ---
 
-## Risks and Open Questions
+## Risks And Open Questions
 
 ### Weak proof identity during early operation
 
@@ -356,30 +267,26 @@ Script hashes are useful but imperfect. Production-grade deduplication requires 
 
 ### Task quality and licensing
 
-A verified row is only useful if the task source is legitimate, licensed, and valuable. Lemma must avoid unknown, restricted, or benchmark-contaminated sources in paid activation.
+A verified proof row is only useful if the task source is legitimate, licensed, and valuable. Lemma must avoid unknown, restricted, or benchmark-contaminated sources in paid activation.
 
 ### Solver overfitting
 
-If active tasks are too predictable, miners may optimize for narrow patterns rather than general proof capability. Curriculum and frontier controls must preserve useful pressure.
+If active tasks are too predictable, miners may optimize for narrow patterns rather than general proof capability. Curriculum and frontier controls should preserve useful pressure.
 
 ### Validator reproducibility
 
-Validators must agree on task registries, verifier versions, and active task sets. Any nondeterminism can damage scoring integrity.
+Validators must agree on task registries, verifier versions, and active task sets. Any nondeterminism damages scoring integrity.
 
 ### Corpus usefulness
 
-A large number of trivial proofs is less valuable than a smaller number of diverse, replayable, well-metadataed rows. Lemma must optimize for useful verified reasoning data, not just row count.
-
-### Domain expansion
-
-Adding domains too early could dilute the brand and weaken guarantees. The Lean wedge should work before Lemma moves beyond Lean in production.
+A large number of trivial proofs is less valuable than a smaller number of diverse, replayable, well-metadataed rows. Lemma should optimize for useful machine-verified mathematics, not just row count.
 
 ---
 
 ## Conclusion
 
-Lemma converts formal verification into an open data-production market. It begins with Lean because Lean provides a deterministic correctness boundary and a high-value output type. Miners search for proofs, validators check them, scoring rewards verified unique proofs, and accepted rows become a replayable public corpus.
+Lemma turns Bittensor incentives into an open, machine-verified mathematical record.
 
-The long-term opportunity is larger than theorem proving alone. Many future AI systems will need checked reasoning traces, verified programs, solver certificates, optimization witnesses, and proof-carrying artifacts. Lemma's first job is to make one domain work: Lean proof production as a reliable subnet. If that succeeds, the same verified data graph can support a broader market for checked reasoning.
+It starts with Lean because Lean provides a deterministic correctness boundary and a valuable output type: theorem/proof records. Miners search for proofs, validators check them, scoring rewards accepted unique proofs, and accepted records become a replayable public corpus.
 
-**AI can guess. Verifiers can check. Lemma pays for checked reasoning.**
+The result is public mathematical infrastructure: verified, attributed, replayable, and useful for future proof search.
