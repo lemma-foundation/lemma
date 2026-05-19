@@ -214,7 +214,7 @@ def test_operator_registry_flow_smoke(monkeypatch: pytest.MonkeyPatch, tmp_path:
     assert post_diagnostics_payload.artifacts.corpus_jsonl_file_count == 1
     assert post_diagnostics_payload.artifacts.corpus_row_count == 1
 
-    corpus_jsonl = tmp_path / "corpus" / "epoch-local.jsonl"
+    corpus_jsonl = tmp_path / "corpus" / "epoch-000001.jsonl"
     corpus_validate = runner.invoke(main, ["corpus", "validate", str(corpus_jsonl)], env=env)
 
     assert corpus_validate.exit_code == 0, corpus_validate.output

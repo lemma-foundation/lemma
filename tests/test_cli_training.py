@@ -309,7 +309,7 @@ def test_operator_diagnostics_writes_public_safe_report(tmp_path) -> None:
     (operator_dir / "validator-runs.jsonl").write_text("{}\n{}\n", encoding="utf-8")
     (operator_dir / "verification-records.jsonl").write_text("{}\n{}\n", encoding="utf-8")
     (operator_dir / "score-events.jsonl").write_text("{}\n", encoding="utf-8")
-    (corpus_dir / "epoch-local.jsonl").write_text("{}\n{}\n{}\n", encoding="utf-8")
+    (corpus_dir / "epoch-000001.jsonl").write_text("{}\n{}\n{}\n", encoding="utf-8")
 
     result = CliRunner().invoke(
         main,

@@ -96,7 +96,7 @@ Expected output fragments:
 Validate and export the corpus:
 
 ```bash
-uv run lemma corpus validate "$WORK/corpus/epoch-local.jsonl"
+uv run lemma corpus validate "$WORK/corpus/epoch-000001.jsonl"
 uv run lemma corpus export --input "$WORK/corpus" --output "$WORK/exports/corpus-index.json"
 uv run lemma corpus benchmark-export \
   --input "$WORK/corpus" \

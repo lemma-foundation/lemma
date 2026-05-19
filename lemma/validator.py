@@ -152,6 +152,18 @@ def archive_submission_spool(paths: Sequence[Path], spool_dir: Path) -> None:
         path.replace(target)
 
 
+def _next_local_epoch_file(corpus_dir: Path) -> Path:
+    used: set[int] = set()
+    for path in corpus_dir.glob("epoch-*.jsonl"):
+        stem = path.stem.removeprefix("epoch-")
+        if stem.isdigit():
+            used.add(int(stem))
+    next_epoch = 1
+    while next_epoch in used:
+        next_epoch += 1
+    return corpus_dir / f"epoch-{next_epoch:06d}.jsonl"
+
+
 def validate_once(
     settings: LemmaSettings,
     submissions: Iterable[LemmaSubmission],
@@ -274,8 +286,12 @@ def validate_once(
         )
 
     if rows:
-        filename = f"epoch-{epoch}.jsonl" if epoch is not None else "epoch-local.jsonl"
-        write_jsonl(rows, settings.corpus_output_dir / filename)
+        output_path = (
+            settings.corpus_output_dir / f"epoch-{epoch}.jsonl"
+            if epoch is not None
+            else _next_local_epoch_file(settings.corpus_output_dir)
+        )
+        write_jsonl(rows, output_path)
         write_corpus_index(settings.corpus_output_dir, settings.corpus_output_dir / "corpus-index.json")
 
     # Chain weight submission is intentionally not wired in this rewrite.

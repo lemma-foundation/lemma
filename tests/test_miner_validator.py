@@ -165,6 +165,31 @@ def test_validator_scores_and_writes_alternate_corpus_rows(tmp_path: Path) -> No
     assert run_summary.weights_set is False
 
 
+def test_validator_no_epoch_uses_next_numbered_local_file(tmp_path: Path) -> None:
+    task = _task()
+    submission = build_submission(task, solver_hotkey="hk-a", proof_script=_proof())
+    settings = _settings(tmp_path)
+
+    validate_once(
+        settings,
+        [submission],
+        registry=_registry(),
+        verify_submission=lambda task, submission: VerifyResult(passed=True, reason="ok"),
+        no_set_weights=True,
+    )
+    validate_once(
+        settings,
+        [submission],
+        registry=_registry(),
+        verify_submission=lambda task, submission: VerifyResult(passed=True, reason="ok"),
+        no_set_weights=True,
+    )
+
+    assert (tmp_path / "corpus" / "epoch-000001.jsonl").exists()
+    assert (tmp_path / "corpus" / "epoch-000002.jsonl").exists()
+    assert not (tmp_path / "corpus" / "epoch-local.jsonl").exists()
+
+
 def test_validator_rejects_bad_target_hash_and_unsigned_live_submission(tmp_path: Path) -> None:
     task = _task()
     bad_target = build_submission(task, solver_hotkey="hk-a", proof_script=_proof()).model_copy(
