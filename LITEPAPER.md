@@ -221,7 +221,7 @@ The reward is tied to checked work:
 - accepted unique proofs earn credit;
 - accepted theorem/proof records become public infrastructure.
 
-Lemma does not need a separate custody system for rewards. Rewards flow through normal Bittensor miner and validator mechanics.
+Lemma rewards flow through normal Bittensor miner and validator mechanics; the repo only defines proof verification, corpus publication, and weight calculation.
 
 ---
 

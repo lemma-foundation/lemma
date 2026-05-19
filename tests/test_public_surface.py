@@ -91,6 +91,7 @@ def test_public_surfaces_do_not_reintroduce_legacy_protocol_language() -> None:
         "lemma-cli",
         "openai" + "_api" + "_key",
         "lemma_bounty_",
+        "custody system",
         "v1 roadmap",
         "v1 focuses",
         "v1 public thesis",
