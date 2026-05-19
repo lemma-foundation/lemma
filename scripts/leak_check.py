@@ -13,6 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SKIP_CONTENT = {".gitignore", ".env.example", "scripts/leak_check.py"}
 PRIVATE_PATH_PARTS = ("wallets/", ".bittensor/", ".ssh/")
+SKIP_LOCAL_USERNAMES = {"root", "runner"}
 
 
 def _git(*args: str) -> str:
@@ -47,7 +48,7 @@ def _patterns() -> list[tuple[str, re.Pattern[str]]]:
         ("openai-key", re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b")),
     ]
     user = getpass.getuser()
-    if user and not os.environ.get("GITHUB_ACTIONS"):
+    if user and user not in SKIP_LOCAL_USERNAMES and not os.environ.get("GITHUB_ACTIONS"):
         patterns.append(("local-username", re.compile(rf"\b{re.escape(user)}\b")))
     credential_names = "|".join(("api[_-]?" + "key", "to" + "ken", "sec" + "ret"))
     patterns.extend(

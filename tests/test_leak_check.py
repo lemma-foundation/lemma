@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from scripts import leak_check
 from scripts.leak_check import _patterns, _private_path_label
 
 
@@ -49,3 +50,10 @@ def test_leak_check_blocks_private_operator_paths() -> None:
         assert _private_path_label(path) == label
 
     assert _private_path_label(".env.example") is None
+
+
+def test_leak_check_skips_common_service_account_usernames(monkeypatch) -> None:
+    monkeypatch.setattr(leak_check.getpass, "getuser", lambda: "root")
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+
+    assert "local-username" not in {label for label, _pattern in leak_check._patterns()}
