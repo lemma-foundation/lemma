@@ -104,4 +104,10 @@ uv run lemma corpus benchmark-export \
   --index "$WORK/exports/benchmark-index.json"
 ```
 
+To prepare a public `lemma-corpus` checkout after copying a sanitized epoch file into it:
+
+```bash
+uv run python scripts/prepare_corpus_publish.py --repo /path/to/lemma-corpus --netuid sn467
+```
+
 The manual validator pass uses the configured Lean verifier. The pytest smoke uses a verifier test double and checks the protocol plumbing without Docker.
