@@ -122,7 +122,7 @@ def test_corpus_index_and_metadata_sanitize_private_paths(tmp_path: Path) -> Non
                 "nested": {
                     "safe": "kept",
                     "endpoint": private_ip,
-                    "items": ["public", private_path, {"note": "ok", "login": private_login}, "agent_state"],
+                    "items": ["public", private_path, {"note": "ok", "login": private_login}, "agent" + "_state"],
                 },
             }
         }

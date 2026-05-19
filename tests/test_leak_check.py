@@ -17,6 +17,7 @@ def _labels(text: str) -> set[str]:
 
 def test_leak_check_recognizes_common_credential_shapes() -> None:
     samples = {
+        "agent-state": "agent" + "_state",
         "openai-key": "sk-" + ("a" * 24),
         "github-credential": "ghp_" + ("a" * 36),
         "slack-credential": "xoxb-" + ("a" * 24),
@@ -48,7 +49,7 @@ def test_leak_check_blocks_private_operator_paths() -> None:
         ".envrc": "env-path",
         ".envrc.local": "env-path",
         "AGENT" + "_STATE.md": "agent-state-path",
-        "notes/agent-state.md": "agent-state-path",
+        "notes/" + "agent" + "-state.md": "agent-state-path",
         "wallets/miner/key": "private-operator-path",
         ".bittensor/wallets/miner/key": "private-operator-path",
         ".ssh/id_ed25519": "private-operator-path",

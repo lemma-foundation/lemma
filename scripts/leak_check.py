@@ -41,7 +41,7 @@ def _private_path_label(path: str) -> str | None:
 
 def _patterns() -> list[tuple[str, re.Pattern[str]]]:
     patterns = [
-        ("agent-state", re.compile(r"AGENT[_ ]STATE|Agent State")),
+        ("agent-state", re.compile("AGENT" + r"[_ ]STATE|Agent State|" + "agent" + r"_state")),
         ("local-user-path", re.compile(re.escape("/" + "Users/"))),
         ("root-ssh", re.compile(r"root" + re.escape("@"))),
         ("ip-address", re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")),
