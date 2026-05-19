@@ -28,7 +28,7 @@ jobs:
             --ignore-vuln PYSEC-2022-42969
       # -ll: report only medium+ (low-severity e.g. seeded `random` for problem sampling is not a security bug).
       - name: Bandit
-        run: uv run bandit -q -r lemma -ll
+        run: uv run bandit -q -r lemma scripts -ll
       - name: Leak check
         run: uv run python scripts/leak_check.py
       - name: Pytest
