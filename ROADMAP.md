@@ -1,6 +1,6 @@
 # Lemma Roadmap
 
-Lemma's v1 roadmap is focused on one domain: Lean formal mathematics.
+Lemma's roadmap is focused on one domain: Lean formal mathematics.
 
 ## Phase 1: Reliable Lean Proof Market
 
@@ -39,4 +39,4 @@ Lemma's v1 roadmap is focused on one domain: Lean formal mathematics.
 
 ## Background Research
 
-Future non-math verifier domains are kept in [docs/research/future-verifier-domains.md](docs/research/future-verifier-domains.md). They are not part of v1 production framing.
+Future non-math verifier domains are kept in [docs/research/future-verifier-domains.md](docs/research/future-verifier-domains.md). They are not part of production framing.

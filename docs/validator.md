@@ -2,7 +2,7 @@
 
 Validators verify and publish accepted solutions.
 
-In v1, validators run the pinned Lean checker, score accepted proofs, and write replayable corpus rows.
+Validators run the pinned Lean checker, score accepted proofs, and write replayable corpus rows.
 
 ## Basic Flow
 

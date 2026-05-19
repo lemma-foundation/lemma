@@ -2,7 +2,7 @@
 
 Lemma tasks are exact verifier targets with source and license metadata.
 
-Miners do not choose arbitrary targets for v1 scoring. Validators publish an active deterministic queue, and every submission must bind to one exact task row.
+Miners do not choose arbitrary targets for scoring. Validators publish an active deterministic queue, and every submission must bind to one exact task row.
 
 Lean theorem proving is the only active production domain today. Legacy Lean tasks use `schema_version: 1`; dataset exports upgrade them to task schema v2 with `domain_id: lean`, `verifier_id: lake-build`, and `task_type: theorem_proving`.
 

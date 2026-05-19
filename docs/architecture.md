@@ -39,6 +39,6 @@ Scoring is pure. Verifiers do not know about Bittensor weights. Provider/model l
 
 Lemma does not custody funds and does not route owner emissions through contracts. Rewards flow through normal Bittensor miner and validator mechanics.
 
-The production architecture is Lean-first and math-first. Generic verifier adapters are internal/research extension points, not the public v1 product. Public docs should describe the active Lean path unless they are explicitly marked as research.
+The production architecture is Lean-first and math-first. Generic verifier adapters are internal/research extension points, not the public product. Public docs should describe the active Lean path unless they are explicitly marked as research.
 
 `LEMMA_PROTOCOL_MODE=production` fails closed unless `LEMMA_ENABLED_DOMAINS` is exactly `lean`, the task registry is SHA-pinned, the registry signature status is verified, and Lean verifier networking is disabled.

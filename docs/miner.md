@@ -54,4 +54,4 @@ The provider is not scored. Lemma only checks the final Lean proof.
 
 ## Reward Rule
 
-The first accepted unique proof for an active task earns one fixed-price verified unit in the validator epoch. Duplicate proofs, failed proofs, changed targets, prose explanations, and unsigned live submissions do not earn v1 credit. Unsolved slots do not increase the payout for solved slots.
+The first accepted unique proof for an active task earns one fixed-price verified unit in the validator epoch. Duplicate proofs, failed proofs, changed targets, prose explanations, and unsigned live submissions do not earn credit. Unsolved slots do not increase the payout for solved slots.

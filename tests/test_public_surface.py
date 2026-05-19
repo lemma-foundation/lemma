@@ -73,7 +73,7 @@ def test_future_domain_docs_are_research_only() -> None:
     assert not Path("docs/domain-adapter-spec.md").exists()
     assert not Path("docs/domains/verus.md").exists()
     research = Path("docs/research/future-verifier-domains.md").read_text(encoding="utf-8")
-    assert "This is background research, not the Lemma v1 thesis." in research
+    assert "This is background research, not Lemma's production thesis." in research
 
 
 def test_public_surfaces_do_not_reintroduce_legacy_protocol_language() -> None:
@@ -89,6 +89,14 @@ def test_public_surfaces_do_not_reintroduce_legacy_protocol_language() -> None:
         "lemma-cli",
         "openai" + "_api" + "_key",
         "lemma_bounty_",
+        "v1 roadmap",
+        "v1 focuses",
+        "v1 public thesis",
+        "v1 production",
+        "v1 scoring",
+        "v1 credit",
+        "v1 payout",
+        "v1 training",
     ]
     for fragment in forbidden:
         assert fragment not in lowered

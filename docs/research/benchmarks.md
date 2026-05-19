@@ -14,7 +14,7 @@ They are not the base reward stream.
 
 Google DeepMind Formal Conjectures is referenced as a public frontier benchmark and downstream demonstration layer. Lemma is independent and is not endorsed by Google DeepMind.
 
-Formal Conjectures is not the v1 payout path. It is useful as a downstream demonstration layer: train or tune provers on the Lemma Corpus, then measure whether they solve more frontier formal statements.
+Formal Conjectures is not the payout path. It is useful as a downstream demonstration layer: train or tune provers on the Lemma Corpus, then measure whether they solve more frontier formal statements.
 
 ## Policy
 

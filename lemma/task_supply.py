@@ -1,4 +1,4 @@
-"""Small task-supply helpers for v1 registries."""
+"""Small task-supply helpers for Lean registries."""
 
 from __future__ import annotations
 

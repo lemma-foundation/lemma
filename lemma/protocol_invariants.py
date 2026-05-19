@@ -7,7 +7,7 @@ from lemma.tasks import TaskRegistry
 
 
 def enforce_production_invariants(settings: LemmaSettings, registry: TaskRegistry) -> None:
-    """Fail closed when production mode lacks the Lean v1 safety boundary."""
+    """Fail closed when production mode lacks the Lean safety boundary."""
 
     if settings.protocol_mode != "production":
         return

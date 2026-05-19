@@ -15,7 +15,7 @@ MAX_PROOF_CHARS = 200_000
 
 
 def proof_sha256(proof_script: str) -> str:
-    """Return the canonical script hash used by v1 deduplication."""
+    """Return the canonical script hash used for deduplication."""
     return hashlib.sha256(proof_script.encode("utf-8")).hexdigest()
 
 

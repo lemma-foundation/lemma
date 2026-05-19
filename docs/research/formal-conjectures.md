@@ -10,4 +10,4 @@ The intended relationship is:
 2. Validators check the data and publish the open corpus.
 3. Provers trained on that corpus are evaluated against held-out frontier benchmarks such as Formal Conjectures.
 
-Paid training tasks and held-out benchmark claims must stay separate. A task used as public benchmark evidence should not also be paid as ordinary v1 training work.
+Paid training tasks and held-out benchmark claims must stay separate. A task used as public benchmark evidence should not also be paid as ordinary training work.

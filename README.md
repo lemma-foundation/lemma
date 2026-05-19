@@ -43,13 +43,11 @@ Downstream users can train theorem provers and reasoning models on the corpus, b
 
 Lean gives Lemma a mature, deterministic verifier. A proof either passes in the pinned environment or it fails.
 
-Mathematics is the right v1 domain because it is both clean and deep: clean enough for binary verification, deep enough to support years of useful work.
+Mathematics is the right production domain because it is both clean and deep: clean enough for binary verification, deep enough to support years of useful work.
 
 ## Scope
 
-Lemma v1 focuses on Lean formal mathematics. The network rewards verified Lean proof production and publishes verified theorem/proof records as an open mathematical corpus.
-
-Long-term verifier-domain research exists, but it is not part of the v1 public thesis. See [Background Research: Future Verifier Domains](docs/research/future-verifier-domains.md) for that context.
+Lemma focuses on Lean formal mathematics. The network rewards verified Lean proof production and publishes verified theorem/proof records as an open mathematical corpus.
 
 ## Quick Start: Miners
 
@@ -121,7 +119,7 @@ The unearned share is not redistributed to current solvers. It is burned by defa
 5. Improve dependency/citation graph tooling.
 6. Support downstream theorem-prover training and evaluation.
 
-Long-term verifier-domain research exists, but it is not part of the v1 public thesis.
+Long-term verifier-domain research exists, but it is not part of the public production thesis.
 
 ## Docs
 
@@ -160,7 +158,6 @@ Lean:
 Background Research:
 
 - [Roadmap](ROADMAP.md)
-- [Future verifier domains](docs/research/future-verifier-domains.md)
 - [Benchmarks](docs/research/benchmarks.md)
 - [Open AlphaProof-style engine](docs/research/open-alphaproof-engine.md)
 - [Open AlphaProof execution plan](docs/research/exec-plan-open-alphaproof.md)

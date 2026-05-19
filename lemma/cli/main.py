@@ -315,7 +315,7 @@ def tasks_pull_cmd(output_path: Path) -> None:
     help="Mathlib snapshot JSONL manifest.",
 )
 @click.option("--output", "output_path", type=click.Path(dir_okay=False, path_type=Path), required=True)
-@click.option("--seed", default="lemma-mathlib-snapshot-v1", show_default=True)
+@click.option("--seed", default="lemma-mathlib-snapshot", show_default=True)
 @click.option("--frontier-depth", type=click.IntRange(min=0), default=None)
 @click.option("--limit", type=click.IntRange(min=1), default=None)
 @click.option("--signed-by", default=None, help="Attach external signer metadata; this command does not sign.")
