@@ -112,6 +112,7 @@ def test_public_surfaces_do_not_reintroduce_legacy_protocol_language() -> None:
         assert fragment not in lowered
 
     assert "git clone https://github.com/lemma-foundation/lemma.git" in text
+    assert "https://github.com/lemma-foundation/lemma-corpus" in text
     assert "weight = credit / k" in lowered
     assert "validator-runs.jsonl" in text
 

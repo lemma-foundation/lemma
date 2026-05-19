@@ -91,6 +91,8 @@ Use [examples/operator-smoke](examples/operator-smoke/README.md) to build a pinn
 
 ## Corpus Export
 
+The public smoke corpus lives at [lemma-foundation/lemma-corpus](https://github.com/lemma-foundation/lemma-corpus).
+
 Export the current Lean mathematical corpus:
 
 ```bash

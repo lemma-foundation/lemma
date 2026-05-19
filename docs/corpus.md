@@ -4,6 +4,8 @@ The Lemma Corpus is the main product of the network: replayable Lean theorem/pro
 
 A corpus row is a replayable record of a verified mathematical proof.
 
+The public smoke corpus is published at [lemma-foundation/lemma-corpus](https://github.com/lemma-foundation/lemma-corpus).
+
 ## Purpose
 
 Corpus rows should be useful for theorem-prover training, retrieval, repair loops, reinforcement learning, and evaluation. A row is valuable only if another operator can reconstruct the task and rerun the pinned Lean verifier.
