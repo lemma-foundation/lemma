@@ -12,7 +12,8 @@ build/
 wheels/
 .env
 .env.local
-.env.*.local
+.env.*
+!.env.example
 AGENT_STATE.md
 *.log
 .DS_Store

@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import subprocess
+from pathlib import Path
+
 from scripts import leak_check
 from scripts.leak_check import _patterns, _private_path_label
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _labels(text: str) -> set[str]:
@@ -57,3 +62,23 @@ def test_leak_check_skips_common_service_account_usernames(monkeypatch) -> None:
     monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
 
     assert "local-username" not in {label for label, _pattern in leak_check._patterns()}
+
+
+def test_gitignore_blocks_env_variants_but_keeps_example() -> None:
+    ignored = subprocess.run(
+        ["git", "check-ignore", ".env.bak", ".env.miner3"],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    public_example = subprocess.run(
+        ["git", "check-ignore", ".env.example"],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert ignored.returncode == 0
+    assert public_example.returncode == 1
