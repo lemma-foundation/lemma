@@ -171,6 +171,13 @@ def test_validate_once_no_set_weights() -> None:
     assert '"weights_set": false' in result.output
 
 
+def test_validate_set_weights_requires_enable_flag() -> None:
+    result = CliRunner().invoke(main, ["validate", "--once", "--set-weights"])
+
+    assert result.exit_code == 1
+    assert "LEMMA_ENABLE_SET_WEIGHTS=1" in result.output
+
+
 def test_export_corpus_defaults_to_lean(tmp_path) -> None:
     output = tmp_path / "lean_corpus.jsonl"
     result = CliRunner().invoke(

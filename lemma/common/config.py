@@ -86,6 +86,8 @@ class LemmaSettings(BaseSettings):
     wallet_cold: str = Field(default="default", validation_alias="BT_WALLET_COLD")
     wallet_hot: str = Field(default="default", validation_alias="BT_WALLET_HOT")
     netuid: int = Field(default=0, ge=0, validation_alias="BT_NETUID")
+    bt_network: str = Field(default="", validation_alias="BT_NETWORK")
+    enable_set_weights: bool = Field(default=False, validation_alias="LEMMA_ENABLE_SET_WEIGHTS")
     unearned_allocation_policy: Literal["burn", "recycle", "hold"] = Field(
         default="burn",
         validation_alias="LEMMA_UNEARNED_ALLOCATION_POLICY",

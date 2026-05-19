@@ -26,6 +26,7 @@ from lemma.verifiers.lean import verify_result_from_adapter_result
 from lemma.verifiers.registry import get_verifier
 
 VerifySubmission = Callable[[LemmaTask, LemmaSubmission], VerifyResult]
+SubmitWeights = Callable[[LemmaSettings, dict[str, float]], bool]
 
 
 class ValidatorRunSummary(BaseModel):
@@ -175,6 +176,7 @@ def validate_once(
     tempo: int | None = None,
     no_set_weights: bool = False,
     require_signatures: bool = False,
+    submit_weights: SubmitWeights | None = None,
 ) -> ValidatorRunResult:
     """Verify submissions, score unique proofs, and write local corpus artifacts."""
     registry = registry or fetch_task_registry(settings)
@@ -294,9 +296,12 @@ def validate_once(
         write_jsonl(rows, output_path)
         write_corpus_index(settings.corpus_output_dir, settings.corpus_output_dir / "corpus-index.json")
 
-    # Chain weight submission is intentionally not wired in this rewrite.
-    # Keep computed weights visible without claiming a live chain write.
     weights_set = False
+    if not no_set_weights and settings.enable_set_weights:
+        from lemma.chain.weights import submit_bittensor_weights
+
+        writer = submit_weights or submit_bittensor_weights
+        weights_set = writer(settings, score.weights)
     summary = ValidatorRunSummary(
         schema_version=1,
         run_at=_now(),

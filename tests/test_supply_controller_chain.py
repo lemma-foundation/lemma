@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from lemma.chain.burn_or_recycle import UnearnedAllocation
 from lemma.chain.commitments import CommitmentEnvelope, ciphertext_sha256
-from lemma.chain.weights import allocation_vector
+from lemma.chain.weights import allocation_vector, resolve_weight_plan
 from lemma.simulate import MinerCapability, simulate_tempos
 from lemma.supply import auto_formalize, conjecture_gen, mathlib_snapshot, perturbations, state_graph, variants
 from lemma.supply.controller import CurriculumConfig, CurriculumState, retarget_curriculum
@@ -101,3 +101,19 @@ def test_chain_interfaces_are_deterministic_without_live_chain_claims() -> None:
         "hk": 0.2,
         "burn_uid:0": 0.8,
     }
+
+
+def test_chain_weight_plan_resolves_hotkeys_and_uid_labels() -> None:
+    plan = resolve_weight_plan({"hk-b": 0.25, "burn_uid:0": 0.75}, ["burn", "hk-a", "hk-b"])
+
+    assert plan.uids == (0, 2)
+    assert plan.weights == (0.75, 0.25)
+
+
+def test_chain_weight_plan_rejects_unknown_hotkey() -> None:
+    try:
+        resolve_weight_plan({"unknown-hotkey": 1.0}, ["hk-a"])
+    except ValueError as e:
+        assert "cannot resolve" in str(e)
+    else:
+        raise AssertionError("unknown hotkey should fail closed")

@@ -238,6 +238,27 @@ def test_validator_zero_credit_epoch_routes_unearned_share(tmp_path: Path) -> No
     assert run_summary.weights_set is False
 
 
+def test_validator_submits_weights_only_when_enabled(tmp_path: Path) -> None:
+    submission = build_submission(_task(), solver_hotkey="hk-a", proof_script=_proof())
+    calls: list[dict[str, float]] = []
+
+    def fake_submit_weights(settings: LemmaSettings, weights: dict[str, float]) -> bool:  # noqa: ARG001
+        calls.append(weights)
+        return True
+
+    result = validate_once(
+        _settings(tmp_path).model_copy(update={"enable_set_weights": True}),
+        [submission],
+        registry=_registry(),
+        verify_submission=lambda task, submission: VerifyResult(passed=True, reason="ok"),
+        no_set_weights=False,
+        submit_weights=fake_submit_weights,
+    )
+
+    assert result.weights_set is True
+    assert calls == [{"hk-a": 1.0}]
+
+
 def test_validator_uses_deterministic_active_window_not_full_registry(tmp_path: Path) -> None:
     registry = _two_task_registry()
     active, deep = registry.tasks

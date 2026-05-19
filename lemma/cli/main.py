@@ -716,13 +716,15 @@ def operator_registry_inspect_cmd() -> None:
 
 @main.command("validate")
 @click.option("--once", is_flag=True, help="Run one validator scoring iteration.")
-@click.option("--no-set-weights", is_flag=True, help="Chain-write guard; current build computes weights only.")
+@click.option("--set-weights", is_flag=True, help="Submit computed weights to Bittensor.")
+@click.option("--no-set-weights", is_flag=True, help="Compute weights without submitting them.")
 @click.option("--submissions-jsonl", type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None)
 @click.option("--submission-spool", type=click.Path(file_okay=False, path_type=Path), default=None)
 @click.option("--validator-hotkey", default=None, help="Override validator attribution.")
 @click.option("--require-signatures", is_flag=True, help="Require signed live miner submissions.")
 def validate_cmd(
     once: bool,
+    set_weights: bool,
     no_set_weights: bool,
     submissions_jsonl: Path | None,
     submission_spool: Path | None,
@@ -740,6 +742,10 @@ def validate_cmd(
 
     settings = LemmaSettings()
     setup_logging(settings.log_level)
+    if set_weights and no_set_weights:
+        raise click.ClickException("choose either --set-weights or --no-set-weights")
+    if set_weights and not settings.enable_set_weights:
+        raise click.ClickException("set LEMMA_ENABLE_SET_WEIGHTS=1 before using --set-weights")
     submissions = read_submissions_jsonl(submissions_jsonl) if submissions_jsonl else []
     spool_dir = submission_spool or settings.submission_spool_dir
     spool_paths: tuple[Path, ...] = ()
@@ -752,7 +758,7 @@ def validate_cmd(
         settings,
         submissions,
         validator_hotkey=validator_hotkey,
-        no_set_weights=no_set_weights or not once,
+        no_set_weights=(not set_weights) or no_set_weights or not once,
         require_signatures=require_signatures,
     )
     if spool_paths and spool_dir is not None:
