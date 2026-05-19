@@ -2,11 +2,11 @@
 
 **Lemma is a permissionless incentive network for growing open, machine-verified mathematics.**
 
-Miners submit Lean proofs. Validators verify them with a pinned Lean toolchain. Accepted theorems become part of an open, citation-structured corpus of formal mathematics.
+Miners submit Lean proofs. Validators verify them with a pinned Lean toolchain. Accepted proofs become replayable theorem/proof records in an open, citation-structured corpus of formal mathematics.
 
 ## Why Lemma Exists
 
-Mathlib showed that machine-verified mathematics can become shared public infrastructure. Lemma adds a market around formal proof production.
+Mathlib showed that machine-verified mathematics can become shared public infrastructure. Lemma adds an incentive layer for formal proof production.
 
 The goal is simple: reward correct Lean proofs and use them to expand the open mathematical record.
 
@@ -17,10 +17,10 @@ The goal is simple: reward correct Lean proofs and use them to expand the open m
 3. Miners submit task-bound proof packages.
 4. Validators run the pinned Lean verifier.
 5. First accepted unique proofs earn credit.
-6. Accepted theorems become replayable corpus entries.
+6. Accepted proofs become replayable corpus entries.
 7. Dependency and citation metadata turns the corpus into a graph of reusable mathematics.
 
-Lemma runs as a network on Bittensor. Bittensor supplies the permissionless miner and validator market; Lemma supplies the deterministic mathematical verification target.
+Lemma runs as a network on Bittensor. Bittensor supplies the permissionless miner and validator network; Lemma supplies the deterministic mathematical verification target.
 
 ## What Lemma Produces
 
@@ -47,7 +47,7 @@ Mathematics is the right v1 domain because it is both clean and deep: clean enou
 
 ## Scope
 
-Lemma v1 focuses on Lean formal mathematics. The network rewards verified Lean proof production and publishes accepted theorem/proof records as an open mathematical corpus.
+Lemma v1 focuses on Lean formal mathematics. The network rewards verified Lean proof production and publishes verified theorem/proof records as an open mathematical corpus.
 
 Long-term verifier-domain research exists, but it is not part of the v1 public thesis. See [Background Research: Future Verifier Domains](docs/research/future-verifier-domains.md) for that context.
 

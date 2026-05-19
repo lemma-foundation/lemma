@@ -2,7 +2,7 @@
 
 ## What is Lemma?
 
-Lemma is a permissionless incentive network for growing open, machine-verified mathematics. Miners submit Lean proofs, validators check them with a pinned Lean toolchain, and accepted theorems become part of an open mathematical corpus.
+Lemma is a permissionless incentive network for growing open, machine-verified mathematics. Miners submit Lean proofs, validators check them with a pinned Lean toolchain, and accepted proofs become replayable theorem/proof records in an open mathematical corpus.
 
 Lean theorem proving is the production domain.
 
@@ -16,7 +16,7 @@ Lean gives the network a deterministic correctness boundary. A proof either veri
 
 ## What is Bittensor's role?
 
-Bittensor supplies the open miner/validator market. Lemma supplies the mathematical target and verification rules.
+Bittensor supplies the open miner/validator network. Lemma supplies the mathematical target and verification rules.
 
 ## Can miners use AI APIs?
 

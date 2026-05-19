@@ -28,4 +28,4 @@ Accepted proofs become verified theorem/proof records. Each row links the task, 
 
 ## Why Bittensor
 
-Bittensor gives Lemma an open miner/validator market. Lemma gives that market a clean mathematical target: produce Lean proofs that verify. The reward is tied to checked work, and the output becomes public mathematical infrastructure.
+Bittensor gives Lemma an open miner/validator network. Lemma gives that network a clean mathematical target: produce Lean proofs that verify. The reward is tied to checked work, and the output becomes public mathematical infrastructure.

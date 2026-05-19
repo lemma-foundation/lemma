@@ -2,7 +2,7 @@
 
 Lemma is a permissionless incentive network for growing open, machine-verified mathematics.
 
-It turns Lean theorem-proving work into a public corpus of verified mathematics. Miners search for proofs. Validators check those proofs with a pinned Lean toolchain. Accepted theorems become reusable mathematical records with provenance, attribution, and replayable verification.
+It turns Lean theorem-proving work into a public corpus of verified mathematics. Miners search for proofs. Validators check those proofs with a pinned Lean toolchain. Accepted proofs become reusable theorem/proof records with provenance, attribution, and replayable verification.
 
 ## The Short Version
 
