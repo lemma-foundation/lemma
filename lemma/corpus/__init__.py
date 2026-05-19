@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -147,18 +148,40 @@ def row_id_for(*, target_sha256: str, proof_sha256: str, solver_hotkey: str, val
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+_PRIVATE_METADATA_VALUE = re.compile(
+    "|".join(
+        (
+            re.escape("/" + "Users/"),
+            "ro" + "ot@",
+            r"\b(?:\d{1,3}\.){3}\d{1,3}\b",
+            "AGENT" + r"[_ ]STATE",
+            "Agent" + " State",
+        )
+    ),
+    re.IGNORECASE,
+)
+
+
+def _public_metadata_value(value: Any) -> Any | None:
+    if isinstance(value, str):
+        return None if _PRIVATE_METADATA_VALUE.search(value) else value
+    if isinstance(value, dict):
+        return _public_metadata(value)
+    if isinstance(value, (list, tuple)):
+        return [item for raw in value if (item := _public_metadata_value(raw)) is not None]
+    return value
+
+
 def _public_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
-    blocked_keys = ("path", "file", "dir", "log", "workspace", "secret", "token", "key")
-    local_user_prefix = "/" + "Users/"
-    root_ssh = "root" + "@"
+    blocked_keys = ("path", "file", "dir", "log", "workspace", "secret", "token", "key", "host", "ip", "ssh")
     out: dict[str, Any] = {}
     for key, value in metadata.items():
         lower = key.lower()
         if any(part in lower for part in blocked_keys):
             continue
-        if isinstance(value, str) and (local_user_prefix in value or root_ssh in value):
-            continue
-        out[key] = value
+        public_value = _public_metadata_value(value)
+        if public_value is not None:
+            out[key] = public_value
     return out
 
 

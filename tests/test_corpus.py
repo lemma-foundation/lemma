@@ -112,7 +112,21 @@ def test_corpus_replay_calls_verifier(monkeypatch: pytest.MonkeyPatch, tmp_path:
 
 def test_corpus_index_and_metadata_sanitize_private_paths(tmp_path: Path) -> None:
     private_path = "/" + "Users/example/private"
-    task = _task().model_copy(update={"metadata": {"local_path": private_path, "difficulty": "unit"}})
+    private_login = "ro" + "ot@example.test"
+    private_ip = ".".join(["203", "0", "113", "10"])
+    task = _task().model_copy(
+        update={
+            "metadata": {
+                "local_path": private_path,
+                "difficulty": "unit",
+                "nested": {
+                    "safe": "kept",
+                    "endpoint": private_ip,
+                    "items": ["public", private_path, {"note": "ok", "login": private_login}, "agent_state"],
+                },
+            }
+        }
+    )
     proof = _proof()
     submission = build_submission(task, solver_hotkey="hk1", proof_script=proof, created_at="2026-01-01T00:00:00Z")
     row = build_corpus_row(
@@ -128,9 +142,20 @@ def test_corpus_index_and_metadata_sanitize_private_paths(tmp_path: Path) -> Non
     write_jsonl([row], path)
     index = build_corpus_index(tmp_path)
 
-    assert row.metadata == {"title": "True task", "difficulty": "unit"}
+    assert row.metadata == {
+        "title": "True task",
+        "difficulty": "unit",
+        "nested": {"safe": "kept", "items": ["public", {"note": "ok"}]},
+    }
     assert index["row_count"] == 1
     assert index["files"][0]["path"] == "epoch-1.jsonl"
+
+    export_path = tmp_path / "exports" / "lemma-proofs.jsonl"
+    write_benchmark_export(tmp_path, export_path)
+    export_text = export_path.read_text(encoding="utf-8")
+    assert private_path not in export_text
+    assert private_login not in export_text
+    assert private_ip not in export_text
 
 
 def test_benchmark_export_writes_compact_records_and_index(tmp_path: Path) -> None:
