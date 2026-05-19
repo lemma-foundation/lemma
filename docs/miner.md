@@ -7,6 +7,8 @@ Your job is to fetch active tasks, produce a verifier-accepted proof, verify it 
 ## Basic Flow
 
 ```bash
+git clone https://github.com/lemma-foundation/lemma.git
+cd lemma
 uv sync --extra btcli
 uv run lemma setup
 uv run lemma status

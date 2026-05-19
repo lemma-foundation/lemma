@@ -54,6 +54,8 @@ Long-term verifier-domain research exists, but it is not part of the v1 public t
 ## Quick Start: Miners
 
 ```bash
+git clone https://github.com/lemma-foundation/lemma.git
+cd lemma
 uv sync --extra btcli
 uv run lemma setup
 uv run lemma status
@@ -72,6 +74,8 @@ uv run lemma submit lemma.sample.true_intro --submission Submission.lean --solve
 ## Quick Start: Validators
 
 ```bash
+git clone https://github.com/lemma-foundation/lemma.git
+cd lemma
 uv sync --extra btcli
 uv run lemma setup
 uv run lemma worker --check

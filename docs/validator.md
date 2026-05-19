@@ -7,6 +7,8 @@ In v1, validators run the pinned Lean checker, score accepted proofs, and write 
 ## Basic Flow
 
 ```bash
+git clone https://github.com/lemma-foundation/lemma.git
+cd lemma
 uv sync --extra btcli
 uv run lemma setup
 uv run lemma worker --check

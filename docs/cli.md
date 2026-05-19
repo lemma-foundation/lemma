@@ -5,6 +5,9 @@ The public CLI follows the miner and validator workflow directly.
 ## Setup
 
 ```bash
+git clone https://github.com/lemma-foundation/lemma.git
+cd lemma
+uv sync --extra btcli
 uv run lemma setup
 uv run lemma status
 ```
