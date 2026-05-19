@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import re
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -92,6 +93,19 @@ def _receipt_value(response: object, field: str) -> object:
     return getattr(receipt, field, None) if receipt else None
 
 
+def _wait_for_commit_reveal_window(subtensor: object, netuid: int, *, block_time: float = 12.0) -> None:
+    if not subtensor.commit_reveal_enabled(netuid=netuid):
+        return
+    while True:
+        block = subtensor.get_current_block()
+        tempo = subtensor.get_subnet_hyperparameters(netuid, block=block).tempo
+        window_start = max(0, tempo - 10)
+        remaining_blocks = window_start - (block % tempo)
+        if remaining_blocks <= 0:
+            return
+        time.sleep(min(block_time, remaining_blocks * block_time))
+
+
 def submit_bittensor_weights(settings: LemmaSettings, weights: dict[str, float]) -> ChainWeightSubmission:
     """Submit resolved weights through the pinned Bittensor client."""
     import bittensor as bt
@@ -100,6 +114,7 @@ def submit_bittensor_weights(settings: LemmaSettings, weights: dict[str, float])
     metagraph = subtensor.metagraph(settings.netuid, lite=True)
     plan = resolve_weight_plan(weights, tuple(metagraph.hotkeys))
     wallet = bt.Wallet(name=settings.wallet_cold, hotkey=settings.wallet_hot)
+    _wait_for_commit_reveal_window(subtensor, settings.netuid)
     response = subtensor.set_weights(
         wallet=wallet,
         netuid=settings.netuid,

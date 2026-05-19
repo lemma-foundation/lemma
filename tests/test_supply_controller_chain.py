@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from lemma.chain.burn_or_recycle import UnearnedAllocation
 from lemma.chain.commitments import CommitmentEnvelope, ciphertext_sha256
-from lemma.chain.weights import allocation_vector, resolve_weight_plan
+from lemma.chain.weights import _wait_for_commit_reveal_window, allocation_vector, resolve_weight_plan
 from lemma.simulate import MinerCapability, simulate_tempos
 from lemma.supply import auto_formalize, conjecture_gen, mathlib_snapshot, perturbations, state_graph, variants
 from lemma.supply.controller import CurriculumConfig, CurriculumState, retarget_curriculum
@@ -117,3 +117,30 @@ def test_chain_weight_plan_rejects_unknown_hotkey() -> None:
         assert "cannot resolve" in str(e)
     else:
         raise AssertionError("unknown hotkey should fail closed")
+
+
+def test_commit_reveal_window_waits_until_last_ten_blocks(monkeypatch) -> None:
+    class Hyperparams:
+        tempo = 360
+
+    class Subtensor:
+        blocks = [100, 350]
+
+        def commit_reveal_enabled(self, *, netuid: int) -> bool:
+            assert netuid == 467
+            return True
+
+        def get_current_block(self) -> int:
+            return self.blocks.pop(0)
+
+        def get_subnet_hyperparameters(self, netuid: int, *, block: int) -> Hyperparams:
+            assert netuid == 467
+            assert block in {100, 350}
+            return Hyperparams()
+
+    sleeps: list[float] = []
+    monkeypatch.setattr("lemma.chain.weights.time.sleep", sleeps.append)
+
+    _wait_for_commit_reveal_window(Subtensor(), 467)
+
+    assert sleeps == [12.0]

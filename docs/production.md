@@ -30,7 +30,7 @@ uv run lemma export-corpus --domain lean --format jsonl --out data/lean_corpus.j
 ```
 
 Corpus deltas are written under `LEMMA_CORPUS_OUTPUT_DIR`. Local receipts are written under `LEMMA_OPERATOR_DATA_DIR`. If `LEMMA_SUBMISSION_SPOOL_DIR` is set, validators consume pending `.json` or `.jsonl` submission files from that directory and move them to `processed/` after a successful pass. These paths should remain ignored unless an operator intentionally publishes sanitized artifacts.
-Live chain writes require both `LEMMA_ENABLE_SET_WEIGHTS=1` and `--set-weights`; keep production smoke and corpus-only passes on `--no-set-weights`. Each attempted live write appends a public-safe `weight-submissions.jsonl` receipt with the resolved UID vector, client result, and extrinsic hash when available.
+Live chain writes require both `LEMMA_ENABLE_SET_WEIGHTS=1` and `--set-weights`; keep production smoke and corpus-only passes on `--no-set-weights`. On commit-reveal subnets, the chain writer waits until the final 10 blocks of the tempo before submitting. Each attempted live write appends a public-safe `weight-submissions.jsonl` receipt with the resolved UID vector, client result, and extrinsic hash when available.
 
 For the full registry-to-validator-to-export sequence, see [Operator Registry Flow](operator-registry-flow.md).
 

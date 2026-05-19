@@ -25,6 +25,7 @@ Use `--no-set-weights` for smoke passes and corpus-only validation.
 
 `lemma validate` loads the task registry, validates miner submissions, dispatches to the domain verifier adapter, writes verification results, writes score events, writes a public-safe `validator-runs.jsonl` summary row, and publishes corpus JSONL deltas.
 When `--set-weights` is enabled, each chain-write attempt also appends a public-safe `weight-submissions.jsonl` receipt under `LEMMA_OPERATOR_DATA_DIR` with the resolved UID vector, weights, network, netuid, success flag, sanitized client message, and extrinsic hash when available.
+On commit-reveal subnets, the chain writer waits until the final 10 blocks of the tempo before submitting.
 After configuring a pinned registry hash, `lemma operator preflight` checks registry pinning, active-window size, local output directories, and Lean verifier configuration.
 Use `lemma operator diagnostics --output operator-diagnostics-before.json` before a validator pass and `lemma operator diagnostics --output operator-diagnostics-after.json` after it. The before file captures registry readiness; the after file adds public-safe artifact counts for the run.
 For a file-based live loop, set `LEMMA_SUBMISSION_SPOOL_DIR` or pass `--submission-spool`. Pending top-level `.json` and `.jsonl` files are read once and moved to `processed/` after validation succeeds.
