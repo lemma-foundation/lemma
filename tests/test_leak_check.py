@@ -45,6 +45,8 @@ def test_leak_check_blocks_private_operator_paths() -> None:
     blocked = {
         ".env": "env-path",
         ".env.local": "env-path",
+        ".envrc": "env-path",
+        ".envrc.local": "env-path",
         "AGENT" + "_STATE.md": "agent-state-path",
         "notes/agent-state.md": "agent-state-path",
         "wallets/miner/key": "private-operator-path",
@@ -55,6 +57,7 @@ def test_leak_check_blocks_private_operator_paths() -> None:
         assert _private_path_label(path) == label
 
     assert _private_path_label(".env.example") is None
+    assert _private_path_label(".envrc.example") is None
 
 
 def test_leak_check_skips_common_service_account_usernames(monkeypatch) -> None:
@@ -65,8 +68,9 @@ def test_leak_check_skips_common_service_account_usernames(monkeypatch) -> None:
 
 
 def test_gitignore_blocks_env_variants_but_keeps_example() -> None:
+    private_env_paths = {".env.bak", ".env.miner3", ".envrc", ".envrc.local"}
     ignored = subprocess.run(
-        ["git", "check-ignore", ".env.bak", ".env.miner3"],
+        ["git", "check-ignore", *private_env_paths],
         cwd=ROOT,
         check=False,
         capture_output=True,
@@ -81,4 +85,14 @@ def test_gitignore_blocks_env_variants_but_keeps_example() -> None:
     )
 
     assert ignored.returncode == 0
+    assert set(ignored.stdout.splitlines()) == private_env_paths
     assert public_example.returncode == 1
+
+    public_envrc_example = subprocess.run(
+        ["git", "check-ignore", ".envrc.example"],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert public_envrc_example.returncode == 1

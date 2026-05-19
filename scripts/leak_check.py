@@ -30,6 +30,8 @@ def _private_path_label(path: str) -> str | None:
     lowered = path.lower()
     if name == ".env" or (name.startswith(".env.") and name != ".env.example"):
         return "env-path"
+    if name == ".envrc" or (name.startswith(".envrc.") and name != ".envrc.example"):
+        return "env-path"
     if re.search(r"agent[-_ ]?state", lowered):
         return "agent-state-path"
     if any(part in lowered for part in PRIVATE_PATH_PARTS):
