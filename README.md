@@ -170,6 +170,7 @@ Background Research:
 uv run ruff check .
 uv run mypy lemma
 uv run bandit -q -r lemma scripts -ll
+uv run pip-audit --ignore-vuln PYSEC-2025-49 --ignore-vuln PYSEC-2022-42969
 uv run pytest tests -q
 uv run python scripts/leak_check.py
 ```
