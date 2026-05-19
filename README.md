@@ -167,7 +167,7 @@ Background Research:
 ## Development Checks
 
 ```bash
-uv run ruff check lemma tests
+uv run ruff check .
 uv run mypy lemma
 uv run pytest tests -q
 uv run python scripts/leak_check.py
