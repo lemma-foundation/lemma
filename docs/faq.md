@@ -2,29 +2,25 @@
 
 ## What is Lemma?
 
-Lemma is a Verified Reasoning Network. Miners solve hard reasoning tasks, validators check the answers with deterministic verifiers, and accepted solutions become open training data for stronger AI.
+Lemma is a permissionless incentive network for growing open, machine-verified mathematics. Miners submit Lean proofs, validators check them with a pinned Lean toolchain, and accepted theorems become part of an open mathematical corpus.
 
-Lean theorem proving is the only production domain today.
+Lean theorem proving is the production domain.
 
 ## What gets rewarded?
 
-The first accepted unique proof for an active task in a validator epoch.
+The first accepted unique Lean proof for an active theorem task in a validator epoch.
 
-## Is Lemma a Formal Conjectures payout subnet?
+## Why Lean?
 
-No. Google DeepMind Formal Conjectures is a frontier benchmark and downstream demonstration layer. Lemma rewards verified reasoning data production.
+Lean gives the network a deterministic correctness boundary. A proof either verifies in the pinned environment or it fails.
 
-## Is Lemma endorsed by Google DeepMind?
+## What is Bittensor's role?
 
-No. Lemma is independent. It may reference Google DeepMind's public Formal Conjectures project as a benchmark.
-
-## Are smart contracts needed?
-
-No for v1. Lemma uses normal Bittensor rewards and does not custody funds.
+Bittensor supplies the open miner/validator market. Lemma supplies the mathematical target and verification rules.
 
 ## Can miners use AI APIs?
 
-Yes. Miners can use local commands, OpenAI-compatible endpoints, tactic search, retrieval, hosted models, or human-written proofs. Validators only check the final proof.
+Yes. Miners can use local commands, OpenAI-compatible endpoints, tactic search, retrieval, hosted models, or human-written proofs. Validators only check the final Lean proof.
 
 ## What do validators score?
 
@@ -32,4 +28,8 @@ Proofs that pass the pinned verifier for active tasks. Validators do not score p
 
 ## What is the corpus?
 
-A public dataset of accepted verified reasoning rows with source metadata, proof hashes, verifier results, and reward status. The current corpus is the Lean domain corpus.
+A public corpus of accepted Lean theorem/proof records with source metadata, proof hashes, verifier results, reward status, attribution, and dependency links.
+
+## Can the corpus be used for model training?
+
+Yes. Downstream users can train theorem provers and reasoning models on the corpus. That is a downstream use case, not the core public identity.

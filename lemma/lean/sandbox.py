@@ -427,6 +427,9 @@ class LeanSandbox:
             "if [ -d /opt/lemma-stub ] && [ ! -d .lake ]; then",
             "  cp -a /opt/lemma-stub/.lake . 2>/dev/null || true",
             "fi",
+            "if [ -d /opt/lemma-stub ] && [ ! -f lake-manifest.json ]; then",
+            "  cp -a /opt/lemma-stub/lake-manifest.json . 2>/dev/null || true",
+            "fi",
         ]
         if _docker_network_allows_remote_cache(self.network_mode):
             if lake_exe_cache_get_needed(work):

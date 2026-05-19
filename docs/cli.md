@@ -57,4 +57,4 @@ uv run lemma corpus benchmark-export --input corpus --output exports/lemma-proof
 uv run lemma export-corpus --domain lean --format jsonl --out data/lean_corpus.jsonl
 ```
 
-Corpus commands are for operators and dataset users who want to validate, replay, index, or export accepted verified reasoning data.
+Corpus commands are for operators and dataset users who want to validate, replay, index, or export accepted Lean theorem/proof records.

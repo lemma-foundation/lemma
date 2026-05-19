@@ -1,10 +1,10 @@
 # Production
 
-Production Lemma is the verified reasoning data loop:
+Production Lemma is the Lean proof corpus loop:
 
 1. publish an active task registry;
 2. receive miner proof submissions;
-3. verify each proof with the pinned domain environment;
+3. verify each proof with the pinned Lean environment;
 4. score first accepted unique proofs;
 5. compute miner weights as `credit / K` and burn unearned share by default;
 6. publish accepted corpus rows and a small corpus index.

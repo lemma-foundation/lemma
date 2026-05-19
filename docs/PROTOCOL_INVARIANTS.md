@@ -1,8 +1,8 @@
 # Protocol Invariants
 
-These invariants protect Lemma's core promise: accepted rows must be mechanically verified, replayable, licensed, and safe to use as training data.
+These invariants protect Lemma's core promise: accepted theorem/proof records must be mechanically verified, replayable, licensed, and safe to publish as open mathematical corpus rows.
 
-Lemma launches with Lean as the only paid production domain. Future domains can reuse the verified reasoning data row contract, but they do not enter production rewards until they have the same deterministic verifier, replay, license, identity, and corpus guarantees.
+Lemma launches with Lean formal mathematics as the only paid production domain. Research adapters stay outside production rewards unless they have the same deterministic verifier, replay, license, identity, and corpus guarantees.
 
 Production invariants:
 

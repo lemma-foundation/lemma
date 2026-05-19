@@ -18,6 +18,7 @@ def test_docker_verify_script_source_is_line_oriented(tmp_path: Path, monkeypatc
     script = sb._docker_verify_script_source(tmp_path)
 
     assert "lake exe cache get" not in script
+    assert "cp -a /opt/lemma-stub/lake-manifest.json ." in script
     assert "\nlake build Submission\n" in script
     assert "\nlake env lean AxiomCheck.lean\n" in script
 

@@ -1,6 +1,6 @@
 # Useful Verified Row
 
-A valid Lean proof row is not automatically useful training data.
+A valid Lean proof row is not automatically useful mathematical corpus data.
 
 A useful verified row passes these gates:
 
@@ -8,7 +8,7 @@ A useful verified row passes these gates:
 - replayability: the row carries enough metadata to rerun the verifier;
 - nontriviality: baseline tactics were checked and failed;
 - novelty: the row is not an exact or near duplicate;
-- license: the source license is clean for public training data;
+- license: the source license is clean for public corpus publication;
 - identity: proof identity is strong enough for full production reward.
 
 Rows can be valid but not useful. Corpus exports can filter with `--useful-only`, and production reward policy can require `full_reward_eligible`.

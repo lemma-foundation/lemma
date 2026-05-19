@@ -1,13 +1,13 @@
 # Task Schema v2
 
-`lemma/schemas/task_v2.json` is the domain-neutral task shape.
+`lemma/schemas/task_v2.json` is the task shape used by the current Lean path.
 
 Required fields:
 
 ```json
 {
   "task_id": "string",
-  "domain_id": "lean | verus | sat | smt | lp | sdp | cryptanalysis",
+  "domain_id": "lean",
   "verifier_id": "string",
   "verifier_version": "string",
   "task_type": "string",

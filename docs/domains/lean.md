@@ -1,14 +1,13 @@
 # Lean Domain
 
-Lean theorem proving is the first production Lemma domain.
+Lean theorem proving is the production Lemma domain.
 
 ## Why Lean First
 
 - deterministic verifier;
 - mature Mathlib ecosystem;
 - clean theorem/proof corpus rows;
-- direct link to AlphaProof-style training loops;
-- useful data for theorem provers and broader reasoning models.
+- useful records for theorem provers, proof search, and mathematical retrieval.
 
 ## Runtime
 

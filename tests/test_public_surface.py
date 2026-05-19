@@ -34,8 +34,6 @@ def test_final_docs_structure_exists() -> None:
 
     assert docs == {
         "what-is-lemma.md",
-        "open-alphaproof-engine.md",
-        "exec-plan-open-alphaproof.md",
         "how-it-works.md",
         "corpus.md",
         "miner.md",
@@ -45,12 +43,8 @@ def test_final_docs_structure_exists() -> None:
         "operator-registry-flow.md",
         "scoring.md",
         "security-and-gaming.md",
-        "benchmarks.md",
-        "formal-conjectures.md",
-        "model-apis.md",
-            "architecture.md",
-            "domain-adapter-spec.md",
-            "cli.md",
+        "architecture.md",
+        "cli.md",
         "PROTOCOL_INVARIANTS.md",
         "dependency-graph.md",
         "license-policy.md",
@@ -66,11 +60,20 @@ def test_public_docs_keep_corpus_and_economics_invariant() -> None:
     readme = Path("README.md").read_text(encoding="utf-8")
     scoring = Path("docs/scoring.md").read_text(encoding="utf-8")
 
-    assert "Lemma is a Verified Reasoning Network" in readme
-    assert "The product is verified reasoning data" in readme
+    assert "permissionless incentive network for growing open, machine-verified mathematics" in readme
+    assert "The product is the open mathematical corpus" in Path("docs/what-is-lemma.md").read_text(
+        encoding="utf-8"
+    )
     assert "weight(miner) = credit(miner) / sum(all_credits)" not in scoring
     assert "previous weights" not in scoring.lower()
     assert "unearned_share = 1.0" in scoring
+
+
+def test_future_domain_docs_are_research_only() -> None:
+    assert not Path("docs/domain-adapter-spec.md").exists()
+    assert not Path("docs/domains/verus.md").exists()
+    research = Path("docs/research/future-verifier-domains.md").read_text(encoding="utf-8")
+    assert "This is background research, not the Lemma v1 thesis." in research
 
 
 def test_public_surfaces_do_not_reintroduce_legacy_protocol_language() -> None:
@@ -81,6 +84,8 @@ def test_public_surfaces_do_not_reintroduce_legacy_protocol_language() -> None:
         "sum(all_credits)",
         "previous weights",
         "reasoning_steps",
+        "verified reasoning network",
+        "verified reasoning data",
         "lemma-cli",
         "openai" + "_api" + "_key",
         "lemma_bounty_",

@@ -1,30 +1,29 @@
 # Architecture
 
-Lemma has three layers: task supply, verification, and verified data publication.
+Lemma has three production layers: Lean theorem supply, Lean proof verification, and verified mathematics publication.
 
-Lean theorem proving is the only production domain today.
+Lean theorem proving is the production domain.
 
 ```text
-supply streams
-  -> task filter
-  -> deterministic active pool
-  -> miners search for accepted proofs
-  -> validators dispatch to the verifier adapter
-  -> proof-unit scoring
-  -> unearned-share burn/recycle policy
-  -> replayable public corpus rows
+Lean theorem supply
+  -> miner proof search
+  -> task-bound Lean submission
+  -> pinned Lean verification
+  -> first-accepted scoring
+  -> corpus row export
+  -> dependency/citation graph
 ```
 
 ## Implemented Spine
 
-- `lemma.tasks`: task schema, provenance, registry loading, target hashing.
+- `lemma.tasks`: Lean task schema, provenance, registry loading, target hashing.
 - `lemma.task_supply`: dev-seed tasks and activation gates.
 - `lemma.supply`: deterministic queue, curriculum controller, and fixture-backed supply stream interfaces.
 - `lemma.submissions`: task-bound proof package schema and signing payloads.
 - `lemma.miner`: local-command prover adapter, adapter-backed local verification, one-shot submission build.
 - `lemma.validator`: submission validation, verifier registry calls, scoring, corpus writing.
 - `lemma.scoring`: first-valid-unique scoring with `credit / K` miner weights and unearned-share accounting.
-- `lemma.verifiers`: domain-neutral verifier adapter contract, Lean adapter, registry, disabled Verus stub.
+- `lemma.verifiers`: verifier adapter contract, Lean adapter, registry, disabled research adapters.
 - `lemma.corpus`: replayable row building, JSONL validation/replay, corpus indexing, v2 row/export helpers.
 - `lemma.graph`: row-level graph nodes and dependency edges used by corpus exports.
 - `lemma.lean`: Docker or worker-backed Lean verification.
@@ -40,4 +39,6 @@ Scoring is pure. Verifiers do not know about Bittensor weights. Provider/model l
 
 Lemma does not custody funds and does not route owner emissions through contracts. Rewards flow through normal Bittensor miner and validator mechanics.
 
-Lean is the only enabled production domain. Any future domain has to enter through the verifier adapter contract and publish the same verified reasoning data row shape.
+The production architecture is Lean-first and math-first. Generic verifier adapters are internal/research extension points, not the public v1 product. Public docs should describe the active Lean path unless they are explicitly marked as research.
+
+`LEMMA_PROTOCOL_MODE=production` fails closed unless `LEMMA_ENABLED_DOMAINS` is exactly `lean`, the task registry is SHA-pinned, the registry signature status is verified, and Lean verifier networking is disabled.

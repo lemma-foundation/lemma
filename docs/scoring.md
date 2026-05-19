@@ -2,7 +2,7 @@
 
 Lemma rewards verified work through normal Bittensor miner and validator emissions.
 
-Each epoch has `K` paid task slots. A miner earns one credit for being first to submit a unique accepted proof for a slot. Unsolved slots remain unearned by default.
+Each epoch has `K` paid theorem slots. A miner earns one credit for being first to submit a unique accepted Lean proof for a slot. Unsolved slots remain unearned by default.
 
 The reward is attached to verified work, not prose, claimed effort, or model identity.
 
@@ -38,4 +38,4 @@ The previous-weight fallback rule is removed from scoring.
 - Valid alternates become corpus rows with `rewarded: false`.
 - Duplicate proof identities do not create extra rows or credit.
 
-No subjective scoring is used. Google DeepMind Formal Conjectures solves are not a v1 payout category. Difficulty adapts through frontier depth; `K` adapts through validator throughput capacity.
+No subjective scoring is used. Held-out benchmark tasks are not paid tasks. Difficulty adapts through frontier depth; `K` adapts through validator throughput capacity.

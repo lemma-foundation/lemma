@@ -1,4 +1,4 @@
-"""Training-data-first CLI for Lemma."""
+"""Formal-math CLI for Lemma."""
 
 from __future__ import annotations
 
@@ -66,7 +66,7 @@ class LemmaGroup(click.Group):
 @click.pass_context
 @click.version_option(version=__version__)
 def main(ctx: click.Context) -> None:
-    """Verified Reasoning Network.
+    """Incentive network for machine-verified mathematics.
 
     Examples: lemma setup; lemma status; lemma tasks list; lemma task show
     lemma.sample.true_intro; lemma mine --once; lemma validate --once
@@ -215,7 +215,7 @@ def status_cmd() -> None:
       lemma status
     """
     settings = LemmaSettings()
-    click.echo(stylize("Lemma verifier-data status", fg="cyan", bold=True))
+    click.echo(stylize("Lemma formal-math status", fg="cyan", bold=True))
     click.echo(stylize("  wallet_cold       ", dim=True) + settings.wallet_cold)
     click.echo(stylize("  wallet_hot        ", dim=True) + settings.wallet_hot)
     click.echo(stylize("  netuid            ", dim=True) + str(settings.netuid))
@@ -598,7 +598,7 @@ def export_corpus_cmd(
     license_filter: str | None,
     exclude_near_duplicates: bool,
 ) -> None:
-    """Export accepted artifacts as a domain-neutral dataset.
+    """Export accepted Lean proofs as a mathematical corpus.
 
     \b
     Example:

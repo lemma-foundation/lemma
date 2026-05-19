@@ -1,6 +1,6 @@
 # Open AlphaProof-Style Engine
 
-Lemma is a Verified Reasoning Network that starts with Lean proofs. Miners produce machine-checked proofs. Validators verify them with the Lean kernel. Every accepted proof becomes public replayable training data.
+Lemma is an incentive network for machine-verified mathematics. Miners produce machine-checked Lean proofs. Validators verify them with the Lean kernel. Every accepted proof becomes a public replayable theorem/proof record.
 
 The product is the corpus: source-attributed Lean theorem/proof rows with enough metadata to replay the check later. The market is the mechanism that produces those rows.
 

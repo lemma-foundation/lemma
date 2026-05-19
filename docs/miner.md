@@ -1,6 +1,6 @@
 # Miner Guide
 
-Miners solve reasoning tasks. In the current production domain, that means Lean proof search.
+Miners solve Lean theorem-proving tasks.
 
 Your job is to fetch active tasks, produce a verifier-accepted proof, verify it locally, and serve or package the task-bound submission for validators. For Lean tasks, the proof is a `Submission.lean` file.
 
@@ -48,7 +48,7 @@ LEMMA_PROVER_API_KEY
 LEMMA_PROVER_MODEL
 ```
 
-The provider is not scored. Lemma only checks the final proof. For v1, that proof is Lean.
+The provider is not scored. Lemma only checks the final Lean proof.
 
 ## Reward Rule
 

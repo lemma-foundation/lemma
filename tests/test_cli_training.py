@@ -171,6 +171,19 @@ def test_validate_once_no_set_weights() -> None:
     assert '"weights_set": false' in result.output
 
 
+def test_export_corpus_defaults_to_lean(tmp_path) -> None:
+    output = tmp_path / "lean_corpus.jsonl"
+    result = CliRunner().invoke(
+        main,
+        ["export-corpus", "--out", str(output)],
+        env={"LEMMA_PREFER_PROCESS_ENV": "1", "LEMMA_CORPUS_OUTPUT_DIR": str(tmp_path / "empty-corpus")},
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "0 lean rows" in result.output
+    assert output.read_text(encoding="utf-8") == ""
+
+
 def test_validate_consumes_submission_spool(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     spool = tmp_path / "spool"
     spool.mkdir()

@@ -4,7 +4,7 @@ This plan keeps the Lean verification spine intact and changes the public contra
 
 ## Phase 0: Source Of Truth
 
-- Keep `docs/open-alphaproof-engine.md` as the direction-setting document.
+- Keep `docs/research/open-alphaproof-engine.md` as the direction-setting research document.
 - Align README, architecture, task, scoring, corpus, miner, validator, benchmark, and site language.
 - Remove stale payout, escrow, custody, owner-router, prose-judging, and benchmark-as-product framing.
 

@@ -135,3 +135,18 @@ def test_production_mode_requires_verified_registry_signature() -> None:
 
     with pytest.raises(RuntimeError, match="signature-verified"):
         enforce_production_invariants(settings, registry)
+
+
+def test_production_mode_requires_lean_only_domains() -> None:
+    task = _task()
+    registry = TaskRegistry(schema_version=1, tasks=(task,), sha256="0" * 64, signature_status="verified")
+    settings = LemmaSettings(
+        _env_file=None,
+        protocol_mode="production",
+        task_registry_sha256_expected="0" * 64,
+        enabled_domains=("lean", "verus"),
+        lean_sandbox_network="none",
+    )
+
+    with pytest.raises(RuntimeError, match="only lean"):
+        enforce_production_invariants(settings, registry)

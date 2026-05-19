@@ -1,53 +1,55 @@
 # Lemma
 
-**Lemma is a Verified Reasoning Network.**
+**Lemma is a permissionless incentive network for growing open, machine-verified mathematics.**
 
-Miners solve hard reasoning tasks. Validators check the answers with deterministic verifiers. Accepted solutions become open training data for stronger AI.
-
-AI can guess. Verifiers can check. Lemma pays for checked reasoning.
+Miners submit Lean proofs. Validators verify them with a pinned Lean toolchain. Accepted theorems become part of an open, citation-structured corpus of formal mathematics.
 
 ## Why Lemma Exists
 
-Most AI can produce answers that sound right. Lemma focuses on answers that can be mechanically checked.
+Mathlib showed that machine-verified mathematics can become shared public infrastructure. Lemma adds a market around formal proof production.
 
-In v1, Lemma uses Lean theorem proving. A Lean proof either passes the verifier or it does not. That binary signal turns reasoning into reusable training data.
+The goal is simple: reward correct Lean proofs and use them to expand the open mathematical record.
 
 ## How It Works
 
-1. Validators publish active formal reasoning tasks.
-2. Miners search for solutions.
-3. Miners submit task-bound proofs.
+1. Validators publish an active pool of Lean theorem-proving tasks.
+2. Miners search for Lean proofs.
+3. Miners submit task-bound proof packages.
 4. Validators run the pinned Lean verifier.
-5. Accepted proofs earn proof-unit credit.
-6. Accepted proofs become replayable public corpus rows.
-7. The corpus trains stronger reasoning models.
+5. First accepted unique proofs earn credit.
+6. Accepted theorems become replayable corpus entries.
+7. Dependency and citation metadata turns the corpus into a graph of reusable mathematics.
 
-Lemma runs as a network on Bittensor. Bittensor supplies the miner and validator mechanism; deterministic verification supplies the correctness signal.
+Lemma runs as a network on Bittensor. Bittensor supplies the permissionless miner and validator market; Lemma supplies the deterministic mathematical verification target.
 
 ## What Lemma Produces
 
-The product is verified reasoning data: replayable records of tasks, proofs, verifier metadata, source and license metadata, attribution, dependencies, and verification results.
+Lemma produces an open corpus of verified Lean theorem/proof records.
 
-A proof that passes becomes training data. Failed proofs do not become corpus rows. Valid alternate proofs can be stored without duplicate reward when they add useful proof diversity.
+Each accepted entry records:
 
-## Why Lean First
+- theorem statement;
+- proof source;
+- imports and dependencies;
+- verifier and toolchain metadata;
+- source and license metadata;
+- contributor attribution;
+- verification result;
+- corpus graph links.
 
-Lean is the first production domain because it gives Lemma a mature deterministic checker for theorem-proving tasks. Math is the wedge. Verified reasoning data is the product.
+Downstream users can train theorem provers and reasoning models on the corpus, but the public identity is formal mathematics: verified theorem/proof records first, model data second.
 
-Lean is the first production domain, not the final boundary. Future domains must be deterministic, replayable, licensed, and safe before they can enter production.
+## Why Lean And Math
 
-## What Lemma Is Not
+Lean gives Lemma a mature, deterministic verifier. A proof either passes in the pinned environment or it fails.
 
-- not a prose-judging network;
-- not a generic code benchmark;
-- not a smart-contract escrow product;
-- not a Google DeepMind Formal Conjectures payout path;
-- not endorsed by Google DeepMind;
-- not production outside Lean yet.
+Mathematics is the right v1 domain because it is both clean and deep: clean enough for binary verification, deep enough to support years of useful work.
 
-Lemma uses normal Bittensor validator and miner emissions. Subnet owner emission routing is left alone.
+## Scope
 
-Google DeepMind Formal Conjectures, lean-eval, miniF2F, PutnamBench, and the IMO Grand Challenge are research context and evaluation targets. They are not the v1 payout path.
+Lemma v1 focuses on Lean formal mathematics. The network rewards verified Lean proof production and publishes accepted theorem/proof records as an open mathematical corpus.
+
+Long-term verifier-domain research exists, but it is not part of the v1 public thesis. See [Background Research: Future Verifier Domains](docs/research/future-verifier-domains.md) for that context.
 
 ## Quick Start: Miners
 
@@ -85,17 +87,17 @@ Use [examples/operator-smoke](examples/operator-smoke/README.md) to build a pinn
 
 ## Corpus Export
 
-Export the current Lean domain corpus:
+Export the current Lean mathematical corpus:
 
 ```bash
 uv run lemma export-corpus --domain lean --format jsonl --out data/lean_corpus.jsonl
 ```
 
-Corpus rows include the theorem statement, imports, toolchain, proof script, identity strength, source/license metadata, graph links, validator attribution, and verification summary. A corpus row is a replayable record of a verified solution.
+Corpus rows include the theorem statement, imports, toolchain, proof script, identity strength, source/license metadata, graph links, validator attribution, and verification summary. A corpus row is a replayable record of a verified theorem/proof.
 
 ## Scoring
 
-Each epoch has `K` active paid task slots. A miner earns one credit for being first to submit a unique accepted proof for a slot. Unsolved slots remain unearned by default.
+Each epoch has `K` active paid theorem slots. A miner earns one credit for being first to submit a unique accepted proof for a slot. Unsolved slots remain unearned by default.
 
 ```text
 score = verified_unique_wins / K
@@ -106,9 +108,14 @@ The unearned share is not redistributed to current solvers. It is burned by defa
 
 ## Roadmap
 
-Lean first. Then corpus productization. Then verifier adapters. Then experimental domains.
+1. Stabilize the Lean verifier path.
+2. Improve miner and validator reliability.
+3. Expand task supply for useful Lean theorem proving.
+4. Export high-quality corpus releases.
+5. Improve dependency/citation graph tooling.
+6. Support downstream theorem-prover training and evaluation.
 
-Roadmap examples include Verus, SAT/SMT, LP/SDP, and cryptanalysis only after they meet the same deterministic verifier, replay, licensing, and corpus safety standards. They are not live production mechanisms today.
+Long-term verifier-domain research exists, but it is not part of the v1 public thesis.
 
 ## Docs
 
@@ -139,19 +146,20 @@ Protocol:
 - [License policy](docs/license-policy.md)
 - [Dependency graph](docs/dependency-graph.md)
 - [Security and gaming](docs/security-and-gaming.md)
-- [Domain adapter spec](docs/domain-adapter-spec.md)
+
+Lean:
+
 - [Lean domain](docs/domains/lean.md)
 
-Roadmap And Research:
+Background Research:
 
 - [Roadmap](ROADMAP.md)
-- [Benchmarks](docs/benchmarks.md)
-- [Formal Conjectures](docs/formal-conjectures.md)
-- [Open AlphaProof-style engine](docs/open-alphaproof-engine.md)
-- [Open AlphaProof execution plan](docs/exec-plan-open-alphaproof.md)
-- [Model APIs](docs/model-apis.md)
-- [Affine integration](docs/integrations/affine.md)
-- [Verus domain](docs/domains/verus.md)
+- [Future verifier domains](docs/research/future-verifier-domains.md)
+- [Benchmarks](docs/research/benchmarks.md)
+- [Open AlphaProof-style engine](docs/research/open-alphaproof-engine.md)
+- [Open AlphaProof execution plan](docs/research/exec-plan-open-alphaproof.md)
+- [Model APIs](docs/research/model-apis.md)
+- [Affine integration](docs/research/integrations/affine.md)
 
 ## Development Checks
 

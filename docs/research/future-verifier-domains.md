@@ -1,8 +1,10 @@
-# Future Verified Domains
+# Background Research: Future Verifier Domains
+
+This is background research, not the Lemma v1 thesis. Lemma's public production identity is formal mathematics in Lean. Do not link this doc from the homepage or primary getting-started path.
 
 The same network pattern can apply outside Lean only when a domain has deterministic verifiers and replayable outputs.
 
-These are roadmap directions, not live production mechanisms.
+These are research directions, not live production mechanisms.
 
 ## Required Contract
 

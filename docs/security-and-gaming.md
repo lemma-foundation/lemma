@@ -1,6 +1,6 @@
 # Security And Gaming
 
-A Verified Reasoning Network is only useful if bad artifacts cannot enter the verified dataset.
+An incentive network for formal mathematics is only useful if bad artifacts cannot enter the verified corpus.
 
 Lean gives Lemma a binary correctness signal, but the network still needs clear anti-gaming boundaries.
 
@@ -31,7 +31,7 @@ Validators trust task registry bytes pinned by `LEMMA_TASK_REGISTRY_SHA256_EXPEC
 
 Proofs are deduplicated by Lean proof-term hash when available. Script fallback is labelled as `script_sha256` or `normalized_script_sha256` and is not treated as exact structural identity. Public proof release should wait until the scoring window closes. Baseline-solved tasks and held-out benchmark claims are kept out of paid activation.
 
-First valid commit wins each task slot. Re-submitting another miner's proof after reveal should not pay. Validators must reproduce the active task set deterministically before scoring.
+First valid commit wins each theorem slot. Re-submitting another miner's proof after reveal should not pay. Validators must reproduce the active task set deterministically before scoring.
 
 ## Privacy
 

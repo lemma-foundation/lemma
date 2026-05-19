@@ -1,52 +1,42 @@
 # Lemma Roadmap
 
-Lemma is a Verified Reasoning Network, starting with Lean proofs. The roadmap is deliberately staged: make one deterministic verifier domain reliable before expanding the surface area.
+Lemma's v1 roadmap is focused on one domain: Lean formal mathematics.
 
-## Phase 1: Lean Corpus Engine
+## Phase 1: Reliable Lean Proof Market
 
-- stabilize the Lean verifier path;
-- improve miner/validator reliability;
-- keep the scoring rule binary: accepted or rejected;
-- export replayable Lean domain corpus rows.
+- stabilize Lean verification;
+- improve the miner and validator loop;
+- harden task-bound submissions;
+- keep scoring simple and binary.
 
-## Phase 2: Corpus Productization
+## Phase 2: Better Mathematical Task Supply
 
-- dataset cards;
-- JSONL, Parquet, and Hugging Face style exports;
-- train/validation/test splits;
-- exact duplicate detection and metadata flags for near-duplicates;
-- clearer public packaging for verified reasoning data.
+- improve active theorem pool construction;
+- expand useful Lean task fixtures;
+- add Mathlib-derived task supply;
+- improve novelty and triviality filtering.
 
-## Phase 3: Verifier Adapter Architecture
+## Phase 3: Corpus Quality
 
-- generic `VerifierAdapter` interface;
-- domain registry;
-- task, submission, and corpus row schema v2;
-- runtime metadata for pinned verifier containers.
+- export replayable JSONL and Parquet releases;
+- include proof, statement, imports, dependencies, verifier metadata, attribution, and license metadata;
+- add dataset cards;
+- add train/validation/test splits;
+- improve duplicate and near-duplicate flags.
 
-## Phase 4: Verus Pilot
+## Phase 4: Citation Graph And Reuse
 
-- experimental Verus verifier adapter;
-- Rust/spec/proof corpus row shape;
-- sandboxing requirements;
-- sample task and submission fixtures.
+- improve dependency extraction;
+- expose graph queries;
+- support citation-aware rewards if and when production-ready;
+- package proof chains for downstream theorem-prover training.
 
-Verus is a roadmap pilot, not a live production mechanism.
+## Phase 5: Open Theorem-Prover Ecosystem
 
-## Phase 5: Additional Verified Domains
+- support downstream training pipelines;
+- support contamination-resistant evaluation by block or time cutoff;
+- document replay and audit workflows.
 
-Candidate roadmap directions include:
+## Background Research
 
-- SAT/SMT certificates;
-- optimization certificates;
-- cryptanalysis witnesses;
-- other domains with deterministic verifiers and clear corpus value.
-
-These domains do not enter production rewards until they are deterministic, replayable, licensed, safe, and covered by adversarial tests.
-
-## Non-Goals For Now
-
-- Do not launch many domains before Lean works.
-- Do not accept non-verifiable artifacts.
-- Do not let tests-only code tasks pollute verified reasoning data.
-- Do not make schema changes that break reproducibility.
+Future non-math verifier domains are kept in [docs/research/future-verifier-domains.md](docs/research/future-verifier-domains.md). They are not part of v1 production framing.
