@@ -38,9 +38,9 @@ Mathematics is unusually clean for incentive design because proof correctness is
 
 That binary signal gives Lemma a concrete unit of work to reward: a task-bound theorem/proof record that can be replayed, audited, retrieved, deduplicated, attributed, and reused.
 
-Math is also broad enough to stand on its own. Algebra, analysis, number theory, topology, probability, logic, and computer science provide years of useful formalization and proof work without broadening the v1 identity.
+Math is also broad enough to stand on its own. Algebra, analysis, number theory, topology, probability, logic, and computer science provide years of useful formalization and proof work without broadening the production identity.
 
-Lemma's v1 public focus is therefore narrow and deep: grow open formal mathematics.
+Lemma's public focus is therefore narrow and deep: grow open formal mathematics.
 
 ---
 
@@ -48,7 +48,7 @@ Lemma's v1 public focus is therefore narrow and deep: grow open formal mathemati
 
 Lean gives Lemma a mature production verifier for formal mathematics.
 
-For Lemma v1:
+For Lemma's Lean production path:
 
 - the task is an exact Lean theorem statement;
 - the submission is a Lean proof bound to that task;
@@ -135,7 +135,7 @@ The graph is part of the product because mathematics is cumulative. A theorem is
 
 Each validator epoch contains `K` active paid theorem slots. A miner earns credit when it is first to submit a unique proof that passes the pinned Lean verifier for a slot.
 
-The v1 scoring rule is:
+The scoring rule is:
 
 ```text
 credit(miner) = count(first_valid_unique_verified_proof_per_task_by_miner)
@@ -206,7 +206,7 @@ Two controllers shape the active task frontier:
 
 A low or zero solve rate should halt frontier advancement and request hard-target variants rather than pushing the queue backward into already exposed tasks.
 
-Production mode is Lean-only. Research for other verifier domains belongs outside the v1 public thesis.
+Production mode is Lean-only. Research for other verifier domains belongs outside the public production thesis.
 
 ---
 
@@ -221,7 +221,7 @@ The reward is tied to checked work:
 - accepted unique proofs earn credit;
 - accepted theorem/proof records become public infrastructure.
 
-Lemma does not need a separate custody system for v1 rewards. Rewards flow through normal Bittensor miner and validator mechanics.
+Lemma does not need a separate custody system for rewards. Rewards flow through normal Bittensor miner and validator mechanics.
 
 ---
 

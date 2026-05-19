@@ -8,6 +8,8 @@ from pathlib import Path
 def _public_text() -> str:
     paths = [
         Path("README.md"),
+        Path("LITEPAPER.md"),
+        Path("ROADMAP.md"),
         Path(".env.example"),
         Path("lemma/cli/main.py"),
         Path("examples/operator-smoke/README.md"),
@@ -97,10 +99,17 @@ def test_public_surfaces_do_not_reintroduce_legacy_protocol_language() -> None:
         "v1 credit",
         "v1 payout",
         "v1 training",
+        "v1 public focus",
+        "for lemma v1",
+        "v1 identity",
+        "v1 rewards",
+        "spacetime-tao",
+        "lemma-wta",
     ]
     for fragment in forbidden:
         assert fragment not in lowered
 
+    assert "git clone https://github.com/lemma-foundation/lemma.git" in text
     assert "weight = credit / k" in lowered
     assert "validator-runs.jsonl" in text
 
