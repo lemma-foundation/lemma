@@ -110,14 +110,15 @@ def test_task_env_names_work(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
 
 def test_stale_bounty_env_names_are_ignored(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     monkeypatch.delenv("LEMMA_PREFER_PROCESS_ENV", raising=False)
+    stale_prefix = "LEMMA_" + "BOUNTY_"
     env_file = tmp_path / ".env"
     env_file.write_text(
         "\n".join(
             [
-                "LEMMA_BOUNTY_REGISTRY_URL=https://stale.example/registry.json",
-                "LEMMA_BOUNTY_REWARD_CUSTODY=evm_escrow",
-                "LEMMA_BOUNTY_EVM_RPC_URL=https://stale.example",
-                "LEMMA_BOUNTY_ESCROW_CONTRACT_ADDRESS=0x0000000000000000000000000000000000000000",
+                f"{stale_prefix}REGISTRY_URL=https://stale.example/registry.json",
+                f"{stale_prefix}REWARD_CUSTODY=evm_" + "escrow",
+                f"{stale_prefix}EVM_RPC_URL=https://stale.example",
+                f"{stale_prefix}ESCROW_CONTRACT_ADDRESS=0x0000000000000000000000000000000000000000",
             ],
         ),
         encoding="utf-8",

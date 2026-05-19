@@ -21,11 +21,12 @@ def _public_text() -> str:
 def test_env_example_has_no_bounty_or_escrow_keys() -> None:
     text = Path(".env.example").read_text(encoding="utf-8")
 
+    stale_prefix = "LEMMA_" + "BOUNTY_"
     forbidden = [
-        "LEMMA_BOUNTY_REGISTRY_URL",
-        "LEMMA_BOUNTY_REWARD_CUSTODY",
-        "LEMMA_BOUNTY_EVM_RPC_URL",
-        "LEMMA_BOUNTY_ESCROW_CONTRACT_ADDRESS",
+        f"{stale_prefix}REGISTRY_URL",
+        f"{stale_prefix}REWARD_CUSTODY",
+        f"{stale_prefix}EVM_RPC_URL",
+        f"{stale_prefix}ESCROW_CONTRACT_ADDRESS",
     ]
     for item in forbidden:
         assert item not in text
@@ -88,10 +89,10 @@ def test_public_surfaces_do_not_reintroduce_legacy_protocol_language() -> None:
         "reasoning_steps",
         "verified reasoning network",
         "verified reasoning data",
-        "lemma-cli",
+        "lemma" + "-cli",
         "openai" + "_api" + "_key",
         "lemma_bounty_",
-        "custody system",
+        "custody " + "system",
         "v1 roadmap",
         "v1 focuses",
         "v1 public thesis",
@@ -104,8 +105,8 @@ def test_public_surfaces_do_not_reintroduce_legacy_protocol_language() -> None:
         "for lemma v1",
         "v1 identity",
         "v1 rewards",
-        "spacetime-tao",
-        "lemma-wta",
+        "spacetime" + "-tao",
+        "lemma" + "-wta",
     ]
     for fragment in forbidden:
         assert fragment not in lowered
