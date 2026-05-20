@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -23,6 +23,7 @@ _IP_ADDRESS = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 _SS58_ADDRESS = re.compile(r"\b5[1-9A-HJ-NP-Za-km-z]{40,}\b")
 _TEMPO_FILE = re.compile(r"tempo-(\d+)\.json$")
 _STORAGE_PREFIX = "lemma-storage-v1"
+_MINER_BUCKET_PREFIX = "lemma-bucket"
 
 
 class CommitmentEnvelope(BaseModel):
@@ -48,6 +49,51 @@ class CommitmentEnvelope(BaseModel):
 
 def ciphertext_sha256(ciphertext: bytes) -> str:
     return hashlib.sha256(ciphertext).hexdigest()
+
+
+def miner_bucket_key(tempo: int, slot_index: int) -> str:
+    if tempo < 0:
+        raise ValueError("tempo must be non-negative")
+    if slot_index < 0:
+        raise ValueError("slot_index must be non-negative")
+    return f"tempo_{tempo}/slot_{slot_index}.bin"
+
+
+def miner_submission_leaf_hash(slot_index: int, ciphertext_digest: str) -> str:
+    if slot_index < 0:
+        raise ValueError("slot_index must be non-negative")
+    digest = ciphertext_digest.lower()
+    if not _HEX64.fullmatch(digest):
+        raise ValueError("ciphertext digest must be a 64-char lowercase hex digest")
+    payload = json.dumps(
+        {"ciphertext_sha256": digest, "slot_index": slot_index},
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def miner_submission_merkle_root(entries: Iterable[tuple[int, str]]) -> str:
+    leaves = [miner_submission_leaf_hash(slot, digest) for slot, digest in sorted(entries)]
+    if not leaves:
+        return ciphertext_sha256(b"")
+    level = [bytes.fromhex(item) for item in leaves]
+    while len(level) > 1:
+        if len(level) % 2 == 1:
+            level.append(level[-1])
+        level = [hashlib.sha256(level[index] + level[index + 1]).digest() for index in range(0, len(level), 2)]
+    return level[0].hex()
+
+
+def miner_bucket_commitment_payload(*, tempo: int, drand_round: int, merkle_root: str) -> str:
+    if tempo < 0:
+        raise ValueError("tempo must be non-negative")
+    if drand_round < 0:
+        raise ValueError("drand_round must be non-negative")
+    root = merkle_root.lower()
+    if not _HEX64.fullmatch(root):
+        raise ValueError("merkle_root must be a 64-char lowercase hex digest")
+    return f"{_MINER_BUCKET_PREFIX}:{tempo}:{drand_round}:{root}"
 
 
 @dataclass(frozen=True)
@@ -216,9 +262,13 @@ def submit_storage_commitment(settings: LemmaSettings, payload: str) -> ChainCom
 
 
 def read_storage_commitment(settings: LemmaSettings, hotkey: str | None = None) -> str:
+    target_hotkey = hotkey or wallet_hotkey_address(settings)
+    return str(read_all_commitments(settings).get(target_hotkey, ""))
+
+
+def read_all_commitments(settings: LemmaSettings) -> dict[str, str]:
     import bittensor as bt
 
-    target_hotkey = hotkey or wallet_hotkey_address(settings)
     subtensor = bt.Subtensor(network=settings.bt_network or None)
     commitments: Mapping[str, str] = subtensor.get_all_commitments(settings.netuid)
-    return str(commitments.get(target_hotkey, ""))
+    return {str(hotkey): str(payload) for hotkey, payload in commitments.items()}

@@ -8,7 +8,11 @@ Lean theorem proving is the only active production domain today. Legacy Lean tas
 
 ## Supply Streams
 
-Launch interfaces cover these streams:
+Launch interfaces distinguish production paid supply from development/test supply.
+
+Paid mainnet supply is `procedural`: every paid task must be generated from the pinned source pool by a deterministic depth-2 mutation chain anchored to chain/drand state. Validators should be able to rebuild the same active pool from the same public inputs.
+
+Development, testnet, and curriculum interfaces cover these streams:
 
 - `mathlib_snapshot`: proof-erased Mathlib statements.
 - `mathlib_perturbation`: nearby variants of known theorems.
@@ -53,6 +57,24 @@ uv run lemma tasks build-mathlib-snapshot \
 
 The command writes deterministic `queue_position` values after shallow-first task ordering and prints the registry SHA256. Operators can attach externally produced `signed_by` / `signature` metadata, but the command does not sign or verify the registry.
 
+For production-shaped supply, package depth-2 procedural candidates:
+
+```bash
+uv run lemma tasks build-procedural-registry \
+  --candidate-jsonl procedural-depth2-candidates.jsonl \
+  --output tasks/mainnet.registry.json
+```
+
+The procedural builder rejects candidates unless paid rows carry procedural depth-2 metadata, a two-step mutation chain, chain/drand anchoring, source-pool and operator-bundle hashes, Prop-gate success, novelty success, typecheck confirmation, triviality-check confirmation, a failed baseline-solver result, clean license state, and deterministic `slot_weight`.
+
+The mixed builder remains useful for local smoke, SN467 experiments, and curriculum tuning. It is not the paid mainnet supply path.
+
+Sign the built registry before production use:
+
+```bash
+uv run lemma tasks sign-registry --input tasks/mainnet.registry.json --output tasks/mainnet.signed.registry.json
+```
+
 See [Mathlib Extraction Contract](mathlib-extraction.md) for the JSONL row contract and the off-chain extraction boundary.
 
 ## Activation Gates
@@ -70,6 +92,7 @@ Every active task must have:
 - `queue_position`, `queue_depth`, and optional `frontier_depth`;
 - schema validation;
 - policy, topic metadata, and triviality-gate labels.
+- for paid production rows, procedural depth-2 provenance and deterministic slot weight metadata.
 
 Tasks solved by the pinned triviality tactic stack are excluded from paid activation. They may still enter the corpus as shallow `trivial_curriculum` data. Held-out benchmark tasks stay separate from training and reward streams.
 
@@ -97,7 +120,7 @@ Only tasks in the selected active window are valid for scoring in that validator
 
 `tasks/registry.json` is a dev seed. Published registries must be pinned by SHA256 and archived so corpus rows can be replayed later.
 
-`signed_by` and `signature` are metadata unless a validator wires an explicit registry-signature verifier. The production trust control today is byte-for-byte SHA256 pinning through `LEMMA_TASK_REGISTRY_SHA256_EXPECTED`; signature metadata must not bypass that check.
+`signed_by` and `signature` are metadata unless registry signature verification is enabled. Production mode requires both byte-for-byte SHA256 pinning through `LEMMA_TASK_REGISTRY_SHA256_EXPECTED` and verified registry signatures. Signature metadata must not bypass the SHA256 check.
 
 ```bash
 uv run lemma tasks list

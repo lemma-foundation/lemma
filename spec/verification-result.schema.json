@@ -19,6 +19,8 @@
     "proof_identity_strength",
     "reward_eligible",
     "reward_ineligibility_reason",
+    "commit_block",
+    "drand_round",
     "received_at",
     "verifier_version"
   ],
@@ -38,6 +40,8 @@
     "proof_identity_strength": { "type": "string", "enum": ["weak", "medium", "strong"] },
     "reward_eligible": { "type": "boolean" },
     "reward_ineligibility_reason": { "type": "string" },
+    "commit_block": { "type": ["integer", "null"], "minimum": 0 },
+    "drand_round": { "type": ["integer", "null"], "minimum": 0 },
     "received_at": { "type": "string", "minLength": 1 },
     "verifier_version": { "type": "string", "minLength": 1 }
   }

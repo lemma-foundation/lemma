@@ -8,12 +8,12 @@ Lean theorem task -> proof search -> pinned Lean verification -> proof-unit cred
 
 ## The Loop
 
-1. Validators publish active Lean theorem-proving tasks.
+1. Validators derive the same active Lean theorem-proving tasks.
 2. Miners search for Lean proofs using any stack they want: tactics, retrieval, local models, hosted APIs, or human insight.
-3. Miners submit a task-bound proof package.
+3. Miners commit timelocked bucket blobs, then reveal task-bound proof packages.
 4. Validators run the pinned Lean toolchain.
-5. The first unique passing proof for each active task earns epoch credit.
-6. Validators compute miner weights as `credit / K`; unsolved-slot value is burned by default instead of redistributed.
+5. The rank-0 unique passing proof for each active task earns epoch credit.
+6. Validators compute miner weights from deterministic active slot weights; unsolved-slot value is burned by default instead of redistributed.
 7. Accepted proofs become replayable public corpus rows.
 
 ## The Checker Is The Judge

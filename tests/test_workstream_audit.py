@@ -35,6 +35,16 @@ def test_full_audit_uses_full_pytest_and_security_checks(tmp_path: Path) -> None
     assert all(not step.name.startswith("site ") for step in steps)
 
 
+def test_mainnet_audit_adds_docker_golden_gate(tmp_path: Path) -> None:
+    steps = build_steps("mainnet", tmp_path / "missing-site")
+    commands = _commands(steps)
+
+    assert ("uv", "run", "pytest", "tests", "-q", "--ignore=tests/test_docker_golden.py") in commands
+    docker = next(step for step in steps if step.name == "docker Lean golden")
+    assert docker.command == ("uv", "run", "pytest", "tests/test_docker_golden.py", "-v", "--tb=short")
+    assert docker.env == (("RUN_DOCKER_LEAN", "1"),)
+
+
 def test_skip_site_omits_site_steps_and_site_leak_scan(tmp_path: Path) -> None:
     site = tmp_path / "lemmasub.net"
     site.mkdir()

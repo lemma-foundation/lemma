@@ -119,4 +119,7 @@ def _axiom_check_source(problem: Problem, submission_lean: str, policy: str) -> 
     lines = ["import Submission", ""]
     for name in submission_axiom_check_names(problem, submission_lean, policy=policy):
         lines.append(f"#print axioms Submission.{name}")
+        lines.append(f'#eval IO.println "LEMMA_DECL_FINGERPRINT_START Submission.{name}"')
+        lines.append(f"#print Submission.{name}")
+        lines.append(f'#eval IO.println "LEMMA_DECL_FINGERPRINT_END Submission.{name}"')
     return "\n".join(lines) + "\n"

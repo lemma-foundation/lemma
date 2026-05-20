@@ -26,6 +26,8 @@
     "created_at": { "type": "string", "minLength": 1 },
     "timelock_ciphertext": { "type": ["string", "null"] },
     "drand_round": { "type": ["integer", "null"], "minimum": 0 },
+    "commit_block": { "type": ["integer", "null"], "minimum": 0 },
+    "commit_extrinsic_hash": { "type": ["string", "null"] },
     "signature": { "type": ["string", "null"] },
     "signature_payload_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "metadata": { "type": "object" }

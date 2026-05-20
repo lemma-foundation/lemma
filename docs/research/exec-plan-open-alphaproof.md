@@ -11,13 +11,13 @@ This plan keeps the Lean verification spine intact and changes the public contra
 ## Phase 0.5: Economic Simulator
 
 - Simulate 100-1000 tempos with synthetic miner populations.
-- Verify miner shares are always `credit / K`.
+- Verify miner shares follow deterministic active slot weights and never redistribute unsolved slots.
 - Verify unsolved value appears as `unearned_share`, never as inflated current-solver reward.
 - Track solve-rate, `active_K`, and `frontier_depth` trajectories before chain wiring.
 
 ## Phase 1: Scoring Economics
 
-- Use `credit / K` for miner weights.
+- Use deterministic active slot weights for miner weights.
 - Compute `unearned_share = 1 - sum(miner_weights)`.
 - Default `unearned_policy` to `burn`.
 - Remove the previous-weight fallback; empty tempos have zero miner shares and `unearned_share = 1.0`.

@@ -272,6 +272,27 @@ def test_sign_submission_recomputes_payload_hash_after_hotkey_rebind() -> None:
     )
 
 
+def test_signed_submission_binds_commit_reveal_fields() -> None:
+    task = _task()
+    keypair = Keypair.create_from_uri("//LemmaCommitRevealMiner")
+    submission = sign_submission(
+        build_submission(task, solver_hotkey=keypair.ss58_address, proof_script=_proof()).model_copy(
+            update={
+                "timelock_ciphertext": "ciphertext",
+                "drand_round": 10,
+                "commit_block": 42,
+                "commit_extrinsic_hash": "0xabc",
+            }
+        ),
+        keypair,
+    )
+
+    tampered = submission.model_copy(update={"drand_round": 11, "signature_payload_sha256": ""})
+
+    assert submission.verify_signature() is True
+    assert tampered.verify_signature() is False
+
+
 def test_validator_rejects_bad_live_submission_signature(tmp_path: Path) -> None:
     task = _task()
     signer = Keypair.create_from_uri("//LemmaSigner")

@@ -17,7 +17,11 @@ Validators reject:
 - oversized proof bodies;
 - inactive task IDs;
 - task-version or target-hash mismatches;
-- unsigned live miner responses.
+- unsigned live miner responses;
+- missing hotkey-authenticated commit/reveal fields in production mode;
+- miner bucket reveals whose `(slot_index, ciphertext_sha256)` Merkle root does not match the miner's on-chain committed root;
+- miner bucket reveals whose decrypted drand payload does not match the revealed proof;
+- paid production tasks that are not procedural depth-2.
 
 ## Verification
 
@@ -25,13 +29,13 @@ Verification runs in a pinned Lean/mathlib environment. Docker verification disa
 
 ## Registry Pinning
 
-Validators trust task registry bytes pinned by `LEMMA_TASK_REGISTRY_SHA256_EXPECTED`. Registry `signed_by` and `signature` fields are stored as metadata unless an explicit verifier is wired in and tested. Signature metadata must not let a changed registry pass the SHA256 check.
+Validators trust task registry bytes pinned by `LEMMA_TASK_REGISTRY_SHA256_EXPECTED`. Production mode also requires verified registry signatures. The signature covers the canonical registry payload without `signed_by` and `signature`; the SHA256 pin still covers the exact published file bytes.
 
 ## Scoring Defenses
 
-Proofs are deduplicated by Lean proof-term hash when available. Script fallback is labelled as `script_sha256` or `normalized_script_sha256` and is not treated as exact structural identity. Public proof release should wait until the scoring window closes. Baseline-solved tasks and held-out benchmark claims are kept out of paid activation.
+Proofs are deduplicated by Lean proof-term hash or Lean-derived structural fingerprint when available. Script fallback is labelled as `script_sha256` or `normalized_script_sha256` and is not treated as exact structural identity. Public proof release should wait until the scoring window closes. Baseline-solved tasks and held-out benchmark claims are kept out of paid activation.
 
-First valid commit wins each theorem slot. Re-submitting another miner's proof after reveal should not pay. Validators must reproduce the active task set deterministically before scoring.
+First valid committed reveal wins each theorem slot. Re-submitting another miner's proof after reveal should not pay because rank is anchored to the miner's Merkle-root commit block, not local file arrival time. Validators must reproduce the active task set deterministically before scoring. Curated and mixed supply are useful for development and testnet work, but paid mainnet tasks must be fresh procedural depth-2 rows to avoid pre-computation collapse.
 
 ## Privacy
 

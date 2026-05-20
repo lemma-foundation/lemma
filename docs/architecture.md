@@ -19,10 +19,12 @@ Lean theorem supply
 - `lemma.tasks`: Lean task schema, provenance, registry loading, target hashing.
 - `lemma.task_supply`: dev-seed tasks and activation gates.
 - `lemma.supply`: deterministic queue, curriculum controller, and fixture-backed supply stream interfaces.
-- `lemma.submissions`: task-bound proof package schema and signing payloads.
+- `lemma.supply.procedural`: production-shaped procedural depth-2 registry builder.
+- `lemma.supply.mixed`: non-production mixed-supply builder for local/testnet/curriculum work.
+- `lemma.submissions`: task-bound proof package schema and signing payloads, including commit/reveal fields.
 - `lemma.miner`: local-command prover adapter, adapter-backed local verification, one-shot submission build.
 - `lemma.validator`: submission validation, verifier registry calls, scoring, corpus writing.
-- `lemma.scoring`: first-valid-unique scoring with `credit / K` miner weights and unearned-share accounting.
+- `lemma.scoring`: first-valid-unique scoring with deterministic active slot weights and unearned-share accounting.
 - `lemma.verifiers`: verifier adapter contract, Lean adapter, registry, disabled research adapters.
 - `lemma.corpus`: replayable row building, JSONL validation/replay, corpus indexing, v2 row/export helpers.
 - `lemma.graph`: row-level graph nodes and dependency edges used by corpus exports.
@@ -31,7 +33,7 @@ Lean theorem supply
 
 ## Controllers
 
-`frontier_depth` is the protocol difficulty proxy and is driven by EMA solve rate. `active_K` is the throughput target and is driven by validator capacity. A low or zero solve rate halts frontier advancement and requests hard-target variants; it does not step the queue head backward into already exposed tasks.
+`frontier_depth` is the protocol difficulty proxy and is driven by EMA solve rate. `active_K` is the throughput target and is driven by validator capacity. A low or zero solve rate halts frontier advancement and requests hard-target variants; it does not step the queue head backward into already exposed tasks. Tempo is 72 minutes / 360 blocks until subnet tempo customization exists.
 
 ## Boundaries
 
@@ -41,4 +43,4 @@ Lemma does not custody funds and does not route owner emissions through contract
 
 The production architecture is Lean-first and math-first. Generic verifier adapters are internal/research extension points, not the public product. Public docs should describe the active Lean path unless they are explicitly marked as research.
 
-`LEMMA_PROTOCOL_MODE=production` fails closed unless `LEMMA_ENABLED_DOMAINS` is exactly `lean`, the task registry is SHA-pinned, the registry signature status is verified, and Lean verifier networking is disabled.
+`LEMMA_PROTOCOL_MODE=production` fails closed unless `LEMMA_ENABLED_DOMAINS` is exactly `lean`, the task registry is SHA-pinned, the registry signature status is verified, paid tasks are procedural depth-2, live miner submissions are hotkey-authenticated, commit/reveal fields are required, strong proof identity is required for reward, and Lean verifier networking is disabled. File submissions authenticate by signature; bucket-path submissions authenticate by the miner's chain commitment.

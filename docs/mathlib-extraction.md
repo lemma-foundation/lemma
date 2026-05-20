@@ -83,7 +83,7 @@ Externally produced `signed_by` and `signature` metadata can be attached during 
 
 The validator reads the pinned registry and validates task-bound submissions against the active deterministic K-slot window. It rejects rows outside the active window, mismatched task versions, mismatched target hashes, duplicate winning proofs, and policy failures.
 
-Solved active slots earn `credit / K`. Unsolved-slot value is not redistributed to current solvers; the production default routes it to burn.
+Solved active slots earn their deterministic active slot share. Unsolved-slot value is not redistributed to current solvers; the production default routes it to burn.
 
 ## Fixtures
 

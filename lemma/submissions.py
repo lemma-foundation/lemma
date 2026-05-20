@@ -19,6 +19,13 @@ def proof_sha256(proof_script: str) -> str:
     return hashlib.sha256(proof_script.encode("utf-8")).hexdigest()
 
 
+def _ciphertext_sha256(ciphertext: object) -> str | None:
+    if ciphertext is None:
+        return None
+    text = str(ciphertext)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest() if text else None
+
+
 def canonical_submission_payload(data: dict[str, Any]) -> str:
     """Stable signing payload for live miner responses."""
     fields = {
@@ -29,6 +36,10 @@ def canonical_submission_payload(data: dict[str, Any]) -> str:
         "solver_hotkey": str(data["solver_hotkey"]),
         "proof_sha256": str(data["proof_sha256"]),
         "created_at": str(data["created_at"]),
+        "timelock_ciphertext_sha256": _ciphertext_sha256(data.get("timelock_ciphertext")),
+        "drand_round": data.get("drand_round"),
+        "commit_block": data.get("commit_block"),
+        "commit_extrinsic_hash": data.get("commit_extrinsic_hash"),
     }
     return json.dumps(fields, sort_keys=True, separators=(",", ":"))
 
@@ -69,6 +80,8 @@ class LemmaSubmission(BaseModel):
     created_at: str
     timelock_ciphertext: str | None = None
     drand_round: int | None = Field(default=None, ge=0)
+    commit_block: int | None = Field(default=None, ge=0)
+    commit_extrinsic_hash: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
     signature: str | None = None
     signature_payload_sha256: str = ""
@@ -170,6 +183,7 @@ def validate_submission_for_task(
     task: LemmaTask,
     *,
     require_signature: bool = False,
+    require_commit_reveal: bool = False,
 ) -> None:
     """Reject attempts that are not bound to the exact active task."""
     if submission.task_id != task.id:
@@ -187,3 +201,12 @@ def validate_submission_for_task(
             raise ValueError("live miner submission signature is invalid") from e
         if not valid_signature:
             raise ValueError("live miner submission signature is invalid")
+    if require_commit_reveal:
+        if not submission.timelock_ciphertext:
+            raise ValueError("live miner submission is missing timelock ciphertext")
+        if submission.drand_round is None:
+            raise ValueError("live miner submission is missing drand round")
+        if submission.commit_block is None:
+            raise ValueError("live miner submission is missing commit block")
+        if not (submission.commit_extrinsic_hash or "").strip():
+            raise ValueError("live miner submission is missing commit extrinsic hash")

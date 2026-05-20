@@ -53,6 +53,22 @@ class LemmaSettings(BaseSettings):
         default=None,
         validation_alias="LEMMA_TASK_REGISTRY_SHA256_EXPECTED",
     )
+    verify_registry_signatures: bool = Field(
+        default=False,
+        validation_alias="LEMMA_VERIFY_REGISTRY_SIGNATURES",
+    )
+    require_submission_signatures: bool = Field(
+        default=False,
+        validation_alias="LEMMA_REQUIRE_SUBMISSION_SIGNATURES",
+    )
+    require_commit_reveal: bool = Field(
+        default=False,
+        validation_alias="LEMMA_REQUIRE_COMMIT_REVEAL",
+    )
+    require_strong_proof_identity: bool = Field(
+        default=False,
+        validation_alias="LEMMA_REQUIRE_STRONG_PROOF_IDENTITY",
+    )
     task_http_timeout_s: float = Field(
         default=30.0,
         gt=0.0,
@@ -65,7 +81,11 @@ class LemmaSettings(BaseSettings):
     active_task_count: int = Field(default=20, ge=1, validation_alias="LEMMA_ACTIVE_K")
     frontier_depth: int = Field(default=0, ge=0, validation_alias="LEMMA_FRONTIER_DEPTH")
     active_queue_seed: str = Field(default="lemma-active-queue", validation_alias="LEMMA_ACTIVE_QUEUE_SEED")
-    active_tempo_seconds: int = Field(default=3600, ge=1, validation_alias="LEMMA_ACTIVE_TEMPO_SECONDS")
+    active_tempo_seconds: int = Field(default=4320, ge=1, validation_alias="LEMMA_ACTIVE_TEMPO_SECONDS")
+    active_tempo_source: Literal["wall_clock", "chain"] = Field(
+        default="wall_clock",
+        validation_alias="LEMMA_ACTIVE_TEMPO_SOURCE",
+    )
     schema_version: str = Field(default="v2", validation_alias="LEMMA_SCHEMA_VERSION")
     enabled_domains: tuple[str, ...] = Field(default=("lean",), validation_alias="LEMMA_ENABLED_DOMAINS")
     experimental_domains: tuple[str, ...] = Field(default=(), validation_alias="LEMMA_EXPERIMENTAL_DOMAINS")

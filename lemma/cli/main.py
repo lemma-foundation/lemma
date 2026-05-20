@@ -19,14 +19,6 @@ _ROOT_COMMAND_ORDER = (
     "status",
     "mine",
     "validate",
-    "operator",
-    "tasks",
-    "task",
-    "verify",
-    "submit",
-    "corpus",
-    "export-corpus",
-    "worker",
 )
 
 
@@ -66,11 +58,14 @@ class LemmaGroup(click.Group):
 @click.pass_context
 @click.version_option(version=__version__)
 def main(ctx: click.Context) -> None:
-    """Incentive network for machine-verified mathematics.
+    """Reference client for Lemma's proof protocol.
 
-    Examples: lemma setup; lemma status; lemma tasks list; lemma task show
-    lemma.sample.true_intro; lemma mine --once; lemma validate --once
-    --no-set-weights.
+    The CLI is the smallest correct path for setup, status, reference mining,
+    and validation. Competitive miners can replace it and submit valid protocol
+    outputs through their own infrastructure.
+
+    Examples: lemma setup; lemma status; lemma mine --once; lemma validate
+    --once --no-set-weights.
     """
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help(), color=colors_enabled())
@@ -167,7 +162,7 @@ def setup_cmd(
     unearned_policy: str | None,
     unearned_uid: int | None,
 ) -> None:
-    """Write local operator and miner settings.
+    """Write local settings for the reference client.
 
     \b
     Example:
@@ -207,7 +202,7 @@ def setup_cmd(
 
 @main.command("status")
 def status_cmd() -> None:
-    """Show task registry, verifier, wallet, and prover status.
+    """Show protocol, verifier, wallet, and prover status.
 
     \b
     Example:
@@ -248,7 +243,7 @@ def mine_cmd(
     sign_submission: bool,
     output_path: Path | None,
 ) -> None:
-    """Search for Lean proofs and build verified submissions.
+    """Run the reference miner path and build a verified submission.
 
     \b
     Examples:
@@ -279,7 +274,7 @@ def mine_cmd(
         click.echo(text)
 
 
-@main.group("tasks", cls=LemmaGroup)
+@main.group("tasks", cls=LemmaGroup, hidden=True)
 def tasks_cmd() -> None:
     """List, pull, and show Lean theorem tasks."""
 
@@ -360,6 +355,161 @@ def tasks_build_mathlib_snapshot_cmd(
     click.echo(
         json.dumps(
             {"output": str(output_path), "registry_sha256": digest, "tasks": len(tasks)},
+            indent=2,
+            sort_keys=True,
+        )
+    )
+
+
+@tasks_cmd.command("sign-registry")
+@click.option(
+    "--input",
+    "input_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    required=True,
+    help="Unsigned task registry JSON.",
+)
+@click.option("--output", "output_path", type=click.Path(dir_okay=False, path_type=Path), required=True)
+@click.option("--key-uri", default=None, help="Development signer URI, for example //Alice.")
+@click.option("--wallet-cold", default=None, help="Bittensor cold wallet name for production signing.")
+@click.option("--wallet-hot", default=None, help="Bittensor hotkey name for production signing.")
+def tasks_sign_registry_cmd(
+    input_path: Path,
+    output_path: Path,
+    key_uri: str | None,
+    wallet_cold: str | None,
+    wallet_hot: str | None,
+) -> None:
+    """Attach a real registry signature and print the final SHA256 pin."""
+    from lemma.tasks import registry_signing_payload
+
+    payload = json.loads(input_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise click.ClickException("registry must be a JSON object")
+    payload.pop("signed_by", None)
+    payload.pop("signature", None)
+    if key_uri:
+        from bittensor_wallet import Keypair
+
+        keypair = Keypair.create_from_uri(key_uri)
+    else:
+        import bittensor as bt
+
+        settings = LemmaSettings()
+        keypair = bt.Wallet(name=wallet_cold or settings.wallet_cold, hotkey=wallet_hot or settings.wallet_hot).hotkey
+    signature = keypair.sign(registry_signing_payload(payload))
+    signature_hex = "0x" + signature.hex() if isinstance(signature, bytes) else str(signature)
+    payload["signed_by"] = str(keypair.ss58_address)
+    payload["signature"] = signature_hex if signature_hex.startswith("0x") else "0x" + signature_hex
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    click.echo(
+        json.dumps(
+            {
+                "output": str(output_path),
+                "registry_sha256": hashlib.sha256(output_path.read_bytes()).hexdigest(),
+                "signed_by": payload["signed_by"],
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+
+
+@tasks_cmd.command("build-mixed-registry")
+@click.option(
+    "--candidate-jsonl",
+    "candidate_paths",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    multiple=True,
+    help="JSONL task candidates from vetted non-production mixed supply streams.",
+)
+@click.option(
+    "--mathlib-snapshot",
+    "mathlib_snapshot_paths",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    multiple=True,
+    help="Proof-erased Mathlib snapshot rows that already carry launch-gate metadata.",
+)
+@click.option("--output", "output_path", type=click.Path(dir_okay=False, path_type=Path), required=True)
+@click.option("--seed", default="lemma-mixed-supply", show_default=True)
+@click.option("--frontier-depth", type=click.IntRange(min=0), default=None)
+def tasks_build_mixed_registry_cmd(
+    candidate_paths: tuple[Path, ...],
+    mathlib_snapshot_paths: tuple[Path, ...],
+    output_path: Path,
+    seed: str,
+    frontier_depth: int | None,
+) -> None:
+    """Build a non-production mixed-supply registry."""
+    from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
+    from lemma.supply.mixed import build_mixed_registry_tasks, candidates_from_jsonl
+    from lemma.supply.types import TaskCandidate
+    from lemma.task_supply import write_registry
+
+    candidates: list[TaskCandidate] = []
+    for path in candidate_paths:
+        candidates.extend(candidates_from_jsonl(path))
+    for path in mathlib_snapshot_paths:
+        candidates.extend(mathlib_candidates_from_jsonl(path))
+    if not candidates:
+        raise click.ClickException("provide at least one --candidate-jsonl or --mathlib-snapshot")
+    build = build_mixed_registry_tasks(tuple(candidates), seed=seed, frontier_depth=frontier_depth)
+    if build.rejected:
+        detail = "; ".join(f"{item.id}:{item.reason}" for item in build.rejected[:10])
+        raise click.ClickException(f"rejected {len(build.rejected)} launch candidates: {detail}")
+    write_registry(build.tasks, output_path)
+    click.echo(
+        json.dumps(
+            {
+                "output": str(output_path),
+                "registry_sha256": hashlib.sha256(output_path.read_bytes()).hexdigest(),
+                "tasks": len(build.tasks),
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+
+
+@tasks_cmd.command("build-procedural-registry")
+@click.option(
+    "--candidate-jsonl",
+    "candidate_paths",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    multiple=True,
+    required=True,
+    help="JSONL task candidates emitted by the deterministic depth-2 generator.",
+)
+@click.option("--output", "output_path", type=click.Path(dir_okay=False, path_type=Path), required=True)
+@click.option("--seed", default="lemma-procedural-depth2", show_default=True)
+@click.option("--frontier-depth", type=click.IntRange(min=0), default=None)
+def tasks_build_procedural_registry_cmd(
+    candidate_paths: tuple[Path, ...],
+    output_path: Path,
+    seed: str,
+    frontier_depth: int | None,
+) -> None:
+    """Build a production-shaped procedural depth-2 task registry."""
+    from lemma.supply.procedural import build_procedural_registry_tasks, candidates_from_jsonl
+    from lemma.supply.types import TaskCandidate
+    from lemma.task_supply import write_registry
+
+    candidates: list[TaskCandidate] = []
+    for path in candidate_paths:
+        candidates.extend(candidates_from_jsonl(path))
+    build = build_procedural_registry_tasks(tuple(candidates), seed=seed, frontier_depth=frontier_depth)
+    if build.rejected:
+        detail = "; ".join(f"{item.id}:{item.reason}" for item in build.rejected[:10])
+        raise click.ClickException(f"rejected {len(build.rejected)} procedural candidates: {detail}")
+    write_registry(build.tasks, output_path)
+    click.echo(
+        json.dumps(
+            {
+                "output": str(output_path),
+                "registry_sha256": hashlib.sha256(output_path.read_bytes()).hexdigest(),
+                "tasks": len(build.tasks),
+            },
             indent=2,
             sort_keys=True,
         )
@@ -457,7 +607,7 @@ def tasks_inspect_cmd(task_id: str) -> None:
     _show_task(task_id)
 
 
-@main.group("task", cls=LemmaGroup)
+@main.group("task", cls=LemmaGroup, hidden=True)
 def task_cmd() -> None:
     """Show one Lean theorem task."""
 
@@ -475,7 +625,7 @@ def task_show_cmd(task_id: str) -> None:
     _show_task(task_id)
 
 
-@main.command("verify")
+@main.command("verify", hidden=True)
 @click.argument("task_id")
 @click.option(
     "--submission",
@@ -513,7 +663,7 @@ def verify_cmd(task_id: str, submission_path: Path, host_lean: bool) -> None:
         raise SystemExit(1)
 
 
-@main.command("submit")
+@main.command("submit", hidden=True)
 @click.argument("task_id")
 @click.option(
     "--submission",
@@ -543,7 +693,7 @@ def submit_cmd(task_id: str, submission_path: Path, solver_hotkey: str, output_p
         click.echo(text)
 
 
-@main.group("corpus", cls=LemmaGroup)
+@main.group("corpus", cls=LemmaGroup, hidden=True)
 def corpus_cmd() -> None:
     """Validate, replay, and export Lemma Corpus JSONL files."""
 
@@ -653,7 +803,7 @@ def corpus_index_cmd(input_dir: Path, output_path: Path) -> None:
     corpus_export_cmd(input_dir, output_path)
 
 
-@main.command("export-corpus")
+@main.command("export-corpus", hidden=True)
 @click.option("--domain", default="lean", show_default=True, help="Domain to export.")
 @click.option(
     "--format",
@@ -698,7 +848,7 @@ def export_corpus_cmd(
     click.echo(stylize(f"Wrote {metadata['num_rows']} {domain} rows to {output_path}", fg="green", bold=True))
 
 
-@main.group("operator")
+@main.group("operator", hidden=True)
 def operator_cmd() -> None:
     """Operator preflight and registry tools."""
 
@@ -799,16 +949,24 @@ def operator_registry_inspect_cmd() -> None:
 @click.option("--no-set-weights", is_flag=True, help="Compute weights without submitting them.")
 @click.option("--submissions-jsonl", type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None)
 @click.option("--submission-spool", type=click.Path(file_okay=False, path_type=Path), default=None)
+@click.option("--bucket-reveals-jsonl", type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None)
+@click.option("--verify-chain-commitments", is_flag=True, help="Read chain commitments for bucket reveals.")
+@click.option("--verify-drand-reveals", is_flag=True, help="Decrypt bucket ciphertexts and match revealed proofs.")
 @click.option("--validator-hotkey", default=None, help="Override validator attribution.")
 @click.option("--require-signatures", is_flag=True, help="Require signed live miner submissions.")
+@click.option("--require-commit-reveal", is_flag=True, help="Require revealed submissions to carry commit metadata.")
 def validate_cmd(
     once: bool,
     set_weights: bool,
     no_set_weights: bool,
     submissions_jsonl: Path | None,
     submission_spool: Path | None,
+    bucket_reveals_jsonl: Path | None,
+    verify_chain_commitments: bool,
+    verify_drand_reveals: bool,
     validator_hotkey: str | None,
     require_signatures: bool,
+    require_commit_reveal: bool,
 ) -> None:
     """Run the validator proof-checking, scoring, and corpus-writing workflow.
 
@@ -817,7 +975,13 @@ def validate_cmd(
 
       lemma validate --once --submissions-jsonl submissions.jsonl --no-set-weights
     """
-    from lemma.validator import archive_submission_spool, read_submission_spool, read_submissions_jsonl, validate_once
+    from lemma.validator import (
+        active_tasks_for_validation,
+        archive_submission_spool,
+        read_submission_spool,
+        read_submissions_jsonl,
+        validate_once,
+    )
 
     settings = LemmaSettings()
     setup_logging(settings.log_level)
@@ -825,20 +989,49 @@ def validate_cmd(
         raise click.ClickException("choose either --set-weights or --no-set-weights")
     if set_weights and not settings.enable_set_weights:
         raise click.ClickException("set LEMMA_ENABLE_SET_WEIGHTS=1 before using --set-weights")
+    registry = None
+    chain_authenticated_keys: frozenset[tuple[str, str, str]] = frozenset()
+    bucket_reveal_count = 0
     submissions = read_submissions_jsonl(submissions_jsonl) if submissions_jsonl else []
     spool_dir = submission_spool or settings.submission_spool_dir
     spool_paths: tuple[Path, ...] = ()
     if spool_dir is not None:
         spool_submissions, spool_paths = read_submission_spool(spool_dir)
         submissions.extend(spool_submissions)
-    if not once and submissions_jsonl is None and spool_dir is None:
+    if bucket_reveals_jsonl is not None:
+        from lemma.chain.commitments import read_all_commitments
+        from lemma.chain.miner_buckets import read_bucket_reveals_jsonl, submissions_from_bucket_reveals
+        from lemma.tasks import fetch_task_registry
+
+        registry = fetch_task_registry(
+            settings,
+            verify_signature=settings.protocol_mode == "production" or settings.verify_registry_signatures,
+        )
+        reveals = read_bucket_reveals_jsonl(bucket_reveals_jsonl)
+        bucket_reveal_count = len(reveals)
+        chain_commitments = (
+            read_all_commitments(settings)
+            if verify_chain_commitments or settings.protocol_mode == "production"
+            else None
+        )
+        bucket_submissions, chain_authenticated_keys = submissions_from_bucket_reveals(
+            reveals,
+            active_tasks_for_validation(registry, settings),
+            verify_drand=verify_drand_reveals or settings.protocol_mode == "production",
+            chain_commitments=chain_commitments,
+        )
+        submissions.extend(bucket_submissions)
+    if not once and submissions_jsonl is None and spool_dir is None and bucket_reveals_jsonl is None:
         click.echo(stylize("No live miner intake configured; running a local dry validator iteration.", dim=True))
     result = validate_once(
         settings,
         submissions,
+        registry=registry,
         validator_hotkey=validator_hotkey,
         no_set_weights=(not set_weights) or no_set_weights or not once,
         require_signatures=require_signatures,
+        require_commit_reveal=require_commit_reveal,
+        chain_authenticated_keys=chain_authenticated_keys,
     )
     if spool_paths and spool_dir is not None:
         archive_submission_spool(spool_paths, spool_dir)
@@ -848,6 +1041,7 @@ def validate_cmd(
         "credits": result.score.credits,
         "scores": result.score.scores,
         "submission_files_consumed": len(spool_paths),
+        "bucket_reveals_consumed": bucket_reveal_count,
         "weights": result.score.weights,
         "corpus_rows": len(result.corpus_rows),
         "unearned_policy": result.summary.unearned_policy,
@@ -860,7 +1054,7 @@ def validate_cmd(
     click.echo(json.dumps(output, indent=2, sort_keys=True))
 
 
-@main.command("worker")
+@main.command("worker", hidden=True)
 @click.option("--check", is_flag=True, help="Check task registry and verifier configuration.")
 @click.option("--serve", is_flag=True, help="Run the Lean verification HTTP worker.")
 @click.option("--host", default="localhost", show_default=True, help="Worker bind host.")

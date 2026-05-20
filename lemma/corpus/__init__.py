@@ -62,6 +62,9 @@ class CorpusRow(BaseModel):
     validator_hotkey: str
     epoch: int | None = None
     tempo: int | None = None
+    commit_block: int | None = Field(default=None, ge=0)
+    reveal_block: int | None = Field(default=None, ge=0)
+    drand_round: int | None = Field(default=None, ge=0)
     active_K: int | None = None
     queue_position: int | None = None
     queue_depth: int | None = None
@@ -195,6 +198,7 @@ def build_corpus_row(
     epoch: int | None = None,
     tempo: int | None = None,
     proof_term_hash: str | None = None,
+    structural_fingerprint: str | None = None,
     accepted_at: str | None = None,
     axiom_set: list[str] | None = None,
     active_K: int | None = None,
@@ -203,12 +207,14 @@ def build_corpus_row(
 ) -> CorpusRow:
     """Create a replayable corpus row from an accepted submission."""
     term_hash = proof_term_hash or result.proof_term_hash
+    structural = structural_fingerprint or result.structural_fingerprint
     identity = proof_identity(
         proof_sha256=submission.proof_sha256,
         proof_term_hash=term_hash,
+        structural_fingerprint=structural,
         proof_script=submission.proof_script,
     )
-    source = identity.source if term_hash is not None else proof_identity_source
+    source = identity.source if term_hash is not None or structural is not None else proof_identity_source
     if source == "script_sha256":
         source = identity.source
     eligibility = task_reward_eligibility(task)
@@ -248,6 +254,13 @@ def build_corpus_row(
         validator_hotkey=validator_hotkey,
         epoch=epoch,
         tempo=tempo,
+        commit_block=submission.commit_block,
+        reveal_block=(
+            int(submission.metadata["reveal_block"])
+            if isinstance(submission.metadata.get("reveal_block"), int)
+            else None
+        ),
+        drand_round=submission.drand_round,
         active_K=active_K,
         queue_position=task.queue_position,
         queue_depth=task.queue_depth,

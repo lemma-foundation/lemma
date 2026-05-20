@@ -22,6 +22,12 @@ PreflightCheckName = Literal[
     "operator_data_dir",
     "submission_spool_dir",
     "lean_verifier",
+    "production_domains",
+    "lean_network",
+    "live_submission_signatures",
+    "commit_reveal",
+    "strong_proof_identity",
+    "procedural_supply",
 ]
 
 
@@ -166,7 +172,10 @@ def _build_operator_state(
     registry = None
 
     try:
-        registry = fetch_task_registry(settings)
+        registry = fetch_task_registry(
+            settings,
+            verify_signature=settings.protocol_mode == "production" or settings.verify_registry_signatures,
+        )
         checks.append(_check("registry_load", True, f"{len(registry.tasks)} tasks"))
     except (TaskError, OSError) as e:
         checks.append(_check("registry_load", False, str(e)))
@@ -181,7 +190,8 @@ def _build_operator_state(
     )
 
     if registry is not None:
-        checks.append(_check("registry_signature", True, registry.signature_status))
+        signature_ok = registry.signature_status == "verified" if settings.protocol_mode == "production" else True
+        checks.append(_check("registry_signature", signature_ok, registry.signature_status))
         active_tasks = active_tasks_for_validation(registry, settings)
         active_task_ids = tuple(task.id for task in active_tasks)
         registry_inspect = _inspect_registry(registry, settings, active_task_count=len(active_tasks))
@@ -214,6 +224,49 @@ def _build_operator_state(
         verifier_detail = "host Lean enabled" if settings.allow_host_lean else "no Lean verifier backend configured"
         verifier_ok = settings.allow_host_lean
     checks.append(_check("lean_verifier", verifier_ok, verifier_detail))
+
+    if settings.protocol_mode == "production":
+        from lemma.protocol_invariants import production_supply_rejections
+
+        rejections = production_supply_rejections(registry) if registry is not None else ()
+        checks.extend(
+            [
+                _check(
+                    "production_domains",
+                    tuple(settings.enabled_domains) == ("lean",),
+                    "enabled domains must be exactly lean",
+                ),
+                _check(
+                    "lean_network",
+                    settings.lean_sandbox_network.strip().lower() in {"none", "no"},
+                    "production Lean verifier network must be disabled",
+                ),
+                _check(
+                    "live_submission_signatures",
+                    settings.require_submission_signatures,
+                    "live miner authentication must be enabled",
+                ),
+                _check(
+                    "commit_reveal",
+                    settings.require_commit_reveal,
+                    "LEMMA_REQUIRE_COMMIT_REVEAL must be enabled",
+                ),
+                _check(
+                    "strong_proof_identity",
+                    settings.require_strong_proof_identity,
+                    "LEMMA_REQUIRE_STRONG_PROOF_IDENTITY must be enabled",
+                ),
+                _check(
+                    "procedural_supply",
+                    not rejections,
+                    (
+                        "paid supply is procedural depth-2"
+                        if not rejections
+                        else "paid supply rejected: " + ", ".join(rejections[:5])
+                    ),
+                ),
+            ]
+        )
 
     preflight = OperatorPreflightReport(
         schema_version=1,

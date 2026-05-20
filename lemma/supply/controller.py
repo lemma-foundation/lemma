@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -26,6 +28,64 @@ class CurriculumDecision:
     state: CurriculumState
     action: str
     variant_stream_requested: bool = False
+
+
+@dataclass(frozen=True)
+class CurriculumTempoRecord:
+    tempo: int
+    active_K: int
+    frontier_depth: int
+    ema_solve_rate: float
+    solved_slots: int
+    parked_task_ids: tuple[str, ...]
+    action: str
+    variant_stream_requested: bool
+
+    def to_json(self) -> str:
+        return json.dumps(
+            {
+                "tempo": self.tempo,
+                "active_K": self.active_K,
+                "frontier_depth": self.frontier_depth,
+                "ema_solve_rate": self.ema_solve_rate,
+                "solved_slots": self.solved_slots,
+                "parked_task_ids": list(self.parked_task_ids),
+                "action": self.action,
+                "variant_stream_requested": self.variant_stream_requested,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+
+    @classmethod
+    def from_json(cls, raw: str) -> CurriculumTempoRecord:
+        data = json.loads(raw)
+        return cls(
+            tempo=int(data["tempo"]),
+            active_K=int(data["active_K"]),
+            frontier_depth=int(data["frontier_depth"]),
+            ema_solve_rate=float(data["ema_solve_rate"]),
+            solved_slots=int(data["solved_slots"]),
+            parked_task_ids=tuple(str(item) for item in data.get("parked_task_ids", [])),
+            action=str(data["action"]),
+            variant_stream_requested=bool(data["variant_stream_requested"]),
+        )
+
+
+def append_curriculum_record(path: Path, record: CurriculumTempoRecord) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(record.to_json() + "\n")
+
+
+def read_curriculum_records(path: Path) -> tuple[CurriculumTempoRecord, ...]:
+    if not path.exists():
+        return ()
+    return tuple(
+        CurriculumTempoRecord.from_json(line)
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    )
 
 
 def retarget_curriculum(

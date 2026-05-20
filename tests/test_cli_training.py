@@ -48,12 +48,15 @@ def test_task_show_aliases_match_goal_language() -> None:
         assert "Submission stub" in result.output
 
 
-def test_root_help_prioritizes_normal_commands() -> None:
+def test_root_help_exposes_only_barebones_public_commands() -> None:
     result = CliRunner().invoke(main, ["--help"])
 
     assert result.exit_code == 0
     positions = [result.output.index(name) for name in ["setup", "status", "mine", "validate"]]
     assert positions == sorted(positions)
+    for hidden in ["operator", "tasks", "task", "verify", "submit", "corpus", "export-corpus", "worker"]:
+        assert f"  {hidden}" not in result.output
+    assert "Reference client for Lemma's proof protocol." in result.output
     assert "Examples:" in result.output
 
 

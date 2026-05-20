@@ -20,6 +20,7 @@ LEAN_VERIFIER_ID: Final = "lake-build"
 LEAN_VERIFIER_VERSION: Final = "lemma-lean-v1"
 
 SourceStream = Literal[
+    "procedural",
     "mathlib_snapshot",
     "mathlib_perturbation",
     "state_graph",
@@ -53,6 +54,27 @@ class RegistrySignatureVerifier(Protocol):
     def verify_registry(self, *, raw: bytes, signed_by: str, signature: str) -> bool:
         """Return True when the registry signature is accepted."""
         ...
+
+
+def registry_signing_payload(payload: dict[str, Any]) -> bytes:
+    """Canonical bytes signed by registry authorities.
+
+    The published registry file can be pretty-printed and SHA-pinned exactly as
+    written. The signature covers the registry content with signature metadata
+    removed, so attaching or rotating `signed_by` / `signature` does not change
+    the message being verified.
+    """
+    unsigned = {key: value for key, value in payload.items() if key not in {"signed_by", "signature"}}
+    return json.dumps(unsigned, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+
+class Ss58RegistrySignatureVerifier:
+    """Verify registry signatures against an SS58 public hotkey address."""
+
+    def verify_registry(self, *, raw: bytes, signed_by: str, signature: str) -> bool:
+        from bittensor_wallet import Keypair
+
+        return bool(Keypair(ss58_address=signed_by).verify(raw, signature))
 
 
 class SourceRef(BaseModel):
@@ -182,7 +204,7 @@ class LemmaTask(BaseModel):
             "scoring": {
                 "rule": "first_valid_unique_verified_artifact",
                 "reward_unit": "proof_unit",
-                "denominator": "active_task_count",
+                "denominator": "active_slot_weight_sum",
             },
             "metadata": {
                 "task_version": self.task_version,
@@ -298,7 +320,7 @@ def load_task_registry(
         raise TaskError("task registry must contain a tasks list")
     signed_by, signature = _signature_metadata(payload)
     signature_status = _signature_status(
-        raw=raw,
+        raw=registry_signing_payload(payload),
         signed_by=signed_by,
         signature=signature,
         verifier=signature_verifier,
@@ -318,6 +340,8 @@ def load_task_registry(
     )
 
 
-def fetch_task_registry(settings: LemmaSettings) -> TaskRegistry:
+def fetch_task_registry(settings: LemmaSettings, *, verify_signature: bool | None = None) -> TaskRegistry:
     raw = _read_registry_bytes(settings.task_registry_url, float(settings.task_http_timeout_s))
-    return load_task_registry(raw, settings.task_registry_sha256_expected)
+    should_verify = settings.verify_registry_signatures if verify_signature is None else verify_signature
+    verifier = Ss58RegistrySignatureVerifier() if should_verify else None
+    return load_task_registry(raw, settings.task_registry_sha256_expected, signature_verifier=verifier)

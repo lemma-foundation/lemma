@@ -7,7 +7,7 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -21,13 +21,14 @@ from lemma.scoring import ScoreResult, UnearnedPolicy, VerificationRecord, score
 from lemma.store import append_jsonl
 from lemma.submissions import LemmaSubmission, validate_submission_for_task
 from lemma.supply.queue import initial_active_pool
-from lemma.task_activation import task_reward_eligibility
+from lemma.task_activation import task_reward_eligibility, task_slot_weight
 from lemma.tasks import LemmaTask, TaskRegistry, fetch_task_registry
 from lemma.verifiers.lean import verify_result_from_adapter_result
 from lemma.verifiers.registry import get_verifier
 
 VerifySubmission = Callable[[LemmaTask, LemmaSubmission], VerifyResult]
 SubmitWeights = Callable[[LemmaSettings, dict[str, float]], ChainWeightSubmission]
+ChainAuthenticatedKey = tuple[str, str, str]
 
 
 class ValidatorRunSummary(BaseModel):
@@ -67,7 +68,17 @@ def _now() -> str:
 
 
 def current_active_tempo(settings: LemmaSettings, *, now: datetime | None = None) -> int:
-    """Return the wall-clock tempo used for the active task window."""
+    """Return the tempo used for the active task window."""
+    if settings.active_tempo_source == "chain":
+        import bittensor as bt
+
+        subtensor = bt.Subtensor(network=settings.bt_network or None)
+        block = int(subtensor.get_current_block())
+        hyperparams = subtensor.get_subnet_hyperparameters(settings.netuid, block=block)
+        tempo = int(cast(Any, hyperparams).tempo)
+        if tempo <= 0:
+            raise RuntimeError("chain tempo must be positive")
+        return block // tempo
     instant = now or datetime.now(UTC)
     return int(instant.timestamp() // settings.active_tempo_seconds)
 
@@ -219,15 +230,25 @@ def validate_once(
     tempo: int | None = None,
     no_set_weights: bool = False,
     require_signatures: bool = False,
+    require_commit_reveal: bool = False,
     submit_weights: SubmitWeights | None = None,
+    chain_authenticated_keys: frozenset[ChainAuthenticatedKey] = frozenset(),
 ) -> ValidatorRunResult:
     """Verify submissions, score unique proofs, and write local corpus artifacts."""
-    registry = registry or fetch_task_registry(settings)
+    registry = registry or fetch_task_registry(
+        settings,
+        verify_signature=settings.protocol_mode == "production" or settings.verify_registry_signatures,
+    )
     enforce_production_invariants(settings, registry)
     active_tasks = active_tasks_for_validation(registry, settings, tempo=tempo)
     tasks = {task.id: task for task in active_tasks}
     verify = verify_submission or _default_verify(settings)
     validator = validator_hotkey or settings.wallet_hot
+    require_live_signatures = (
+        require_signatures or settings.require_submission_signatures or settings.protocol_mode == "production"
+    )
+    require_reveal = require_commit_reveal or settings.require_commit_reveal or settings.protocol_mode == "production"
+    require_strong_identity = settings.require_strong_proof_identity or settings.protocol_mode == "production"
 
     records: list[VerificationRecord] = []
     accepted: dict[tuple[str, str, str], tuple[LemmaTask, LemmaSubmission, VerifyResult]] = {}
@@ -246,8 +267,14 @@ def validate_once(
                 }
             )
             continue
+        chain_authenticated = (task.id, submission.solver_hotkey, submission.proof_sha256) in chain_authenticated_keys
         try:
-            validate_submission_for_task(submission, task, require_signature=require_signatures)
+            validate_submission_for_task(
+                submission,
+                task,
+                require_signature=require_live_signatures and not chain_authenticated,
+                require_commit_reveal=require_reveal,
+            )
         except ValueError as e:
             receipts.append(
                 {
@@ -263,6 +290,7 @@ def validate_once(
         identity = proof_identity(
             proof_sha256=submission.proof_sha256,
             proof_term_hash=result.proof_term_hash,
+            structural_fingerprint=result.structural_fingerprint,
             proof_script=submission.proof_script,
         )
         eligibility = task_reward_eligibility(task)
@@ -281,6 +309,8 @@ def validate_once(
             proof_identity_strength=identity.strength,
             reward_eligible=eligibility.eligible,
             reward_ineligibility_reason=eligibility.reason,
+            commit_block=submission.commit_block,
+            drand_round=submission.drand_round,
             received_at=received_at,
         )
         records.append(record)
@@ -292,6 +322,9 @@ def validate_once(
                 "target_sha256": task.target_sha256,
                 "solver_hotkey": submission.solver_hotkey,
                 "proof_sha256": submission.proof_sha256,
+                "commit_block": submission.commit_block,
+                "drand_round": submission.drand_round,
+                "chain_authenticated": chain_authenticated,
                 "passed": result.passed,
                 "reason": result.reason,
             }
@@ -306,7 +339,8 @@ def validate_once(
         active_task_count=len(active_tasks),
         unearned_policy=settings.unearned_allocation_policy,
         unearned_uid=settings.unearned_uid,
-        require_strong_identity_for_reward=settings.protocol_mode == "production",
+        require_strong_identity_for_reward=require_strong_identity,
+        slot_weights={task.id: task_slot_weight(task) for task in active_tasks},
     )
     if score.score_events:
         append_jsonl(settings.operator_data_dir / "score-events.jsonl", score.score_events)
@@ -324,6 +358,7 @@ def validate_once(
                 epoch=epoch,
                 tempo=tempo,
                 proof_term_hash=scored.record.proof_term_hash,
+                structural_fingerprint=result.structural_fingerprint,
                 proof_identity_source=scored.record.proof_identity_source,
                 active_K=len(active_tasks),
                 accepted_at=scored.record.received_at,

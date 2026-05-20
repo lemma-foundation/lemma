@@ -63,7 +63,7 @@ def test_current_problem_snapshot_is_public_safe() -> None:
     assert payload["registry_task_count"] == 3
     assert payload["active_K"] == 2
     assert payload["tempo"] == 0
-    assert payload["active_tempo_seconds"] == 3600
+    assert payload["active_tempo_seconds"] == 4320
     assert payload["task_count"] == 2
     assert {task["task_id"] for task in payload["tasks"]} == {"lemma.test.alpha", "lemma.test.beta"}
     assert "proof_script" not in text

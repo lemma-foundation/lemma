@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shlex
 import shutil
 import subprocess
@@ -21,6 +22,7 @@ class Step:
     name: str
     command: tuple[str, ...]
     cwd: Path = ROOT
+    env: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -34,8 +36,10 @@ class StepResult:
         return self.returncode == 0
 
 
-def _quote(command: tuple[str, ...]) -> str:
-    return " ".join(shlex.quote(part) for part in command)
+def _quote(step: Step) -> str:
+    env = " ".join(f"{key}={shlex.quote(value)}" for key, value in step.env)
+    command = " ".join(shlex.quote(part) for part in step.command)
+    return f"{env} {command}".strip()
 
 
 def _repo_argument(repo: Path) -> str:
@@ -51,7 +55,7 @@ def _repo_argument(repo: Path) -> str:
 
 
 def _pytest_command(profile: str) -> tuple[str, ...]:
-    if profile == "full":
+    if profile in {"full", "mainnet"}:
         return ("uv", "run", "pytest", "tests", "-q", "--ignore=tests/test_docker_golden.py")
     return (
         "uv",
@@ -75,7 +79,7 @@ def build_steps(profile: str, site_repo: Path = DEFAULT_SITE_REPO, *, skip_site:
         Step("mypy", ("uv", "run", "mypy", "lemma")),
     ]
 
-    if profile == "full":
+    if profile in {"full", "mainnet"}:
         steps.extend(
             [
                 Step("bandit", ("uv", "run", "bandit", "-q", "-r", "lemma", "scripts", "-ll")),
@@ -100,6 +104,15 @@ def build_steps(profile: str, site_repo: Path = DEFAULT_SITE_REPO, *, skip_site:
     steps.append(Step("privacy leak check", tuple(leak_command)))
     steps.append(Step("pytest", _pytest_command(profile)))
 
+    if profile == "mainnet":
+        steps.append(
+            Step(
+                "docker Lean golden",
+                ("uv", "run", "pytest", "tests/test_docker_golden.py", "-v", "--tb=short"),
+                env=(("RUN_DOCKER_LEAN", "1"),),
+            )
+        )
+
     if not skip_site and site_repo.exists():
         steps.extend(
             [
@@ -119,8 +132,17 @@ def build_steps(profile: str, site_repo: Path = DEFAULT_SITE_REPO, *, skip_site:
 def run_step(step: Step) -> StepResult:
     started = time.monotonic()
     print(f"\n== {step.name}")
-    print(f"$ {_quote(step.command)}")
-    completed = subprocess.run(step.command, cwd=step.cwd, text=True, capture_output=True, check=False)  # noqa: S603
+    print(f"$ {_quote(step)}")
+    env = os.environ.copy()
+    env.update(dict(step.env))
+    completed = subprocess.run(  # noqa: S603
+        step.command,
+        cwd=step.cwd,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
     elapsed = time.monotonic() - started
     if completed.stdout:
         print(completed.stdout.rstrip())
@@ -132,7 +154,7 @@ def run_step(step: Step) -> StepResult:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--profile", choices=("quick", "full"), default="quick")
+    parser.add_argument("--profile", choices=("quick", "full", "mainnet"), default="quick")
     parser.add_argument("--site-repo", type=Path, default=DEFAULT_SITE_REPO)
     parser.add_argument("--skip-site", action="store_true")
     parser.add_argument("--keep-going", action="store_true", help="Run every step even after a failure.")

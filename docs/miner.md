@@ -4,6 +4,8 @@ Miners solve Lean theorem-proving tasks.
 
 Your job is to fetch active tasks, produce a verifier-accepted proof, verify it locally, and serve or package the task-bound submission for validators. For Lean tasks, the proof is a `Submission.lean` file.
 
+The public CLI is only the reference path. It proves the protocol can be used end to end; it is not an optimization framework or the expected ceiling for serious miners.
+
 ## Basic Flow
 
 ```bash
@@ -12,8 +14,6 @@ cd lemma
 uv sync --extra btcli
 uv run lemma setup
 uv run lemma status
-uv run lemma tasks list
-uv run lemma task show <task-id>
 ```
 
 Configure one prover path:
@@ -25,20 +25,17 @@ LEMMA_PROVER_COMMAND="python prover.py"
 Then run one local iteration:
 
 ```bash
-uv run lemma mine --once --task-id <task-id>
-uv run lemma mine --once --task-id <task-id> --output submission.json
+uv run lemma mine --once
+uv run lemma mine --once --output submission.json
 ```
 
-The local command receives one JSON task on stdin and returns JSON with `task_id` and `proof_script` on stdout. Live deployments wrap the proof in a timelocked chain commitment; local JSON output is the development harness.
+The configured prover command receives one JSON task on stdin and returns JSON with `task_id` and `proof_script` on stdout. Live deployments wrap the proof in a timelocked chain commitment; local JSON output is the development harness.
 
-## Manual Proof Path
+## Custom Miners
 
-```bash
-uv run lemma verify <task-id> --submission Submission.lean
-uv run lemma submit <task-id> --submission Submission.lean --solver-hotkey <hotkey>
-```
+Competitive miners can replace the CLI entirely. The contract is the task registry plus a valid task-bound proof submission; how a miner gets there is open. Agents, custom Lean worker pools, model-training loops, remote schedulers, direct protocol clients, or non-Python implementations are all fine if the validator accepts the output.
 
-The validator can ingest the resulting `submission.json` through its submission spool.
+Mainnet-shaped runs write timelocked blobs to the miner bucket and anchor rank with a Merkle-root chain commitment.
 
 ## Hosted Provers
 
@@ -54,4 +51,4 @@ The provider is not scored. Lemma only checks the final Lean proof.
 
 ## Reward Rule
 
-The first accepted unique proof for an active task earns one fixed-price verified unit in the validator epoch. Duplicate proofs, failed proofs, changed targets, prose explanations, and unsigned live submissions do not earn credit. Unsolved slots do not increase the payout for solved slots.
+The rank-0 unique proof for an active task earns one verified unit in the validator epoch. On the bucket/commitment path, rank-0 means the earliest valid Merkle-root commit block. Duplicate proofs, failed proofs, changed targets, prose explanations, and unauthenticated live submissions do not earn credit. Unsolved slots do not increase the payout for solved slots.

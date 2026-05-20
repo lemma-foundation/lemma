@@ -16,6 +16,28 @@ The command writes deterministic `queue_position` values and prints `registry_sh
 
 `signed_by` and `signature` fields are archived metadata unless the validator is configured with an explicit registry-signature verifier. They are not a substitute for `LEMMA_TASK_REGISTRY_SHA256_EXPECTED`.
 
+For production-shaped supply, build from deterministic depth-2 procedural candidates:
+
+```bash
+uv run lemma tasks build-procedural-registry \
+  --candidate-jsonl procedural-depth2-candidates.jsonl \
+  --output tasks/mainnet.registry.json
+```
+
+The procedural builder rejects paid candidates that do not carry procedural depth-2 metadata, chain/drand anchoring, typecheck and Prop gates, novelty status, clean license state, and deterministic slot weight metadata.
+
+The mixed builder remains available for local smoke, testnet supply exercises, and curriculum work. It is not the paid mainnet path.
+
+Sign the registry after building it:
+
+```bash
+uv run lemma tasks sign-registry \
+  --input tasks/mainnet.registry.json \
+  --output tasks/mainnet.signed.registry.json
+```
+
+Pin the SHA256 of the signed output. Signature verification covers the canonical registry payload with `signed_by` and `signature` removed; the SHA pin still covers the exact published bytes.
+
 ## 2. Configure The Active Window
 
 Set the registry, its expected hash, and the deterministic active-window controls:
@@ -23,14 +45,16 @@ Set the registry, its expected hash, and the deterministic active-window control
 ```bash
 LEMMA_TASK_REGISTRY_URL=tasks/mathlib-snapshot.registry.json
 LEMMA_TASK_REGISTRY_SHA256_EXPECTED=<registry_sha256>
+LEMMA_VERIFY_REGISTRY_SIGNATURES=1
 LEMMA_ACTIVE_K=10
 LEMMA_FRONTIER_DEPTH=0
 LEMMA_ACTIVE_QUEUE_SEED=lemma-active-queue
+LEMMA_ACTIVE_TEMPO_SOURCE=chain
 LEMMA_CORPUS_OUTPUT_DIR=corpus
 LEMMA_OPERATOR_DATA_DIR=validator-data
 ```
 
-`LEMMA_ACTIVE_K` is the paid throughput denominator. `LEMMA_FRONTIER_DEPTH` and registry depth control difficulty. Increasing queue depth must not change the reward denominator.
+`LEMMA_ACTIVE_K` is validator throughput. `LEMMA_FRONTIER_DEPTH` and registry depth control difficulty. Payment uses deterministic active slot weights, not subjective validator scores.
 
 Inspect registry depth before accepting submissions:
 
@@ -68,9 +92,10 @@ uv run lemma validate \
   --no-set-weights
 ```
 
-For a live file inbox, use `--submission-spool submission-spool` instead. The spool accepts top-level `.json` and `.jsonl` submission files and moves consumed files to `processed/` after a successful validator pass.
+For a live file inbox, use `--submission-spool submission-spool` instead. The spool accepts top-level `.json` and `.jsonl` submission files and moves consumed files to `processed/` after a successful validator pass. For a mainnet-shaped bucket reveal fixture, use `--bucket-reveals-jsonl bucket-reveals.jsonl`; the validator checks the miner Merkle root before scoring. Add `--verify-chain-commitments` to read miner commitments from chain, and add `--verify-drand-reveals` to decrypt ciphertexts and require the decrypted proof to match the reveal; production mode enables both checks for bucket reveals.
 
-The validator rejects submissions outside the active window, task-version mismatches, target-hash mismatches, duplicate winning proofs, and policy failures. Accepted unique proofs earn `credit / K`; unsolved-slot value becomes `unearned_share` and is burned by default. Each pass appends one public-safe row to `validator-runs.jsonl` with the registry hash, active K, frontier depth, verified count, accepted unique count, corpus row count, unearned share, unearned policy, and `weights_set`. Smoke passes should use `--no-set-weights`; live chain writes require both `LEMMA_ENABLE_SET_WEIGHTS=1` and `--set-weights`. On commit-reveal subnets, the writer waits until the final 10 blocks of the tempo before submitting. Each attempted live write appends a public-safe `weight-submissions.jsonl` receipt with the resolved UID vector, weights, network, netuid, success flag, sanitized client message, and extrinsic hash when available.
+The validator rejects submissions outside the active window, task-version mismatches, target-hash mismatches, duplicate winning proofs, and policy failures. Rank-0 accepted proofs earn their deterministic active slot share; unsolved-slot value becomes `unearned_share` and is burned by default. Each pass appends one public-safe row to `validator-runs.jsonl` with the registry hash, active K, frontier depth, verified count, accepted unique count, corpus row count, unearned share, unearned policy, and `weights_set`. Smoke passes should use `--no-set-weights`; live chain writes require both `LEMMA_ENABLE_SET_WEIGHTS=1` and `--set-weights`. On commit-reveal subnets, the writer waits until the final 10 blocks of the tempo before submitting. Each attempted live write appends a public-safe `weight-submissions.jsonl` receipt with the resolved UID vector, weights, network, netuid, success flag, sanitized client message, and extrinsic hash when available.
+In production, set `LEMMA_REQUIRE_SUBMISSION_SIGNATURES=1`, `LEMMA_REQUIRE_COMMIT_REVEAL=1`, and `LEMMA_REQUIRE_STRONG_PROOF_IDENTITY=1`. The first flag means live miner hotkey authentication: direct submissions use signatures, while bucket reveals use the miner's chain commitment. Weak script identity can still be written as corpus metadata, but it does not receive paid reward.
 
 After the validator pass, capture diagnostics again:
 

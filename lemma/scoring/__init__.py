@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal
 
@@ -33,6 +34,8 @@ class VerificationResult(BaseModel):
     proof_identity_strength: Literal["weak", "medium", "strong"] = "weak"
     reward_eligible: bool = True
     reward_ineligibility_reason: str = ""
+    commit_block: int | None = Field(default=None, ge=0)
+    drand_round: int | None = Field(default=None, ge=0)
     received_at: str = ""
     verifier_version: str = "lemma-lean-v1"
 
@@ -70,6 +73,8 @@ class ScoreEvent(BaseModel):
     credit: int
     score: float
     active_K: int = Field(ge=0)
+    commit_block: int | None = Field(default=None, ge=0)
+    drand_round: int | None = Field(default=None, ge=0)
     received_at: str = ""
 
 
@@ -101,11 +106,14 @@ def score_epoch(
     unearned_policy: UnearnedPolicy = "burn",
     unearned_uid: int | None = 0,
     require_strong_identity_for_reward: bool = False,
+    slot_weights: Mapping[str, float] | None = None,
 ) -> ScoreResult:
-    """Award one fixed-price credit per active slot.
+    """Award rank-0 valid proof credit without redistributing unsolved slots.
 
-    The miner share is always ``credit / K``. Unsolved-slot value is tracked
-    separately and never redistributed to current solvers.
+    With no slot weights, each active slot is worth ``1 / K``. When slot
+    weights are supplied, each slot is worth its normalized share of the active
+    weight sum. Committed reveals rank by chain commit block before local
+    receipt time. Either way, unsolved-slot value is tracked separately.
     """
     if active_task_count is not None and active_task_count < 0:
         raise ValueError("active_task_count must be non-negative")
@@ -121,8 +129,11 @@ def score_epoch(
     scored: list[ScoredProof] = []
     score_events: list[ScoreEvent] = []
     task_count = active_task_count if active_task_count is not None else len({record.task_id for record in records})
+    slot_shares = _slot_shares(slot_weights, task_count)
     for task_id, task_records in by_task.items():
-        ordered = sorted(task_records, key=lambda item: (item[1].received_at, item[0]))
+        if slot_shares is not None and task_id not in slot_shares:
+            raise ValueError(f"missing slot weight for task {task_id}")
+        ordered = sorted(task_records, key=_record_rank_key)
         seen: set[str] = set()
         rewarded_this_task = False
         for _, record in ordered:
@@ -156,14 +167,23 @@ def score_epoch(
                     reward_ineligibility_reason=reason,
                     rewarded=rewarded,
                     credit=1 if rewarded else 0,
-                    score=(1 / task_count) if rewarded and task_count else 0.0,
+                    score=_task_share(task_id, task_count, slot_shares) if rewarded else 0.0,
                     active_K=task_count,
+                    commit_block=record.commit_block,
+                    drand_round=record.drand_round,
                     received_at=record.received_at,
                 )
             )
 
     credits = dict(Counter(winners.values()))
-    scores = {hotkey: credit / task_count for hotkey, credit in credits.items()} if task_count else {}
+    if slot_shares is None:
+        scores = {hotkey: credit / task_count for hotkey, credit in credits.items()} if task_count else {}
+    else:
+        weighted_scores: dict[str, float] = defaultdict(float)
+        for event in score_events:
+            if event.rewarded:
+                weighted_scores[event.solver_hotkey] += event.score
+        scores = dict(weighted_scores)
     miner_weights = dict(scores)
     solved_share = min(1.0, sum(miner_weights.values()))
     unearned_share = (1.0 - solved_share) if task_count else 0.0
@@ -182,3 +202,36 @@ def score_epoch(
         score_events=tuple(score_events),
         valid_unique_proofs=tuple(scored),
     )
+
+
+def _slot_shares(slot_weights: Mapping[str, float] | None, task_count: int) -> dict[str, float] | None:
+    if slot_weights is None:
+        return None
+    cleaned: dict[str, float] = {}
+    for task_id, raw in slot_weights.items():
+        weight = float(raw)
+        if weight <= 0:
+            raise ValueError(f"slot weight must be positive for task {task_id}")
+        cleaned[task_id] = weight
+    total = sum(cleaned.values())
+    if task_count and len(cleaned) != task_count:
+        raise ValueError("slot_weights must cover every active task")
+    if not total:
+        if task_count == 0:
+            return {}
+        raise ValueError("slot_weights must contain a positive total")
+    return {task_id: weight / total for task_id, weight in cleaned.items()}
+
+
+def _task_share(task_id: str, task_count: int, slot_shares: dict[str, float] | None) -> float:
+    if slot_shares is not None:
+        return slot_shares[task_id]
+    return (1 / task_count) if task_count else 0.0
+
+
+def _record_rank_key(item: tuple[int, VerificationRecord]) -> tuple[object, ...]:
+    index, record = item
+    if record.commit_block is not None:
+        tie_break = record.proof_identity or record.proof_term_hash or record.proof_sha256
+        return (0, record.commit_block, tie_break, record.solver_hotkey, record.received_at, index)
+    return (1, record.received_at, index)

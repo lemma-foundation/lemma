@@ -12,7 +12,7 @@ The goal is simple: reward correct Lean proofs and use them to expand the open m
 
 ## How It Works
 
-1. Validators publish an active pool of Lean theorem-proving tasks.
+1. Validators derive the same active pool of procedural Lean theorem-proving tasks.
 2. Miners search for Lean proofs.
 3. Miners submit task-bound proof packages.
 4. Validators run the pinned Lean verifier.
@@ -60,14 +60,7 @@ uv run lemma status
 uv run lemma mine --once --prover-command "python prover.py" --output submission.json
 ```
 
-For manual inspection:
-
-```bash
-uv run lemma tasks list
-uv run lemma task show lemma.sample.true_intro
-uv run lemma verify lemma.sample.true_intro --submission Submission.lean
-uv run lemma submit lemma.sample.true_intro --submission Submission.lean --solver-hotkey <hotkey>
-```
+`lemma mine` is the reference client and smoke path, not the official mining strategy. Competitive miners can replace the CLI entirely as long as they produce valid task-bound proof submissions.
 
 ## Quick Start: Validators
 
@@ -76,41 +69,41 @@ git clone https://github.com/lemma-foundation/lemma.git
 cd lemma
 uv sync --extra btcli
 uv run lemma setup
-uv run lemma worker --check
 uv run lemma validate --once --submission-spool submission-spool --no-set-weights
 ```
 
 The validator path fetches active tasks, validates task-bound submissions, runs Lean, scores accepted proofs, withholds unsolved-slot value from current solvers, and writes local corpus deltas.
 The submission spool is a file inbox for miner submission JSON files; consumed files move to `processed/` after a successful validator pass.
+`--bucket-reveals-jsonl` is the local/testnet adapter for the mainnet-shaped path: a miner bucket reveal must match the miner's on-chain committed Merkle root before it can enter scoring. Add `--verify-chain-commitments` to read the miner's on-chain bucket commitment and `--verify-drand-reveals` to decrypt bucket ciphertexts and require the decrypted proof to match the revealed proof; production mode enables both checks for bucket reveals.
 Live weight writes require both `LEMMA_ENABLE_SET_WEIGHTS=1` and `--set-weights`; smoke passes should stay on `--no-set-weights`.
 When a live write is attempted, the validator appends a public-safe local receipt to `weight-submissions.jsonl` under `LEMMA_OPERATOR_DATA_DIR`, including the resolved UID vector and extrinsic hash when the Bittensor client returns one.
+Production mode additionally requires a SHA-pinned, signature-verified registry, procedural depth-2 paid supply, hotkey-authenticated miner submissions, commit/reveal fields on revealed submissions, network-disabled Lean verification, and strong Lean-derived proof identity for paid rewards.
 
 ## Try The Loop Locally
 
 Use [examples/operator-smoke](examples/operator-smoke/README.md) to build a pinned registry, package one proof submission, run a validator pass, and export corpus artifacts.
 
+For production-shaped registries, package deterministic depth-2 procedural supply and sign the final registry before configuring validators. The detailed operator path lives in [Operator Registry Flow](docs/operator-registry-flow.md). Curated Mathlib and mixed supply remain useful for local smoke, testnet exercises, and curriculum development. Paid mainnet supply must be procedural, fresh, depth-2, and chain/drand anchored.
+
 ## Corpus Export
 
 The public smoke corpus lives at [lemma-foundation/lemma-corpus](https://github.com/lemma-foundation/lemma-corpus).
 
-Export the current Lean mathematical corpus:
-
-```bash
-uv run lemma export-corpus --domain lean --format jsonl --out data/lean_corpus.jsonl
-```
+Corpus release and export tooling is documented in [Corpus](docs/corpus.md).
 
 Corpus rows include the theorem statement, imports, toolchain, proof script, identity strength, source/license metadata, graph links, validator attribution, and verification summary. A corpus row is a replayable record of a verified theorem/proof.
 
 ## Scoring
 
-Each epoch has `K` active paid theorem slots. A miner earns one credit for being first to submit a unique accepted proof for a slot. Unsolved slots remain unearned by default.
+Each epoch has `K` active paid theorem slots. A miner earns one credit for the rank-0 unique accepted proof for a slot. On the mainnet-shaped path, rank-0 is earliest Merkle-root commit block, with proof identity as the deterministic tie-break. Unsolved slots remain unearned by default.
 
 ```text
-score = verified_unique_wins / K
-weight = credit / K
+score = sum(winning_slot_weight) / sum(active_slot_weights)
+weight = miner_score
 ```
 
 The unearned share is not redistributed to current solvers. It is burned by default and can only be routed to future proof-production rails by an explicit policy.
+In production, weak script identity can be stored as corpus metadata but cannot earn paid reward; rewarded rows need a strong Lean-derived proof-term hash or structural declaration fingerprint.
 
 ## Roadmap
 
@@ -139,6 +132,7 @@ Operators:
 - [Tasks](docs/tasks.md)
 - [Production](docs/production.md)
 - [Testing](docs/testing.md)
+- [Mainnet readiness](docs/mainnet-readiness.md)
 - [Operator registry flow](docs/operator-registry-flow.md)
 
 Protocol:

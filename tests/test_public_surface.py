@@ -44,6 +44,7 @@ def test_final_docs_structure_exists() -> None:
         "tasks.md",
         "mathlib-extraction.md",
         "operator-registry-flow.md",
+        "mainnet-readiness.md",
         "scoring.md",
         "security-and-gaming.md",
         "architecture.md",
@@ -70,6 +71,21 @@ def test_public_docs_keep_corpus_and_economics_invariant() -> None:
     assert "weight(miner) = credit(miner) / sum(all_credits)" not in scoring
     assert "previous weights" not in scoring.lower()
     assert "unearned_share = 1.0" in scoring
+
+
+def test_public_docs_frame_cli_as_reference_client() -> None:
+    readme = Path("README.md").read_text(encoding="utf-8")
+    cli = Path("docs/cli.md").read_text(encoding="utf-8")
+    miner = Path("docs/miner.md").read_text(encoding="utf-8")
+    validator = Path("docs/validator.md").read_text(encoding="utf-8")
+    testing = Path("docs/testing.md").read_text(encoding="utf-8")
+    public_path = "\n".join([readme, cli, miner, validator, testing])
+
+    assert "The public CLI is a thin reference client" in cli
+    assert "not the competitive mining engine" in cli
+    assert "Competitive miners can replace the CLI entirely" in miner
+    assert "public validator path is the single validation command" in validator
+    assert "uv run lemma worker --check" not in public_path
 
 
 def test_future_domain_docs_are_research_only() -> None:
@@ -113,7 +129,7 @@ def test_public_surfaces_do_not_reintroduce_legacy_protocol_language() -> None:
 
     assert "git clone https://github.com/lemma-foundation/lemma.git" in text
     assert "https://github.com/lemma-foundation/lemma-corpus" in text
-    assert "weight = credit / k" in lowered
+    assert "weight = miner_score" in lowered
     assert "validator-runs.jsonl" in text
 
 
@@ -138,7 +154,7 @@ def test_operator_registry_flow_covers_registry_validation_and_export() -> None:
         "artifact counts for validator runs",
         "validator-runs.jsonl",
         "--submissions-jsonl submissions.jsonl",
-        "Accepted unique proofs earn `credit / K`",
+        "Rank-0 accepted proofs earn their deterministic active slot share",
         "unearned_share",
         "uv run lemma corpus benchmark-export",
         "uv run python scripts/leak_check.py",
@@ -146,4 +162,23 @@ def test_operator_registry_flow_covers_registry_validation_and_export() -> None:
     for fragment in required:
         assert fragment in text
 
-    assert "must not change the reward denominator" in text
+    assert "Payment uses deterministic active slot weights" in text
+
+
+def test_mainnet_readiness_doc_covers_launch_gates() -> None:
+    text = Path("docs/mainnet-readiness.md").read_text(encoding="utf-8")
+
+    required = [
+        "uv run python scripts/workstream_audit.py --profile mainnet --skip-site",
+        "RUN_DOCKER_LEAN=1",
+        "BT_NETWORK=test",
+        "BT_NETUID=467",
+        "weight-submissions.jsonl",
+        "success=true",
+        "LEMMA_PROTOCOL_MODE=production",
+        "LEMMA_REQUIRE_STRONG_PROOF_IDENTITY=1",
+        "LEAN_SANDBOX_NETWORK=none",
+        "Do not commit or publish local notes",
+    ]
+    for fragment in required:
+        assert fragment in text

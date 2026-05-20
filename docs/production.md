@@ -3,11 +3,14 @@
 Production Lemma is the Lean proof corpus loop:
 
 1. publish an active task registry;
-2. receive miner proof submissions;
+2. read miner bucket reveals after commitment/reveal;
 3. verify each proof with the pinned Lean environment;
-4. score first accepted unique proofs;
-5. compute miner weights as `credit / K` and burn unearned share by default;
+4. score rank-0 unique proofs by miner commit block;
+5. compute miner weights from deterministic active slot weights and burn unearned share by default;
 6. publish accepted corpus rows and a small corpus index.
+
+Mainnet production mode is stricter than local/testnet smoke mode. It fails closed unless the task registry is SHA-pinned and signature-verified, paid tasks are procedural depth-2 supply, live miner submissions are hotkey-authenticated, commit/reveal fields are present, Lean verifier networking is disabled, and paid rewards require strong Lean-derived proof identity.
+The launch gate sequence is tracked in [Mainnet Readiness](mainnet-readiness.md).
 
 ## Operator Rules
 
@@ -29,7 +32,31 @@ uv run lemma validate --once --submission-spool submission-spool --no-set-weight
 uv run lemma export-corpus --domain lean --format jsonl --out data/lean_corpus.jsonl
 ```
 
+Production launch settings:
+
+```bash
+LEMMA_PROTOCOL_MODE=production
+LEMMA_VERIFY_REGISTRY_SIGNATURES=1
+LEMMA_REQUIRE_SUBMISSION_SIGNATURES=1
+LEMMA_REQUIRE_COMMIT_REVEAL=1
+LEMMA_REQUIRE_STRONG_PROOF_IDENTITY=1
+LEMMA_ACTIVE_TEMPO_SOURCE=chain
+LEAN_SANDBOX_NETWORK=none
+```
+
+Build and sign a launch registry from deterministic procedural depth-2 candidates:
+
+```bash
+uv run lemma tasks build-procedural-registry \
+  --candidate-jsonl procedural-depth2-candidates.jsonl \
+  --output tasks/mainnet.registry.json
+uv run lemma tasks sign-registry \
+  --input tasks/mainnet.registry.json \
+  --output tasks/mainnet.signed.registry.json
+```
+
 Corpus deltas are written under `LEMMA_CORPUS_OUTPUT_DIR`. Local receipts are written under `LEMMA_OPERATOR_DATA_DIR`. If `LEMMA_SUBMISSION_SPOOL_DIR` is set, validators consume pending `.json` or `.jsonl` submission files from that directory and move them to `processed/` after a successful pass. These paths should remain ignored unless an operator intentionally publishes sanitized artifacts.
+The file spool remains a local/testnet/operator-smoke path. The mainnet-shaped adapter is `--bucket-reveals-jsonl`: each reveal row carries miner hotkey, tempo, drand round, drand signature, commit block, committed Merkle root, and revealed bucket blobs. Binary ciphertexts should be encoded as `base64:<payload>` or `0x<hex>`. The validator recomputes the Merkle root, confirms the miner's on-chain bucket commitment in production, decrypts bucket ciphertexts in production, requires the decrypted proof to match the reveal, and ranks winners by commit block.
 Live chain writes require both `LEMMA_ENABLE_SET_WEIGHTS=1` and `--set-weights`; keep production smoke and corpus-only passes on `--no-set-weights`. On commit-reveal subnets, the chain writer waits until the final 10 blocks of the tempo before submitting. Each attempted live write appends a public-safe `weight-submissions.jsonl` receipt with the resolved UID vector, client result, and extrinsic hash when available.
 
 For the full registry-to-validator-to-export sequence, see [Operator Registry Flow](operator-registry-flow.md).
@@ -63,4 +90,10 @@ Run the leak check before any commit or push:
 
 ```bash
 uv run python scripts/leak_check.py
+```
+
+For the full local launch gate, run:
+
+```bash
+uv run python scripts/workstream_audit.py --profile mainnet --skip-site
 ```

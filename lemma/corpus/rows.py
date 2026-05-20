@@ -93,6 +93,7 @@ def build_corpus_row_v2(
     identity = proof_identity(
         proof_sha256=submission.proof_sha256,
         proof_term_hash=str(metrics.get("proof_term_hash") or "") or None,
+        structural_fingerprint=str(metrics.get("structural_fingerprint") or "") or None,
         proof_script=submission.proof_script,
     )
     prompt = task.to_v2()["prompt"]
@@ -102,6 +103,7 @@ def build_corpus_row_v2(
         "full_file": submission.proof_script,
         "proof_sha256": submission.proof_sha256,
         "proof_term_hash": identity.proof_term_hash,
+        "structural_fingerprint": metrics.get("structural_fingerprint") or None,
         "proof_identity": identity.value,
         "proof_identity_source": identity.source,
         "proof_identity_strength": identity.strength,

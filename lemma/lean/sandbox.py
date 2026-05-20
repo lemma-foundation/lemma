@@ -16,7 +16,12 @@ from typing import Any, Literal
 from loguru import logger
 from pydantic import BaseModel
 
-from lemma.lean.cheats import axiom_scan_ok, lake_build_environment_failed, lean_driver_failed
+from lemma.lean.cheats import (
+    axiom_scan_ok,
+    lake_build_environment_failed,
+    lean_driver_failed,
+    structural_fingerprint_from_lean_output,
+)
 from lemma.lean.submission_policy import (
     scan_submission_policy,
     submission_policy_for_problem,
@@ -127,6 +132,7 @@ class VerifyResult(BaseModel):
     stdout_tail: str = ""
     build_seconds: float = 0.0
     proof_term_hash: str | None = None
+    structural_fingerprint: str | None = None
 
 
 class LeanSandbox:
@@ -404,6 +410,7 @@ class LeanSandbox:
             reason="ok",
             stdout_tail=out[-2000:],
             build_seconds=elapsed,
+            structural_fingerprint=structural_fingerprint_from_lean_output(out),
         )
 
     def _docker_worker_host_root(self) -> Path | None:
@@ -519,6 +526,7 @@ class LeanSandbox:
             reason="ok",
             stdout_tail=text[-2000:],
             build_seconds=elapsed,
+            structural_fingerprint=structural_fingerprint_from_lean_output(text),
         )
 
     def _verify_docker_cli_exec(

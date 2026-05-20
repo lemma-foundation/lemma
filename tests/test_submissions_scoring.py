@@ -1,7 +1,8 @@
-"""Submission packaging and first-proof scoring."""
+"""Submission packaging and rank-0 scoring."""
 
 from __future__ import annotations
 
+import pytest
 from lemma.scoring import ScoreEvent, VerificationRecord, VerificationResult, score_epoch
 from lemma.submissions import build_submission, proof_sha256
 from lemma.tasks import LemmaTask
@@ -141,6 +142,52 @@ def test_scoring_keeps_valid_alternates_unrewarded() -> None:
     ]
 
 
+def test_scoring_ranks_committed_reveals_by_chain_block_then_proof_identity() -> None:
+    records = [
+        VerificationRecord(
+            task_id="task-1",
+            solver_hotkey="hk-late",
+            passed=True,
+            proof_sha256="late",
+            proof_identity="z",
+            commit_block=20,
+            received_at="2026-01-01T00:00:01Z",
+        ),
+        VerificationRecord(
+            task_id="task-1",
+            solver_hotkey="hk-early",
+            passed=True,
+            proof_sha256="early",
+            proof_identity="y",
+            commit_block=10,
+            received_at="2026-01-01T00:00:02Z",
+        ),
+        VerificationRecord(
+            task_id="task-2",
+            solver_hotkey="hk-tie-b",
+            passed=True,
+            proof_sha256="tie-b",
+            proof_identity="b",
+            commit_block=7,
+            received_at="2026-01-01T00:00:01Z",
+        ),
+        VerificationRecord(
+            task_id="task-2",
+            solver_hotkey="hk-tie-a",
+            passed=True,
+            proof_sha256="tie-a",
+            proof_identity="a",
+            commit_block=7,
+            received_at="2026-01-01T00:00:02Z",
+        ),
+    ]
+
+    result = score_epoch(records, active_task_count=2)
+
+    assert result.winners == {"task-1": "hk-early", "task-2": "hk-tie-a"}
+    assert [event.solver_hotkey for event in result.score_events if event.rewarded] == ["hk-early", "hk-tie-a"]
+
+
 def test_scoring_zero_credit_epoch_has_no_weights() -> None:
     result = score_epoch(
         [VerificationRecord(task_id="task-1", solver_hotkey="hk", passed=False, proof_sha256="x")],
@@ -174,6 +221,36 @@ def test_scoring_never_redistributes_unsolved_slots() -> None:
             assert result.miner_weights == {"hk-a": solved / 10}
         else:
             assert result.miner_weights == {}
+
+
+def test_scoring_uses_active_slot_weights_without_subjective_scores() -> None:
+    records = [
+        VerificationRecord(
+            task_id="deep-task",
+            solver_hotkey="hk-deep",
+            passed=True,
+            proof_sha256="deep",
+            received_at="2026-01-01T00:00:01Z",
+        ),
+        VerificationRecord(
+            task_id="shallow-task",
+            solver_hotkey="hk-shallow",
+            passed=True,
+            proof_sha256="shallow",
+            received_at="2026-01-01T00:00:02Z",
+        ),
+    ]
+
+    result = score_epoch(
+        records,
+        active_task_count=3,
+        slot_weights={"deep-task": 3.0, "shallow-task": 1.0, "unsolved-task": 2.0},
+    )
+
+    assert result.credits == {"hk-deep": 1, "hk-shallow": 1}
+    assert result.scores == pytest.approx({"hk-deep": 0.5, "hk-shallow": 1 / 6})
+    assert result.weights == pytest.approx({"hk-deep": 0.5, "hk-shallow": 1 / 6, "burn_uid:0": 1 / 3})
+    assert result.unearned_share == pytest.approx(1 / 3)
 
 
 def test_scoring_can_hold_recycle_policy_without_current_solver_inflation() -> None:

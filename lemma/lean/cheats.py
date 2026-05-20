@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 
 ALLOWED_AXIOMS = frozenset({"propext", "Quot.sound", "Classical.choice"})
@@ -61,3 +62,26 @@ def axiom_scan_ok(lean_output: str) -> tuple[bool, set[str] | None]:
     if not found.issubset(ALLOWED_AXIOMS):
         return False, found
     return True, found
+
+
+def structural_fingerprint_from_lean_output(lean_output: str) -> str | None:
+    """Hash Lean-printed declaration output emitted by `AxiomCheck.lean`."""
+    blocks: list[str] = []
+    active: list[str] | None = None
+    for line in lean_output.splitlines():
+        text = line.strip()
+        if text.startswith("LEMMA_DECL_FINGERPRINT_START "):
+            active = []
+            continue
+        if text.startswith("LEMMA_DECL_FINGERPRINT_END "):
+            if active is not None:
+                blocks.append("\n".join(active).strip())
+            active = None
+            continue
+        if active is not None:
+            active.append(line.rstrip())
+    payload = "\n\x1e\n".join(block for block in blocks if block)
+    if not payload:
+        return None
+    normalized = re.sub(r"\s+", " ", payload.strip())
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()

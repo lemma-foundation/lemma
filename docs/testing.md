@@ -13,33 +13,20 @@ uv run python scripts/leak_check.py
 ```
 
 `scripts/workstream_audit.py` is the default work loop check. The quick profile runs formatting, type, privacy, targeted miner/validator/corpus tests, and static `lemmasub.net` checks when the sibling checkout exists. Use `--profile full` before larger pushes; it adds security audit commands and the full non-Docker pytest suite.
+Use `--profile mainnet --skip-site` for the local launch gate; it adds the Docker Lean golden verification with `RUN_DOCKER_LEAN=1`.
 
-Task inspection:
-
-```bash
-uv run lemma tasks list
-uv run lemma task show lemma.sample.true_intro
-```
-
-Worker and validator smoke:
+Public CLI smoke:
 
 ```bash
-uv run lemma worker --check
+uv run lemma --help
+uv run lemma status
 uv run lemma validate --once --no-set-weights
-uv run pytest tests/test_operator_registry_flow.py -q
 ```
 
 The operator smoke fixture lives in [examples/operator-smoke](../examples/operator-smoke/README.md).
 It also exercises the [Mathlib extraction contract](mathlib-extraction.md) used by the registry builder.
-
-Corpus validation:
-
-```bash
-uv run lemma corpus validate corpus.jsonl
-uv run lemma corpus replay corpus.jsonl
-uv run lemma corpus export --input corpus --output corpus/corpus-index.json
-uv run lemma corpus benchmark-export --input corpus --output exports/lemma-proofs.jsonl --index exports/index.json
-```
+The production-like smoke in `tests/test_operator_registry_flow.py` additionally covers procedural depth-2 registries, registry signatures, signed revealed submissions, strong structural proof identity, production preflight, diagnostics, scoring, and corpus validation.
+Lower-level task, operator, and corpus commands are hidden from public help but remain covered by pytest during this transition.
 
 Docker-backed Lean checks require the sandbox image:
 

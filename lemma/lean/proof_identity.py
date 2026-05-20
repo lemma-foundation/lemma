@@ -37,11 +37,20 @@ def proof_identity(
     *,
     proof_sha256: str,
     proof_term_hash: str | None = None,
+    structural_fingerprint: str | None = None,
     proof_script: str | None = None,
 ) -> ProofIdentity:
     term = (proof_term_hash or "").strip() or None
     if term:
         return ProofIdentity(value=term, source="proof_term_hash", strength="strong", proof_term_hash=term)
+    structural = (structural_fingerprint or "").strip() or None
+    if structural:
+        return ProofIdentity(
+            value=structural,
+            source="structural_fingerprint",
+            strength="strong",
+            proof_term_hash=None,
+        )
     if proof_script is not None:
         value = normalized_script_sha256(proof_script)
         return ProofIdentity(value=value, source="normalized_script_sha256", strength="weak", proof_term_hash=None)

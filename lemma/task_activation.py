@@ -42,3 +42,12 @@ def task_reward_eligibility(task: LemmaTask) -> TaskRewardEligibility:
     if not task.source_ref.kind or not task.source_ref.name:
         return TaskRewardEligibility(False, "missing_source_ref", state, status)
     return TaskRewardEligibility(True, "", state, status)
+
+
+def task_slot_weight(task: LemmaTask) -> float:
+    raw = task.metadata.get("slot_weight", 1.0)
+    try:
+        weight = float(raw)
+    except (TypeError, ValueError):
+        weight = 1.0
+    return weight if weight > 0 else 1.0

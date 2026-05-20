@@ -8,7 +8,7 @@ Lean theorem proving is the production domain.
 
 ## What gets rewarded?
 
-The first accepted unique Lean proof for an active theorem task in a validator epoch.
+The rank-0 unique Lean proof for an active theorem task. In the mainnet-shaped path, rank-0 is anchored to the miner's Merkle-root commit block.
 
 ## Why Lean?
 

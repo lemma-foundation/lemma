@@ -45,6 +45,7 @@ class LeanVerifierAdapter(VerifierAdapter):
                 "build_seconds": result.build_seconds,
                 "proof_sha256": lean_submission.proof_sha256,
                 "proof_term_hash": result.proof_term_hash,
+                "structural_fingerprint": result.structural_fingerprint,
                 "legacy_reason": result.reason,
             },
         )
@@ -63,6 +64,7 @@ class LeanVerifierAdapter(VerifierAdapter):
             "full_file": lean_submission.proof_script,
             "proof_sha256": lean_submission.proof_sha256,
             "proof_term_hash": str(result.metrics.get("proof_term_hash") or ""),
+            "structural_fingerprint": str(result.metrics.get("structural_fingerprint") or ""),
         }
 
     def task_schema(self) -> dict[str, Any]:
@@ -81,6 +83,7 @@ def verify_result_from_adapter_result(result: VerificationResult) -> VerifyResul
         stdout_tail=result.stdout,
         build_seconds=float(result.metrics.get("build_seconds") or 0.0),
         proof_term_hash=str(result.metrics.get("proof_term_hash") or ""),
+        structural_fingerprint=str(result.metrics.get("structural_fingerprint") or ""),
     )
 
 

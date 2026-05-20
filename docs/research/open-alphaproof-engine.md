@@ -38,7 +38,7 @@ If solve rate is zero, the frontier does not step backward into already exposed 
 
 ## Economics
 
-Each round exposes `K` active paid slots. A miner earns one credit for the first accepted unique proof of an active task.
+Each round exposes `K` active paid slots. A miner earns one credit for the rank-0 unique proof of an active task.
 
 ```text
 score_m = credit_m / K

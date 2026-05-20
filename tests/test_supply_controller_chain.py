@@ -7,8 +7,18 @@ from lemma.chain.commitments import CommitmentEnvelope, ciphertext_sha256
 from lemma.chain.weights import _wait_for_commit_reveal_window, allocation_vector, resolve_weight_plan
 from lemma.simulate import MinerCapability, simulate_tempos
 from lemma.supply import auto_formalize, conjecture_gen, mathlib_snapshot, perturbations, state_graph, variants
-from lemma.supply.controller import CurriculumConfig, CurriculumState, retarget_curriculum
+from lemma.supply.controller import (
+    CurriculumConfig,
+    CurriculumState,
+    CurriculumTempoRecord,
+    append_curriculum_record,
+    read_curriculum_records,
+    retarget_curriculum,
+)
+from lemma.supply.mixed import build_mixed_registry_tasks
+from lemma.supply.procedural import build_procedural_registry_tasks
 from lemma.supply.queue import advance_active_pool, initial_active_pool
+from lemma.tasks import SourceRef
 
 
 def _fixture_tasks():
@@ -51,6 +61,91 @@ def test_curriculum_halts_frontier_and_requests_variants_on_zero_solve() -> None
     assert decision.state.frontier_depth == 4
     assert decision.action == "halt_frontier_and_request_variants"
     assert decision.variant_stream_requested is True
+
+
+def test_curriculum_records_persist_per_tempo(tmp_path) -> None:
+    path = tmp_path / "curriculum.jsonl"
+    record = CurriculumTempoRecord(
+        tempo=7,
+        active_K=20,
+        frontier_depth=3,
+        ema_solve_rate=0.45,
+        solved_slots=4,
+        parked_task_ids=("task-a",),
+        action="hold",
+        variant_stream_requested=False,
+    )
+
+    append_curriculum_record(path, record)
+
+    assert read_curriculum_records(path) == (record,)
+
+
+def test_mixed_registry_requires_launch_vetted_candidates() -> None:
+    good = mathlib_snapshot.fixture_candidates()[0].model_copy(
+        update={
+            "metadata": {
+                "typechecked": True,
+                "triviality_checked": True,
+                "baseline_solved": False,
+                "near_duplicate_score": 0.1,
+            }
+        }
+    )
+    rejected = conjecture_gen.fixture_candidates()[0]
+
+    build = build_mixed_registry_tasks((good, rejected), seed="mixed", frontier_depth=2)
+
+    assert [task.id for task in build.tasks] == [good.id]
+    assert build.tasks[0].activation_status == "paid"
+    assert build.tasks[0].triviality_status == "paid_easy"
+    assert build.rejected[0].reason == "typecheck_not_confirmed"
+
+
+def test_procedural_registry_requires_depth_two_metadata() -> None:
+    metadata = {
+        "activation_status": "paid",
+        "supply_mode": "procedural",
+        "mutation_depth": 2,
+        "mutation_chain": [
+            {"operator": "generalize", "input_hash": "1" * 64, "output_hash": "2" * 64},
+            {"operator": "specialize", "input_hash": "2" * 64, "output_hash": "3" * 64},
+        ],
+        "generation_seed": "tempo-0",
+        "drand_round": 10,
+        "anchor_block": 360,
+        "source_pool_hash": "4" * 64,
+        "operator_bundle_hash": "5" * 64,
+        "canonical_hash": "6" * 64,
+        "typechecked": True,
+        "prop_gate_passed": True,
+        "triviality_checked": True,
+        "baseline_solved": False,
+        "novelty_status": "passed",
+        "slot_weight": 2.0,
+        "license_state": "clean_open",
+    }
+    good = mathlib_snapshot.fixture_candidates()[0].model_copy(
+        update={
+            "id": "lemma.procedural.depth2",
+            "source_stream": "procedural",
+            "source_ref": SourceRef(kind="procedural", name="tempo-0-depth2"),
+            "metadata": metadata,
+        }
+    )
+    depth_one = good.model_copy(
+        update={
+            "id": "lemma.procedural.depth1",
+            "metadata": {**metadata, "mutation_depth": 1, "mutation_chain": metadata["mutation_chain"][:1]},
+        }
+    )
+
+    build = build_procedural_registry_tasks((good, depth_one), seed="procedural", frontier_depth=2)
+
+    assert [task.id for task in build.tasks] == [good.id]
+    assert build.tasks[0].source_stream == "procedural"
+    assert build.tasks[0].metadata["slot_weight"] == 2.0
+    assert build.rejected[0].reason == "mutation_depth"
 
 
 def test_curriculum_separates_depth_from_validator_capacity() -> None:

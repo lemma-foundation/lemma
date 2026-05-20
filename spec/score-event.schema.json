@@ -22,6 +22,8 @@
     "credit",
     "score",
     "active_K",
+    "commit_block",
+    "drand_round",
     "received_at"
   ],
   "properties": {
@@ -43,6 +45,8 @@
     "credit": { "type": "integer", "minimum": 0, "maximum": 1 },
     "score": { "type": "number", "minimum": 0 },
     "active_K": { "type": "integer", "minimum": 0 },
+    "commit_block": { "type": ["integer", "null"], "minimum": 0 },
+    "drand_round": { "type": ["integer", "null"], "minimum": 0 },
     "received_at": { "type": "string", "minLength": 1 }
   }
 }
