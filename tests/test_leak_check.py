@@ -61,6 +61,22 @@ def test_leak_check_blocks_private_operator_paths() -> None:
     assert _private_path_label(".envrc.example") is None
 
 
+def test_leak_check_scans_explicit_repo_without_absolute_paths(tmp_path: Path) -> None:
+    repo = tmp_path / "site"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    (repo / ".gitignore").write_text("AGENT" + "_STATE.md\n", encoding="utf-8")
+    (repo / "README.md").write_text("Public site\n", encoding="utf-8")
+    subprocess.run(["git", "add", ".gitignore", "README.md"], cwd=repo, check=True, capture_output=True)
+
+    assert leak_check.check_repo(repo) == []
+
+    (repo / "notes.md").write_text("AGENT" + "_STATE\n", encoding="utf-8")
+    subprocess.run(["git", "add", "notes.md"], cwd=repo, check=True, capture_output=True)
+
+    assert any(finding == "site:agent-state:notes.md" for finding in leak_check.check_repo(repo))
+
+
 def test_leak_check_skips_common_service_account_usernames(monkeypatch) -> None:
     monkeypatch.setattr(leak_check.getpass, "getuser", lambda: "root")
     monkeypatch.delenv("GITHUB_ACTIONS", raising=False)

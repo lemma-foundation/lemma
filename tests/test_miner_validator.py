@@ -8,12 +8,13 @@ import sys
 from pathlib import Path
 
 import pytest
+from bittensor_wallet import Keypair
 from lemma.chain.weights import ChainWeightSubmission
 from lemma.common.config import LemmaSettings
 from lemma.lean.sandbox import VerifyResult
-from lemma.miner import ProverError, mine_once, run_prover_command
+from lemma.miner import ProverError, _strip_json_fence, mine_once, run_openai_compatible_prover, run_prover_command
 from lemma.protocol import ProofResponse, TaskRequest
-from lemma.submissions import build_submission
+from lemma.submissions import LemmaSubmission, build_submission, sign_submission
 from lemma.supply.mathlib_snapshot import candidates_from_jsonl
 from lemma.supply.types import registry_tasks_from_candidates
 from lemma.task_supply import make_task, write_registry
@@ -95,6 +96,29 @@ def test_local_prover_adapter_rejects_invalid_json(tmp_path: Path) -> None:
 
     with pytest.raises(ProverError, match="invalid JSON"):
         run_prover_command(f"{sys.executable} {script}", _task(), 5)
+
+
+def test_openai_compatible_prover_accepts_fenced_json() -> None:
+    payload = {"task_id": "lemma.test.true", "proof_script": _proof()}
+
+    assert json.loads(_strip_json_fence(f"```json\n{json.dumps(payload)}\n```")) == payload
+
+
+def test_openai_compatible_prover_rejects_malformed_json(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {"choices": [{"message": {"content": "not json"}}]}
+
+    monkeypatch.setattr("lemma.miner.httpx.post", lambda *args, **kwargs: FakeResponse())
+
+    with pytest.raises(ProverError, match="invalid JSON"):
+        run_openai_compatible_prover(
+            _settings(tmp_path).model_copy(update={"prover_base_url": "https://example.test", "prover_model": "model"}),
+            _task(),
+        )
 
 
 def test_local_prover_adapter_times_out(tmp_path: Path) -> None:
@@ -211,6 +235,64 @@ def test_validator_rejects_bad_target_hash_and_unsigned_live_submission(tmp_path
     receipts = (tmp_path / "operator" / "verification-records.jsonl").read_text(encoding="utf-8")
     assert "target_sha256 mismatch" in receipts
     assert "unsigned" in receipts
+
+
+def test_validator_accepts_signed_live_submission(tmp_path: Path) -> None:
+    task = _task()
+    keypair = Keypair.create_from_uri("//LemmaSignedMiner")
+    submission = sign_submission(
+        build_submission(task, solver_hotkey=keypair.ss58_address, proof_script=_proof()),
+        keypair,
+    )
+
+    result = validate_once(
+        _settings(tmp_path),
+        [submission],
+        registry=_registry(),
+        verify_submission=lambda task, submission: VerifyResult(passed=True, reason="ok"),
+        require_signatures=True,
+        no_set_weights=True,
+    )
+
+    assert result.verification_records[0].solver_hotkey == keypair.ss58_address
+    assert result.score.scores == {keypair.ss58_address: 1.0}
+
+
+def test_sign_submission_recomputes_payload_hash_after_hotkey_rebind() -> None:
+    keypair = Keypair.create_from_uri("//LemmaReboundMiner")
+    unsigned = build_submission(_task(), solver_hotkey="wallet-name", proof_script=_proof())
+    rebound = unsigned.model_copy(update={"solver_hotkey": keypair.ss58_address})
+
+    signed = sign_submission(rebound, keypair)
+
+    assert signed.solver_hotkey == keypair.ss58_address
+    assert signed.signature_payload_sha256 != unsigned.signature_payload_sha256
+    assert LemmaSubmission.model_validate_json(signed.model_dump_json()).signature_payload_sha256 == (
+        signed.signature_payload_sha256
+    )
+
+
+def test_validator_rejects_bad_live_submission_signature(tmp_path: Path) -> None:
+    task = _task()
+    signer = Keypair.create_from_uri("//LemmaSigner")
+    impostor = Keypair.create_from_uri("//LemmaImpostor")
+    submission = sign_submission(
+        build_submission(task, solver_hotkey=impostor.ss58_address, proof_script=_proof()),
+        signer,
+    )
+
+    result = validate_once(
+        _settings(tmp_path),
+        [submission],
+        registry=_registry(),
+        verify_submission=lambda task, submission: VerifyResult(passed=True, reason="ok"),
+        require_signatures=True,
+        no_set_weights=True,
+    )
+
+    assert result.verification_records == ()
+    receipts = (tmp_path / "operator" / "verification-records.jsonl").read_text(encoding="utf-8")
+    assert "signature is invalid" in receipts
 
 
 def test_validator_zero_credit_epoch_routes_unearned_share(tmp_path: Path) -> None:

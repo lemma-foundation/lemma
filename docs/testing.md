@@ -3,6 +3,7 @@
 Run local checks:
 
 ```bash
+uv run python scripts/workstream_audit.py
 uv run ruff check .
 uv run mypy lemma
 uv run bandit -q -r lemma scripts -ll
@@ -10,6 +11,8 @@ uv run pip-audit --ignore-vuln PYSEC-2025-49 --ignore-vuln PYSEC-2022-42969
 uv run pytest tests -q
 uv run python scripts/leak_check.py
 ```
+
+`scripts/workstream_audit.py` is the default work loop check. The quick profile runs formatting, type, privacy, targeted miner/validator/corpus tests, and static `lemmasub.net` checks when the sibling checkout exists. Use `--profile full` before larger pushes; it adds security audit commands and the full non-Docker pytest suite.
 
 Task inspection:
 

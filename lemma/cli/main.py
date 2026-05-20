@@ -238,12 +238,14 @@ def status_cmd() -> None:
 @click.option("--task-id", default=None, help="Solve one task id.")
 @click.option("--prover-command", default=None, help="Override LEMMA_PROVER_COMMAND.")
 @click.option("--solver-hotkey", default=None, help="Override solver attribution.")
+@click.option("--sign", "sign_submission", is_flag=True, help="Sign the submission with the configured hotkey wallet.")
 @click.option("--output", "output_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
 def mine_cmd(
     once: bool,
     task_id: str | None,
     prover_command: str | None,
     solver_hotkey: str | None,
+    sign_submission: bool,
     output_path: Path | None,
 ) -> None:
     """Search for Lean proofs and build verified submissions.
@@ -260,7 +262,13 @@ def mine_cmd(
     if not once:
         click.echo(stylize("Running one miner iteration. Use a process supervisor to repeat it.", dim=True))
     try:
-        result = mine_once(settings, task_id=task_id, prover_command=prover_command, solver_hotkey=solver_hotkey)
+        result = mine_once(
+            settings,
+            task_id=task_id,
+            prover_command=prover_command,
+            solver_hotkey=solver_hotkey,
+            sign=sign_submission,
+        )
     except ProverError as e:
         raise click.ClickException(str(e)) from e
     text = result.submission.model_dump_json(indent=2, exclude_none=True)

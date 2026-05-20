@@ -37,6 +37,23 @@ def signature_payload_sha256(data: dict[str, Any]) -> str:
     return hashlib.sha256(canonical_submission_payload(data).encode("utf-8")).hexdigest()
 
 
+def submission_signing_payload(submission: LemmaSubmission) -> bytes:
+    return canonical_submission_payload(submission.model_dump()).encode("utf-8")
+
+
+def _signature_hex(signature: bytes | str) -> str:
+    if isinstance(signature, bytes):
+        return "0x" + signature.hex()
+    return signature if signature.startswith("0x") else "0x" + signature
+
+
+def sign_submission(submission: LemmaSubmission, keypair: Any) -> LemmaSubmission:
+    signature = keypair.sign(submission_signing_payload(submission))
+    return LemmaSubmission.model_validate(
+        {**submission.model_dump(), "signature": _signature_hex(signature), "signature_payload_sha256": ""}
+    )
+
+
 class LemmaSubmission(BaseModel):
     """A miner's proof attempt for one exact task version."""
 
@@ -86,6 +103,14 @@ class LemmaSubmission(BaseModel):
     @property
     def is_signed(self) -> bool:
         return bool((self.signature or "").strip())
+
+    def verify_signature(self) -> bool:
+        signature = (self.signature or "").strip()
+        if not signature:
+            return False
+        from bittensor_wallet import Keypair
+
+        return bool(Keypair(ss58_address=self.solver_hotkey).verify(submission_signing_payload(self), signature))
 
 
 def build_submission(
@@ -153,5 +178,12 @@ def validate_submission_for_task(
         raise ValueError(f"submission task_version mismatch: {submission.task_version} != {task.task_version}")
     if submission.target_sha256 != task.target_sha256:
         raise ValueError("submission target_sha256 mismatch")
-    if require_signature and not submission.is_signed:
-        raise ValueError("live miner submission is unsigned")
+    if require_signature:
+        if not submission.is_signed:
+            raise ValueError("live miner submission is unsigned")
+        try:
+            valid_signature = submission.verify_signature()
+        except Exception as e:
+            raise ValueError("live miner submission signature is invalid") from e
+        if not valid_signature:
+            raise ValueError("live miner submission signature is invalid")

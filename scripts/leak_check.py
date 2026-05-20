@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import getpass
 import os
 import re
@@ -11,17 +12,17 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SKIP_CONTENT = {".gitignore", ".env.example", "scripts/leak_check.py"}
+SKIP_CONTENT = {".gitignore", ".env.example", ".envrc.example", "scripts/leak_check.py"}
 PRIVATE_PATH_PARTS = ("wallets/", ".bittensor/", ".ssh/")
 SKIP_LOCAL_USERNAMES = {"root", "runner"}
 
 
-def _git(*args: str) -> str:
-    return subprocess.check_output(["git", *args], cwd=ROOT, text=True)  # noqa: S603, S607
+def _git(repo: Path, *args: str) -> str:
+    return subprocess.check_output(["git", *args], cwd=repo, text=True)  # noqa: S603, S607
 
 
-def _tracked_files() -> list[str]:
-    raw = subprocess.check_output(["git", "ls-files", "-z"], cwd=ROOT)  # noqa: S603, S607
+def _tracked_files(repo: Path) -> list[str]:
+    raw = subprocess.check_output(["git", "ls-files", "-z"], cwd=repo)  # noqa: S603, S607
     return [item.decode("utf-8") for item in raw.split(b"\0") if item]
 
 
@@ -71,33 +72,52 @@ def _patterns() -> list[tuple[str, re.Pattern[str]]]:
     return patterns
 
 
-def main() -> int:
+def check_repo(repo: Path) -> list[str]:
+    repo = repo.resolve()
     findings: list[str] = []
-    for path in _tracked_files():
+    for path in _tracked_files(repo):
         if label := _private_path_label(path):
             findings.append(f"{label}:{path}")
             continue
         if path in SKIP_CONTENT:
             continue
         try:
-            text = (ROOT / path).read_text(encoding="utf-8")
+            text = (repo / path).read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             continue
         for label, pattern in _patterns():
             if pattern.search(text):
                 findings.append(f"{label}:{path}")
 
-    staged = _git("diff", "--cached", "--name-only")
+    staged = _git(repo, "diff", "--cached", "--name-only")
     for path in staged.splitlines():
         if label := _private_path_label(path):
             findings.append(f"staged-{label}:{path}")
+    return [f"{repo.name}:{finding}" for finding in findings]
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--repo",
+        action="append",
+        type=Path,
+        default=None,
+        help="Git repository to scan. Repeat to scan multiple repos. Defaults to this checkout.",
+    )
+    args = parser.parse_args(argv)
+
+    repos = args.repo or [ROOT]
+    findings = []
+    for repo in repos:
+        findings.extend(check_repo(repo))
 
     if findings:
         print("Leak check failed:", file=sys.stderr)
         for finding in findings:
             print(f"  {finding}", file=sys.stderr)
         return 1
-    print("Leak check passed.")
+    print(f"Leak check passed for {len(repos)} repo(s).")
     return 0
 
 

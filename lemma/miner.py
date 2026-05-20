@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from lemma.common.config import LemmaSettings
 from lemma.lean.sandbox import VerifyResult
 from lemma.store import append_jsonl
-from lemma.submissions import LemmaSubmission, build_submission
+from lemma.submissions import LemmaSubmission, build_submission, sign_submission
 from lemma.task_supply import eligible_tasks
 from lemma.tasks import LemmaTask, TaskRegistry, fetch_task_registry
 from lemma.verifiers.lean import verify_result_from_adapter_result
@@ -39,6 +39,14 @@ class MineOnceResult:
     task: LemmaTask
     submission: LemmaSubmission
     verification: VerifyResult
+
+
+def _strip_json_fence(content: str) -> str:
+    text = content.strip()
+    lines = text.splitlines()
+    if len(lines) >= 2 and lines[0].strip().startswith("```") and lines[-1].strip() == "```":
+        return "\n".join(lines[1:-1]).strip()
+    return text
 
 
 def prover_input(task: LemmaTask, timeout_s: float) -> dict[str, Any]:
@@ -96,7 +104,11 @@ def run_openai_compatible_prover(settings: LemmaSettings, task: LemmaTask) -> Pr
             "messages": [
                 {
                     "role": "system",
-                    "content": "Return only JSON with task_id and proof_script for the Lean task.",
+                    "content": (
+                        "Return only a JSON object with task_id and proof_script, no Markdown. "
+                        "proof_script must be a complete Lean file matching submission_stub: keep the imports, "
+                        "namespace, theorem header, and final end line, replacing only the sorry proof."
+                    ),
                 },
                 {"role": "user", "content": json.dumps(prover_input(task, settings.prover_timeout_s))},
             ],
@@ -104,7 +116,10 @@ def run_openai_compatible_prover(settings: LemmaSettings, task: LemmaTask) -> Pr
     )
     response.raise_for_status()
     content = response.json()["choices"][0]["message"]["content"]
-    return ProverResult.model_validate_json(content)
+    try:
+        return ProverResult.model_validate_json(_strip_json_fence(content))
+    except ValueError as e:
+        raise ProverError(f"OpenAI-compatible prover returned invalid JSON: {e}") from e
 
 
 def solve_task(settings: LemmaSettings, task: LemmaTask, *, prover_command: str | None = None) -> ProverResult:
@@ -114,6 +129,16 @@ def solve_task(settings: LemmaSettings, task: LemmaTask, *, prover_command: str 
     return run_openai_compatible_prover(settings, task)
 
 
+def sign_submission_with_wallet(settings: LemmaSettings, submission: LemmaSubmission) -> LemmaSubmission:
+    import bittensor as bt
+
+    keypair = bt.Wallet(name=settings.wallet_cold, hotkey=settings.wallet_hot).hotkey
+    bound = LemmaSubmission.model_validate(
+        {**submission.model_dump(), "solver_hotkey": str(keypair.ss58_address), "signature_payload_sha256": ""}
+    )
+    return sign_submission(bound, keypair)
+
+
 def mine_once(
     settings: LemmaSettings,
     *,
@@ -121,6 +146,7 @@ def mine_once(
     prover_command: str | None = None,
     registry: TaskRegistry | None = None,
     solver_hotkey: str | None = None,
+    sign: bool = False,
 ) -> MineOnceResult:
     """Fetch one active task, solve it, verify locally, and store the attempt."""
     registry = registry or fetch_task_registry(settings)
@@ -144,7 +170,7 @@ def mine_once(
     if not verification.passed:
         raise ProverError(f"local verification failed: {verification.reason}")
 
-    submission = draft_submission
+    submission = sign_submission_with_wallet(settings, draft_submission) if sign else draft_submission
     append_jsonl(
         settings.operator_data_dir / "miner-attempts.jsonl",
         [
