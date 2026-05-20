@@ -40,7 +40,7 @@ Publish the current public corpus snapshot after a closed testnet pass:
 uv run python scripts/publish_corpus_snapshot.py --repo ~/lemma-corpus --netuid sn467
 ```
 
-This regenerates the public index/export, builds deterministic accepted-entry directories under `canonical/sn467/`, writes `MANIFEST.sha256`, uploads a timestamped Hippius snapshot, and creates the GitHub immutable release mirror. Hippius credentials must stay in the operator environment, never in repo files.
+This regenerates the public index/export, builds deterministic accepted-entry directories under `canonical/sn467/`, writes `MANIFEST.sha256`, uploads a timestamped Hippius snapshot, creates the GitHub immutable release mirror, and syncs an append-only Hugging Face dataset snapshot. Hippius, GitHub, and Hugging Face credentials must stay in the operator environment, never in repo files.
 
 Run the leak check before any commit or push:
 

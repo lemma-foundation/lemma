@@ -72,6 +72,18 @@ def aws_command(value: str | None) -> list[str]:
     raise SystemExit("missing aws CLI; install awscli or uv, or pass --aws-command")
 
 
+def hf_command(value: str | None) -> list[str]:
+    if value:
+        return shlex.split(value)
+    if hf := shutil.which("hf"):
+        return [hf]
+    if huggingface_cli := shutil.which("huggingface-cli"):
+        return [huggingface_cli]
+    if uvx := shutil.which("uvx"):
+        return [uvx, "--from", "huggingface_hub", "hf"]
+    raise SystemExit("missing Hugging Face CLI; install huggingface_hub or uv, or pass --hf-command")
+
+
 def hippius_commands(
     *,
     aws: list[str],
@@ -110,6 +122,66 @@ def hippius_commands(
         ]
     )
     return commands
+
+
+def huggingface_commands(
+    *,
+    hf: list[str],
+    hf_repo_id: str,
+    repo: Path,
+    netuid: str,
+    snapshot: str,
+    manifest_path: Path,
+    storage_index_path: Path,
+) -> list[list[str]]:
+    prefix = f"snapshots/{snapshot}"
+    message = f"Publish {netuid} corpus snapshot {snapshot}"
+    return [
+        [
+            *hf,
+            "upload",
+            hf_repo_id,
+            str(repo / "canonical" / netuid),
+            f"{prefix}/canonical/{netuid}",
+            "--repo-type",
+            "dataset",
+            "--commit-message",
+            message,
+        ],
+        [
+            *hf,
+            "upload",
+            hf_repo_id,
+            str(repo / "exports" / netuid),
+            f"{prefix}/exports/{netuid}",
+            "--repo-type",
+            "dataset",
+            "--commit-message",
+            message,
+        ],
+        [
+            *hf,
+            "upload",
+            hf_repo_id,
+            str(manifest_path),
+            f"{prefix}/MANIFEST.sha256",
+            "--repo-type",
+            "dataset",
+            "--commit-message",
+            message,
+        ],
+        [
+            *hf,
+            "upload",
+            hf_repo_id,
+            str(storage_index_path),
+            f"{prefix}/storage-index.json",
+            "--repo-type",
+            "dataset",
+            "--commit-message",
+            message,
+        ],
+    ]
 
 
 def release_notes(*, bucket: str, netuid: str, snapshot: str) -> str:
@@ -189,9 +261,19 @@ def main() -> int:
     parser.add_argument("--snapshot", default=snapshot_id(), help="snapshot id, default is current UTC time")
     parser.add_argument("--github-repo", default=DEFAULT_GITHUB_REPO, help="GitHub repo for the immutable mirror")
     parser.add_argument("--aws-command", help='AWS CLI command, default: "aws" or "uvx --from awscli aws"')
+    parser.add_argument(
+        "--hf-command",
+        help='Hugging Face CLI command, default: "hf" or "uvx --from huggingface_hub hf"',
+    )
+    parser.add_argument("--hf-repo-id", default=os.environ.get("HF_REPO_ID"), help="Hugging Face dataset repo id")
     parser.add_argument("--pull", action="store_true", help="run git pull --ff-only in the corpus repo first")
     parser.add_argument("--skip-hippius", action="store_true", help="prepare files but do not upload to Hippius")
     parser.add_argument("--skip-github", action="store_true", help="prepare files but do not create the GitHub release")
+    parser.add_argument(
+        "--skip-huggingface",
+        action="store_true",
+        help="prepare files but do not upload the Hugging Face mirror",
+    )
     parser.add_argument("--dry-run", action="store_true", help="print commands without running upload/release steps")
     args = parser.parse_args()
 
@@ -206,9 +288,18 @@ def main() -> int:
     env = os.environ.copy()
     env.setdefault("AWS_DEFAULT_REGION", args.region)
 
+    if not args.dry_run and not args.skip_hippius:
+        require_env(("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"))
+    if not args.dry_run and not args.skip_github and not shutil.which("gh"):
+        raise SystemExit("missing gh CLI; install GitHub CLI or pass --skip-github")
+    if not args.dry_run and not args.skip_huggingface:
+        require_env(("HF_TOKEN",))
+        if not args.hf_repo_id:
+            raise SystemExit(
+                "missing Hugging Face repo id; set HF_REPO_ID, pass --hf-repo-id, or pass --skip-huggingface"
+            )
+
     if not args.skip_hippius:
-        if not args.dry_run:
-            require_env(("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"))
         for command in hippius_commands(
             aws=aws_command(args.aws_command),
             repo=repo,
@@ -221,8 +312,6 @@ def main() -> int:
             run(command, dry_run=args.dry_run, env=env)
 
     if not args.skip_github:
-        if not args.dry_run and not shutil.which("gh"):
-            raise SystemExit("missing gh CLI; install GitHub CLI or pass --skip-github")
         run(
             github_release_command(
                 github_repo=args.github_repo,
@@ -235,11 +324,28 @@ def main() -> int:
             dry_run=args.dry_run,
         )
 
+    if not args.skip_huggingface:
+        if not args.hf_repo_id:
+            raise SystemExit(
+                "missing Hugging Face repo id; set HF_REPO_ID, pass --hf-repo-id, or pass --skip-huggingface"
+            )
+        for command in huggingface_commands(
+            hf=hf_command(args.hf_command),
+            hf_repo_id=args.hf_repo_id,
+            repo=repo,
+            netuid=args.netuid,
+            snapshot=args.snapshot,
+            manifest_path=manifest_path,
+            storage_index_path=storage_index_path,
+        ):
+            run(command, dry_run=args.dry_run, env=env)
+
     print(
         json.dumps(
             {
                 **summary,
                 "github_tag": f"{args.netuid}-{args.snapshot}",
+                "huggingface_repo": args.hf_repo_id,
                 "hippius_uri": f"s3://{args.bucket}/snapshots/{args.snapshot}/",
                 "manifest": str(manifest_path),
                 "snapshot": args.snapshot,

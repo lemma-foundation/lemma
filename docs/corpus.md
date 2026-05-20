@@ -13,6 +13,7 @@ The current public storage shape is:
 - Content-addressed canonical artifacts under `canonical/<netuid>/`.
 - Hippius S3/Arion as the current byte resolver until Hippius IPFS pinning is available in the public toolchain.
 - GitHub immutable releases as the public mirror.
+- Hugging Face dataset snapshots as the ML-consumer mirror.
 - `MANIFEST.sha256` and `canonical/<netuid>/storage-index.json` as the hash checklist for each timestamped snapshot.
 
 Keep Hippius writes append-only in practice: publish a new `snapshots/<timestamp>/` prefix and do not sync with `--delete`.
@@ -40,7 +41,15 @@ For a no-upload preview:
 uv run python scripts/publish_corpus_snapshot.py --repo ~/lemma-corpus --netuid sn467 --dry-run
 ```
 
-The script expects Hippius credentials in `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`; it does not store them. It uses `https://s3.hippius.com`, region `decentralized`, bucket `lemma-corpus-sn467`, GitHub repo `lemma-foundation/lemma-corpus`, and resolver label `hippius-s3-arion` by default.
+The script expects Hippius credentials in `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`; it does not store them. It also expects `GH_TOKEN` through the GitHub CLI environment and `HF_TOKEN` plus `HF_REPO_ID` for the Hugging Face mirror unless `--skip-github` or `--skip-huggingface` is used. It uses `https://s3.hippius.com`, region `decentralized`, bucket `lemma-corpus-sn467`, GitHub repo `lemma-foundation/lemma-corpus`, and resolver label `hippius-s3-arion` by default.
+
+The Hugging Face mirror is append-only under:
+
+```text
+snapshots/<timestamp>/
+```
+
+It is a convenience mirror for model-training users, not the canonical resolver.
 
 ## Purpose
 

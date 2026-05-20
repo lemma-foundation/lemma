@@ -7,6 +7,7 @@ from pathlib import Path
 from scripts.publish_corpus_snapshot import (
     github_release_command,
     hippius_commands,
+    huggingface_commands,
     release_notes,
     snapshot_id,
     snapshot_label,
@@ -90,3 +91,28 @@ def test_github_release_command_attaches_manifest_and_storage_index(tmp_path: Pa
         netuid="sn467",
         snapshot="2026-05-20T02-32-08Z",
     )
+
+
+def test_huggingface_commands_upload_append_only_snapshot_paths(tmp_path: Path) -> None:
+    repo = tmp_path / "lemma-corpus"
+    manifest = repo / "MANIFEST.sha256"
+    storage_index = repo / "canonical" / "sn467" / "storage-index.json"
+
+    commands = huggingface_commands(
+        hf=["hf"],
+        hf_repo_id="lemma-foundation/lean",
+        repo=repo,
+        netuid="sn467",
+        snapshot="2026-05-20T02-32-08Z",
+        manifest_path=manifest,
+        storage_index_path=storage_index,
+    )
+
+    flattened = [part for command in commands for part in command]
+    assert "lemma-foundation/lean" in flattened
+    assert "snapshots/2026-05-20T02-32-08Z/canonical/sn467" in flattened
+    assert "snapshots/2026-05-20T02-32-08Z/exports/sn467" in flattened
+    assert "snapshots/2026-05-20T02-32-08Z/MANIFEST.sha256" in flattened
+    assert "snapshots/2026-05-20T02-32-08Z/storage-index.json" in flattened
+    assert "--repo-type" in flattened
+    assert "dataset" in flattened
