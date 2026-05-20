@@ -51,6 +51,20 @@ snapshots/<timestamp>/
 
 It is a convenience mirror for model-training users, not the canonical resolver.
 
+To anchor a published storage root on Bittensor, first dry-run the latest commitment:
+
+```bash
+uv run python scripts/publish_chain_commitment.py --repo ~/lemma-corpus --netuid sn467 --bt-netuid 467
+```
+
+Then submit only after checking the payload:
+
+```bash
+uv run python scripts/publish_chain_commitment.py --repo ~/lemma-corpus --netuid sn467 --bt-netuid 467 --submit
+```
+
+The submitted payload is the compact `lemma-storage-v1:<netuid>:<tempo>:<tempo_directory_sha256>:<accepted_merkle_root>` string from `canonical/<netuid>/commitments/tempo-*.json`.
+
 ## Purpose
 
 Corpus rows should be useful for theorem-prover training, retrieval, repair loops, reinforcement learning, and evaluation. A row is valuable only if another operator can reconstruct the task and rerun the pinned Lean verifier.

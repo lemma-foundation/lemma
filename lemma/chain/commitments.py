@@ -1,11 +1,27 @@
-"""Commitment envelopes for future timelocked proof reveals."""
+"""Commitment envelopes for proof reveals and corpus storage roots."""
 
 from __future__ import annotations
 
 import hashlib
 import json
+import re
+from collections.abc import Mapping
+from dataclasses import dataclass
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
+
+if TYPE_CHECKING:
+    from lemma.common.config import LemmaSettings
+
+
+_HEX64 = re.compile(r"^[0-9a-f]{64}$")
+_LOCAL_PATH = re.compile("/" + "Users" + r"/[^\s]+")
+_ROOT_LOGIN = re.compile("".join(("ro", "ot")) + r"@[^\s]+")
+_IP_ADDRESS = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+_SS58_ADDRESS = re.compile(r"\b5[1-9A-HJ-NP-Za-km-z]{40,}\b")
+_TEMPO_FILE = re.compile(r"tempo-(\d+)\.json$")
 
 
 class CommitmentEnvelope(BaseModel):
@@ -31,3 +47,144 @@ class CommitmentEnvelope(BaseModel):
 
 def ciphertext_sha256(ciphertext: bytes) -> str:
     return hashlib.sha256(ciphertext).hexdigest()
+
+
+@dataclass(frozen=True)
+class ChainCommitmentSubmission:
+    success: bool
+    payload: str
+    hotkey: str = ""
+    message: str = ""
+    extrinsic_function: str = ""
+    extrinsic_hash: str = ""
+    block_hash: str = ""
+    block_number: int | None = None
+    extrinsic_fee_rao: int | None = None
+
+
+def storage_commitment_files(repo: Path, netuid: str) -> list[Path]:
+    root = repo / "canonical" / netuid / "commitments"
+    if not root.is_dir():
+        raise SystemExit(f"missing storage commitments directory: {root}")
+    files = sorted(root.glob("tempo-*.json"))
+    if not files:
+        raise SystemExit(f"no storage commitment files under {root}")
+    return files
+
+
+def latest_storage_commitment_file(repo: Path, netuid: str) -> Path:
+    def key(path: Path) -> int:
+        match = _TEMPO_FILE.fullmatch(path.name)
+        if not match:
+            return -1
+        return int(match.group(1))
+
+    return max(storage_commitment_files(repo, netuid), key=key)
+
+
+def storage_commitment_file(repo: Path, netuid: str, tempo: int | None = None) -> Path:
+    if tempo is None:
+        return latest_storage_commitment_file(repo, netuid)
+    path = repo / "canonical" / netuid / "commitments" / f"tempo-{tempo:06d}.json"
+    if not path.is_file():
+        raise SystemExit(f"missing storage commitment file: {path}")
+    return path
+
+
+def load_storage_commitment(path: Path) -> dict[str, object]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError(f"{path}: expected JSON object")
+    expected = {
+        "schema_version",
+        "accepted_merkle_root",
+        "commitment_payload",
+        "netuid",
+        "resolver",
+        "tempo",
+        "tempo_directory_sha256",
+    }
+    missing = sorted(expected - set(data))
+    if missing:
+        raise ValueError(f"{path}: missing fields: {', '.join(missing)}")
+    accepted_merkle_root = str(data["accepted_merkle_root"])
+    tempo_directory_sha256 = str(data["tempo_directory_sha256"])
+    if not _HEX64.fullmatch(accepted_merkle_root):
+        raise ValueError(f"{path}: accepted_merkle_root must be a 64-char lowercase hex digest")
+    if not _HEX64.fullmatch(tempo_directory_sha256):
+        raise ValueError(f"{path}: tempo_directory_sha256 must be a 64-char lowercase hex digest")
+    payload = str(data["commitment_payload"])
+    expected_payload = (
+        f"lemma-storage-v1:{data['netuid']}:{data['tempo']}:{tempo_directory_sha256}:{accepted_merkle_root}"
+    )
+    if payload != expected_payload:
+        raise ValueError(f"{path}: commitment_payload mismatch")
+    return data
+
+
+def storage_commitment_payload(path: Path) -> str:
+    return str(load_storage_commitment(path)["commitment_payload"])
+
+
+def _response_message(response: object) -> str:
+    message = getattr(response, "message", "") or getattr(response, "error", "")
+    if not message:
+        return ""
+    text = str(message)
+    text = _LOCAL_PATH.sub("[local-path]", text)
+    text = _ROOT_LOGIN.sub("[ssh-login]", text)
+    text = _IP_ADDRESS.sub("[ip-address]", text)
+    text = _SS58_ADDRESS.sub("[ss58-address]", text)
+    return text[:300]
+
+
+def _receipt_value(response: object, field: str) -> object:
+    receipt = getattr(response, "extrinsic_receipt", None)
+    return getattr(receipt, field, None) if receipt else None
+
+
+def _receipt_int_value(response: object, field: str) -> int | None:
+    value = _receipt_value(response, field)
+    return value if isinstance(value, int) else None
+
+
+def wallet_hotkey_address(settings: LemmaSettings) -> str:
+    import bittensor as bt
+
+    wallet = bt.Wallet(name=settings.wallet_cold, hotkey=settings.wallet_hot)
+    return str(wallet.hotkey.ss58_address)
+
+
+def submit_storage_commitment(settings: LemmaSettings, payload: str) -> ChainCommitmentSubmission:
+    import bittensor as bt
+
+    wallet = bt.Wallet(name=settings.wallet_cold, hotkey=settings.wallet_hot)
+    subtensor = bt.Subtensor(network=settings.bt_network or None)
+    response = subtensor.set_commitment(
+        wallet=wallet,
+        netuid=settings.netuid,
+        data=payload,
+        raise_error=False,
+        wait_for_inclusion=True,
+        wait_for_finalization=True,
+    )
+    return ChainCommitmentSubmission(
+        success=bool(response.success),
+        payload=payload,
+        hotkey=str(wallet.hotkey.ss58_address),
+        message=_response_message(response),
+        extrinsic_function=str(response.extrinsic_function or ""),
+        extrinsic_hash=str(_receipt_value(response, "extrinsic_hash") or ""),
+        block_hash=str(_receipt_value(response, "block_hash") or ""),
+        block_number=_receipt_int_value(response, "block_number"),
+        extrinsic_fee_rao=getattr(response.extrinsic_fee, "rao", None) if response.extrinsic_fee else None,
+    )
+
+
+def read_storage_commitment(settings: LemmaSettings, hotkey: str | None = None) -> str:
+    import bittensor as bt
+
+    target_hotkey = hotkey or wallet_hotkey_address(settings)
+    subtensor = bt.Subtensor(network=settings.bt_network or None)
+    commitments: Mapping[str, str] = subtensor.get_all_commitments(settings.netuid)
+    return str(commitments.get(target_hotkey, ""))

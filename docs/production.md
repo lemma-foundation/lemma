@@ -42,6 +42,14 @@ uv run python scripts/publish_corpus_snapshot.py --repo ~/lemma-corpus --netuid 
 
 This regenerates the public index/export, builds deterministic accepted-entry directories under `canonical/sn467/`, writes `MANIFEST.sha256`, uploads a timestamped Hippius snapshot, creates the GitHub immutable release mirror, and syncs an append-only Hugging Face dataset snapshot. Hippius, GitHub, and Hugging Face credentials must stay in the operator environment, never in repo files.
 
+After checking the published snapshot, anchor the latest storage root on Bittensor:
+
+```bash
+uv run python scripts/publish_chain_commitment.py --repo ~/lemma-corpus --netuid sn467 --bt-netuid 467 --submit
+```
+
+Run it without `--submit` first to print the payload without writing chain state.
+
 Run the leak check before any commit or push:
 
 ```bash
