@@ -63,7 +63,7 @@ Then submit only after checking the payload:
 uv run python scripts/publish_chain_commitment.py --repo ~/lemma-corpus --netuid sn467 --bt-netuid 467 --submit
 ```
 
-The submitted payload is the compact `lemma-storage-v1:<netuid>:<tempo>:<tempo_directory_sha256>:<accepted_merkle_root>` string from `canonical/<netuid>/commitments/tempo-*.json`.
+The submitted payload is the compact `lemma-storage-v1:<netuid>:<tempo>:<preimage_sha256>` string from `canonical/<netuid>/commitments/tempo-*.json`. The preimage is `lemma-storage-v1:<netuid>:<tempo>:<tempo_directory_sha256>:<accepted_merkle_root>`, keeping the on-chain value within Bittensor's raw commitment size limit while the full roots remain in the public artifact.
 
 ## Purpose
 

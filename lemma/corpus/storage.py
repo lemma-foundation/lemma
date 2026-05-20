@@ -8,6 +8,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from lemma.chain.commitments import compact_storage_commitment_payload
+
 EPOCH_RE = re.compile(r"epoch-(\d+)\.jsonl$")
 
 
@@ -113,7 +115,12 @@ def build_epoch_storage(epoch_file: Path, output_root: Path, *, netuid: str, res
     commitment = {
         "schema_version": 1,
         "accepted_merkle_root": accepted_merkle_root,
-        "commitment_payload": f"lemma-storage-v1:{netuid}:{tempo}:{tempo_directory_sha256}:{accepted_merkle_root}",
+        "commitment_payload": compact_storage_commitment_payload(
+            netuid=netuid,
+            tempo=tempo,
+            tempo_directory_sha256=tempo_directory_sha256,
+            accepted_merkle_root=accepted_merkle_root,
+        ),
         "netuid": netuid,
         "resolver": resolver,
         "tempo": tempo,

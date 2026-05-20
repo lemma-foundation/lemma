@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from lemma.chain.commitments import compact_storage_commitment_payload
 from lemma.corpus.storage import build_storage_index, canonical_json_bytes, merkle_root, sha256_hex
 
 
@@ -48,5 +49,11 @@ def test_build_storage_index_writes_per_epoch_commitment_artifacts(tmp_path: Pat
     assert manifest["entries"][0]["file"] == "entries/slot-000002-aaaaaaaaaaaa.json"
     assert commitment["accepted_merkle_root"] == expected_root
     assert commitment["tempo_directory_cid"] is None
-    assert commitment["commitment_payload"].startswith("lemma-storage-v1:sn467:42:")
+    assert commitment["commitment_payload"] == compact_storage_commitment_payload(
+        netuid="sn467",
+        tempo=42,
+        tempo_directory_sha256=commitment["tempo_directory_sha256"],
+        accepted_merkle_root=expected_root,
+    )
+    assert len(commitment["commitment_payload"].encode("utf-8")) <= 128
     assert (repo / "canonical" / "sn467" / "storage-index.json").is_file()

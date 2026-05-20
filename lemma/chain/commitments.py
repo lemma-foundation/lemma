@@ -22,6 +22,7 @@ _ROOT_LOGIN = re.compile("".join(("ro", "ot")) + r"@[^\s]+")
 _IP_ADDRESS = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 _SS58_ADDRESS = re.compile(r"\b5[1-9A-HJ-NP-Za-km-z]{40,}\b")
 _TEMPO_FILE = re.compile(r"tempo-(\d+)\.json$")
+_STORAGE_PREFIX = "lemma-storage-v1"
 
 
 class CommitmentEnvelope(BaseModel):
@@ -91,6 +92,24 @@ def storage_commitment_file(repo: Path, netuid: str, tempo: int | None = None) -
     return path
 
 
+def storage_commitment_preimage(
+    *, netuid: object, tempo: object, tempo_directory_sha256: str, accepted_merkle_root: str
+) -> str:
+    return f"{_STORAGE_PREFIX}:{netuid}:{tempo}:{tempo_directory_sha256}:{accepted_merkle_root}"
+
+
+def compact_storage_commitment_payload(
+    *, netuid: object, tempo: object, tempo_directory_sha256: str, accepted_merkle_root: str
+) -> str:
+    preimage = storage_commitment_preimage(
+        netuid=netuid,
+        tempo=tempo,
+        tempo_directory_sha256=tempo_directory_sha256,
+        accepted_merkle_root=accepted_merkle_root,
+    )
+    return f"{_STORAGE_PREFIX}:{netuid}:{tempo}:{hashlib.sha256(preimage.encode('utf-8')).hexdigest()}"
+
+
 def load_storage_commitment(path: Path) -> dict[str, object]:
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
@@ -114,16 +133,31 @@ def load_storage_commitment(path: Path) -> dict[str, object]:
     if not _HEX64.fullmatch(tempo_directory_sha256):
         raise ValueError(f"{path}: tempo_directory_sha256 must be a 64-char lowercase hex digest")
     payload = str(data["commitment_payload"])
-    expected_payload = (
-        f"lemma-storage-v1:{data['netuid']}:{data['tempo']}:{tempo_directory_sha256}:{accepted_merkle_root}"
+    legacy_payload = storage_commitment_preimage(
+        netuid=data["netuid"],
+        tempo=data["tempo"],
+        tempo_directory_sha256=tempo_directory_sha256,
+        accepted_merkle_root=accepted_merkle_root,
     )
-    if payload != expected_payload:
+    compact_payload = compact_storage_commitment_payload(
+        netuid=data["netuid"],
+        tempo=data["tempo"],
+        tempo_directory_sha256=tempo_directory_sha256,
+        accepted_merkle_root=accepted_merkle_root,
+    )
+    if payload not in {legacy_payload, compact_payload}:
         raise ValueError(f"{path}: commitment_payload mismatch")
     return data
 
 
 def storage_commitment_payload(path: Path) -> str:
-    return str(load_storage_commitment(path)["commitment_payload"])
+    data = load_storage_commitment(path)
+    return compact_storage_commitment_payload(
+        netuid=data["netuid"],
+        tempo=data["tempo"],
+        tempo_directory_sha256=str(data["tempo_directory_sha256"]),
+        accepted_merkle_root=str(data["accepted_merkle_root"]),
+    )
 
 
 def _response_message(response: object) -> str:

@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 from lemma.chain.commitments import (
+    compact_storage_commitment_payload,
     latest_storage_commitment_file,
     load_storage_commitment,
     storage_commitment_file,
@@ -12,12 +13,23 @@ from lemma.chain.commitments import (
 )
 
 
-def _commitment(root: Path, tempo: int, payload_suffix: str = "") -> Path:
+def _commitment(root: Path, tempo: int, payload_suffix: str = "", *, legacy: bool = False) -> Path:
     accepted = "a" * 64
     directory = "b" * 64
     path = root / "canonical" / "sn467" / "commitments" / f"tempo-{tempo:06d}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = f"lemma-storage-v1:sn467:{tempo}:{directory}:{accepted}{payload_suffix}"
+    legacy_payload = f"lemma-storage-v1:sn467:{tempo}:{directory}:{accepted}"
+    payload = (
+        legacy_payload
+        if legacy
+        else compact_storage_commitment_payload(
+            netuid="sn467",
+            tempo=tempo,
+            tempo_directory_sha256=directory,
+            accepted_merkle_root=accepted,
+        )
+    )
+    payload += payload_suffix
     path.write_text(
         json.dumps(
             {
@@ -50,7 +62,24 @@ def test_storage_commitment_payload_validates_expected_preimage(tmp_path: Path) 
     path = _commitment(tmp_path, 7)
 
     assert load_storage_commitment(path)["tempo"] == 7
-    assert storage_commitment_payload(path) == f"lemma-storage-v1:sn467:7:{'b' * 64}:{'a' * 64}"
+    assert storage_commitment_payload(path) == compact_storage_commitment_payload(
+        netuid="sn467",
+        tempo=7,
+        tempo_directory_sha256="b" * 64,
+        accepted_merkle_root="a" * 64,
+    )
+    assert len(storage_commitment_payload(path).encode("utf-8")) <= 128
+
+
+def test_storage_commitment_payload_accepts_legacy_preimage_artifact(tmp_path: Path) -> None:
+    path = _commitment(tmp_path, 7, legacy=True)
+
+    assert storage_commitment_payload(path) == compact_storage_commitment_payload(
+        netuid="sn467",
+        tempo=7,
+        tempo_directory_sha256="b" * 64,
+        accepted_merkle_root="a" * 64,
+    )
 
 
 def test_storage_commitment_payload_rejects_drift(tmp_path: Path) -> None:
