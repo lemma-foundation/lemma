@@ -240,15 +240,18 @@ def test_export_corpus_defaults_to_lean(tmp_path) -> None:
 def test_validate_consumes_submission_spool(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     spool = tmp_path / "spool"
     spool.mkdir()
+    task = make_task(
+        task_id="lemma.sample.true_intro",
+        title="Smoke-test True",
+        theorem_name="true_intro_sample",
+        type_expr="True",
+        source_stream="human_curated",
+        source_name="pytest",
+    )
+    registry_path = tmp_path / "registry.json"
+    write_registry([task], registry_path)
     submission = build_submission(
-        make_task(
-            task_id="lemma.sample.true_intro",
-            title="Smoke-test True",
-            theorem_name="true_intro_sample",
-            type_expr="True",
-            source_stream="human_curated",
-            source_name="pytest",
-        ),
+        task,
         solver_hotkey="hk-spool",
         proof_script=_true_intro_proof(),
     )
@@ -263,6 +266,7 @@ def test_validate_consumes_submission_spool(monkeypatch: pytest.MonkeyPatch, tmp
         "LEMMA_SUBMISSION_SPOOL_DIR": str(spool),
         "LEMMA_OPERATOR_DATA_DIR": str(tmp_path / "operator"),
         "LEMMA_CORPUS_OUTPUT_DIR": str(tmp_path / "corpus"),
+        "LEMMA_TASK_REGISTRY_URL": str(registry_path),
         "LEMMA_ACTIVE_K": "3",
     }
 
