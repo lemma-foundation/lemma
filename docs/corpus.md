@@ -10,11 +10,23 @@ The public smoke corpus is published at [lemma-foundation/lemma-corpus](https://
 
 The current public storage shape is:
 
-- Hippius S3 bucket as the canonical byte store.
+- Content-addressed canonical artifacts under `canonical/<netuid>/`.
+- Hippius S3/Arion as the current byte resolver until Hippius IPFS pinning is available in the public toolchain.
 - GitHub immutable releases as the public mirror.
-- `MANIFEST.sha256` as the hash checklist for each timestamped snapshot.
+- `MANIFEST.sha256` and `canonical/<netuid>/storage-index.json` as the hash checklist for each timestamped snapshot.
 
 Keep Hippius writes append-only in practice: publish a new `snapshots/<timestamp>/` prefix and do not sync with `--delete`.
+
+The publisher builds one deterministic directory per accepted epoch:
+
+```text
+canonical/sn467/tempos/tempo-000001/
+  entries/
+  manifest.json
+canonical/sn467/commitments/tempo-000001.json
+```
+
+`manifest.json` records per-entry SHA256 hashes and the accepted-entry Merkle root. `commitments/tempo-*.json` records the payload shape that should later be committed on chain. Today the resolver label defaults to `hippius-s3-arion`; the directory shape is CID-ready, so the resolver can move to Hippius IPFS without changing the corpus entry bytes.
 
 From the Lemma repo, publish a prepared `lemma-corpus` checkout with:
 
@@ -28,7 +40,7 @@ For a no-upload preview:
 uv run python scripts/publish_corpus_snapshot.py --repo ~/lemma-corpus --netuid sn467 --dry-run
 ```
 
-The script expects Hippius credentials in `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`; it does not store them. It uses `https://s3.hippius.com`, region `decentralized`, bucket `lemma-corpus-sn467`, and GitHub repo `lemma-foundation/lemma-corpus` by default.
+The script expects Hippius credentials in `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`; it does not store them. It uses `https://s3.hippius.com`, region `decentralized`, bucket `lemma-corpus-sn467`, GitHub repo `lemma-foundation/lemma-corpus`, and resolver label `hippius-s3-arion` by default.
 
 ## Purpose
 

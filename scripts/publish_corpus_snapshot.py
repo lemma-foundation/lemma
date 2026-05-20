@@ -17,6 +17,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from lemma.corpus.storage import build_storage_index  # noqa: E402
 from scripts.prepare_corpus_publish import prepare  # noqa: E402
 
 DEFAULT_BUCKET = "lemma-corpus-sn467"
@@ -37,10 +38,11 @@ def snapshot_label(snapshot: str) -> str:
 
 def public_dirs(repo: Path, netuid: str) -> tuple[tuple[str, Path], ...]:
     return (
-        ("registries", repo / "registries" / netuid),
-        ("corpus", repo / "corpus" / netuid),
-        ("indexes", repo / "indexes" / netuid),
-        ("exports", repo / "exports" / netuid),
+        (f"{netuid}/registries", repo / "registries" / netuid),
+        (f"{netuid}/corpus", repo / "corpus" / netuid),
+        (f"{netuid}/indexes", repo / "indexes" / netuid),
+        (f"{netuid}/exports", repo / "exports" / netuid),
+        (f"canonical/{netuid}", repo / "canonical" / netuid),
     )
 
 
@@ -82,14 +84,14 @@ def hippius_commands(
 ) -> list[list[str]]:
     base_uri = f"s3://{bucket}/snapshots/{snapshot}"
     commands: list[list[str]] = []
-    for name, directory in public_dirs(repo, netuid):
+    for remote_prefix, directory in public_dirs(repo, netuid):
         commands.append(
             [
                 *aws,
                 "s3",
                 "sync",
                 str(directory),
-                f"{base_uri}/{netuid}/{name}/",
+                f"{base_uri}/{remote_prefix}/",
                 "--endpoint-url",
                 endpoint_url,
                 "--only-show-errors",
@@ -125,6 +127,7 @@ def release_notes(*, bucket: str, netuid: str, snapshot: str) -> str:
             f"- `{netuid}/indexes/`",
             f"- `{netuid}/exports/`",
             f"- `{netuid}/registries/`",
+            f"- `canonical/{netuid}/`",
             "- `MANIFEST.sha256`",
             "",
             "This GitHub release is an immutable public mirror. Hippius is the canonical storage location.",
@@ -136,6 +139,7 @@ def github_release_command(
     *,
     github_repo: str,
     manifest_path: Path,
+    storage_index_path: Path,
     netuid: str,
     snapshot: str,
     bucket: str,
@@ -148,6 +152,7 @@ def github_release_command(
         "create",
         tag,
         str(manifest_path),
+        str(storage_index_path),
         "--repo",
         github_repo,
         "--target",
@@ -180,6 +185,7 @@ def main() -> int:
     parser.add_argument("--bucket", default=DEFAULT_BUCKET, help="Hippius S3 bucket")
     parser.add_argument("--endpoint-url", default=DEFAULT_ENDPOINT, help="Hippius S3 endpoint URL")
     parser.add_argument("--region", default=DEFAULT_REGION, help="S3 region value")
+    parser.add_argument("--resolver", default="hippius-s3-arion", help="canonical resolver label")
     parser.add_argument("--snapshot", default=snapshot_id(), help="snapshot id, default is current UTC time")
     parser.add_argument("--github-repo", default=DEFAULT_GITHUB_REPO, help="GitHub repo for the immutable mirror")
     parser.add_argument("--aws-command", help='AWS CLI command, default: "aws" or "uvx --from awscli aws"')
@@ -194,7 +200,9 @@ def main() -> int:
         run(["git", "-C", str(repo), "pull", "--ff-only"], dry_run=args.dry_run)
 
     summary = prepare(repo, args.netuid)
+    storage_index = build_storage_index(repo, args.netuid, resolver=args.resolver)
     manifest_path = write_manifest(repo, args.netuid)
+    storage_index_path = Path(storage_index["path"])
     env = os.environ.copy()
     env.setdefault("AWS_DEFAULT_REGION", args.region)
 
@@ -219,6 +227,7 @@ def main() -> int:
             github_release_command(
                 github_repo=args.github_repo,
                 manifest_path=manifest_path,
+                storage_index_path=storage_index_path,
                 netuid=args.netuid,
                 snapshot=args.snapshot,
                 bucket=args.bucket,
@@ -234,6 +243,8 @@ def main() -> int:
                 "hippius_uri": f"s3://{args.bucket}/snapshots/{args.snapshot}/",
                 "manifest": str(manifest_path),
                 "snapshot": args.snapshot,
+                "storage_epochs": len(storage_index["epochs"]),
+                "storage_index": str(storage_index_path),
             },
             indent=2,
             sort_keys=True,
