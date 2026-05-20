@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -87,3 +88,49 @@ def test_storage_commitment_payload_rejects_drift(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="commitment_payload mismatch"):
         storage_commitment_payload(path)
+
+
+def test_cli_readback_hotkey_skips_wallet_lookup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    path = _commitment(tmp_path, 7)
+    hotkey = "5DvFMbph3has15zmHLd6WsZAKNhYN45ctmydJEQTWxA2U2No"
+    payload = storage_commitment_payload(path)
+
+    import scripts.publish_chain_commitment as cli
+
+    readback_hotkeys: list[str | None] = []
+
+    def fail_wallet_lookup(_settings: object) -> str:
+        raise AssertionError("wallet lookup should be skipped")
+
+    monkeypatch.setattr(cli, "wallet_hotkey_address", fail_wallet_lookup)
+    monkeypatch.setattr(
+        cli,
+        "read_storage_commitment",
+        lambda _settings, hotkey=None: readback_hotkeys.append(hotkey) or payload,
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "publish_chain_commitment.py",
+            "--repo",
+            str(tmp_path),
+            "--netuid",
+            "sn467",
+            "--bt-netuid",
+            "467",
+            "--readback",
+            "--hotkey",
+            hotkey,
+        ],
+    )
+
+    assert cli.main() == 0
+    result = json.loads(capsys.readouterr().out)
+    assert readback_hotkeys == [hotkey]
+    assert result["readback_hotkey_address"] == hotkey
+    assert result["readback_matches"] is True

@@ -65,6 +65,12 @@ uv run python scripts/publish_chain_commitment.py --repo ~/lemma-corpus --netuid
 
 The submitted payload is the compact `lemma-storage-v1:<netuid>:<tempo>:<preimage_sha256>` string from `canonical/<netuid>/commitments/tempo-*.json`. The preimage is `lemma-storage-v1:<netuid>:<tempo>:<tempo_directory_sha256>:<accepted_merkle_root>`, keeping the on-chain value within Bittensor's raw commitment size limit while the full roots remain in the public artifact.
 
+A mirror-only publisher can verify readback without local wallet files by passing the validator hotkey address:
+
+```bash
+uv run python scripts/publish_chain_commitment.py --repo ~/lemma-corpus --netuid sn467 --bt-netuid 467 --readback --hotkey <validator-hotkey-address>
+```
+
 ## Purpose
 
 Corpus rows should be useful for theorem-prover training, retrieval, repair loops, reinforcement learning, and evaluation. A row is valuable only if another operator can reconstruct the task and rerun the pinned Lean verifier.

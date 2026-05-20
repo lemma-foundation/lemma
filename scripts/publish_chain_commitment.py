@@ -43,6 +43,7 @@ def main() -> int:
     parser.add_argument("--bt-network", help="Bittensor network; defaults to BT_NETWORK")
     parser.add_argument("--wallet-cold", help="Bittensor cold wallet name; defaults to BT_WALLET_COLD")
     parser.add_argument("--wallet-hot", help="Bittensor hotkey name; defaults to BT_WALLET_HOT")
+    parser.add_argument("--hotkey", help="hotkey SS58 address to read back without loading a wallet")
     parser.add_argument("--submit", action="store_true", help="write the commitment on chain")
     parser.add_argument("--readback", action="store_true", help="read back the current commitment for this hotkey")
     args = parser.parse_args()
@@ -61,13 +62,19 @@ def main() -> int:
         "payload_bytes": len(payload.encode("utf-8")),
     }
 
-    if args.readback or args.submit:
-        result["wallet_hotkey_address"] = wallet_hotkey_address(settings)
+    readback_hotkey = args.hotkey
+    if args.readback and readback_hotkey:
+        result["readback_hotkey_address"] = readback_hotkey
+    elif args.readback and not args.submit:
+        readback_hotkey = wallet_hotkey_address(settings)
+        result["wallet_hotkey_address"] = readback_hotkey
 
     if args.submit:
         if settings.netuid == 0:
             raise SystemExit("refusing to submit with BT_NETUID=0; pass --bt-netuid or set BT_NETUID")
         submission = submit_storage_commitment(settings, payload)
+        readback_hotkey = readback_hotkey or submission.hotkey
+        result["wallet_hotkey_address"] = submission.hotkey
         result["submission"] = {
             "block_hash": submission.block_hash,
             "block_number": submission.block_number,
@@ -82,7 +89,7 @@ def main() -> int:
             return 1
 
     if args.readback or args.submit:
-        readback = read_storage_commitment(settings)
+        readback = read_storage_commitment(settings, hotkey=readback_hotkey)
         result["readback_matches"] = readback == payload
         result["readback_payload"] = readback
 

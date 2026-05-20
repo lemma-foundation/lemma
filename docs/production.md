@@ -49,6 +49,7 @@ uv run python scripts/publish_chain_commitment.py --repo ~/lemma-corpus --netuid
 ```
 
 Run it without `--submit` first to print the payload without writing chain state.
+For mirror-only readback without wallet files, pass `--readback --hotkey <validator-hotkey-address>`.
 
 Run the leak check before any commit or push:
 
