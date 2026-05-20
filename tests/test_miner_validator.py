@@ -12,14 +12,21 @@ from bittensor_wallet import Keypair
 from lemma.chain.weights import ChainWeightSubmission
 from lemma.common.config import LemmaSettings
 from lemma.lean.sandbox import VerifyResult
-from lemma.miner import ProverError, _strip_json_fence, mine_once, run_openai_compatible_prover, run_prover_command
+from lemma.miner import (
+    ProverError,
+    ProverResult,
+    _strip_json_fence,
+    mine_once,
+    run_openai_compatible_prover,
+    run_prover_command,
+)
 from lemma.protocol import ProofResponse, TaskRequest
 from lemma.submissions import LemmaSubmission, build_submission, sign_submission
 from lemma.supply.mathlib_snapshot import candidates_from_jsonl
 from lemma.supply.types import registry_tasks_from_candidates
 from lemma.task_supply import make_task, write_registry
 from lemma.tasks import TaskRegistry
-from lemma.validator import ValidatorRunSummary, validate_once
+from lemma.validator import ValidatorRunSummary, active_tasks_for_validation, validate_once
 
 
 def _task(task_id: str = "lemma.test.true", queue_depth: int = 0):
@@ -145,6 +152,31 @@ def test_mine_once_rejects_local_verify_failure(monkeypatch: pytest.MonkeyPatch,
 
     with pytest.raises(ProverError, match="local verification failed"):
         mine_once(_settings(tmp_path), prover_command=f"{sys.executable} {script}", registry=_registry())
+
+
+def test_mine_once_defaults_to_validator_active_window(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    first = _task("lemma.test.first")
+    second = _task("lemma.test.second")
+    registry = TaskRegistry(schema_version=1, tasks=(first, second), sha256="0" * 64)
+    settings = _settings(tmp_path).model_copy(
+        update={"active_task_count": 1, "active_queue_seed": "miner-active-0", "active_tempo_seconds": 10**12}
+    )
+    active_task = active_tasks_for_validation(registry, settings, tempo=0)[0]
+    assert active_task.id == second.id
+
+    def fake_solve(_settings: LemmaSettings, task: object, *, prover_command: str | None = None) -> ProverResult:
+        assert isinstance(task, type(first))
+        return ProverResult(task_id=task.id, proof_script=_proof_for(task.theorem_name))
+
+    monkeypatch.setattr("lemma.miner.solve_task", fake_solve)
+    monkeypatch.setattr(
+        "lemma.verifiers.lean.run_lean_verify",
+        lambda *args, **kwargs: VerifyResult(passed=True, reason="ok"),
+    )
+
+    result = mine_once(settings, registry=registry)
+
+    assert result.task.id == active_task.id
 
 
 def test_validator_scores_and_writes_alternate_corpus_rows(tmp_path: Path) -> None:

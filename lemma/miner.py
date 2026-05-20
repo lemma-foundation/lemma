@@ -18,6 +18,7 @@ from lemma.store import append_jsonl
 from lemma.submissions import LemmaSubmission, build_submission, sign_submission
 from lemma.task_supply import eligible_tasks
 from lemma.tasks import LemmaTask, TaskRegistry, fetch_task_registry
+from lemma.validator import active_tasks_for_validation
 from lemma.verifiers.lean import verify_result_from_adapter_result
 from lemma.verifiers.registry import get_verifier
 
@@ -150,10 +151,9 @@ def mine_once(
 ) -> MineOnceResult:
     """Fetch one active task, solve it, verify locally, and store the attempt."""
     registry = registry or fetch_task_registry(settings)
-    tasks = eligible_tasks(registry.tasks)
     if task_id:
         task = registry.get(task_id)
-    elif tasks:
+    elif tasks := eligible_tasks(active_tasks_for_validation(registry, settings)):
         task = tasks[0]
     else:
         raise ProverError("no eligible active tasks")

@@ -151,15 +151,6 @@ Lean:
 
 - [Lean domain](docs/domains/lean.md)
 
-Background Research:
-
-- [Roadmap](ROADMAP.md)
-- [Benchmarks](docs/research/benchmarks.md)
-- [Open AlphaProof-style engine](docs/research/open-alphaproof-engine.md)
-- [Open AlphaProof execution plan](docs/research/exec-plan-open-alphaproof.md)
-- [Model APIs](docs/research/model-apis.md)
-- [Affine integration](docs/research/integrations/affine.md)
-
 ## Development Checks
 
 ```bash

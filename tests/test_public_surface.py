@@ -95,6 +95,13 @@ def test_future_domain_docs_are_research_only() -> None:
     assert "This is background research, not Lemma's production thesis." in research
 
 
+def test_readme_does_not_link_background_research() -> None:
+    readme = Path("README.md").read_text(encoding="utf-8")
+
+    assert "Background Research:" not in readme
+    assert "docs/research/" not in readme
+
+
 def test_public_surfaces_do_not_reintroduce_legacy_protocol_language() -> None:
     text = _public_text()
     lowered = text.lower()
