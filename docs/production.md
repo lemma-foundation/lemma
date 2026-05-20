@@ -34,6 +34,14 @@ Live chain writes require both `LEMMA_ENABLE_SET_WEIGHTS=1` and `--set-weights`;
 
 For the full registry-to-validator-to-export sequence, see [Operator Registry Flow](operator-registry-flow.md).
 
+Publish the current public corpus snapshot after a closed testnet pass:
+
+```bash
+uv run python scripts/publish_corpus_snapshot.py --repo ~/lemma-corpus --netuid sn467
+```
+
+This regenerates the public index/export, writes `MANIFEST.sha256`, uploads a timestamped Hippius snapshot, and creates the GitHub immutable release mirror. Hippius credentials must stay in the operator environment, never in repo files.
+
 Run the leak check before any commit or push:
 
 ```bash

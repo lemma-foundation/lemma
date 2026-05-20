@@ -6,6 +6,30 @@ A corpus row is a replayable record of a verified mathematical proof.
 
 The public smoke corpus is published at [lemma-foundation/lemma-corpus](https://github.com/lemma-foundation/lemma-corpus).
 
+## Publishing Snapshots
+
+The current public storage shape is:
+
+- Hippius S3 bucket as the canonical byte store.
+- GitHub immutable releases as the public mirror.
+- `MANIFEST.sha256` as the hash checklist for each timestamped snapshot.
+
+Keep Hippius writes append-only in practice: publish a new `snapshots/<timestamp>/` prefix and do not sync with `--delete`.
+
+From the Lemma repo, publish a prepared `lemma-corpus` checkout with:
+
+```bash
+uv run python scripts/publish_corpus_snapshot.py --repo ~/lemma-corpus --netuid sn467
+```
+
+For a no-upload preview:
+
+```bash
+uv run python scripts/publish_corpus_snapshot.py --repo ~/lemma-corpus --netuid sn467 --dry-run
+```
+
+The script expects Hippius credentials in `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`; it does not store them. It uses `https://s3.hippius.com`, region `decentralized`, bucket `lemma-corpus-sn467`, and GitHub repo `lemma-foundation/lemma-corpus` by default.
+
 ## Purpose
 
 Corpus rows should be useful for theorem-prover training, retrieval, repair loops, reinforcement learning, and evaluation. A row is valuable only if another operator can reconstruct the task and rerun the pinned Lean verifier.

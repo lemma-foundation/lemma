@@ -1,0 +1,246 @@
+#!/usr/bin/env python3
+"""Publish a lemma-corpus snapshot to Hippius and GitHub Releases."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import shlex
+import shutil
+import subprocess
+import sys
+from datetime import UTC, datetime
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from scripts.prepare_corpus_publish import prepare  # noqa: E402
+
+DEFAULT_BUCKET = "lemma-corpus-sn467"
+DEFAULT_ENDPOINT = "https://s3.hippius.com"
+DEFAULT_GITHUB_REPO = "lemma-foundation/lemma-corpus"
+DEFAULT_REGION = "decentralized"
+
+
+def snapshot_id(now: datetime | None = None) -> str:
+    current = now or datetime.now(UTC)
+    return current.strftime("%Y-%m-%dT%H-%M-%SZ")
+
+
+def snapshot_label(snapshot: str) -> str:
+    parsed = datetime.strptime(snapshot, "%Y-%m-%dT%H-%M-%SZ").replace(tzinfo=UTC)
+    return parsed.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def public_dirs(repo: Path, netuid: str) -> tuple[tuple[str, Path], ...]:
+    return (
+        ("registries", repo / "registries" / netuid),
+        ("corpus", repo / "corpus" / netuid),
+        ("indexes", repo / "indexes" / netuid),
+        ("exports", repo / "exports" / netuid),
+    )
+
+
+def write_manifest(repo: Path, netuid: str, manifest_path: Path | None = None) -> Path:
+    target = manifest_path or repo / "MANIFEST.sha256"
+    paths: list[Path] = []
+    for _name, directory in public_dirs(repo, netuid):
+        if not directory.is_dir():
+            raise SystemExit(f"missing public corpus directory: {directory}")
+        paths.extend(item for item in directory.rglob("*") if item.is_file())
+    lines: list[str] = []
+    for path in sorted(paths, key=lambda item: item.relative_to(repo).as_posix()):
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        relative = path.relative_to(repo).as_posix()
+        lines.append(f"{digest}  {relative}")
+    target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return target
+
+
+def aws_command(value: str | None) -> list[str]:
+    if value:
+        return shlex.split(value)
+    if aws := shutil.which("aws"):
+        return [aws]
+    if uvx := shutil.which("uvx"):
+        return [uvx, "--from", "awscli", "aws"]
+    raise SystemExit("missing aws CLI; install awscli or uv, or pass --aws-command")
+
+
+def hippius_commands(
+    *,
+    aws: list[str],
+    repo: Path,
+    bucket: str,
+    endpoint_url: str,
+    netuid: str,
+    snapshot: str,
+    manifest_path: Path,
+) -> list[list[str]]:
+    base_uri = f"s3://{bucket}/snapshots/{snapshot}"
+    commands: list[list[str]] = []
+    for name, directory in public_dirs(repo, netuid):
+        commands.append(
+            [
+                *aws,
+                "s3",
+                "sync",
+                str(directory),
+                f"{base_uri}/{netuid}/{name}/",
+                "--endpoint-url",
+                endpoint_url,
+                "--only-show-errors",
+            ]
+        )
+    commands.append(
+        [
+            *aws,
+            "s3",
+            "cp",
+            str(manifest_path),
+            f"{base_uri}/MANIFEST.sha256",
+            "--endpoint-url",
+            endpoint_url,
+            "--only-show-errors",
+        ]
+    )
+    return commands
+
+
+def release_notes(*, bucket: str, netuid: str, snapshot: str) -> str:
+    return "\n".join(
+        [
+            f"{netuid.upper()} corpus snapshot published to Hippius.",
+            "",
+            "Canonical Hippius bucket:",
+            "",
+            f"`s3://{bucket}/snapshots/{snapshot}/`",
+            "",
+            "Contents:",
+            "",
+            f"- `{netuid}/corpus/`",
+            f"- `{netuid}/indexes/`",
+            f"- `{netuid}/exports/`",
+            f"- `{netuid}/registries/`",
+            "- `MANIFEST.sha256`",
+            "",
+            "This GitHub release is an immutable public mirror. Hippius is the canonical storage location.",
+        ]
+    )
+
+
+def github_release_command(
+    *,
+    github_repo: str,
+    manifest_path: Path,
+    netuid: str,
+    snapshot: str,
+    bucket: str,
+) -> list[str]:
+    tag = f"{netuid}-{snapshot}"
+    title = f"{netuid.upper()} corpus snapshot {snapshot_label(snapshot)}"
+    return [
+        "gh",
+        "release",
+        "create",
+        tag,
+        str(manifest_path),
+        "--repo",
+        github_repo,
+        "--target",
+        "main",
+        "--title",
+        title,
+        "--notes",
+        release_notes(bucket=bucket, netuid=netuid, snapshot=snapshot),
+    ]
+
+
+def run(cmd: list[str], *, dry_run: bool, env: dict[str, str] | None = None, cwd: Path | None = None) -> None:
+    print("$ " + shlex.join(cmd))
+    if dry_run:
+        return
+    subprocess.run(cmd, check=True, env=env, cwd=cwd)  # noqa: S603
+
+
+def require_env(names: tuple[str, ...]) -> None:
+    missing = [name for name in names if not os.environ.get(name)]
+    if missing:
+        joined = ", ".join(missing)
+        raise SystemExit(f"missing required environment variable(s): {joined}")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repo", type=Path, required=True, help="lemma-corpus checkout to publish")
+    parser.add_argument("--netuid", default="sn467", help="corpus namespace, for example sn467")
+    parser.add_argument("--bucket", default=DEFAULT_BUCKET, help="Hippius S3 bucket")
+    parser.add_argument("--endpoint-url", default=DEFAULT_ENDPOINT, help="Hippius S3 endpoint URL")
+    parser.add_argument("--region", default=DEFAULT_REGION, help="S3 region value")
+    parser.add_argument("--snapshot", default=snapshot_id(), help="snapshot id, default is current UTC time")
+    parser.add_argument("--github-repo", default=DEFAULT_GITHUB_REPO, help="GitHub repo for the immutable mirror")
+    parser.add_argument("--aws-command", help='AWS CLI command, default: "aws" or "uvx --from awscli aws"')
+    parser.add_argument("--pull", action="store_true", help="run git pull --ff-only in the corpus repo first")
+    parser.add_argument("--skip-hippius", action="store_true", help="prepare files but do not upload to Hippius")
+    parser.add_argument("--skip-github", action="store_true", help="prepare files but do not create the GitHub release")
+    parser.add_argument("--dry-run", action="store_true", help="print commands without running upload/release steps")
+    args = parser.parse_args()
+
+    repo = args.repo.expanduser().resolve()
+    if args.pull:
+        run(["git", "-C", str(repo), "pull", "--ff-only"], dry_run=args.dry_run)
+
+    summary = prepare(repo, args.netuid)
+    manifest_path = write_manifest(repo, args.netuid)
+    env = os.environ.copy()
+    env.setdefault("AWS_DEFAULT_REGION", args.region)
+
+    if not args.skip_hippius:
+        if not args.dry_run:
+            require_env(("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"))
+        for command in hippius_commands(
+            aws=aws_command(args.aws_command),
+            repo=repo,
+            bucket=args.bucket,
+            endpoint_url=args.endpoint_url,
+            netuid=args.netuid,
+            snapshot=args.snapshot,
+            manifest_path=manifest_path,
+        ):
+            run(command, dry_run=args.dry_run, env=env)
+
+    if not args.skip_github:
+        if not args.dry_run and not shutil.which("gh"):
+            raise SystemExit("missing gh CLI; install GitHub CLI or pass --skip-github")
+        run(
+            github_release_command(
+                github_repo=args.github_repo,
+                manifest_path=manifest_path,
+                netuid=args.netuid,
+                snapshot=args.snapshot,
+                bucket=args.bucket,
+            ),
+            dry_run=args.dry_run,
+        )
+
+    print(
+        json.dumps(
+            {
+                **summary,
+                "github_tag": f"{args.netuid}-{args.snapshot}",
+                "hippius_uri": f"s3://{args.bucket}/snapshots/{args.snapshot}/",
+                "manifest": str(manifest_path),
+                "snapshot": args.snapshot,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
