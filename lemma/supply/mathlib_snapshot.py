@@ -44,6 +44,10 @@ class MathlibSnapshotRow(BaseModel):
     source_license: str
     proof_sha256: str | None = None
     queue_depth: int = Field(default=0, ge=0)
+    topic: str | None = None
+    subtopic: str | None = None
+    difficulty_score: int | None = Field(default=None, ge=0)
+    baseline_solved: bool | None = None
 
     @field_validator("theorem_name")
     @classmethod
@@ -119,6 +123,17 @@ def candidate_from_row(row: MathlibSnapshotRow) -> TaskCandidate:
         metadata["source_line"] = row.source_line
     if row.proof_sha256:
         metadata["erased_proof_sha256"] = row.proof_sha256
+    if row.topic:
+        metadata["topic"] = row.topic
+    if row.subtopic:
+        metadata["subtopic"] = row.subtopic
+    if row.difficulty_score is not None:
+        metadata["difficulty_score"] = row.difficulty_score
+    if row.baseline_solved is not None:
+        metadata["baseline_solved"] = row.baseline_solved
+        metadata["triviality_checked"] = True
+        if row.baseline_solved:
+            metadata["activation_status"] = "curriculum"
     return TaskCandidate(
         id=_task_id(theorem_name),
         title=theorem_name,
@@ -129,7 +144,7 @@ def candidate_from_row(row: MathlibSnapshotRow) -> TaskCandidate:
         theorem_name=theorem_name,
         type_expr=type_expr,
         statement=f"theorem {theorem_name} : {type_expr} := by\n  sorry",
-        submission_stub=lean_stub(theorem_name, type_expr),
+        submission_stub=lean_stub(theorem_name, type_expr, row.imports),
         lean_toolchain=DEFAULT_TOOLCHAIN,
         mathlib_rev=row.mathlib_rev,
         queue_depth=row.queue_depth,

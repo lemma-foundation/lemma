@@ -43,10 +43,15 @@ After configuring a pinned registry hash, `operator registry-inspect` summarizes
 ## Task Supply
 
 ```bash
+uv run lemma tasks extract-mathlib-snapshot \
+  --mathlib-root /path/to/mathlib \
+  --lake-root /path/to/lake-project \
+  --elaborate-types \
+  --output snapshot.jsonl
 uv run lemma tasks build-mathlib-snapshot --input snapshot.jsonl --output tasks/mathlib-snapshot.registry.json
 ```
 
-Task-supply commands are operator tools. The Mathlib snapshot builder converts proof-erased JSONL rows into a deterministic registry and prints the SHA256 pin for validator configuration.
+Task-supply commands are operator tools. The extractor emits proof-erased JSONL rows from a pinned Mathlib checkout; live batches should use Lean-elaborated `#check` types. The Mathlib snapshot builder converts those rows into a deterministic registry and prints the SHA256 pin for validator configuration.
 
 The production registry flow is documented in [Operator Registry Flow](operator-registry-flow.md).
 

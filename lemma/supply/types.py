@@ -53,10 +53,11 @@ class TaskCandidate(BaseModel):
         )
 
 
-def lean_stub(theorem_name: str, type_expr: str) -> str:
+def lean_stub(theorem_name: str, type_expr: str, imports: tuple[str, ...] = ("Mathlib",)) -> str:
+    import_lines = [f"import {module}" for module in imports]
     return "\n".join(
         [
-            "import Mathlib",
+            *import_lines,
             "",
             "namespace Submission",
             "",

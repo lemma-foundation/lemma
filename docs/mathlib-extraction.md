@@ -30,6 +30,9 @@ Optional fields:
 - `source_line`: 1-based line in the source file.
 - `proof_sha256`: 64-hex hash of the erased source proof, kept only as provenance metadata.
 - `queue_depth`: non-negative difficulty/frontier bucket. Defaults to `0`.
+- `topic` / `subtopic`: deterministic topic labels from the Mathlib source path.
+- `difficulty_score`: deterministic classifier score used to assign `queue_depth`.
+- `baseline_solved`: whether an operator baseline tactic stack solved the task before paid activation.
 
 The public importer currently accepts only ASCII dotted theorem and import names. That keeps task ids, generated Lean files, and corpus replay stable while the production extractor is still a separate audited tool.
 
@@ -43,6 +46,24 @@ theorem Nat.zero_add : ∀ n : Nat, 0 + n = n := by
 ```
 
 `proof_sha256` is provenance, not proof identity. Rewarded submissions are identified from the miner artifact checked by the validator.
+
+## Extraction
+
+Extract snapshot rows from a pinned Mathlib checkout:
+
+```bash
+uv run lemma tasks extract-mathlib-snapshot \
+  --mathlib-root /path/to/mathlib \
+  --lake-root /path/to/lake-project \
+  --elaborate-types \
+  --include 'Mathlib/Data/Nat/*.lean' \
+  --depth0-limit 10 \
+  --depth1-limit 20 \
+  --depth2-limit 20 \
+  --output snapshot.jsonl
+```
+
+The extractor reads theorem and lemma declarations, erases proofs to hashes, derives topic labels from source paths, and assigns `queue_depth` from statement shape, import topic, and proof-block span. Use `--elaborate-types` for live batches so Lean `#check` output supplies self-contained theorem types instead of relying on source text that may reference file-local variables. It is an off-chain operator tool. Validators still consume only pinned snapshot and registry artifacts.
 
 ## Registry Build
 

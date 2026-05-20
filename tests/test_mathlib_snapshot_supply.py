@@ -30,6 +30,7 @@ def test_mathlib_snapshot_row_becomes_proof_erased_candidate() -> None:
     assert candidate.source_stream == "mathlib_snapshot"
     assert candidate.source_ref.commit == "abc123"
     assert "sorry" in candidate.statement
+    assert candidate.submission_stub.startswith("import Mathlib.Data.Nat.Basic\n")
     assert "erased_proof_sha256" in candidate.metadata
     assert task.queue_position == 7
     assert task.queue_depth == 2

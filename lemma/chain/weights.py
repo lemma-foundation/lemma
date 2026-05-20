@@ -9,6 +9,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, cast
 
+from loguru import logger
+
 from lemma.chain.burn_or_recycle import UnearnedAllocation
 
 if TYPE_CHECKING:
@@ -116,6 +118,7 @@ def _wait_for_commit_reveal_window(
 ) -> None:
     if not subtensor.commit_reveal_enabled(netuid=netuid):
         return
+    last_reported_blocks: int | None = None
     while True:
         block = subtensor.get_current_block()
         tempo = cast(_SubnetHyperparameters, subtensor.get_subnet_hyperparameters(netuid, block=block)).tempo
@@ -123,6 +126,15 @@ def _wait_for_commit_reveal_window(
         remaining_blocks = window_start - (block % tempo)
         if remaining_blocks <= 0:
             return
+        if remaining_blocks != last_reported_blocks and (
+            last_reported_blocks is None or remaining_blocks <= 10 or remaining_blocks % 10 == 0
+        ):
+            logger.info(
+                "waiting for commit-reveal weight window netuid={} blocks_until_window={}",
+                netuid,
+                remaining_blocks,
+            )
+            last_reported_blocks = remaining_blocks
         time.sleep(min(block_time, remaining_blocks * block_time))
 
 

@@ -29,6 +29,20 @@ Heavy generators run off-chain. Validators check deterministic task artifacts, n
 
 The importer erases the known proof into a `sorry` target and preserves source revision, file path, license, imports, and optional erased-proof hash as metadata.
 
+An operator can extract rows from a pinned Mathlib checkout:
+
+```bash
+uv run lemma tasks extract-mathlib-snapshot \
+  --mathlib-root /path/to/mathlib \
+  --lake-root /path/to/lake-project \
+  --elaborate-types \
+  --include 'Mathlib/Data/Nat/*.lean' \
+  --depth0-limit 10 \
+  --depth1-limit 20 \
+  --depth2-limit 20 \
+  --output snapshot.jsonl
+```
+
 Build a pinned registry artifact from those rows with:
 
 ```bash
@@ -55,7 +69,7 @@ Every active task must have:
 - explicit `source_ref` and `source_license`;
 - `queue_position`, `queue_depth`, and optional `frontier_depth`;
 - schema validation;
-- policy and triviality-gate labels.
+- policy, topic metadata, and triviality-gate labels.
 
 Tasks solved by the pinned triviality tactic stack are excluded from paid activation. They may still enter the corpus as shallow `trivial_curriculum` data. Held-out benchmark tasks stay separate from training and reward streams.
 
@@ -89,6 +103,7 @@ Only tasks in the selected active window are valid for scoring in that validator
 uv run lemma tasks list
 uv run lemma task show lemma.sample.true_intro
 uv run lemma tasks pull --output active-tasks.jsonl
+uv run lemma tasks extract-mathlib-snapshot --mathlib-root /path/to/mathlib --output snapshot.jsonl
 uv run lemma tasks build-mathlib-snapshot --input snapshot.jsonl --output tasks/mathlib-snapshot.registry.json
 ```
 

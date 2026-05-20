@@ -358,6 +358,77 @@ def tasks_build_mathlib_snapshot_cmd(
     )
 
 
+@tasks_cmd.command("extract-mathlib-snapshot")
+@click.option(
+    "--mathlib-root",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    required=True,
+    help="Pinned Mathlib checkout root.",
+)
+@click.option("--output", "output_path", type=click.Path(dir_okay=False, path_type=Path), required=True)
+@click.option("--include", "includes", multiple=True, help="Repo-relative glob, e.g. Mathlib/Data/Nat/*.lean.")
+@click.option("--limit", type=click.IntRange(min=1), default=None)
+@click.option("--depth0-limit", type=click.IntRange(min=0), default=None)
+@click.option("--depth1-limit", type=click.IntRange(min=0), default=None)
+@click.option("--depth2-limit", type=click.IntRange(min=0), default=None)
+@click.option("--mathlib-rev", default=None, help="Override git-derived Mathlib revision.")
+@click.option("--source-license", default="Apache-2.0", show_default=True)
+@click.option("--elaborate-types", is_flag=True, help="Use Lean #check output for self-contained theorem types.")
+@click.option(
+    "--lake-root",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=None,
+    help="Lake project root for --elaborate-types.",
+)
+def tasks_extract_mathlib_snapshot_cmd(
+    mathlib_root: Path,
+    output_path: Path,
+    includes: tuple[str, ...],
+    limit: int | None,
+    depth0_limit: int | None,
+    depth1_limit: int | None,
+    depth2_limit: int | None,
+    mathlib_rev: str | None,
+    source_license: str,
+    elaborate_types: bool,
+    lake_root: Path | None,
+) -> None:
+    """Extract proof-erased snapshot rows from a pinned Mathlib checkout."""
+    from collections import Counter
+
+    from lemma.supply.mathlib_extract import ExtractConfig, extract_snapshot_rows, write_snapshot_jsonl
+
+    try:
+        rows = extract_snapshot_rows(
+            ExtractConfig(
+                mathlib_root=mathlib_root,
+                includes=includes or ("Mathlib/**/*.lean",),
+                limit=limit,
+                depth0_limit=depth0_limit,
+                depth1_limit=depth1_limit,
+                depth2_limit=depth2_limit,
+                mathlib_rev=mathlib_rev,
+                source_license=source_license,
+                elaborate_types=elaborate_types,
+                lake_root=lake_root,
+            )
+        )
+    except ValueError as e:
+        raise click.ClickException(str(e)) from e
+    write_snapshot_jsonl(rows, output_path)
+    click.echo(
+        json.dumps(
+            {
+                "output": str(output_path),
+                "queue_depth_counts": dict(sorted(Counter(str(row.queue_depth) for row in rows).items())),
+                "rows": len(rows),
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+
+
 @tasks_cmd.command("show")
 @click.argument("task_id")
 def tasks_show_cmd(task_id: str) -> None:

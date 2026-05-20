@@ -98,6 +98,27 @@ def test_restricted_helpers_accepts_helper_declarations() -> None:
     ]
 
 
+def test_restricted_helpers_tracks_dotted_theorem_names() -> None:
+    problem = Problem(
+        id="test/dotted",
+        theorem_name="Associated.neg_neg",
+        type_expr="True",
+        split="training",
+        lean_toolchain="leanprover/lean4:v4.30.0-rc2",
+        mathlib_rev="5450b53e5ddc",
+        imports=("Mathlib.Algebra.Ring.Associated",),
+    )
+    source = _src(
+        "theorem Associated.neg_neg : True := by\n  trivial",
+        imports=("Mathlib.Algebra.Ring.Associated",),
+    )
+
+    scan = scan_submission_policy(problem, source, policy="restricted_helpers")
+
+    assert scan.ok, scan.reason
+    assert submission_axiom_check_names(problem, source, policy="restricted_helpers") == ["Associated.neg_neg"]
+
+
 @pytest.mark.parametrize(
     "src",
     [

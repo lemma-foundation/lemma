@@ -139,8 +139,11 @@ def test_commit_reveal_window_waits_until_last_ten_blocks(monkeypatch) -> None:
             return Hyperparams()
 
     sleeps: list[float] = []
+    logs: list[tuple[object, ...]] = []
     monkeypatch.setattr("lemma.chain.weights.time.sleep", sleeps.append)
+    monkeypatch.setattr("lemma.chain.weights.logger.info", lambda *args: logs.append(args))
 
     _wait_for_commit_reveal_window(Subtensor(), 467)
 
     assert sleeps == [12.0]
+    assert logs

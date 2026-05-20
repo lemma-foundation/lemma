@@ -39,8 +39,9 @@ _FORBIDDEN_PREFIXES = (
     "abbrev ",
     "opaque ",
 )
-_DECL_RE = re.compile(r"^(theorem|lemma|def)\s+([A-Za-z_][A-Za-z0-9_']*)\b")
-_AXIOM_DECL_RE = re.compile(r"^(theorem|lemma)\s+([A-Za-z_][A-Za-z0-9_']*)\b")
+_LEAN_DECL_NAME = r"[A-Za-z_][A-Za-z0-9_']*(?:\.[A-Za-z_][A-Za-z0-9_']*)*"
+_DECL_RE = re.compile(rf"^(theorem|lemma|def)\s+({_LEAN_DECL_NAME})\b")
+_AXIOM_DECL_RE = re.compile(rf"^(theorem|lemma)\s+({_LEAN_DECL_NAME})\b")
 
 
 @dataclass(frozen=True)
