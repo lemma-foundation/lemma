@@ -29,6 +29,7 @@ On commit-reveal subnets, the chain writer waits until the final 10 blocks of th
 After configuring a pinned registry hash, `lemma operator preflight` checks registry pinning, active-window size, local output directories, and Lean verifier configuration.
 Use `lemma operator diagnostics --output operator-diagnostics-before.json` before a validator pass and `lemma operator diagnostics --output operator-diagnostics-after.json` after it. The before file captures registry readiness; the after file adds public-safe artifact counts for the run.
 For a file-based live loop, set `LEMMA_SUBMISSION_SPOOL_DIR` or pass `--submission-spool`. Pending top-level `.json` and `.jsonl` files are read once and moved to `processed/` after validation succeeds.
+Run `uv run python scripts/refresh_site_current_problems.py --site-repo /opt/lemmasub.net --commit --push` from the validator-side publish timer to refresh the public website's active-problem dashboard.
 
 ## Runtime Steps
 

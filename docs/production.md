@@ -42,6 +42,14 @@ uv run python scripts/publish_corpus_snapshot.py --repo ~/lemma-corpus --netuid 
 
 This regenerates the public index/export, builds deterministic accepted-entry directories under `canonical/sn467/`, writes `MANIFEST.sha256`, uploads a timestamped Hippius snapshot, creates the GitHub immutable release mirror, and syncs an append-only Hugging Face dataset snapshot. Hippius, GitHub, and Hugging Face credentials must stay in the operator environment, never in repo files.
 
+Refresh the public website's active-problem dashboard from the validator host:
+
+```bash
+uv run python scripts/refresh_site_current_problems.py --site-repo /opt/lemmasub.net --commit --push
+```
+
+The script only writes `data/current-problems.json` in the site checkout. It refuses to commit if the site repo already has staged changes, and it scans the staged dashboard diff before committing.
+
 After checking the published snapshot, anchor the latest storage root on Bittensor:
 
 ```bash
