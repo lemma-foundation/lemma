@@ -18,9 +18,10 @@ from lemma.current_problems import build_current_problems_snapshot, write_curren
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=None, help="Output JSON path; stdout when omitted")
+    parser.add_argument("--tempo", type=int, default=None, help="Override the active-window tempo")
     args = parser.parse_args()
 
-    snapshot = build_current_problems_snapshot(LemmaSettings())
+    snapshot = build_current_problems_snapshot(LemmaSettings(), tempo=args.tempo)
     if args.output is None:
         print(json.dumps(snapshot.model_dump(mode="json", exclude_none=True), indent=2, sort_keys=True))
     else:

@@ -72,11 +72,12 @@ def main() -> int:
     parser.add_argument("--commit", action="store_true", help="Commit the refreshed JSON in the site repo")
     parser.add_argument("--push", action="store_true", help="Push the site repo after committing")
     parser.add_argument("--message", default="Update current problems snapshot")
+    parser.add_argument("--tempo", type=int, default=None, help="Override the active-window tempo")
     args = parser.parse_args()
 
     site_repo = args.site_repo.resolve()
     output = args.output if args.output.is_absolute() else site_repo / args.output
-    snapshot = build_current_problems_snapshot(LemmaSettings())
+    snapshot = build_current_problems_snapshot(LemmaSettings(), tempo=args.tempo)
     write_current_problems_snapshot(output, snapshot)
 
     committed = False

@@ -47,6 +47,8 @@ class CurrentProblemsSnapshot(BaseModel):
     registry_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
     registry_task_count: int = Field(ge=0)
     active_K: int = Field(ge=1)
+    tempo: int = Field(ge=0)
+    active_tempo_seconds: int = Field(ge=1)
     frontier_depth: int = Field(ge=0)
     active_queue_seed: str
     task_count: int = Field(ge=0)
@@ -84,13 +86,15 @@ def build_current_problems_snapshot(
     *,
     registry: TaskRegistry | None = None,
     generated_at: str | None = None,
+    tempo: int | None = None,
 ) -> CurrentProblemsSnapshot:
     """Build the public active-task snapshot without proof or operator state."""
     from lemma.tasks import fetch_task_registry
-    from lemma.validator import active_tasks_for_validation
+    from lemma.validator import active_tasks_for_validation, current_active_tempo
 
     task_registry = registry or fetch_task_registry(settings)
-    active_tasks = active_tasks_for_validation(task_registry, settings)
+    active_tempo = current_active_tempo(settings) if tempo is None else tempo
+    active_tasks = active_tasks_for_validation(task_registry, settings, tempo=active_tempo)
     tasks = tuple(_problem(task) for task in active_tasks)
     return CurrentProblemsSnapshot(
         schema_version=1,
@@ -98,6 +102,8 @@ def build_current_problems_snapshot(
         registry_sha256=task_registry.sha256,
         registry_task_count=len(task_registry.tasks),
         active_K=settings.active_task_count,
+        tempo=active_tempo,
+        active_tempo_seconds=settings.active_tempo_seconds,
         frontier_depth=settings.frontier_depth,
         active_queue_seed=settings.active_queue_seed,
         task_count=len(tasks),

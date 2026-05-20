@@ -1,10 +1,10 @@
 {
-  "created_at": "2026-05-17T00:00:00Z",
   "schema_version": 1,
-  "signature": null,
-  "signed_by": null,
   "tasks": [
     {
+      "activation_status": "paid",
+      "difficulty_band": "easy",
+      "domain_id": "lean",
       "id": "lemma.sample.true_intro",
       "imports": [
         "Mathlib"
@@ -16,6 +16,7 @@
         "smoke_proof": "trivial"
       },
       "policy": "restricted_helpers",
+      "queue_depth": 0,
       "schema_version": 1,
       "source_license": "CC-BY-4.0",
       "source_ref": {
@@ -30,9 +31,51 @@
       "task_version": 1,
       "theorem_name": "true_intro_sample",
       "title": "Smoke-test True",
-      "type_expr": "True"
+      "triviality_status": "unknown",
+      "type_expr": "True",
+      "verifier_id": "lake-build",
+      "verifier_version": "lemma-lean-v1"
     },
     {
+      "activation_status": "paid",
+      "difficulty_band": "easy",
+      "domain_id": "lean",
+      "id": "lemma.generated.true_intro",
+      "imports": [
+        "Mathlib"
+      ],
+      "lean_toolchain": "leanprover/lean4:v4.30.0-rc2",
+      "mathlib_rev": "5450b53e5ddc",
+      "metadata": {
+        "baseline_hint": "trivial",
+        "difficulty": "dev"
+      },
+      "policy": "restricted_helpers",
+      "queue_depth": 0,
+      "queue_position": 0,
+      "schema_version": 1,
+      "source_license": "CC-BY-4.0",
+      "source_ref": {
+        "kind": "dev_seed",
+        "name": "deterministic-dev-seed",
+        "path": "tasks/registry.json"
+      },
+      "source_stream": "generated",
+      "statement": "theorem generated_true_intro : True := by\n  sorry",
+      "submission_stub": "import Mathlib\n\nnamespace Submission\n\ntheorem generated_true_intro : True := by\n  sorry\n\nend Submission\n",
+      "target_sha256": "3df244fb4dc02549062c6febdb5beb648e818ac970a80dc0b887d349761c2437",
+      "task_version": 1,
+      "theorem_name": "generated_true_intro",
+      "title": "Generated True",
+      "triviality_status": "unknown",
+      "type_expr": "True",
+      "verifier_id": "lake-build",
+      "verifier_version": "lemma-lean-v1"
+    },
+    {
+      "activation_status": "paid",
+      "difficulty_band": "easy",
+      "domain_id": "lean",
       "id": "lemma.generated.and_intro",
       "imports": [
         "Mathlib"
@@ -44,6 +87,8 @@
         "difficulty": "dev"
       },
       "policy": "restricted_helpers",
+      "queue_depth": 0,
+      "queue_position": 1,
       "schema_version": 1,
       "source_license": "CC-BY-4.0",
       "source_ref": {
@@ -58,9 +103,15 @@
       "task_version": 1,
       "theorem_name": "generated_and_intro",
       "title": "Generated conjunction",
-      "type_expr": "True \u2227 True"
+      "triviality_status": "unknown",
+      "type_expr": "True \u2227 True",
+      "verifier_id": "lake-build",
+      "verifier_version": "lemma-lean-v1"
     },
     {
+      "activation_status": "paid",
+      "difficulty_band": "easy",
+      "domain_id": "lean",
       "id": "lemma.generated.nat_zero_add",
       "imports": [
         "Mathlib"
@@ -72,6 +123,8 @@
         "difficulty": "dev"
       },
       "policy": "restricted_helpers",
+      "queue_depth": 0,
+      "queue_position": 2,
       "schema_version": 1,
       "source_license": "CC-BY-4.0",
       "source_ref": {
@@ -86,7 +139,1018 @@
       "task_version": 1,
       "theorem_name": "generated_nat_zero_add",
       "title": "Generated Nat zero-add",
-      "type_expr": "\u2200 n : Nat, 0 + n = n"
+      "triviality_status": "unknown",
+      "type_expr": "\u2200 n : Nat, 0 + n = n",
+      "verifier_id": "lake-build",
+      "verifier_version": "lemma-lean-v1"
+    },
+    {
+      "activation_status": "paid",
+      "difficulty_band": "easy",
+      "domain_id": "lean",
+      "id": "lemma.generated.nat_add_zero",
+      "imports": [
+        "Mathlib"
+      ],
+      "lean_toolchain": "leanprover/lean4:v4.30.0-rc2",
+      "mathlib_rev": "5450b53e5ddc",
+      "metadata": {
+        "baseline_hint": "simp",
+        "difficulty": "dev"
+      },
+      "policy": "restricted_helpers",
+      "queue_depth": 0,
+      "queue_position": 3,
+      "schema_version": 1,
+      "source_license": "CC-BY-4.0",
+      "source_ref": {
+        "kind": "dev_seed",
+        "name": "deterministic-dev-seed",
+        "path": "tasks/registry.json"
+      },
+      "source_stream": "generated",
+      "statement": "theorem generated_nat_add_zero : \u2200 n : Nat, n + 0 = n := by\n  sorry",
+      "submission_stub": "import Mathlib\n\nnamespace Submission\n\ntheorem generated_nat_add_zero : \u2200 n : Nat, n + 0 = n := by\n  sorry\n\nend Submission\n",
+      "target_sha256": "dae79b183518b8a1607cafe68129c302de71a38fd9f3e7d155d88cfac15c3ae5",
+      "task_version": 1,
+      "theorem_name": "generated_nat_add_zero",
+      "title": "Generated Nat add-zero",
+      "triviality_status": "unknown",
+      "type_expr": "\u2200 n : Nat, n + 0 = n",
+      "verifier_id": "lake-build",
+      "verifier_version": "lemma-lean-v1"
+    },
+    {
+      "activation_status": "paid",
+      "difficulty_band": "easy",
+      "domain_id": "lean",
+      "id": "lemma.generated.nat_self_eq",
+      "imports": [
+        "Mathlib"
+      ],
+      "lean_toolchain": "leanprover/lean4:v4.30.0-rc2",
+      "mathlib_rev": "5450b53e5ddc",
+      "metadata": {
+        "baseline_hint": "rfl",
+        "difficulty": "dev"
+      },
+      "policy": "restricted_helpers",
+      "queue_depth": 0,
+      "queue_position": 4,
+      "schema_version": 1,
+      "source_license": "CC-BY-4.0",
+      "source_ref": {
+        "kind": "dev_seed",
+        "name": "deterministic-dev-seed",
+        "path": "tasks/registry.json"
+      },
+      "source_stream": "generated",
+      "statement": "theorem generated_nat_self_eq : \u2200 n : Nat, n = n := by\n  sorry",
+      "submission_stub": "import Mathlib\n\nnamespace Submission\n\ntheorem generated_nat_self_eq : \u2200 n : Nat, n = n := by\n  sorry\n\nend Submission\n",
+      "target_sha256": "6c2bddfe83d6c363eaf936591467e7e5169ee1024c9a072c7423508bc510ef38",
+      "task_version": 1,
+      "theorem_name": "generated_nat_self_eq",
+      "title": "Generated Nat reflexivity",
+      "triviality_status": "unknown",
+      "type_expr": "\u2200 n : Nat, n = n",
+      "verifier_id": "lake-build",
+      "verifier_version": "lemma-lean-v1"
+    },
+    {
+      "activation_status": "paid",
+      "difficulty_band": "easy",
+      "domain_id": "lean",
+      "id": "lemma.generated.prop_id",
+      "imports": [
+        "Mathlib"
+      ],
+      "lean_toolchain": "leanprover/lean4:v4.30.0-rc2",
+      "mathlib_rev": "5450b53e5ddc",
+      "metadata": {
+        "baseline_hint": "intro",
+        "difficulty": "dev"
+      },
+      "policy": "restricted_helpers",
+      "queue_depth": 0,
+      "queue_position": 5,
+      "schema_version": 1,
+      "source_license": "CC-BY-4.0",
+      "source_ref": {
+        "kind": "dev_seed",
+        "name": "deterministic-dev-seed",
+        "path": "tasks/registry.json"
+      },
+      "source_stream": "generated",
+      "statement": "theorem generated_prop_id : \u2200 p : Prop, p \u2192 p := by\n  sorry",
+      "submission_stub": "import Mathlib\n\nnamespace Submission\n\ntheorem generated_prop_id : \u2200 p : Prop, p \u2192 p := by\n  sorry\n\nend Submission\n",
+      "target_sha256": "f0adf55d0223665ffa97a7f214597090e9ac6b1974432a69e23531193535f6b4",
+      "task_version": 1,
+      "theorem_name": "generated_prop_id",
+      "title": "Generated proposition identity",
+      "triviality_status": "unknown",
+      "type_expr": "\u2200 p : Prop, p \u2192 p",
+      "verifier_id": "lake-build",
+      "verifier_version": "lemma-lean-v1"
+    },
+    {
+      "activation_status": "paid",
+      "difficulty_band": "easy",
+      "domain_id": "lean",
+      "id": "lemma.generated.and_left",
+      "imports": [
+        "Mathlib"
+      ],
+      "lean_toolchain": "leanprover/lean4:v4.30.0-rc2",
+      "mathlib_rev": "5450b53e5ddc",
+      "metadata": {
+        "baseline_hint": "intro",
+        "difficulty": "dev"
+      },
+      "policy": "restricted_helpers",
+      "queue_depth": 0,
+      "queue_position": 6,
+      "schema_version": 1,
+      "source_license": "CC-BY-4.0",
+      "source_ref": {
+        "kind": "dev_seed",
+        "name": "deterministic-dev-seed",
+        "path": "tasks/registry.json"
+      },
+      "source_stream": "generated",
+      "statement": "theorem generated_and_left : \u2200 p q : Prop, p \u2227 q \u2192 p := by\n  sorry",
+      "submission_stub": "import Mathlib\n\nnamespace Submission\n\ntheorem generated_and_left : \u2200 p q : Prop, p \u2227 q \u2192 p := by\n  sorry\n\nend Submission\n",
+      "target_sha256": "109467ac80abbf12ed54e2b8bc546b6634c6585423bb4b8fc8d5d00be967a9a0",
+      "task_version": 1,
+      "theorem_name": "generated_and_left",
+      "title": "Generated conjunction left",
+      "triviality_status": "unknown",
+      "type_expr": "\u2200 p q : Prop, p \u2227 q \u2192 p",
+      "verifier_id": "lake-build",
+      "verifier_version": "lemma-lean-v1"
+    },
+    {
+      "activation_status": "paid",
+      "difficulty_band": "easy",
+      "domain_id": "lean",
+      "id": "lemma.generated.and_right",
+      "imports": [
+        "Mathlib"
+      ],
+      "lean_toolchain": "leanprover/lean4:v4.30.0-rc2",
+      "mathlib_rev": "5450b53e5ddc",
+      "metadata": {
+        "baseline_hint": "intro",
+        "difficulty": "dev"
+      },
+      "policy": "restricted_helpers",
+      "queue_depth": 0,
+      "queue_position": 7,
+      "schema_version": 1,
+      "source_license": "CC-BY-4.0",
+      "source_ref": {
+        "kind": "dev_seed",
+        "name": "deterministic-dev-seed",
+        "path": "tasks/registry.json"
+      },
+      "source_stream": "generated",
+      "statement": "theorem generated_and_right : \u2200 p q : Prop, p \u2227 q \u2192 q := by\n  sorry",
+      "submission_stub": "import Mathlib\n\nnamespace Submission\n\ntheorem generated_and_right : \u2200 p q : Prop, p \u2227 q \u2192 q := by\n  sorry\n\nend Submission\n",
+      "target_sha256": "20a0998891a91a332d16b998f6afa14126f21fe2f7b82518592095d1569a11ea",
+      "task_version": 1,
+      "theorem_name": "generated_and_right",
+      "title": "Generated conjunction right",
+      "triviality_status": "unknown",
+      "type_expr": "\u2200 p q : Prop, p \u2227 q \u2192 q",
+      "verifier_id": "lake-build",
+      "verifier_version": "lemma-lean-v1"
+    },
+    {
+      "activation_status": "paid",
+      "difficulty_band": "easy",
+      "domain_id": "lean",
+      "id": "lemma.generated.true_of_prop",
+      "imports": [
+        "Mathlib"
+      ],
+      "lean_toolchain": "leanprover/lean4:v4.30.0-rc2",
+      "mathlib_rev": "5450b53e5ddc",
+      "metadata": {
+        "baseline_hint": "trivial",
+        "difficulty": "dev"
+      },
+      "policy": "restricted_helpers",
+      "queue_depth": 0,
+      "queue_position": 8,
+      "schema_version": 1,
+      "source_license": "CC-BY-4.0",
+      "source_ref": {
+        "kind": "dev_seed",
+        "name": "deterministic-dev-seed",
+        "path": "tasks/registry.json"
+      },
+      "source_stream": "generated",
+      "statement": "theorem generated_true_of_prop : \u2200 p : Prop, p \u2192 True := by\n  sorry",
+      "submission_stub": "import Mathlib\n\nnamespace Submission\n\ntheorem generated_true_of_prop : \u2200 p : Prop, p \u2192 True := by\n  sorry\n\nend Submission\n",
+      "target_sha256": "225ddbc184d073cc6feecede36c59546a354a319579ca7de7109134ff891f456",
+      "task_version": 1,
+      "theorem_name": "generated_true_of_prop",
+      "title": "Generated proof to True",
+      "triviality_status": "unknown",
+      "type_expr": "\u2200 p : Prop, p \u2192 True",
+      "verifier_id": "lake-build",
+      "verifier_version": "lemma-lean-v1"
+    },
+    {
+      "activation_status": "paid",
+      "difficulty_band": "easy",
+      "domain_id": "lean",
+      "id": "lemma.generated.pair_intro",
+      "imports": [
+        "Mathlib"
+      ],
+      "lean_toolchain": "leanprover/lean4:v4.30.0-rc2",
+      "mathlib_rev": "5450b53e5ddc",
+      "metadata": {
+        "baseline_hint": "constructor",
+        "difficulty": "dev"
+      },
+      "policy": "restricted_helpers",
+      "queue_depth": 0,
+      "queue_position": 9,
+      "schema_version": 1,
+      "source_license": "CC-BY-4.0",
+      "source_ref": {
+        "kind": "dev_seed",
+        "name": "deterministic-dev-seed",
+        "path": "tasks/registry.json"
+      },
+      "source_stream": "generated",
+      "statement": "theorem generated_pair_intro : \u2200 p q : Prop, p \u2192 q \u2192 p \u2227 q := by\n  sorry",
+      "submission_stub": "import Mathlib\n\nnamespace Submission\n\ntheorem generated_pair_intro : \u2200 p q : Prop, p \u2192 q \u2192 p \u2227 q := by\n  sorry\n\nend Submission\n",
+      "target_sha256": "3bf9fc5c1b22efe89afc8706cda045192bd26cf17efa900a0905456de9685b49",
+      "task_version": 1,
+      "theorem_name": "generated_pair_intro",
+      "title": "Generated conjunction builder",
+      "triviality_status": "unknown",
+      "type_expr": "\u2200 p q : Prop, p \u2192 q \u2192 p \u2227 q",
+      "verifier_id": "lake-build",
+      "verifier_version": "lemma-lean-v1"
+    },
+    {
+      "activation_status": "paid",
+      "difficulty_band": "easy",
+      "domain_id": "lean",
+      "id": "lemma.generated.or_false",
+      "imports": [
+        "Mathlib"
+      ],
+      "lean_toolchain": "leanprover/lean4:v4.30.0-rc2",
+      "mathlib_rev": "5450b53e5ddc",
+      "metadata": {
+        "baseline_hint": "left",
+        "difficulty": "dev"
+      },
+      "policy": "restricted_helpers",
+      "queue_depth": 0,
+      "queue_position": 10,
+      "schema_version": 1,
+      "source_license": "CC-BY-4.0",
+      "source_ref": {
+        "kind": "dev_seed",
+        "name": "deterministic-dev-seed",
+        "path": "tasks/registry.json"
+      },
+      "source_stream": "generated",
+      "statement": "theorem generated_or_false : \u2200 p : Prop, p \u2192 p \u2228 False := by\n  sorry",
+      "submission_stub": "import Mathlib\n\nnamespace Submission\n\ntheorem generated_or_false : \u2200 p : Prop, p \u2192 p \u2228 False := by\n  sorry\n\nend Submission\n",
+      "target_sha256": "1cc27c4442b59312b3de259e3833b2b5d203fc70c16973c8f27769cb418082ae",
+      "task_version": 1,
+      "theorem_name": "generated_or_false",
+      "title": "Generated right disjunction",
+      "triviality_status": "unknown",
+      "type_expr": "\u2200 p : Prop, p \u2192 p \u2228 False",
+      "verifier_id": "lake-build",
+      "verifier_version": "lemma-lean-v1"
+    },
+    {
+      "activation_status": "paid",
+      "difficulty_band": "easy",
+      "domain_id": "lean",
+      "id": "lemma.generated.false_or",
+      "imports": [
+        "Mathlib"
+      ],
+      "lean_toolchain": "leanprover/lean4:v4.30.0-rc2",
+      "mathlib_rev": "5450b53e5ddc",
+      "metadata": {
+        "baseline_hint": "right",
+        "difficulty": "dev"
+      },
+      "policy": "restricted_helpers",
+      "queue_depth": 0,
+      "queue_position": 11,
+      "schema_version": 1,
+      "source_license": "CC-BY-4.0",
+      "source_ref": {
+        "kind": "dev_seed",
+        "name": "deterministic-dev-seed",
+        "path": "tasks/registry.json"
+      },
+      "source_stream": "generated",
+      "statement": "theorem generated_false_or : \u2200 p : Prop, p \u2192 False \u2228 p := by\n  sorry",
+      "submission_stub": "import Mathlib\n\nnamespace Submission\n\ntheorem generated_false_or : \u2200 p : Prop, p \u2192 False \u2228 p := by\n  sorry\n\nend Submission\n",
+      "target_sha256": "2883bdeb9a07720df25657aef53d4c3618206bfa2012593b6b1d31ac167aba50",
+      "task_version": 1,
+      "theorem_name": "generated_false_or",
+      "title": "Generated left disjunction",
+      "triviality_status": "unknown",
+      "type_expr": "\u2200 p : Prop, p \u2192 False \u2228 p",
+      "verifier_id": "lake-build",
+      "verifier_version": "lemma-lean-v1"
+    },
+    {
+      "activation_status": "paid",
+      "difficulty_band": "easy",
+      "domain_id": "lean",
+      "id": "lemma.generated.eq_symm_nat",
+      "imports": [
+        "Mathlib"
+      ],
+      "lean_toolchain": "leanprover/lean4:v4.30.0-rc2",
+      "mathlib_rev": "5450b53e5ddc",
+      "metadata": {
+        "baseline_hint": "symm",
+        "difficulty": "dev"
+      },
+      "policy": "restricted_helpers",
+      "queue_depth": 0,
+      "queue_position": 12,
+      "schema_version": 1,
+      "source_license": "CC-BY-4.0",
+      "source_ref": {
+        "kind": "dev_seed",
+        "name": "deterministic-dev-seed",
+        "path": "tasks/registry.json"
+      },
+      "source_stream": "generated",
+      "statement": "theorem generated_eq_symm_nat : \u2200 a b : Nat, a = b \u2192 b = a := by\n  sorry",
+      "submission_stub": "import Mathlib\n\nnamespace Submission\n\ntheorem generated_eq_symm_nat : \u2200 a b : Nat, a = b \u2192 b = a := by\n  sorry\n\nend Submission\n",
+      "target_sha256": "1dd8e04bfc70d0f16ee9fcb90360aca130320e702315a4cf159a58acb88b1bbd",
+      "task_version": 1,
+      "theorem_name": "generated_eq_symm_nat",
+      "title": "Generated Nat equality symmetry",
+      "triviality_status": "unknown",
+      "type_expr": "\u2200 a b : Nat, a = b \u2192 b = a",
+      "verifier_id": "lake-build",
+      "verifier_version": "lemma-lean-v1"
+    },
+    {
+      "activation_status": "paid",
+      "difficulty_band": "easy",
+      "domain_id": "lean",
+      "id": "lemma.generated.eq_trans_nat",
+      "imports": [
+        "Mathlib"
+      ],
+      "lean_toolchain": "leanprover/lean4:v4.30.0-rc2",
+      "mathlib_rev": "5450b53e5ddc",
+      "metadata": {
+        "baseline_hint": "trans",
+        "difficulty": "dev"
+      },
+      "policy": "restricted_helpers",
+      "queue_depth": 0,
+      "queue_position": 13,
+      "schema_version": 1,
+      "source_license": "CC-BY-4.0",
+      "source_ref": {
+        "kind": "dev_seed",
+        "name": "deterministic-dev-seed",
+        "path": "tasks/registry.json"
+      },
+      "source_stream": "generated",
+      "statement": "theorem generated_eq_trans_nat : \u2200 a b c : Nat, a = b \u2192 b = c \u2192 a = c := by\n  sorry",
+      "submission_stub": "import Mathlib\n\nnamespace Submission\n\ntheorem generated_eq_trans_nat : \u2200 a b c : Nat, a = b \u2192 b = c \u2192 a = c := by\n  sorry\n\nend Submission\n",
+      "target_sha256": "53788788ccc32c013ab6d4cbb0eedc514dc2c824912f5ba159ad7befcd863e04",
+      "task_version": 1,
+      "theorem_name": "generated_eq_trans_nat",
+      "title": "Generated Nat equality transitivity",
+      "triviality_status": "unknown",
+      "type_expr": "\u2200 a b c : Nat, a = b \u2192 b = c \u2192 a = c",
+      "verifier_id": "lake-build",
+      "verifier_version": "lemma-lean-v1"
+    },
+    {
+      "activation_status": "paid",
+      "difficulty_band": "easy",
+      "domain_id": "lean",
+      "id": "lemma.generated.list_nil_length",
+      "imports": [
+        "Mathlib"
+      ],
+      "lean_toolchain": "leanprover/lean4:v4.30.0-rc2",
+      "mathlib_rev": "5450b53e5ddc",
+      "metadata": {
+        "baseline_hint": "rfl",
+        "difficulty": "dev"
+      },
+      "policy": "restricted_helpers",
+      "queue_depth": 0,
+      "queue_position": 14,
+      "schema_version": 1,
+      "source_license": "CC-BY-4.0",
+      "source_ref": {
+        "kind": "dev_seed",
+        "name": "deterministic-dev-seed",
+        "path": "tasks/registry.json"
+      },
+      "source_stream": "generated",
+      "statement": "theorem generated_list_nil_length : ([] : List Nat).length = 0 := by\n  sorry",
+      "submission_stub": "import Mathlib\n\nnamespace Submission\n\ntheorem generated_list_nil_length : ([] : List Nat).length = 0 := by\n  sorry\n\nend Submission\n",
+      "target_sha256": "17036043bf971e110b091d88f1fdc0c1b7e57d0e436d6da23a0ada2b3e441f88",
+      "task_version": 1,
+      "theorem_name": "generated_list_nil_length",
+      "title": "Generated List nil length",
+      "triviality_status": "unknown",
+      "type_expr": "([] : List Nat).length = 0",
+      "verifier_id": "lake-build",
+      "verifier_version": "lemma-lean-v1"
+    },
+    {
+      "activation_status": "paid",
+      "difficulty_band": "easy",
+      "domain_id": "lean",
+      "id": "lemma.generated.list_append_nil",
+      "imports": [
+        "Mathlib"
+      ],
+      "lean_toolchain": "leanprover/lean4:v4.30.0-rc2",
+      "mathlib_rev": "5450b53e5ddc",
+      "metadata": {
+        "baseline_hint": "simp",
+        "difficulty": "dev"
+      },
+      "policy": "restricted_helpers",
+      "queue_depth": 0,
+      "queue_position": 15,
+      "schema_version": 1,
+      "source_license": "CC-BY-4.0",
+      "source_ref": {
+        "kind": "dev_seed",
+        "name": "deterministic-dev-seed",
+        "path": "tasks/registry.json"
+      },
+      "source_stream": "generated",
+      "statement": "theorem generated_list_append_nil : \u2200 xs : List Nat, xs ++ [] = xs := by\n  sorry",
+      "submission_stub": "import Mathlib\n\nnamespace Submission\n\ntheorem generated_list_append_nil : \u2200 xs : List Nat, xs ++ [] = xs := by\n  sorry\n\nend Submission\n",
+      "target_sha256": "4defc7af0660a83a8ffe1bbe3edd2e45687e5ad1cf8ca9ab25daf5fdc482327f",
+      "task_version": 1,
+      "theorem_name": "generated_list_append_nil",
+      "title": "Generated List append nil",
+      "triviality_status": "unknown",
+      "type_expr": "\u2200 xs : List Nat, xs ++ [] = xs",
+      "verifier_id": "lake-build",
+      "verifier_version": "lemma-lean-v1"
+    },
+    {
+      "activation_status": "paid",
+      "difficulty_band": "easy",
+      "domain_id": "lean",
+      "id": "lemma.generated.list_nil_append",
+      "imports": [
+        "Mathlib"
+      ],
+      "lean_toolchain": "leanprover/lean4:v4.30.0-rc2",
+      "mathlib_rev": "5450b53e5ddc",
+      "metadata": {
+        "baseline_hint": "rfl",
+        "difficulty": "dev"
+      },
+      "policy": "restricted_helpers",
+      "queue_depth": 0,
+      "queue_position": 16,
+      "schema_version": 1,
+      "source_license": "CC-BY-4.0",
+      "source_ref": {
+        "kind": "dev_seed",
+        "name": "deterministic-dev-seed",
+        "path": "tasks/registry.json"
+      },
+      "source_stream": "generated",
+      "statement": "theorem generated_list_nil_append : \u2200 xs : List Nat, ([] : List Nat) ++ xs = xs := by\n  sorry",
+      "submission_stub": "import Mathlib\n\nnamespace Submission\n\ntheorem generated_list_nil_append : \u2200 xs : List Nat, ([] : List Nat) ++ xs = xs := by\n  sorry\n\nend Submission\n",
+      "target_sha256": "479c78700fd3fa775de8243c65e9b7a6090b3d954824bfec685087cfaefe72eb",
+      "task_version": 1,
+      "theorem_name": "generated_list_nil_append",
+      "title": "Generated List nil append",
+      "triviality_status": "unknown",
+      "type_expr": "\u2200 xs : List Nat, ([] : List Nat) ++ xs = xs",
+      "verifier_id": "lake-build",
+      "verifier_version": "lemma-lean-v1"
+    },
+    {
+      "activation_status": "paid",
+      "difficulty_band": "easy",
+      "domain_id": "lean",
+      "id": "lemma.generated.bool_not_false",
+      "imports": [
+        "Mathlib"
+      ],
+      "lean_toolchain": "leanprover/lean4:v4.30.0-rc2",
+      "mathlib_rev": "5450b53e5ddc",
+      "metadata": {
+        "baseline_hint": "rfl",
+        "difficulty": "dev"
+      },
+      "policy": "restricted_helpers",
+      "queue_depth": 0,
+      "queue_position": 17,
+      "schema_version": 1,
+      "source_license": "CC-BY-4.0",
+      "source_ref": {
+        "kind": "dev_seed",
+        "name": "deterministic-dev-seed",
+        "path": "tasks/registry.json"
+      },
+      "source_stream": "generated",
+      "statement": "theorem generated_bool_not_false : Bool.not false = true := by\n  sorry",
+      "submission_stub": "import Mathlib\n\nnamespace Submission\n\ntheorem generated_bool_not_false : Bool.not false = true := by\n  sorry\n\nend Submission\n",
+      "target_sha256": "fe2e5446952dc96a604291c19369aa586893c63e082482edb07144997e21bfe6",
+      "task_version": 1,
+      "theorem_name": "generated_bool_not_false",
+      "title": "Generated Bool not false",
+      "triviality_status": "unknown",
+      "type_expr": "Bool.not false = true",
+      "verifier_id": "lake-build",
+      "verifier_version": "lemma-lean-v1"
+    },
+    {
+      "activation_status": "paid",
+      "difficulty_band": "easy",
+      "domain_id": "lean",
+      "id": "lemma.generated.bool_not_true",
+      "imports": [
+        "Mathlib"
+      ],
+      "lean_toolchain": "leanprover/lean4:v4.30.0-rc2",
+      "mathlib_rev": "5450b53e5ddc",
+      "metadata": {
+        "baseline_hint": "rfl",
+        "difficulty": "dev"
+      },
+      "policy": "restricted_helpers",
+      "queue_depth": 0,
+      "queue_position": 18,
+      "schema_version": 1,
+      "source_license": "CC-BY-4.0",
+      "source_ref": {
+        "kind": "dev_seed",
+        "name": "deterministic-dev-seed",
+        "path": "tasks/registry.json"
+      },
+      "source_stream": "generated",
+      "statement": "theorem generated_bool_not_true : Bool.not true = false := by\n  sorry",
+      "submission_stub": "import Mathlib\n\nnamespace Submission\n\ntheorem generated_bool_not_true : Bool.not true = false := by\n  sorry\n\nend Submission\n",
+      "target_sha256": "36210b417e7069a617edf11db84ecb43bcaa8b272dff6a253d021b74dbfb1d92",
+      "task_version": 1,
+      "theorem_name": "generated_bool_not_true",
+      "title": "Generated Bool not true",
+      "triviality_status": "unknown",
+      "type_expr": "Bool.not true = false",
+      "verifier_id": "lake-build",
+      "verifier_version": "lemma-lean-v1"
+    },
+    {
+      "activation_status": "paid",
+      "difficulty_band": "easy",
+      "domain_id": "lean",
+      "id": "lemma.generated.nat_succ_ne_zero",
+      "imports": [
+        "Mathlib"
+      ],
+      "lean_toolchain": "leanprover/lean4:v4.30.0-rc2",
+      "mathlib_rev": "5450b53e5ddc",
+      "metadata": {
+        "baseline_hint": "simp",
+        "difficulty": "dev"
+      },
+      "policy": "restricted_helpers",
+      "queue_depth": 0,
+      "queue_position": 19,
+      "schema_version": 1,
+      "source_license": "CC-BY-4.0",
+      "source_ref": {
+        "kind": "dev_seed",
+        "name": "deterministic-dev-seed",
+        "path": "tasks/registry.json"
+      },
+      "source_stream": "generated",
+      "statement": "theorem generated_nat_succ_ne_zero : \u2200 n : Nat, Nat.succ n \u2260 0 := by\n  sorry",
+      "submission_stub": "import Mathlib\n\nnamespace Submission\n\ntheorem generated_nat_succ_ne_zero : \u2200 n : Nat, Nat.succ n \u2260 0 := by\n  sorry\n\nend Submission\n",
+      "target_sha256": "350ce829fb58d01d6d49d14eca85bb7479eb98f52aa4d93d05986f1da354b771",
+      "task_version": 1,
+      "theorem_name": "generated_nat_succ_ne_zero",
+      "title": "Generated Nat succ nonzero",
+      "triviality_status": "unknown",
+      "type_expr": "\u2200 n : Nat, Nat.succ n \u2260 0",
+      "verifier_id": "lake-build",
+      "verifier_version": "lemma-lean-v1"
+    },
+    {
+      "activation_status": "paid",
+      "difficulty_band": "easy",
+      "domain_id": "lean",
+      "id": "lemma.generated.nat_zero_ne_succ",
+      "imports": [
+        "Mathlib"
+      ],
+      "lean_toolchain": "leanprover/lean4:v4.30.0-rc2",
+      "mathlib_rev": "5450b53e5ddc",
+      "metadata": {
+        "baseline_hint": "simp",
+        "difficulty": "dev"
+      },
+      "policy": "restricted_helpers",
+      "queue_depth": 0,
+      "queue_position": 20,
+      "schema_version": 1,
+      "source_license": "CC-BY-4.0",
+      "source_ref": {
+        "kind": "dev_seed",
+        "name": "deterministic-dev-seed",
+        "path": "tasks/registry.json"
+      },
+      "source_stream": "generated",
+      "statement": "theorem generated_nat_zero_ne_succ : \u2200 n : Nat, 0 \u2260 Nat.succ n := by\n  sorry",
+      "submission_stub": "import Mathlib\n\nnamespace Submission\n\ntheorem generated_nat_zero_ne_succ : \u2200 n : Nat, 0 \u2260 Nat.succ n := by\n  sorry\n\nend Submission\n",
+      "target_sha256": "ca450d5925b1303d02d1db62413014f44a51ca5b9103c57d7bc5d299a501ae86",
+      "task_version": 1,
+      "theorem_name": "generated_nat_zero_ne_succ",
+      "title": "Generated Nat zero not succ",
+      "triviality_status": "unknown",
+      "type_expr": "\u2200 n : Nat, 0 \u2260 Nat.succ n",
+      "verifier_id": "lake-build",
+      "verifier_version": "lemma-lean-v1"
+    },
+    {
+      "activation_status": "paid",
+      "difficulty_band": "easy",
+      "domain_id": "lean",
+      "id": "lemma.generated.nat_le_refl",
+      "imports": [
+        "Mathlib"
+      ],
+      "lean_toolchain": "leanprover/lean4:v4.30.0-rc2",
+      "mathlib_rev": "5450b53e5ddc",
+      "metadata": {
+        "baseline_hint": "rfl",
+        "difficulty": "dev"
+      },
+      "policy": "restricted_helpers",
+      "queue_depth": 0,
+      "queue_position": 21,
+      "schema_version": 1,
+      "source_license": "CC-BY-4.0",
+      "source_ref": {
+        "kind": "dev_seed",
+        "name": "deterministic-dev-seed",
+        "path": "tasks/registry.json"
+      },
+      "source_stream": "generated",
+      "statement": "theorem generated_nat_le_refl : \u2200 n : Nat, n \u2264 n := by\n  sorry",
+      "submission_stub": "import Mathlib\n\nnamespace Submission\n\ntheorem generated_nat_le_refl : \u2200 n : Nat, n \u2264 n := by\n  sorry\n\nend Submission\n",
+      "target_sha256": "b8185b3b051a6f30b37dcbc3deef30e169dc2e99db634071d4b1957387703eef",
+      "task_version": 1,
+      "theorem_name": "generated_nat_le_refl",
+      "title": "Generated Nat le refl",
+      "triviality_status": "unknown",
+      "type_expr": "\u2200 n : Nat, n \u2264 n",
+      "verifier_id": "lake-build",
+      "verifier_version": "lemma-lean-v1"
+    },
+    {
+      "activation_status": "paid",
+      "difficulty_band": "easy",
+      "domain_id": "lean",
+      "id": "lemma.generated.nat_lt_succ_self",
+      "imports": [
+        "Mathlib"
+      ],
+      "lean_toolchain": "leanprover/lean4:v4.30.0-rc2",
+      "mathlib_rev": "5450b53e5ddc",
+      "metadata": {
+        "baseline_hint": "simp",
+        "difficulty": "dev"
+      },
+      "policy": "restricted_helpers",
+      "queue_depth": 0,
+      "queue_position": 22,
+      "schema_version": 1,
+      "source_license": "CC-BY-4.0",
+      "source_ref": {
+        "kind": "dev_seed",
+        "name": "deterministic-dev-seed",
+        "path": "tasks/registry.json"
+      },
+      "source_stream": "generated",
+      "statement": "theorem generated_nat_lt_succ_self : \u2200 n : Nat, n < Nat.succ n := by\n  sorry",
+      "submission_stub": "import Mathlib\n\nnamespace Submission\n\ntheorem generated_nat_lt_succ_self : \u2200 n : Nat, n < Nat.succ n := by\n  sorry\n\nend Submission\n",
+      "target_sha256": "58735a2681a668f3b0661a9daf9fbf36f45df80ea57ee524fb3376303c664a6d",
+      "task_version": 1,
+      "theorem_name": "generated_nat_lt_succ_self",
+      "title": "Generated Nat lt successor",
+      "triviality_status": "unknown",
+      "type_expr": "\u2200 n : Nat, n < Nat.succ n",
+      "verifier_id": "lake-build",
+      "verifier_version": "lemma-lean-v1"
+    },
+    {
+      "activation_status": "paid",
+      "difficulty_band": "easy",
+      "domain_id": "lean",
+      "id": "lemma.generated.nat_one_add",
+      "imports": [
+        "Mathlib"
+      ],
+      "lean_toolchain": "leanprover/lean4:v4.30.0-rc2",
+      "mathlib_rev": "5450b53e5ddc",
+      "metadata": {
+        "baseline_hint": "simp",
+        "difficulty": "dev"
+      },
+      "policy": "restricted_helpers",
+      "queue_depth": 0,
+      "queue_position": 23,
+      "schema_version": 1,
+      "source_license": "CC-BY-4.0",
+      "source_ref": {
+        "kind": "dev_seed",
+        "name": "deterministic-dev-seed",
+        "path": "tasks/registry.json"
+      },
+      "source_stream": "generated",
+      "statement": "theorem generated_nat_one_add : \u2200 n : Nat, 1 + n = Nat.succ n := by\n  sorry",
+      "submission_stub": "import Mathlib\n\nnamespace Submission\n\ntheorem generated_nat_one_add : \u2200 n : Nat, 1 + n = Nat.succ n := by\n  sorry\n\nend Submission\n",
+      "target_sha256": "712014f9badc5b87dce076e3f8ce575c695f9f724642c80a1be376db2aa8d972",
+      "task_version": 1,
+      "theorem_name": "generated_nat_one_add",
+      "title": "Generated Nat one add",
+      "triviality_status": "unknown",
+      "type_expr": "\u2200 n : Nat, 1 + n = Nat.succ n",
+      "verifier_id": "lake-build",
+      "verifier_version": "lemma-lean-v1"
+    },
+    {
+      "activation_status": "paid",
+      "difficulty_band": "easy",
+      "domain_id": "lean",
+      "id": "lemma.generated.nat_succ_eq_add_one",
+      "imports": [
+        "Mathlib"
+      ],
+      "lean_toolchain": "leanprover/lean4:v4.30.0-rc2",
+      "mathlib_rev": "5450b53e5ddc",
+      "metadata": {
+        "baseline_hint": "simp",
+        "difficulty": "dev"
+      },
+      "policy": "restricted_helpers",
+      "queue_depth": 0,
+      "queue_position": 24,
+      "schema_version": 1,
+      "source_license": "CC-BY-4.0",
+      "source_ref": {
+        "kind": "dev_seed",
+        "name": "deterministic-dev-seed",
+        "path": "tasks/registry.json"
+      },
+      "source_stream": "generated",
+      "statement": "theorem generated_nat_succ_eq_add_one : \u2200 n : Nat, Nat.succ n = n + 1 := by\n  sorry",
+      "submission_stub": "import Mathlib\n\nnamespace Submission\n\ntheorem generated_nat_succ_eq_add_one : \u2200 n : Nat, Nat.succ n = n + 1 := by\n  sorry\n\nend Submission\n",
+      "target_sha256": "244091d88dce90d0ff506dc6ab2a2a7d7983f4f1fc49fdae336a0b8c56973e4f",
+      "task_version": 1,
+      "theorem_name": "generated_nat_succ_eq_add_one",
+      "title": "Generated Nat succ add-one",
+      "triviality_status": "unknown",
+      "type_expr": "\u2200 n : Nat, Nat.succ n = n + 1",
+      "verifier_id": "lake-build",
+      "verifier_version": "lemma-lean-v1"
+    },
+    {
+      "activation_status": "paid",
+      "difficulty_band": "easy",
+      "domain_id": "lean",
+      "id": "lemma.generated.not_false",
+      "imports": [
+        "Mathlib"
+      ],
+      "lean_toolchain": "leanprover/lean4:v4.30.0-rc2",
+      "mathlib_rev": "5450b53e5ddc",
+      "metadata": {
+        "baseline_hint": "intro",
+        "difficulty": "dev"
+      },
+      "policy": "restricted_helpers",
+      "queue_depth": 0,
+      "queue_position": 25,
+      "schema_version": 1,
+      "source_license": "CC-BY-4.0",
+      "source_ref": {
+        "kind": "dev_seed",
+        "name": "deterministic-dev-seed",
+        "path": "tasks/registry.json"
+      },
+      "source_stream": "generated",
+      "statement": "theorem generated_not_false : \u00ac False := by\n  sorry",
+      "submission_stub": "import Mathlib\n\nnamespace Submission\n\ntheorem generated_not_false : \u00ac False := by\n  sorry\n\nend Submission\n",
+      "target_sha256": "3eb5fd2bcc8c5fe82f8329d08fd0e52bcd267a779779c24eb18b14fae440582f",
+      "task_version": 1,
+      "theorem_name": "generated_not_false",
+      "title": "Generated not false",
+      "triviality_status": "unknown",
+      "type_expr": "\u00ac False",
+      "verifier_id": "lake-build",
+      "verifier_version": "lemma-lean-v1"
+    },
+    {
+      "activation_status": "paid",
+      "difficulty_band": "easy",
+      "domain_id": "lean",
+      "id": "lemma.generated.true_or_false",
+      "imports": [
+        "Mathlib"
+      ],
+      "lean_toolchain": "leanprover/lean4:v4.30.0-rc2",
+      "mathlib_rev": "5450b53e5ddc",
+      "metadata": {
+        "baseline_hint": "left",
+        "difficulty": "dev"
+      },
+      "policy": "restricted_helpers",
+      "queue_depth": 0,
+      "queue_position": 26,
+      "schema_version": 1,
+      "source_license": "CC-BY-4.0",
+      "source_ref": {
+        "kind": "dev_seed",
+        "name": "deterministic-dev-seed",
+        "path": "tasks/registry.json"
+      },
+      "source_stream": "generated",
+      "statement": "theorem generated_true_or_false : True \u2228 False := by\n  sorry",
+      "submission_stub": "import Mathlib\n\nnamespace Submission\n\ntheorem generated_true_or_false : True \u2228 False := by\n  sorry\n\nend Submission\n",
+      "target_sha256": "6295461c998e0ab16c0c8f01b929ffb6f14b0e94a4f92bdc9d6f17b2b03263d0",
+      "task_version": 1,
+      "theorem_name": "generated_true_or_false",
+      "title": "Generated true or false",
+      "triviality_status": "unknown",
+      "type_expr": "True \u2228 False",
+      "verifier_id": "lake-build",
+      "verifier_version": "lemma-lean-v1"
+    },
+    {
+      "activation_status": "paid",
+      "difficulty_band": "easy",
+      "domain_id": "lean",
+      "id": "lemma.generated.false_implies",
+      "imports": [
+        "Mathlib"
+      ],
+      "lean_toolchain": "leanprover/lean4:v4.30.0-rc2",
+      "mathlib_rev": "5450b53e5ddc",
+      "metadata": {
+        "baseline_hint": "cases",
+        "difficulty": "dev"
+      },
+      "policy": "restricted_helpers",
+      "queue_depth": 0,
+      "queue_position": 27,
+      "schema_version": 1,
+      "source_license": "CC-BY-4.0",
+      "source_ref": {
+        "kind": "dev_seed",
+        "name": "deterministic-dev-seed",
+        "path": "tasks/registry.json"
+      },
+      "source_stream": "generated",
+      "statement": "theorem generated_false_implies : \u2200 p : Prop, False \u2192 p := by\n  sorry",
+      "submission_stub": "import Mathlib\n\nnamespace Submission\n\ntheorem generated_false_implies : \u2200 p : Prop, False \u2192 p := by\n  sorry\n\nend Submission\n",
+      "target_sha256": "908797c912dcfe62c302aaaa54138ad2266a877e7caba9dc7781c093e78dd14d",
+      "task_version": 1,
+      "theorem_name": "generated_false_implies",
+      "title": "Generated false elimination",
+      "triviality_status": "unknown",
+      "type_expr": "\u2200 p : Prop, False \u2192 p",
+      "verifier_id": "lake-build",
+      "verifier_version": "lemma-lean-v1"
+    },
+    {
+      "activation_status": "paid",
+      "difficulty_band": "easy",
+      "domain_id": "lean",
+      "id": "lemma.generated.and_comm_from_hyp",
+      "imports": [
+        "Mathlib"
+      ],
+      "lean_toolchain": "leanprover/lean4:v4.30.0-rc2",
+      "mathlib_rev": "5450b53e5ddc",
+      "metadata": {
+        "baseline_hint": "constructor",
+        "difficulty": "dev"
+      },
+      "policy": "restricted_helpers",
+      "queue_depth": 0,
+      "queue_position": 28,
+      "schema_version": 1,
+      "source_license": "CC-BY-4.0",
+      "source_ref": {
+        "kind": "dev_seed",
+        "name": "deterministic-dev-seed",
+        "path": "tasks/registry.json"
+      },
+      "source_stream": "generated",
+      "statement": "theorem generated_and_comm_from_hyp : \u2200 p q : Prop, p \u2227 q \u2192 q \u2227 p := by\n  sorry",
+      "submission_stub": "import Mathlib\n\nnamespace Submission\n\ntheorem generated_and_comm_from_hyp : \u2200 p q : Prop, p \u2227 q \u2192 q \u2227 p := by\n  sorry\n\nend Submission\n",
+      "target_sha256": "87b3af21a00df345fd0d62c528b2d59ef1b2201b8559978e10bc93aa18df09b6",
+      "task_version": 1,
+      "theorem_name": "generated_and_comm_from_hyp",
+      "title": "Generated conjunction commutes",
+      "triviality_status": "unknown",
+      "type_expr": "\u2200 p q : Prop, p \u2227 q \u2192 q \u2227 p",
+      "verifier_id": "lake-build",
+      "verifier_version": "lemma-lean-v1"
+    },
+    {
+      "activation_status": "paid",
+      "difficulty_band": "easy",
+      "domain_id": "lean",
+      "id": "lemma.generated.exists_zero",
+      "imports": [
+        "Mathlib"
+      ],
+      "lean_toolchain": "leanprover/lean4:v4.30.0-rc2",
+      "mathlib_rev": "5450b53e5ddc",
+      "metadata": {
+        "baseline_hint": "exists",
+        "difficulty": "dev"
+      },
+      "policy": "restricted_helpers",
+      "queue_depth": 0,
+      "queue_position": 29,
+      "schema_version": 1,
+      "source_license": "CC-BY-4.0",
+      "source_ref": {
+        "kind": "dev_seed",
+        "name": "deterministic-dev-seed",
+        "path": "tasks/registry.json"
+      },
+      "source_stream": "generated",
+      "statement": "theorem generated_exists_zero : \u2203 n : Nat, n = 0 := by\n  sorry",
+      "submission_stub": "import Mathlib\n\nnamespace Submission\n\ntheorem generated_exists_zero : \u2203 n : Nat, n = 0 := by\n  sorry\n\nend Submission\n",
+      "target_sha256": "db8d91251f2b69fcad461998aeb84f214a4b7a25bca4f0c5c9718897ad02afe2",
+      "task_version": 1,
+      "theorem_name": "generated_exists_zero",
+      "title": "Generated exists zero",
+      "triviality_status": "unknown",
+      "type_expr": "\u2203 n : Nat, n = 0",
+      "verifier_id": "lake-build",
+      "verifier_version": "lemma-lean-v1"
+    },
+    {
+      "activation_status": "paid",
+      "difficulty_band": "easy",
+      "domain_id": "lean",
+      "id": "lemma.generated.zero_le",
+      "imports": [
+        "Mathlib"
+      ],
+      "lean_toolchain": "leanprover/lean4:v4.30.0-rc2",
+      "mathlib_rev": "5450b53e5ddc",
+      "metadata": {
+        "baseline_hint": "simp",
+        "difficulty": "dev"
+      },
+      "policy": "restricted_helpers",
+      "queue_depth": 0,
+      "queue_position": 30,
+      "schema_version": 1,
+      "source_license": "CC-BY-4.0",
+      "source_ref": {
+        "kind": "dev_seed",
+        "name": "deterministic-dev-seed",
+        "path": "tasks/registry.json"
+      },
+      "source_stream": "generated",
+      "statement": "theorem generated_zero_le : \u2200 n : Nat, 0 \u2264 n := by\n  sorry",
+      "submission_stub": "import Mathlib\n\nnamespace Submission\n\ntheorem generated_zero_le : \u2200 n : Nat, 0 \u2264 n := by\n  sorry\n\nend Submission\n",
+      "target_sha256": "e8bd500e83767f96e82f3e4ae99bfaf66d8d8ae35b83693bda87613dc975998b",
+      "task_version": 1,
+      "theorem_name": "generated_zero_le",
+      "title": "Generated zero le Nat",
+      "triviality_status": "unknown",
+      "type_expr": "\u2200 n : Nat, 0 \u2264 n",
+      "verifier_id": "lake-build",
+      "verifier_version": "lemma-lean-v1"
     }
   ]
 }

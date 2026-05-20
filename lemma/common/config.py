@@ -65,6 +65,7 @@ class LemmaSettings(BaseSettings):
     active_task_count: int = Field(default=20, ge=1, validation_alias="LEMMA_ACTIVE_K")
     frontier_depth: int = Field(default=0, ge=0, validation_alias="LEMMA_FRONTIER_DEPTH")
     active_queue_seed: str = Field(default="lemma-active-queue", validation_alias="LEMMA_ACTIVE_QUEUE_SEED")
+    active_tempo_seconds: int = Field(default=3600, ge=1, validation_alias="LEMMA_ACTIVE_TEMPO_SECONDS")
     schema_version: str = Field(default="v2", validation_alias="LEMMA_SCHEMA_VERSION")
     enabled_domains: tuple[str, ...] = Field(default=("lean",), validation_alias="LEMMA_ENABLED_DOMAINS")
     experimental_domains: tuple[str, ...] = Field(default=(), validation_alias="LEMMA_EXPERIMENTAL_DOMAINS")

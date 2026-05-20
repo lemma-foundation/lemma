@@ -59,17 +59,18 @@ def initial_active_pool(
     queue = deterministic_task_queue(tuple(task for task in tasks if task.queue_depth <= frontier_depth), seed=seed)
     if active_K > len(queue):
         raise ValueError("active_K exceeds queue length")
+    start = 0 if not queue else (tempo * active_K) % len(queue)
     slots = tuple(
         ActiveSlot(
             slot_id=index,
-            task_id=task.id,
+            task_id=queue[queue_index].id,
             opened_tempo=tempo,
-            queue_position=index,
-            queue_depth=task.queue_depth,
+            queue_position=queue_index,
+            queue_depth=queue[queue_index].queue_depth,
         )
-        for index, task in enumerate(queue[:active_K])
+        for index, queue_index in enumerate((start + offset) % len(queue) for offset in range(active_K))
     )
-    return ActivePool(queue=queue, slots=slots, next_index=active_K)
+    return ActivePool(queue=queue, slots=slots, next_index=start + active_K)
 
 
 def advance_active_pool(

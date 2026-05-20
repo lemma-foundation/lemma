@@ -66,6 +66,12 @@ def _now() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
+def current_active_tempo(settings: LemmaSettings, *, now: datetime | None = None) -> int:
+    """Return the wall-clock tempo used for the active task window."""
+    instant = now or datetime.now(UTC)
+    return int(instant.timestamp() // settings.active_tempo_seconds)
+
+
 def _weight_receipt(
     *,
     submitted_at: str,
@@ -117,10 +123,11 @@ def active_tasks_for_validation(
     active_k = min(settings.active_task_count, len(candidates))
     if active_k == 0:
         return ()
+    active_tempo = current_active_tempo(settings) if tempo is None else tempo
     pool = initial_active_pool(
         candidates,
         active_K=active_k,
-        tempo=tempo or 0,
+        tempo=active_tempo,
         seed=settings.active_queue_seed,
         frontier_depth=settings.frontier_depth,
     )
