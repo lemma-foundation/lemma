@@ -43,6 +43,18 @@ def _staged_paths(repo: Path) -> list[str]:
     return [line for line in result.stdout.splitlines() if line.strip()]
 
 
+def _tracked_changes(repo: Path) -> list[str]:
+    result = _git(repo, "status", "--porcelain", "--untracked-files=no")
+    return [line for line in result.stdout.splitlines() if line.strip()]
+
+
+def _sync_site_repo(repo: Path) -> None:
+    changed = _tracked_changes(repo)
+    if changed:
+        raise SystemExit(f"site repo has local tracked changes: {', '.join(changed)}")
+    _git(repo, "pull", "--ff-only")
+
+
 def _assert_public_staged_diff(repo: Path) -> None:
     diff = _git(repo, "diff", "--cached").stdout
     if match := LEAK_PATTERN.search(diff):
@@ -77,6 +89,8 @@ def main() -> int:
 
     site_repo = args.site_repo.resolve()
     output = args.output if args.output.is_absolute() else site_repo / args.output
+    if args.commit or args.push:
+        _sync_site_repo(site_repo)
     snapshot = build_current_problems_snapshot(LemmaSettings(), tempo=args.tempo)
     write_current_problems_snapshot(output, snapshot)
 
