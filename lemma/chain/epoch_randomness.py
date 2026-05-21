@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 DRAND_QUICKNET_CHAIN_HASH = "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971"
 DRAND_QUICKNET_GENESIS_TIME = 1_692_803_367
 DRAND_QUICKNET_PERIOD_SECONDS = 3
+_MILLISECONDS_TIMESTAMP_FLOOR = 10_000_000_000
 
 
 class _SubnetHyperparameters(Protocol):
@@ -63,6 +64,10 @@ def drand_round_for_timestamp(timestamp: int) -> int:
     return ((timestamp - DRAND_QUICKNET_GENESIS_TIME) // DRAND_QUICKNET_PERIOD_SECONDS) + 1
 
 
+def _unix_timestamp_seconds(timestamp: int) -> int:
+    return timestamp // 1000 if timestamp >= _MILLISECONDS_TIMESTAMP_FLOOR else timestamp
+
+
 def resolve_chain_drand_epoch_randomness(
     settings: LemmaSettings,
     *,
@@ -97,7 +102,7 @@ def resolve_chain_drand_epoch_randomness(
     block_info = cast(_BlockInfo | None, subtensor.get_block_info(block=anchor_block))
     if block_info is None or block_info.timestamp is None:
         raise RuntimeError("anchor block timestamp is unavailable")
-    anchor_timestamp = int(block_info.timestamp)
+    anchor_timestamp = _unix_timestamp_seconds(int(block_info.timestamp))
     drand_round = drand_round_for_timestamp(anchor_timestamp)
     signature = drand_signature_for_round(drand_round)
 
