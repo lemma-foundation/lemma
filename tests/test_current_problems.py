@@ -158,6 +158,18 @@ def test_current_problem_service_serves_snapshot() -> None:
     assert payload["task_count"] == 1
 
 
+def test_current_problem_service_fails_closed() -> None:
+    def snapshot_builder(_settings: LemmaSettings, *, tempo: int | None = None):
+        raise RuntimeError("private detail")
+
+    service = CurrentProblemService(LemmaSettings(), snapshot_builder=snapshot_builder)
+    status, body = service.response("/current-problems.json")
+    payload = json.loads(body)
+
+    assert status == 503
+    assert payload == {"error": "problem feed unavailable"}
+
+
 def test_current_problem_service_has_health_and_404() -> None:
     service = CurrentProblemService(LemmaSettings())
 

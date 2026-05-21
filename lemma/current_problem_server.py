@@ -31,7 +31,10 @@ class CurrentProblemService:
         if path == "/healthz":
             return HTTPStatus.OK, b'{"ok":true}\n'
         if path in {"/", "/current-problems.json"}:
-            snapshot = self.snapshot_builder(self.settings, tempo=self.tempo)
+            try:
+                snapshot = self.snapshot_builder(self.settings, tempo=self.tempo)
+            except Exception:
+                return HTTPStatus.SERVICE_UNAVAILABLE, b'{"error":"problem feed unavailable"}\n'
             payload = snapshot.model_dump(mode="json", exclude_none=True)
             return HTTPStatus.OK, (json.dumps(payload, sort_keys=True) + "\n").encode()
         return HTTPStatus.NOT_FOUND, b'{"error":"not found"}\n'
