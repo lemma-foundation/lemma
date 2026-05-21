@@ -174,6 +174,7 @@ def _procedural_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> Ta
     from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
     from lemma.supply.procedural import (
         build_procedural_registry_tasks,
+        corpus_sources_from_dir,
         generate_depth2_candidates,
         source_pool_hash,
     )
@@ -182,6 +183,8 @@ def _procedural_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> Ta
         raise RuntimeError("procedural supply requires LEMMA_PROCEDURAL_SOURCE_JSONL")
     source_limit = settings.procedural_source_limit or None
     sources = mathlib_candidates_from_jsonl(settings.procedural_source_jsonl, limit=source_limit)
+    if settings.procedural_prior_corpus_dir is not None:
+        sources = sources + corpus_sources_from_dir(settings.procedural_prior_corpus_dir, before_tempo=tempo)
     actual_source_hash = source_pool_hash(sources)
     expected_source_hash = (settings.procedural_source_sha256_expected or "").strip().lower().removeprefix("sha256:")
     if expected_source_hash and actual_source_hash != expected_source_hash:
@@ -201,6 +204,8 @@ def _procedural_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> Ta
         epoch_randomness=epoch_randomness,
         count=count,
         tempo=tempo,
+        citation_alpha=settings.procedural_citation_alpha,
+        citation_weight_cap=settings.procedural_citation_weight_cap,
     )
     build = build_procedural_registry_tasks(candidates, seed=generation_seed, frontier_depth=settings.frontier_depth)
     if build.rejected:
@@ -430,6 +435,20 @@ def validate_once(
             )
             continue
         chain_authenticated = (task.id, submission.solver_hotkey, submission.proof_sha256) in chain_authenticated_keys
+        if settings.protocol_mode == "production" and not chain_authenticated:
+            receipts.append(
+                {
+                    "received_at": received_at,
+                    "task_id": task.id,
+                    "task_version": task.task_version,
+                    "target_sha256": task.target_sha256,
+                    "solver_hotkey": submission.solver_hotkey,
+                    "proof_sha256": submission.proof_sha256,
+                    "accepted": False,
+                    "reason": "production_requires_bucket_chain_authentication",
+                }
+            )
+            continue
         try:
             validate_submission_for_task(
                 submission,

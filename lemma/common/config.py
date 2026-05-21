@@ -58,6 +58,10 @@ class LemmaSettings(BaseSettings):
         validation_alias="LEMMA_TASK_REGISTRY_SHA256_EXPECTED",
     )
     procedural_source_jsonl: Path | None = Field(default=None, validation_alias="LEMMA_PROCEDURAL_SOURCE_JSONL")
+    procedural_prior_corpus_dir: Path | None = Field(
+        default=None,
+        validation_alias="LEMMA_PROCEDURAL_PRIOR_CORPUS_DIR",
+    )
     procedural_source_sha256_expected: str | None = Field(
         default=None,
         validation_alias="LEMMA_PROCEDURAL_SOURCE_SHA256_EXPECTED",
@@ -68,6 +72,17 @@ class LemmaSettings(BaseSettings):
     )
     procedural_source_limit: int = Field(default=0, ge=0, validation_alias="LEMMA_PROCEDURAL_SOURCE_LIMIT")
     procedural_candidate_count: int = Field(default=0, ge=0, validation_alias="LEMMA_PROCEDURAL_CANDIDATE_COUNT")
+    procedural_citation_alpha: float = Field(
+        default=0.25,
+        ge=0.0,
+        le=1.0,
+        validation_alias="LEMMA_PROCEDURAL_CITATION_ALPHA",
+    )
+    procedural_citation_weight_cap: float = Field(
+        default=100.0,
+        ge=1.0,
+        validation_alias="LEMMA_PROCEDURAL_CITATION_WEIGHT_CAP",
+    )
     verify_registry_signatures: bool = Field(
         default=False,
         validation_alias="LEMMA_VERIFY_REGISTRY_SIGNATURES",

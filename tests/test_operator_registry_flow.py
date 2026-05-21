@@ -8,11 +8,17 @@ from pathlib import Path
 import pytest
 from bittensor_wallet import Keypair
 from click.testing import CliRunner
+from lemma.chain.commitments import (
+    ciphertext_sha256,
+    miner_bucket_commitment_payload,
+    miner_submission_merkle_root,
+)
+from lemma.chain.miner_buckets import MinerBucketReveal, RevealedBucketBlob
 from lemma.cli.main import main
 from lemma.common.config import LemmaSettings
 from lemma.lean.sandbox import VerifyResult
 from lemma.operator import OperatorDiagnosticsReport, OperatorPreflightReport, OperatorRegistryInspectReport
-from lemma.submissions import build_submission, sign_submission
+from lemma.submissions import build_submission
 from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
 from lemma.supply.procedural import procedural_operator_bundle_hash, source_pool_hash
 from lemma.tasks import load_task_registry
@@ -338,23 +344,42 @@ def test_production_like_procedural_submission_smoke(monkeypatch: pytest.MonkeyP
     active_task = active_tasks_for_validation(registry, base_settings, tempo=0)[0]
 
     miner_keypair = Keypair.create_from_uri("//LemmaMainnetReadinessMiner")
-    submission = sign_submission(
-        build_submission(
-            active_task,
-            solver_hotkey=miner_keypair.ss58_address,
-            proof_script=_proof_for(active_task.theorem_name),
-        ).model_copy(
-            update={
-                "timelock_ciphertext": "ciphertext",
-                "drand_round": 10,
-                "commit_block": 42,
-                "commit_extrinsic_hash": "0xabc",
-            }
-        ),
-        miner_keypair,
+    proof_script = _proof_for(active_task.theorem_name)
+    ciphertext = "cipher-mainnet-readiness"
+    merkle_root = miner_submission_merkle_root(((0, ciphertext_sha256(ciphertext.encode("utf-8"))),))
+    bucket_reveals_jsonl = tmp_path / "bucket-reveals.jsonl"
+    reveal = MinerBucketReveal(
+        tempo=0,
+        miner_hotkey=miner_keypair.ss58_address,
+        drand_round=10,
+        drand_signature="0xsig",
+        commit_block=42,
+        commit_extrinsic_hash="0xabc",
+        merkle_root=merkle_root,
+        bucket_url="https://bucket.example/mainnet-readiness",
+        blobs=(RevealedBucketBlob(slot_index=0, ciphertext=ciphertext, proof_script=proof_script),),
     )
-    submissions_jsonl = tmp_path / "submissions.jsonl"
-    submissions_jsonl.write_text(submission.model_dump_json(exclude_none=True) + "\n", encoding="utf-8")
+    bucket_reveals_jsonl.write_text(reveal.model_dump_json() + "\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "lemma.chain.commitments.read_all_commitments",
+        lambda settings: {
+            miner_keypair.ss58_address: miner_bucket_commitment_payload(
+                tempo=0,
+                drand_round=10,
+                merkle_root=merkle_root,
+            )
+        },
+    )
+
+    import lemma.chain.miner_buckets as miner_buckets
+
+    convert_bucket_reveals = miner_buckets.submissions_from_bucket_reveals
+
+    def fake_bucket_reveals(*args: object, **kwargs: object):
+        kwargs["decrypt_timelocked"] = lambda ciphertext, signature: proof_script.encode("utf-8")
+        return convert_bucket_reveals(*args, **kwargs)
+
+    monkeypatch.setattr(miner_buckets, "submissions_from_bucket_reveals", fake_bucket_reveals)
 
     env = {
         "LEMMA_PREFER_PROCESS_ENV": "1",
@@ -407,8 +432,8 @@ def test_production_like_procedural_submission_smoke(monkeypatch: pytest.MonkeyP
         [
             "validate",
             "--once",
-            "--submissions-jsonl",
-            str(submissions_jsonl),
+            "--bucket-reveals-jsonl",
+            str(bucket_reveals_jsonl),
             "--validator-hotkey",
             "validator-mainnet-readiness",
             "--no-set-weights",

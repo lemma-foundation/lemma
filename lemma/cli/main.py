@@ -486,6 +486,9 @@ def tasks_build_mixed_registry_cmd(
 @click.option("--tempo", type=click.IntRange(min=0), required=True)
 @click.option("--count", type=click.IntRange(min=1), default=20, show_default=True)
 @click.option("--source-limit", type=click.IntRange(min=1), default=None)
+@click.option("--prior-corpus-dir", type=click.Path(file_okay=False, path_type=Path), default=None)
+@click.option("--citation-alpha", type=click.FloatRange(min=0.0, max=1.0), default=0.25, show_default=True)
+@click.option("--citation-weight-cap", type=click.FloatRange(min=1.0), default=100.0, show_default=True)
 def tasks_generate_procedural_depth2_cmd(
     snapshot_path: Path,
     output_path: Path,
@@ -494,18 +497,25 @@ def tasks_generate_procedural_depth2_cmd(
     tempo: int,
     count: int,
     source_limit: int | None,
+    prior_corpus_dir: Path | None,
+    citation_alpha: float,
+    citation_weight_cap: float,
 ) -> None:
     """Generate depth-2 procedural task candidates from public epoch inputs."""
     from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
-    from lemma.supply.procedural import generate_depth2_candidates, source_pool_hash
+    from lemma.supply.procedural import corpus_sources_from_dir, generate_depth2_candidates, source_pool_hash
 
     sources = mathlib_candidates_from_jsonl(snapshot_path, limit=source_limit)
+    if prior_corpus_dir is not None:
+        sources = sources + corpus_sources_from_dir(prior_corpus_dir, before_tempo=tempo)
     candidates = generate_depth2_candidates(
         sources,
         generation_seed=generation_seed,
         epoch_randomness=epoch_randomness,
         count=count,
         tempo=tempo,
+        citation_alpha=citation_alpha,
+        citation_weight_cap=citation_weight_cap,
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text("".join(candidate.model_dump_json() + "\n" for candidate in candidates), encoding="utf-8")
@@ -537,6 +547,9 @@ def tasks_generate_procedural_depth2_cmd(
 @click.option("--count", type=click.IntRange(min=1), default=20, show_default=True)
 @click.option("--source-limit", type=click.IntRange(min=1), default=None)
 @click.option("--frontier-depth", type=click.IntRange(min=0), default=None)
+@click.option("--prior-corpus-dir", type=click.Path(file_okay=False, path_type=Path), default=None)
+@click.option("--citation-alpha", type=click.FloatRange(min=0.0, max=1.0), default=0.25, show_default=True)
+@click.option("--citation-weight-cap", type=click.FloatRange(min=1.0), default=100.0, show_default=True)
 def tasks_rebuild_procedural_registry_cmd(
     snapshot_path: Path,
     output_path: Path,
@@ -546,19 +559,31 @@ def tasks_rebuild_procedural_registry_cmd(
     count: int,
     source_limit: int | None,
     frontier_depth: int | None,
+    prior_corpus_dir: Path | None,
+    citation_alpha: float,
+    citation_weight_cap: float,
 ) -> None:
     """Rebuild the production procedural registry from public inputs."""
     from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
-    from lemma.supply.procedural import build_procedural_registry_tasks, generate_depth2_candidates, source_pool_hash
+    from lemma.supply.procedural import (
+        build_procedural_registry_tasks,
+        corpus_sources_from_dir,
+        generate_depth2_candidates,
+        source_pool_hash,
+    )
     from lemma.task_supply import write_registry
 
     sources = mathlib_candidates_from_jsonl(snapshot_path, limit=source_limit)
+    if prior_corpus_dir is not None:
+        sources = sources + corpus_sources_from_dir(prior_corpus_dir, before_tempo=tempo)
     candidates = generate_depth2_candidates(
         sources,
         generation_seed=generation_seed,
         epoch_randomness=epoch_randomness,
         count=count,
         tempo=tempo,
+        citation_alpha=citation_alpha,
+        citation_weight_cap=citation_weight_cap,
     )
     build = build_procedural_registry_tasks(candidates, seed=generation_seed, frontier_depth=frontier_depth)
     if build.rejected:
@@ -1080,7 +1105,7 @@ def validate_cmd(
     \b
     Example:
 
-      lemma validate --once --submissions-jsonl submissions.jsonl --no-set-weights
+      lemma validate --once --bucket-reveals-jsonl bucket-reveals.jsonl --no-set-weights
     """
     from lemma.validator import (
         active_tasks_for_validation,
@@ -1096,12 +1121,16 @@ def validate_cmd(
         raise click.ClickException("choose either --set-weights or --no-set-weights")
     if set_weights and not settings.enable_set_weights:
         raise click.ClickException("set LEMMA_ENABLE_SET_WEIGHTS=1 before using --set-weights")
+    spool_dir = submission_spool or settings.submission_spool_dir
+    if settings.protocol_mode == "production" and (submissions_jsonl is not None or spool_dir is not None):
+        raise click.ClickException(
+            "production validation requires --bucket-reveals-jsonl; direct JSON/spool intake is dev-only"
+        )
     registry = None
     chain_authenticated_keys: frozenset[tuple[str, str, str]] = frozenset()
     bucket_reveal_count = 0
     bucket_rejections: list[str] = []
     submissions = read_submissions_jsonl(submissions_jsonl) if submissions_jsonl else []
-    spool_dir = submission_spool or settings.submission_spool_dir
     spool_paths: tuple[Path, ...] = ()
     if spool_dir is not None:
         spool_submissions, spool_paths = read_submission_spool(spool_dir)

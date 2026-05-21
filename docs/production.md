@@ -28,7 +28,7 @@ uv run lemma status
 uv run lemma worker --check
 uv run lemma operator preflight
 uv run lemma worker --serve --host localhost --port 8787
-uv run lemma validate --once --submission-spool submission-spool --no-set-weights
+uv run lemma validate --once --bucket-reveals-jsonl bucket-reveals.jsonl --no-set-weights
 uv run lemma export-corpus --domain lean --format jsonl --out data/lean_corpus.jsonl
 ```
 
@@ -38,7 +38,10 @@ Production launch settings:
 LEMMA_PROTOCOL_MODE=production
 LEMMA_TASK_SUPPLY_MODE=procedural
 LEMMA_PROCEDURAL_SOURCE_JSONL=snapshot.jsonl
+LEMMA_PROCEDURAL_PRIOR_CORPUS_DIR=corpus
 LEMMA_PROCEDURAL_SOURCE_SHA256_EXPECTED=<source-pool-sha256>
+LEMMA_PROCEDURAL_CITATION_ALPHA=0.25
+LEMMA_PROCEDURAL_CITATION_WEIGHT_CAP=100
 LEMMA_REQUIRE_SUBMISSION_SIGNATURES=1
 LEMMA_REQUIRE_COMMIT_REVEAL=1
 LEMMA_REQUIRE_STRONG_PROOF_IDENTITY=1

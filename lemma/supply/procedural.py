@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -45,6 +47,58 @@ def candidates_from_jsonl(path: Path) -> tuple[TaskCandidate, ...]:
     return tuple(out)
 
 
+def corpus_sources_from_dir(corpus_dir: Path, *, before_tempo: int | None = None) -> tuple[TaskCandidate, ...]:
+    """Load prior accepted corpus rows as mutation sources."""
+    from lemma.corpus import CorpusRow
+
+    if not corpus_dir.is_dir():
+        return ()
+    sources: list[TaskCandidate] = []
+    for path in sorted(corpus_dir.glob("epoch-*.jsonl")):
+        for no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            if not line.strip():
+                continue
+            try:
+                row = CorpusRow.model_validate(json.loads(line))
+            except (json.JSONDecodeError, ValueError) as e:
+                raise ValueError(f"{path}:{no}: invalid corpus row source: {e}") from e
+            if before_tempo is not None and row.tempo is not None and row.tempo >= before_tempo:
+                continue
+            task = row.to_task()
+            sources.append(
+                TaskCandidate(
+                    id=f"lemma.substrate.{row.row_id[:16]}",
+                    title=f"Prior Lemma {row.theorem_name}",
+                    source_stream="lemma_substrate",
+                    source_ref=SourceRef(
+                        kind="lemma_substrate",
+                        name=row.row_id,
+                        commit=row.proof_identity,
+                        path=path.name,
+                    ),
+                    source_license=row.source_license,
+                    imports=task.imports,
+                    theorem_name=task.theorem_name,
+                    type_expr=task.type_expr,
+                    statement=task.statement,
+                    submission_stub=task.submission_stub,
+                    lean_toolchain=task.lean_toolchain,
+                    mathlib_rev=task.mathlib_rev,
+                    policy=task.policy,
+                    queue_depth=task.queue_depth,
+                    metadata={
+                        "citation_weight": row.dependencies.dependency_depth or 1,
+                        "license_state": license_state_for(
+                            row.source_license,
+                            str(row.metadata.get("license_state") or ""),
+                        ),
+                        "substrate_row_id": row.row_id,
+                    },
+                )
+            )
+    return tuple(sources)
+
+
 def procedural_operator_bundle_hash() -> str:
     payload = {
         "version": OPERATOR_BUNDLE_VERSION,
@@ -67,6 +121,7 @@ def source_pool_hash(sources: tuple[TaskCandidate, ...]) -> str:
             "lean_toolchain": source.lean_toolchain,
             "mathlib_rev": source.mathlib_rev,
             "queue_depth": source.queue_depth,
+            "citation_weight": _metadata_float(source.metadata.get("citation_weight")) or 1.0,
         }
         for source in sorted(sources, key=lambda item: item.id)
     ]
@@ -80,6 +135,8 @@ def generate_depth2_candidates(
     epoch_randomness: str,
     count: int,
     tempo: int,
+    citation_alpha: float = 0.25,
+    citation_weight_cap: float = 100.0,
 ) -> tuple[TaskCandidate, ...]:
     """Generate fresh procedural candidates from public source rows.
 
@@ -96,7 +153,12 @@ def generate_depth2_candidates(
     pool_hash = source_pool_hash(sources)
     operator_hash = procedural_operator_bundle_hash()
     epoch_fields = _epoch_fields(epoch_randomness)
-    ordered = _ordered_sources(sources, seed=generation_seed)
+    ordered = _ordered_sources(
+        sources,
+        seed=generation_seed,
+        citation_alpha=citation_alpha,
+        citation_weight_cap=citation_weight_cap,
+    )
     out: list[TaskCandidate] = []
     seen: set[str] = set()
     cursor = 0
@@ -269,13 +331,60 @@ def _operator_chain(seed: str, sequence: int) -> tuple[str, str]:
     )
 
 
-def _ordered_sources(sources: tuple[TaskCandidate, ...], *, seed: str) -> tuple[TaskCandidate, ...]:
-    return tuple(
-        sorted(
-            sources,
-            key=lambda source: _hash_text(f"{seed}:{source.id}:{source.type_expr}:{source.mathlib_rev}"),
-        )
-    )
+def _ordered_sources(
+    sources: tuple[TaskCandidate, ...],
+    *,
+    seed: str,
+    citation_alpha: float,
+    citation_weight_cap: float,
+) -> tuple[TaskCandidate, ...]:
+    alpha = min(1.0, max(0.0, float(citation_alpha)))
+    cap = max(1.0, float(citation_weight_cap))
+    uniform = sorted(sources, key=lambda source: _hash_text(f"{seed}:uniform:{source.id}:{source.type_expr}"))
+    weighted = sorted(sources, key=lambda source: _weighted_source_key(source, seed=seed, cap=cap))
+    used: set[str] = set()
+    out: list[TaskCandidate] = []
+    lanes = {"uniform": iter(uniform), "weighted": iter(weighted)}
+    while len(out) < len(sources):
+        lane = "weighted" if _unit_interval(f"{seed}:lane:{len(out)}") < alpha else "uniform"
+        fallback_lane = "weighted" if lane == "uniform" else "uniform"
+        source = _next_unused(lanes[lane], used) or _next_unused(lanes[fallback_lane], used)
+        if source is None:
+            break
+        used.add(source.id)
+        out.append(source)
+    return tuple(out)
+
+
+def _next_unused(candidates: Iterator[TaskCandidate], used: set[str]) -> TaskCandidate | None:
+    for source in candidates:
+        if source.id not in used:
+            return source
+    return None
+
+
+def _weighted_source_key(source: TaskCandidate, *, seed: str, cap: float) -> tuple[float, str]:
+    weight = min(cap, max(1.0, _metadata_float(source.metadata.get("citation_weight")) or 1.0))
+    return -math.log(_unit_interval(f"{seed}:weighted:{source.id}:{source.type_expr}")) / weight, source.id
+
+
+def _unit_interval(value: str) -> float:
+    return max(1, _hash_int(value)) / float(2**256)
+
+
+def _metadata_float(value: object) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        out = float(value)
+        return out if math.isfinite(out) else None
+    if isinstance(value, str):
+        try:
+            out = float(value)
+        except ValueError:
+            return None
+        return out if math.isfinite(out) else None
+    return None
 
 
 def _epoch_fields(epoch_randomness: str) -> dict[str, Any]:

@@ -162,7 +162,7 @@ def test_operator_registry_flow_covers_registry_validation_and_export() -> None:
         "operator-diagnostics-after.json",
         "artifact counts for validator runs",
         "validator-runs.jsonl",
-        "--submissions-jsonl submissions.jsonl",
+        "--bucket-reveals-jsonl bucket-reveals.jsonl",
         "Rank-0 accepted proofs earn their deterministic active slot share",
         "unearned_share",
         "uv run lemma corpus benchmark-export",

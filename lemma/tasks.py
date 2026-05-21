@@ -21,6 +21,7 @@ LEAN_VERIFIER_VERSION: Final = "lemma-lean-v1"
 
 SourceStream = Literal[
     "procedural",
+    "lemma_substrate",
     "mathlib_snapshot",
     "mathlib_perturbation",
     "state_graph",

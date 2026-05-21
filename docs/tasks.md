@@ -12,6 +12,8 @@ Launch interfaces distinguish production paid supply from development supply.
 
 Paid production supply is `procedural`: every paid task must be generated from the pinned source pool by a deterministic depth-2 mutation chain anchored to chain/drand state. Validators should be able to rebuild the same active pool from the same public inputs.
 
+The source pool is `Mathlib_pinned ∪ Lemma_substrate_<t>`. Mathlib rows come from `LEMMA_PROCEDURAL_SOURCE_JSONL`; prior accepted Lemma rows can be added with `LEMMA_PROCEDURAL_PRIOR_CORPUS_DIR`. Sampling is deterministic and mixes citation-weighted order with uniform order through `LEMMA_PROCEDURAL_CITATION_ALPHA` and `LEMMA_PROCEDURAL_CITATION_WEIGHT_CAP`.
+
 Paid production also uses epoch-derived active selection. Development may keep a static queue seed, but SN467 burn-in and mainnet both require `LEMMA_ACTIVE_SEED_MODE=epoch_randomness` and `LEMMA_ACTIVE_EPOCH_RANDOMNESS_SOURCE=chain_drand`. The internal epoch number is the chain tempo index; it can be displayed as 1-based in UI, but validators use the same 0-based integer from `block // tempo`.
 
 The chain/drand source is deterministic: validators take the epoch's first chain block, read that block's hash and timestamp, map the timestamp to the Drand Quicknet round, fetch that round's signature, and hash those public fields into the epoch seed. A validator that resolves different public fields lands on a different active-set manifest and should fail closed.
@@ -99,7 +101,10 @@ In production procedural mode, validators rebuild the same active task set local
 ```bash
 LEMMA_TASK_SUPPLY_MODE=procedural
 LEMMA_PROCEDURAL_SOURCE_JSONL=snapshot.jsonl
+LEMMA_PROCEDURAL_PRIOR_CORPUS_DIR=corpus
 LEMMA_PROCEDURAL_SOURCE_SHA256_EXPECTED=<source-pool-sha256>
+LEMMA_PROCEDURAL_CITATION_ALPHA=0.25
+LEMMA_PROCEDURAL_CITATION_WEIGHT_CAP=100
 LEMMA_ACTIVE_SEED_MODE=epoch_randomness
 LEMMA_ACTIVE_EPOCH_RANDOMNESS_SOURCE=chain_drand
 ```

@@ -265,11 +265,51 @@ def test_production_validator_does_not_reward_weak_identity(
         verify_submission=lambda task, submission: VerifyResult(passed=True, reason="ok"),
         tempo=0,
         no_set_weights=True,
+        chain_authenticated_keys=frozenset({(task.id, submission.solver_hotkey, submission.proof_sha256)}),
     )
 
     assert result.score.credits == {}
     assert result.score.score_events[0].reward_ineligibility_reason == "weak_proof_identity"
     assert result.corpus_rows[0].rewarded is False
+
+
+def test_production_validator_rejects_direct_signed_submission_without_bucket_auth(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    monkeypatch.setattr(
+        "lemma.validator.resolve_active_epoch_randomness",
+        lambda settings, *, tempo: "pytest-anchor-block-and-drand",
+    )
+    settings = _production_settings(
+        operator_data_dir=tmp_path / "operator",
+        corpus_output_dir=tmp_path / "corpus",
+    )
+    task = _production_task(generation_seed=active_epoch_seed(settings, tempo=0))
+    keypair = Keypair.create_from_uri("//LemmaDirectProdMiner")
+    submission = sign_submission(
+        build_submission(task, solver_hotkey=keypair.ss58_address, proof_script=_proof()).model_copy(
+            update={
+                "timelock_ciphertext": "ciphertext",
+                "drand_round": 10,
+                "commit_block": 42,
+                "commit_extrinsic_hash": "0xabc",
+            }
+        ),
+        keypair,
+    )
+    registry = TaskRegistry(schema_version=1, tasks=(task,), sha256="0" * 64, signature_status="verified")
+
+    result = validate_once(
+        settings,
+        [submission],
+        registry=registry,
+        verify_submission=lambda task, submission: VerifyResult(passed=True, reason="ok"),
+        tempo=0,
+        no_set_weights=True,
+    )
+
+    assert result.verification_records == ()
+    assert result.score.scores == {}
 
 
 def test_production_mode_requires_procedural_supply_mode() -> None:

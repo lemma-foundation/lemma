@@ -47,6 +47,7 @@ class MathlibSnapshotRow(BaseModel):
     topic: str | None = None
     subtopic: str | None = None
     difficulty_score: int | None = Field(default=None, ge=0)
+    citation_weight: float | None = Field(default=None, ge=0.0)
     baseline_solved: bool | None = None
 
     @field_validator("theorem_name")
@@ -129,6 +130,8 @@ def candidate_from_row(row: MathlibSnapshotRow) -> TaskCandidate:
         metadata["subtopic"] = row.subtopic
     if row.difficulty_score is not None:
         metadata["difficulty_score"] = row.difficulty_score
+    if row.citation_weight is not None:
+        metadata["citation_weight"] = row.citation_weight
     if row.baseline_solved is not None:
         metadata["baseline_solved"] = row.baseline_solved
         metadata["triviality_checked"] = True

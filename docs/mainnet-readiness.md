@@ -41,8 +41,7 @@ Closed burn-in is at least 72 continuous testnet hours with controlled miners. P
 For both burn-ins:
 
 - paid task supply is procedural, fresh, depth-2, validator-rebuildable from a SHA-pinned public source pool, and generated from chain/drand epoch randomness;
-- miner submissions are signed;
-- revealed submissions are authenticated by miner chain commitments or direct hotkey signatures and carry commit/reveal fields;
+- miner submissions are bucket reveals authenticated by miner chain commitments;
 - miner bucket reveals fail closed unless their `(slot_index, ciphertext_sha256)` Merkle root matches the miner's on-chain committed root and drand decryption matches the revealed proof;
 - Lean verification runs with networking disabled;
 - paid rewards require strong proof identity;
@@ -60,6 +59,9 @@ uv run lemma tasks rebuild-procedural-registry \
   --epoch-randomness "$EPOCH_RANDOMNESS_JSON" \
   --tempo "$TEMPO" \
   --count "$K" \
+  --prior-corpus-dir corpus \
+  --citation-alpha 0.25 \
+  --citation-weight-cap 100 \
   --output tasks/mainnet.registry.json
 ```
 
@@ -71,7 +73,10 @@ On the launch host, production preflight must be green before accepting submissi
 LEMMA_PROTOCOL_MODE=production \
 LEMMA_TASK_SUPPLY_MODE=procedural \
 LEMMA_PROCEDURAL_SOURCE_JSONL=snapshot.jsonl \
+LEMMA_PROCEDURAL_PRIOR_CORPUS_DIR=corpus \
 LEMMA_PROCEDURAL_SOURCE_SHA256_EXPECTED=<source-pool-sha256> \
+LEMMA_PROCEDURAL_CITATION_ALPHA=0.25 \
+LEMMA_PROCEDURAL_CITATION_WEIGHT_CAP=100 \
 LEMMA_REQUIRE_SUBMISSION_SIGNATURES=1 \
 LEMMA_REQUIRE_COMMIT_REVEAL=1 \
 LEMMA_REQUIRE_STRONG_PROOF_IDENTITY=1 \

@@ -14,10 +14,10 @@ uv run lemma setup
 uv run lemma validate --once --submission-spool submission-spool --no-set-weights
 ```
 
-Live weight submission is an explicit operator action:
+The file spool is a local smoke path. Live production validation uses miner bucket reveals:
 
 ```bash
-LEMMA_ENABLE_SET_WEIGHTS=1 uv run lemma validate --once --submission-spool submission-spool --set-weights
+LEMMA_ENABLE_SET_WEIGHTS=1 uv run lemma validate --once --bucket-reveals-jsonl bucket-reveals.jsonl --set-weights
 ```
 
 Use `--no-set-weights` for smoke passes and corpus-only validation.
@@ -28,9 +28,9 @@ On commit-reveal subnets, the chain writer waits until the final 10 blocks of th
 Validator operation should be boring: configure the environment, start `lemma validate`, and watch the receipts. Internal preflight, diagnostics, and worker commands remain available for development and operator debugging, but the public validator path is the single validation command.
 
 Production validation fails unless `LEMMA_TASK_SUPPLY_MODE=procedural`, the public source pool is SHA-pinned, paid tasks are procedural depth-2 and generated from chain/drand epoch randomness, Lean verifier networking is disabled, live miner authentication is required, commit/reveal fields are required, and strong proof identity is required for paid rewards. Registry files are caches for distribution and replay, not production authority.
-For a file-based smoke loop, set `LEMMA_SUBMISSION_SPOOL_DIR` or pass `--submission-spool`. Pending top-level `.json` and `.jsonl` files are read once and moved to `processed/` after validation succeeds.
+For a file-based smoke loop in development mode, set `LEMMA_SUBMISSION_SPOOL_DIR` or pass `--submission-spool`. Pending top-level `.json` and `.jsonl` files are read once and moved to `processed/` after validation succeeds.
 For the production loop, pass `--bucket-reveals-jsonl` with post-reveal miner bucket artifacts. The validator recomputes each miner's Merkle root from `(slot_index, ciphertext_sha256)` pairs before turning revealed proofs into submissions. Add `--verify-chain-commitments` to read the miner's on-chain bucket commitment, and add `--verify-drand-reveals` to decrypt each bucket ciphertext and require it to match the revealed proof; production mode enables both checks for bucket reveals. Binary ciphertexts should be JSON-encoded as `base64:<payload>` or `0x<hex>`.
-The file spool is suitable for local smoke tests. SN467 burn-in and mainnet settlement are bucket/commitment-shaped: proof packages must be authenticated by the miner's chain commitment or by a direct hotkey signature, and must carry commit/reveal fields.
+The file spool is suitable for local smoke tests. SN467 burn-in and mainnet settlement are bucket/commitment-shaped: proof packages must be authenticated by the miner's chain commitment and must carry commit/reveal fields.
 Run `uv run python scripts/refresh_site_current_problems.py --site-repo /opt/lemmasub.net --commit --push` from the validator-side publish timer to refresh the public website's active-problem dashboard.
 For a live website feed, run `uv run python scripts/serve_current_problems.py --host localhost --port 8731` behind a TLS proxy such as `api.lemmasub.net`; the static site falls back to the committed JSON snapshot if that API is unavailable.
 
@@ -38,7 +38,7 @@ For a live website feed, run `uv run python scripts/serve_current_problems.py --
 
 1. Load the active task registry.
 2. Select the deterministic active window from `LEMMA_ACTIVE_K`, `LEMMA_FRONTIER_DEPTH`, `LEMMA_ACTIVE_QUEUE_SEED`, and production chain/drand epoch randomness.
-3. Read miner bucket reveals or local smoke submissions.
+3. Read miner bucket reveals in production, or local smoke submissions in development.
 4. Reject submissions outside the active window.
 5. Reject task-version and target-hash mismatches.
 6. Require hotkey authentication for live miner responses.
