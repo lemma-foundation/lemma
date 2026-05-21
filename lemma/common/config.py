@@ -86,6 +86,15 @@ class LemmaSettings(BaseSettings):
     corpus_output_dir: Path = Field(default=Path("corpus"), validation_alias="LEMMA_CORPUS_OUTPUT_DIR")
     operator_data_dir: Path = Field(default=Path("validator-data"), validation_alias="LEMMA_OPERATOR_DATA_DIR")
     submission_spool_dir: Path | None = Field(default=None, validation_alias="LEMMA_SUBMISSION_SPOOL_DIR")
+    miner_bucket_dir: Path | None = Field(default=None, validation_alias="LEMMA_MINER_BUCKET_DIR")
+    miner_bucket_url: str = Field(default="", validation_alias="LEMMA_MINER_BUCKET_URL")
+    bucket_reveals_dir: Path | None = Field(default=None, validation_alias="LEMMA_BUCKET_REVEALS_DIR")
+    bucket_reveals_url: str = Field(default="", validation_alias="LEMMA_BUCKET_REVEALS_URL")
+    bucket_reveals_http_timeout_s: float = Field(
+        default=20.0,
+        gt=0.0,
+        validation_alias="LEMMA_BUCKET_REVEALS_HTTP_TIMEOUT_S",
+    )
     active_task_count: int = Field(default=20, ge=1, validation_alias="LEMMA_ACTIVE_K")
     frontier_depth: int = Field(default=0, ge=0, validation_alias="LEMMA_FRONTIER_DEPTH")
     active_queue_seed: str = Field(default="lemma-active-queue", validation_alias="LEMMA_ACTIVE_QUEUE_SEED")

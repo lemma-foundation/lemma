@@ -43,7 +43,7 @@ For both burn-ins:
 - paid task supply is procedural, fresh, depth-2, and generated from the epoch's Bittensor block hash;
 - miner submissions are signed;
 - revealed submissions are authenticated by miner chain commitments or direct hotkey signatures and carry commit/reveal fields;
-- miner bucket reveals fail closed unless their `(slot_index, ciphertext_sha256)` Merkle root matches the miner's on-chain committed root and drand decryption matches the revealed proof;
+- miner bucket reveals fail closed unless their `(slot_index, ciphertext_sha256)` Merkle root matches the miner's on-chain committed root;
 - Lean verification runs with networking disabled;
 - paid rewards require strong proof identity;
 - every accepted public corpus row replays from clean artifacts;

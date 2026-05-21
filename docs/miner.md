@@ -29,13 +29,17 @@ uv run lemma mine --once
 uv run lemma mine --once --output submission.json
 ```
 
-The configured prover command receives one JSON task on stdin and returns JSON with `task_id` and `proof_script` on stdout. Live deployments wrap the proof in a timelocked chain commitment; local JSON output is the development harness.
+The configured prover command receives one JSON task on stdin and returns JSON with `task_id` and `proof_script` on stdout. Local JSON output is the development harness.
 
 ## Custom Miners
 
 Competitive miners can replace the CLI entirely. The contract is the active task target plus a valid task-bound proof submission; how a miner gets there is open. Agents, custom Lean worker pools, model-training loops, remote schedulers, direct protocol clients, or non-Python implementations are all fine if the validator accepts the output.
 
-Mainnet-shaped runs write timelocked blobs to the miner bucket and anchor rank with a Merkle-root chain commitment.
+Mainnet-shaped runs write reveal artifacts to a miner bucket and anchor rank with a Merkle-root chain commitment:
+
+```bash
+uv run lemma mine --once --bucket-dir miner-bucket --bucket-url https://example.com/miner-bucket --commit-bucket
+```
 
 ## Hosted Provers
 

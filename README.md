@@ -73,8 +73,8 @@ uv run lemma validate --once --submission-spool submission-spool --no-set-weight
 ```
 
 The validator path fetches active tasks, validates task-bound submissions, runs Lean, scores accepted proofs, withholds unsolved-slot value from current solvers, and writes local corpus deltas.
-The submission spool is a file inbox for miner submission JSON files; consumed files move to `processed/` after a successful validator pass.
-`--bucket-reveals-jsonl` is the adapter for the mainnet-shaped path: a miner bucket reveal must match the miner's on-chain committed Merkle root before it can enter scoring. Add `--verify-chain-commitments` to read the miner's on-chain bucket commitment and `--verify-drand-reveals` to decrypt bucket ciphertexts and require the decrypted proof to match the revealed proof; production mode enables both checks for bucket reveals.
+The submission spool is a file inbox for local smoke JSON files; consumed files move to `processed/` after a successful validator pass.
+The production-shaped path is bucket reveal intake: miners publish reveal artifacts with `lemma mine --bucket-dir ... --commit-bucket`, and validators read them with `--bucket-reveals-dir`, `--bucket-reveals-url`, or `--bucket-reveals-jsonl`. In production, a reveal must match the miner's on-chain committed Merkle root before it can enter scoring.
 Live weight writes require both `LEMMA_ENABLE_SET_WEIGHTS=1` and `--set-weights`; smoke passes should stay on `--no-set-weights`.
 When a live write is attempted, the validator appends a public-safe local receipt to `weight-submissions.jsonl` under `LEMMA_OPERATOR_DATA_DIR`, including the resolved UID vector and extrinsic hash when the Bittensor client returns one.
 Production mode derives paid problems from a SHA-pinned public source pool and the future finalized Bittensor tempo-boundary block hash. It also requires hotkey-authenticated miner submissions, commit/reveal fields on revealed submissions, network-disabled Lean verification, and strong Lean-derived proof identity for paid rewards.

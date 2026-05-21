@@ -29,7 +29,7 @@ Lean theorem supply
 - `lemma.corpus`: replayable row building, JSONL validation/replay, corpus indexing, v2 row/export helpers.
 - `lemma.graph`: row-level graph nodes and dependency edges used by corpus exports.
 - `lemma.lean`: Docker or worker-backed Lean verification.
-- `lemma.chain`: typed future interfaces for commitments, drand, weights, and burn/recycle rails.
+- `lemma.chain`: typed interfaces for commitments, bucket reveals, optional drand helpers, weights, and burn/recycle rails.
 
 ## Controllers
 

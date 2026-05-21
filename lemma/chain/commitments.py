@@ -235,7 +235,7 @@ def wallet_hotkey_address(settings: LemmaSettings) -> str:
     return str(wallet.hotkey.ss58_address)
 
 
-def submit_storage_commitment(settings: LemmaSettings, payload: str) -> ChainCommitmentSubmission:
+def submit_chain_commitment(settings: LemmaSettings, payload: str) -> ChainCommitmentSubmission:
     import bittensor as bt
 
     wallet = bt.Wallet(name=settings.wallet_cold, hotkey=settings.wallet_hot)
@@ -259,6 +259,23 @@ def submit_storage_commitment(settings: LemmaSettings, payload: str) -> ChainCom
         block_number=_receipt_int_value(response, "block_number"),
         extrinsic_fee_rao=getattr(response.extrinsic_fee, "rao", None) if response.extrinsic_fee else None,
     )
+
+
+def submit_miner_bucket_commitment(
+    settings: LemmaSettings,
+    *,
+    tempo: int,
+    drand_round: int,
+    merkle_root: str,
+) -> ChainCommitmentSubmission:
+    return submit_chain_commitment(
+        settings,
+        miner_bucket_commitment_payload(tempo=tempo, drand_round=drand_round, merkle_root=merkle_root),
+    )
+
+
+def submit_storage_commitment(settings: LemmaSettings, payload: str) -> ChainCommitmentSubmission:
+    return submit_chain_commitment(settings, payload)
 
 
 def read_storage_commitment(settings: LemmaSettings, hotkey: str | None = None) -> str:

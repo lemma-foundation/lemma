@@ -83,7 +83,7 @@ uv run lemma validate \
   --no-set-weights
 ```
 
-For a live file inbox, use `--submission-spool submission-spool` instead. The spool accepts top-level `.json` and `.jsonl` submission files and moves consumed files to `processed/` after a successful validator pass. For a mainnet-shaped bucket reveal fixture, use `--bucket-reveals-jsonl bucket-reveals.jsonl`; the validator checks the miner Merkle root before scoring. Add `--verify-chain-commitments` to read miner commitments from chain, and add `--verify-drand-reveals` to decrypt ciphertexts and require the decrypted proof to match the reveal.
+For a live file inbox, use `--submission-spool submission-spool` instead. The spool accepts top-level `.json` and `.jsonl` submission files and moves consumed files to `processed/` after a successful validator pass. Production intake uses bucket reveals from `--bucket-reveals-dir`, `--bucket-reveals-url`, or `--bucket-reveals-jsonl`; the validator checks the miner Merkle root and, in production mode, the miner's on-chain commitment before scoring.
 
 The validator rejects submissions outside the active window, task-version mismatches, target-hash mismatches, duplicate winning proofs, and policy failures. Rank-0 accepted proofs earn their deterministic active slot share; unsolved-slot value becomes `unearned_share` and is burned by default. Each pass appends one public-safe row to `validator-runs.jsonl` with active K, frontier depth, verified count, accepted unique count, corpus row count, unearned share, unearned policy, and `weights_set`.
 

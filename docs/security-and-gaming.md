@@ -20,7 +20,6 @@ Validators reject:
 - unsigned live miner responses;
 - missing hotkey-authenticated commit/reveal fields in production mode;
 - miner bucket reveals whose `(slot_index, ciphertext_sha256)` Merkle root does not match the miner's on-chain committed root;
-- miner bucket reveals whose decrypted drand payload does not match the revealed proof;
 - paid production tasks that are not procedural depth-2.
 
 ## Verification
