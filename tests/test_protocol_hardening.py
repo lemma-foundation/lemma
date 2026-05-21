@@ -352,6 +352,26 @@ def test_production_mode_requires_epoch_randomness_active_seed() -> None:
         enforce_production_invariants(settings.model_copy(update={"active_seed_mode": "epoch_randomness"}), registry)
 
 
+def test_testnet_protocol_mode_enforces_production_rules() -> None:
+    registry = TaskRegistry(schema_version=1, tasks=(_task(),), sha256="0" * 64, signature_status="verified")
+    settings = LemmaSettings(
+        _env_file=None,
+        protocol_mode="testnet",
+        task_registry_sha256_expected="0" * 64,
+        enabled_domains=("lean",),
+        lean_sandbox_network="none",
+        require_submission_signatures=True,
+        require_commit_reveal=True,
+        require_strong_proof_identity=True,
+        active_seed_mode="epoch_randomness",
+        active_epoch_randomness_source="chain_drand",
+    )
+
+    assert settings.protocol_mode == "production"
+    with pytest.raises(RuntimeError, match="procedural depth-2"):
+        enforce_production_invariants(settings, registry)
+
+
 def test_production_active_tasks_must_match_epoch_generation_seed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "lemma.validator.resolve_active_epoch_randomness",

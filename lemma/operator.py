@@ -164,8 +164,8 @@ def _inspect_registry(
 def _build_operator_state(
     settings: LemmaSettings,
 ) -> tuple[OperatorPreflightReport, tuple[str, ...], OperatorRegistryInspectReport | None]:
-    from lemma.tasks import TaskError, fetch_task_registry
-    from lemma.validator import active_tasks_for_validation
+    from lemma.tasks import TaskError
+    from lemma.validator import active_tasks_for_validation, current_active_tempo, task_registry_for_validation
 
     checks: list[OperatorPreflightCheck] = []
     active_task_ids: tuple[str, ...] = ()
@@ -173,28 +173,40 @@ def _build_operator_state(
     registry = None
 
     try:
-        registry = fetch_task_registry(
-            settings,
-            verify_signature=settings.protocol_mode == "production" or settings.verify_registry_signatures,
-        )
+        active_tempo = current_active_tempo(settings)
+        registry = task_registry_for_validation(settings, tempo=active_tempo)
         checks.append(_check("registry_load", True, f"{len(registry.tasks)} tasks"))
     except (TaskError, OSError) as e:
         checks.append(_check("registry_load", False, str(e)))
 
-    expected_pin = (settings.task_registry_sha256_expected or "").strip()
+    expected_pin = (
+        (settings.procedural_source_sha256_expected or "").strip()
+        if settings.task_supply_mode == "procedural"
+        else (settings.task_registry_sha256_expected or "").strip()
+    )
     checks.append(
         _check(
             "registry_hash_pin",
             bool(expected_pin),
-            "LEMMA_TASK_REGISTRY_SHA256_EXPECTED is set" if expected_pin else "missing registry SHA256 pin",
+            (
+                "procedural source SHA256 pin is set"
+                if settings.task_supply_mode == "procedural" and expected_pin
+                else "LEMMA_TASK_REGISTRY_SHA256_EXPECTED is set"
+                if expected_pin
+                else "missing procedural source SHA256 pin"
+                if settings.task_supply_mode == "procedural"
+                else "missing registry SHA256 pin"
+            ),
         )
     )
 
     if registry is not None:
         signature_ok = registry.signature_status == "verified" if settings.protocol_mode == "production" else True
+        if settings.task_supply_mode == "procedural":
+            signature_ok = True
         checks.append(_check("registry_signature", signature_ok, registry.signature_status))
         try:
-            active_tasks = active_tasks_for_validation(registry, settings)
+            active_tasks = active_tasks_for_validation(registry, settings, tempo=active_tempo)
         except RuntimeError as e:
             checks.append(_check("active_window", False, str(e)))
         else:
@@ -312,9 +324,9 @@ def build_operator_diagnostics(settings: LemmaSettings) -> OperatorDiagnosticsRe
 
 def build_operator_registry_inspect(settings: LemmaSettings) -> OperatorRegistryInspectReport:
     """Summarize registry supply depth using the validator's active-window logic."""
-    from lemma.tasks import fetch_task_registry
-    from lemma.validator import active_tasks_for_validation
+    from lemma.validator import active_tasks_for_validation, current_active_tempo, task_registry_for_validation
 
-    registry = fetch_task_registry(settings)
-    active_tasks = active_tasks_for_validation(registry, settings)
+    active_tempo = current_active_tempo(settings)
+    registry = task_registry_for_validation(settings, tempo=active_tempo)
+    active_tasks = active_tasks_for_validation(registry, settings, tempo=active_tempo)
     return _inspect_registry(registry, settings, active_task_count=len(active_tasks))

@@ -52,24 +52,27 @@ For both burn-ins:
 
 ## Mainnet Cutover
 
-Build the launch registry only from procedural depth-2 candidates:
+Rebuild the launch registry cache only from procedural depth-2 candidates:
 
 ```bash
-uv run lemma tasks build-procedural-registry \
-  --candidate-jsonl procedural-depth2-candidates.jsonl \
+uv run lemma tasks rebuild-procedural-registry \
+  --mathlib-snapshot snapshot.jsonl \
+  --generation-seed "$EPOCH_SEED" \
+  --epoch-randomness "$EPOCH_RANDOMNESS_JSON" \
+  --tempo "$TEMPO" \
+  --count "$K" \
   --output tasks/mainnet.registry.json
-uv run lemma tasks sign-registry \
-  --input tasks/mainnet.registry.json \
-  --output tasks/mainnet.signed.registry.json
 ```
 
-Cut scale, not shape: reduce `K`, source samples, and the operator bundle if needed, but keep depth-2 generation, novelty, Prop gates, deterministic slot weights, miner hotkey authentication, and strong proof identity. Tempo remains 72 minutes / 360 blocks until subnet tempo customization exists.
+Cut scale, not shape: reduce `K`, source samples, and the operator bundle if needed, but keep depth-2 generation, novelty, Prop gates, deterministic slot weights, miner hotkey authentication, and strong proof identity. The registry file is a cache; validators rebuild from pinned source rows plus chain/drand. Tempo remains 72 minutes / 360 blocks until subnet tempo customization exists.
 
 On the launch host, production preflight must be green before accepting submissions:
 
 ```bash
 LEMMA_PROTOCOL_MODE=production \
-LEMMA_VERIFY_REGISTRY_SIGNATURES=1 \
+LEMMA_TASK_SUPPLY_MODE=procedural \
+LEMMA_PROCEDURAL_SOURCE_JSONL=snapshot.jsonl \
+LEMMA_PROCEDURAL_SOURCE_SHA256_EXPECTED=<source-pool-sha256> \
 LEMMA_REQUIRE_SUBMISSION_SIGNATURES=1 \
 LEMMA_REQUIRE_COMMIT_REVEAL=1 \
 LEMMA_REQUIRE_STRONG_PROOF_IDENTITY=1 \

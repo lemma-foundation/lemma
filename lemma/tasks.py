@@ -340,6 +340,16 @@ def load_task_registry(
     )
 
 
+def task_registry_from_tasks(tasks: tuple[LemmaTask, ...]) -> TaskRegistry:
+    """Build an in-memory registry from deterministically generated task rows."""
+    payload: dict[str, object] = {
+        "schema_version": 1,
+        "tasks": [task.model_dump(mode="json", exclude_none=True) for task in tasks],
+    }
+    raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return load_task_registry(raw)
+
+
 def fetch_task_registry(settings: LemmaSettings, *, verify_signature: bool | None = None) -> TaskRegistry:
     raw = _read_registry_bytes(settings.task_registry_url, float(settings.task_http_timeout_s))
     should_verify = settings.verify_registry_signatures if verify_signature is None else verify_signature

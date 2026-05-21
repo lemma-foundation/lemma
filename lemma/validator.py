@@ -24,7 +24,7 @@ from lemma.store import append_jsonl
 from lemma.submissions import LemmaSubmission, validate_submission_for_task
 from lemma.supply.queue import initial_active_pool
 from lemma.task_activation import task_reward_eligibility, task_slot_weight
-from lemma.tasks import LemmaTask, TaskRegistry, fetch_task_registry
+from lemma.tasks import LemmaTask, TaskRegistry, fetch_task_registry, task_registry_from_tasks
 from lemma.verifiers.lean import verify_result_from_adapter_result
 from lemma.verifiers.registry import get_verifier
 
@@ -156,6 +156,55 @@ def active_epoch_randomness_sha256(
         return None
     randomness = epoch_randomness or resolve_active_epoch_randomness(settings, tempo=tempo)
     return hashlib.sha256(randomness.encode()).hexdigest()
+
+
+def task_registry_for_validation(settings: LemmaSettings, *, tempo: int) -> TaskRegistry:
+    """Load the active task registry for the configured supply mode."""
+    if settings.task_supply_mode == "registry":
+        return fetch_task_registry(
+            settings,
+            verify_signature=settings.protocol_mode == "production" or settings.verify_registry_signatures,
+        )
+    return _procedural_registry_for_tempo(settings, tempo=tempo)
+
+
+def _procedural_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> TaskRegistry:
+    from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
+    from lemma.supply.procedural import (
+        build_procedural_registry_tasks,
+        generate_depth2_candidates,
+        source_pool_hash,
+    )
+
+    if settings.procedural_source_jsonl is None:
+        raise RuntimeError("procedural supply requires LEMMA_PROCEDURAL_SOURCE_JSONL")
+    source_limit = settings.procedural_source_limit or None
+    sources = mathlib_candidates_from_jsonl(settings.procedural_source_jsonl, limit=source_limit)
+    actual_source_hash = source_pool_hash(sources)
+    expected_source_hash = (settings.procedural_source_sha256_expected or "").strip().lower().removeprefix("sha256:")
+    if expected_source_hash and actual_source_hash != expected_source_hash:
+        raise RuntimeError(
+            f"procedural source pool sha256 mismatch: got {actual_source_hash}, expected {expected_source_hash}"
+        )
+    epoch_randomness = (
+        resolve_active_epoch_randomness(settings, tempo=tempo)
+        if settings.active_seed_mode == "epoch_randomness"
+        else settings.active_queue_seed
+    )
+    generation_seed = active_epoch_seed(settings, tempo=tempo, epoch_randomness=epoch_randomness)
+    count = settings.procedural_candidate_count or settings.active_task_count
+    candidates = generate_depth2_candidates(
+        sources,
+        generation_seed=generation_seed,
+        epoch_randomness=epoch_randomness,
+        count=count,
+        tempo=tempo,
+    )
+    build = build_procedural_registry_tasks(candidates, seed=generation_seed, frontier_depth=settings.frontier_depth)
+    if build.rejected:
+        detail = ", ".join(f"{item.id}:{item.reason}" for item in build.rejected[:5])
+        raise RuntimeError(f"procedural supply rejected generated candidates: {detail}")
+    return task_registry_from_tasks(build.tasks)
 
 
 def _enforce_epoch_generated_paid_tasks(
@@ -348,12 +397,9 @@ def validate_once(
     chain_authenticated_keys: frozenset[ChainAuthenticatedKey] = frozenset(),
 ) -> ValidatorRunResult:
     """Verify submissions, score unique proofs, and write local corpus artifacts."""
-    registry = registry or fetch_task_registry(
-        settings,
-        verify_signature=settings.protocol_mode == "production" or settings.verify_registry_signatures,
-    )
-    enforce_production_invariants(settings, registry)
     active_tempo = current_active_tempo(settings) if tempo is None else tempo
+    registry = registry or task_registry_for_validation(settings, tempo=active_tempo)
+    enforce_production_invariants(settings, registry)
     active_tasks = active_tasks_for_validation(registry, settings, tempo=active_tempo)
     tasks = {task.id: task for task in active_tasks}
     verify = verify_submission or _default_verify(settings)

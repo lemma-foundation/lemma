@@ -95,10 +95,23 @@ def enforce_production_invariants(settings: LemmaSettings, registry: TaskRegistr
         return
     if tuple(settings.enabled_domains) != ("lean",):
         raise RuntimeError("production mode currently supports only lean: LEMMA_ENABLED_DOMAINS must be lean")
-    if not settings.task_registry_sha256_expected:
-        raise RuntimeError("production mode requires LEMMA_TASK_REGISTRY_SHA256_EXPECTED")
-    if registry.signature_status != "verified":
-        raise RuntimeError("production mode requires signature-verified registry bytes")
+    if settings.task_supply_mode == "registry":
+        if not settings.task_registry_sha256_expected:
+            raise RuntimeError("production mode requires LEMMA_TASK_REGISTRY_SHA256_EXPECTED")
+        if registry.signature_status != "verified":
+            raise RuntimeError("production mode requires signature-verified registry bytes")
+    else:
+        expected_source = _normalize_sha256(settings.procedural_source_sha256_expected)
+        if not expected_source:
+            raise RuntimeError("procedural production mode requires LEMMA_PROCEDURAL_SOURCE_SHA256_EXPECTED")
+        source_hashes = {str(task.metadata.get("source_pool_hash") or "") for task in registry.tasks}
+        if source_hashes != {expected_source}:
+            raise RuntimeError("procedural production mode source pool hash mismatch")
+        expected_operator = _normalize_sha256(settings.procedural_operator_bundle_sha256_expected)
+        if expected_operator:
+            operator_hashes = {str(task.metadata.get("operator_bundle_hash") or "") for task in registry.tasks}
+            if operator_hashes != {expected_operator}:
+                raise RuntimeError("procedural production mode operator bundle hash mismatch")
     if settings.lean_sandbox_network.strip().lower() not in {"none", "no"}:
         raise RuntimeError("production mode requires network-disabled verifier runs")
     if not settings.require_submission_signatures:
@@ -115,3 +128,10 @@ def enforce_production_invariants(settings: LemmaSettings, registry: TaskRegistr
         raise RuntimeError("production mode requires LEMMA_ACTIVE_SEED_MODE=epoch_randomness")
     if settings.active_epoch_randomness_source != "chain_drand":
         raise RuntimeError("production mode requires LEMMA_ACTIVE_EPOCH_RANDOMNESS_SOURCE=chain_drand")
+
+
+def _normalize_sha256(value: str | None) -> str:
+    raw = (value or "").strip().lower()
+    if raw.startswith("sha256:"):
+        raw = raw.removeprefix("sha256:")
+    return raw

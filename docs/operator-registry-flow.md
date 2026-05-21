@@ -1,6 +1,6 @@
 # Operator Registry Flow
 
-This is the end-to-end path for publishing a deterministic task registry, running a validator against pinned tasks, and exporting accepted proof data.
+This is the end-to-end path for rebuilding a deterministic task registry cache, running a validator against the active procedural pool, and exporting accepted proof data.
 
 ## 1. Build A Registry
 
@@ -16,11 +16,16 @@ The command writes deterministic `queue_position` values and prints `registry_sh
 
 `signed_by` and `signature` fields are archived metadata unless the validator is configured with an explicit registry-signature verifier. They are not a substitute for `LEMMA_TASK_REGISTRY_SHA256_EXPECTED`.
 
-For production-shaped supply, build from deterministic depth-2 procedural candidates:
+For production-shaped supply, rebuild depth-2 procedural candidates from the
+public source snapshot and the tempo's epoch seed:
 
 ```bash
-uv run lemma tasks build-procedural-registry \
-  --candidate-jsonl procedural-depth2-candidates.jsonl \
+uv run lemma tasks rebuild-procedural-registry \
+  --mathlib-snapshot snapshot.jsonl \
+  --generation-seed "$EPOCH_SEED" \
+  --epoch-randomness "$EPOCH_RANDOMNESS_JSON" \
+  --tempo "$TEMPO" \
+  --count "$K" \
   --output tasks/mainnet.registry.json
 ```
 
@@ -28,28 +33,25 @@ The procedural builder rejects paid candidates that do not carry procedural dept
 
 The mixed builder remains available for local smoke and curriculum work. It is not the paid production path.
 
-Sign the registry after building it:
-
-```bash
-uv run lemma tasks sign-registry \
-  --input tasks/mainnet.registry.json \
-  --output tasks/mainnet.signed.registry.json
-```
-
-Pin the SHA256 of the signed output. Signature verification covers the canonical registry payload with `signed_by` and `signature` removed; the SHA pin still covers the exact published bytes.
+The rebuilt registry can be signed and mirrored as a cache, but procedural
+production mode does not use the signature as authority. Validators rebuild
+the active pool locally from the pinned source snapshot, chain state, and
+drand.
 
 ## 2. Configure The Active Window
 
-Set the registry, its expected hash, and the deterministic active-window controls:
+Set the procedural source pin and deterministic active-window controls:
 
 ```bash
-LEMMA_TASK_REGISTRY_URL=tasks/mathlib-snapshot.registry.json
-LEMMA_TASK_REGISTRY_SHA256_EXPECTED=<registry_sha256>
-LEMMA_VERIFY_REGISTRY_SIGNATURES=1
+LEMMA_TASK_SUPPLY_MODE=procedural
+LEMMA_PROCEDURAL_SOURCE_JSONL=snapshot.jsonl
+LEMMA_PROCEDURAL_SOURCE_SHA256_EXPECTED=<source-pool-sha256>
 LEMMA_ACTIVE_K=10
 LEMMA_FRONTIER_DEPTH=0
 LEMMA_ACTIVE_QUEUE_SEED=lemma-active-queue
 LEMMA_ACTIVE_TEMPO_SOURCE=chain
+LEMMA_ACTIVE_SEED_MODE=epoch_randomness
+LEMMA_ACTIVE_EPOCH_RANDOMNESS_SOURCE=chain_drand
 LEMMA_CORPUS_OUTPUT_DIR=corpus
 LEMMA_OPERATOR_DATA_DIR=validator-data
 ```
@@ -70,7 +72,7 @@ Run the operator preflight before accepting submissions:
 uv run lemma operator preflight
 ```
 
-The command fails if the registry is not SHA-pinned, the active window cannot fill `K`, output directories cannot be prepared, or the Lean verifier backend is not configured.
+The command fails if the registry or procedural source pool is not pinned, the active window cannot fill `K`, output directories cannot be prepared, or the Lean verifier backend is not configured.
 It emits a versioned JSON report with `schema_version`, `ok`, `registry_sha256`, `active_K`, `frontier_depth`, and `checks`.
 
 For reproducible support/debugging, write a diagnostics file before accepting submissions:

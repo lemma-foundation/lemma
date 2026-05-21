@@ -49,10 +49,25 @@ class LemmaSettings(BaseSettings):
         default="tasks/registry.json",
         validation_alias="LEMMA_TASK_REGISTRY_URL",
     )
+    task_supply_mode: Literal["registry", "procedural"] = Field(
+        default="registry",
+        validation_alias="LEMMA_TASK_SUPPLY_MODE",
+    )
     task_registry_sha256_expected: str | None = Field(
         default=None,
         validation_alias="LEMMA_TASK_REGISTRY_SHA256_EXPECTED",
     )
+    procedural_source_jsonl: Path | None = Field(default=None, validation_alias="LEMMA_PROCEDURAL_SOURCE_JSONL")
+    procedural_source_sha256_expected: str | None = Field(
+        default=None,
+        validation_alias="LEMMA_PROCEDURAL_SOURCE_SHA256_EXPECTED",
+    )
+    procedural_operator_bundle_sha256_expected: str | None = Field(
+        default=None,
+        validation_alias="LEMMA_PROCEDURAL_OPERATOR_BUNDLE_SHA256_EXPECTED",
+    )
+    procedural_source_limit: int = Field(default=0, ge=0, validation_alias="LEMMA_PROCEDURAL_SOURCE_LIMIT")
+    procedural_candidate_count: int = Field(default=0, ge=0, validation_alias="LEMMA_PROCEDURAL_CANDIDATE_COUNT")
     verify_registry_signatures: bool = Field(
         default=False,
         validation_alias="LEMMA_VERIFY_REGISTRY_SIGNATURES",

@@ -71,23 +71,41 @@ uv run lemma tasks build-mathlib-snapshot \
 
 The command writes deterministic `queue_position` values after shallow-first task ordering and prints the registry SHA256. Operators can attach externally produced `signed_by` / `signature` metadata, but the command does not sign or verify the registry.
 
-For production-shaped supply, package depth-2 procedural candidates:
+For production-shaped supply, rebuild depth-2 procedural candidates from the
+public source snapshot and the tempo's chain/drand seed:
 
 ```bash
-uv run lemma tasks build-procedural-registry \
-  --candidate-jsonl procedural-depth2-candidates.jsonl \
+uv run lemma tasks rebuild-procedural-registry \
+  --mathlib-snapshot snapshot.jsonl \
+  --generation-seed "$EPOCH_SEED" \
+  --epoch-randomness "$EPOCH_RANDOMNESS_JSON" \
+  --tempo "$TEMPO" \
+  --count "$K" \
   --output tasks/mainnet.registry.json
 ```
 
-The procedural builder rejects candidates unless paid rows carry procedural depth-2 metadata, a two-step mutation chain, chain/drand anchoring, source-pool and operator-bundle hashes, Prop-gate success, novelty success, typecheck confirmation, triviality-check confirmation, a failed baseline-solver result, clean license state, and deterministic `slot_weight`.
+The procedural generator derives rows from the source pool and epoch seed; it is
+not a static playlist. The procedural builder still rejects candidates unless
+paid rows carry procedural depth-2 metadata, a two-step mutation chain,
+chain/drand anchoring, source-pool and operator-bundle hashes, Prop-gate
+success, novelty success, typecheck confirmation, triviality-check
+confirmation, a failed baseline-solver result, clean license state, and
+deterministic `slot_weight`.
 
 The mixed builder remains useful for local smoke and curriculum tuning. It is not the paid production supply path.
 
-Sign the built registry before production use:
+In production procedural mode, validators rebuild the same registry locally:
 
 ```bash
-uv run lemma tasks sign-registry --input tasks/mainnet.registry.json --output tasks/mainnet.signed.registry.json
+LEMMA_TASK_SUPPLY_MODE=procedural
+LEMMA_PROCEDURAL_SOURCE_JSONL=snapshot.jsonl
+LEMMA_PROCEDURAL_SOURCE_SHA256_EXPECTED=<source-pool-sha256>
+LEMMA_ACTIVE_SEED_MODE=epoch_randomness
+LEMMA_ACTIVE_EPOCH_RANDOMNESS_SOURCE=chain_drand
 ```
+
+Published registry files remain useful as caches and audit artifacts, but they
+are not the authority that invents paid problems in procedural mode.
 
 See [Mathlib Extraction Contract](mathlib-extraction.md) for the JSONL row contract and the off-chain extraction boundary.
 

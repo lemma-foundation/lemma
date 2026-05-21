@@ -77,13 +77,13 @@ The submission spool is a file inbox for miner submission JSON files; consumed f
 `--bucket-reveals-jsonl` is the adapter for the mainnet-shaped path: a miner bucket reveal must match the miner's on-chain committed Merkle root before it can enter scoring. Add `--verify-chain-commitments` to read the miner's on-chain bucket commitment and `--verify-drand-reveals` to decrypt bucket ciphertexts and require the decrypted proof to match the revealed proof; production mode enables both checks for bucket reveals.
 Live weight writes require both `LEMMA_ENABLE_SET_WEIGHTS=1` and `--set-weights`; smoke passes should stay on `--no-set-weights`.
 When a live write is attempted, the validator appends a public-safe local receipt to `weight-submissions.jsonl` under `LEMMA_OPERATOR_DATA_DIR`, including the resolved UID vector and extrinsic hash when the Bittensor client returns one.
-Production mode additionally requires a SHA-pinned, signature-verified registry, procedural depth-2 paid supply, hotkey-authenticated miner submissions, commit/reveal fields on revealed submissions, network-disabled Lean verification, and strong Lean-derived proof identity for paid rewards.
+Production mode additionally requires procedural depth-2 paid supply rebuilt from a pinned public source pool and chain/drand epoch randomness, hotkey-authenticated miner submissions, commit/reveal fields on revealed submissions, network-disabled Lean verification, and strong Lean-derived proof identity for paid rewards. Registry files can be mirrored as caches; they are not the procedural problem authority.
 
 ## Try The Loop Locally
 
 Use [examples/operator-smoke](examples/operator-smoke/README.md) to build a pinned registry, package one proof submission, run a validator pass, and export corpus artifacts.
 
-For production-shaped registries, package deterministic depth-2 procedural supply and sign the final registry before configuring validators. The detailed operator path lives in [Operator Registry Flow](docs/operator-registry-flow.md). Curated Mathlib and mixed supply remain useful for local smoke and curriculum development. SN467 burn-in uses the paid mainnet supply path on the test chain.
+For production-shaped supply, validators rebuild deterministic depth-2 procedural rows from public inputs before configuring the active pool. The detailed operator path lives in [Operator Registry Flow](docs/operator-registry-flow.md). Curated Mathlib and mixed supply remain useful for local smoke and curriculum development. SN467 burn-in uses the paid mainnet supply path on the test chain.
 
 ## Corpus Export
 

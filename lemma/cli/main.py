@@ -472,6 +472,113 @@ def tasks_build_mixed_registry_cmd(
     )
 
 
+@tasks_cmd.command("generate-procedural-depth2")
+@click.option(
+    "--mathlib-snapshot",
+    "snapshot_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    required=True,
+    help="Proof-erased Mathlib snapshot rows used as the public source pool.",
+)
+@click.option("--output", "output_path", type=click.Path(dir_okay=False, path_type=Path), required=True)
+@click.option("--generation-seed", required=True, help="Epoch seed derived from chain state plus drand.")
+@click.option("--epoch-randomness", required=True, help="Public chain/drand epoch material, usually JSON.")
+@click.option("--tempo", type=click.IntRange(min=0), required=True)
+@click.option("--count", type=click.IntRange(min=1), default=20, show_default=True)
+@click.option("--source-limit", type=click.IntRange(min=1), default=None)
+def tasks_generate_procedural_depth2_cmd(
+    snapshot_path: Path,
+    output_path: Path,
+    generation_seed: str,
+    epoch_randomness: str,
+    tempo: int,
+    count: int,
+    source_limit: int | None,
+) -> None:
+    """Generate depth-2 procedural task candidates from public epoch inputs."""
+    from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
+    from lemma.supply.procedural import generate_depth2_candidates, source_pool_hash
+
+    sources = mathlib_candidates_from_jsonl(snapshot_path, limit=source_limit)
+    candidates = generate_depth2_candidates(
+        sources,
+        generation_seed=generation_seed,
+        epoch_randomness=epoch_randomness,
+        count=count,
+        tempo=tempo,
+    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("".join(candidate.model_dump_json() + "\n" for candidate in candidates), encoding="utf-8")
+    click.echo(
+        json.dumps(
+            {
+                "output": str(output_path),
+                "source_pool_sha256": source_pool_hash(sources),
+                "candidates": len(candidates),
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+
+
+@tasks_cmd.command("rebuild-procedural-registry")
+@click.option(
+    "--mathlib-snapshot",
+    "snapshot_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    required=True,
+    help="Proof-erased Mathlib snapshot rows used as the public source pool.",
+)
+@click.option("--output", "output_path", type=click.Path(dir_okay=False, path_type=Path), required=True)
+@click.option("--generation-seed", required=True, help="Epoch seed derived from chain state plus drand.")
+@click.option("--epoch-randomness", required=True, help="Public chain/drand epoch material, usually JSON.")
+@click.option("--tempo", type=click.IntRange(min=0), required=True)
+@click.option("--count", type=click.IntRange(min=1), default=20, show_default=True)
+@click.option("--source-limit", type=click.IntRange(min=1), default=None)
+@click.option("--frontier-depth", type=click.IntRange(min=0), default=None)
+def tasks_rebuild_procedural_registry_cmd(
+    snapshot_path: Path,
+    output_path: Path,
+    generation_seed: str,
+    epoch_randomness: str,
+    tempo: int,
+    count: int,
+    source_limit: int | None,
+    frontier_depth: int | None,
+) -> None:
+    """Rebuild the production procedural registry from public inputs."""
+    from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
+    from lemma.supply.procedural import build_procedural_registry_tasks, generate_depth2_candidates, source_pool_hash
+    from lemma.task_supply import write_registry
+
+    sources = mathlib_candidates_from_jsonl(snapshot_path, limit=source_limit)
+    candidates = generate_depth2_candidates(
+        sources,
+        generation_seed=generation_seed,
+        epoch_randomness=epoch_randomness,
+        count=count,
+        tempo=tempo,
+    )
+    build = build_procedural_registry_tasks(candidates, seed=generation_seed, frontier_depth=frontier_depth)
+    if build.rejected:
+        detail = "; ".join(f"{item.id}:{item.reason}" for item in build.rejected[:10])
+        raise click.ClickException(f"rejected {len(build.rejected)} procedural candidates: {detail}")
+    write_registry(build.tasks, output_path)
+    click.echo(
+        json.dumps(
+            {
+                "output": str(output_path),
+                "registry_sha256": hashlib.sha256(output_path.read_bytes()).hexdigest(),
+                "source_pool_sha256": source_pool_hash(sources),
+                "tasks": len(build.tasks),
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+
+
 @tasks_cmd.command("build-procedural-registry")
 @click.option(
     "--candidate-jsonl",
@@ -1002,12 +1109,10 @@ def validate_cmd(
     if bucket_reveals_jsonl is not None:
         from lemma.chain.commitments import read_all_commitments
         from lemma.chain.miner_buckets import read_bucket_reveals_jsonl, submissions_from_bucket_reveals
-        from lemma.tasks import fetch_task_registry
+        from lemma.validator import current_active_tempo, task_registry_for_validation
 
-        registry = fetch_task_registry(
-            settings,
-            verify_signature=settings.protocol_mode == "production" or settings.verify_registry_signatures,
-        )
+        active_tempo = current_active_tempo(settings)
+        registry = task_registry_for_validation(settings, tempo=active_tempo)
         reveals = read_bucket_reveals_jsonl(bucket_reveals_jsonl)
         bucket_reveal_count = len(reveals)
         chain_commitments = (
@@ -1017,7 +1122,7 @@ def validate_cmd(
         )
         bucket_submissions, chain_authenticated_keys = submissions_from_bucket_reveals(
             reveals,
-            active_tasks_for_validation(registry, settings),
+            active_tasks_for_validation(registry, settings, tempo=active_tempo),
             verify_drand=verify_drand_reveals or settings.protocol_mode == "production",
             chain_commitments=chain_commitments,
             strict=False,
