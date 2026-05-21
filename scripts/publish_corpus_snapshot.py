@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import json
 import os
@@ -266,6 +267,23 @@ def _git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProc
     )
 
 
+def _git_push(repo: Path) -> None:
+    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    if not token:
+        _git(repo, "push")
+        return
+    env = os.environ.copy()
+    header = base64.b64encode(f"x-access-token:{token}".encode()).decode()
+    env.update(
+        {
+            "GIT_CONFIG_COUNT": "1",
+            "GIT_CONFIG_KEY_0": "http.https://github.com/.extraheader",
+            "GIT_CONFIG_VALUE_0": f"AUTHORIZATION: basic {header}",
+        }
+    )
+    subprocess.run(["git", "push"], cwd=repo, check=True, env=env)  # noqa: S603, S607
+
+
 def _assert_public_staged_diff(repo: Path) -> None:
     diff = _git(repo, "diff", "--cached").stdout
     if match := LEAK_PATTERN.search(diff):
@@ -300,7 +318,7 @@ def commit_repo_changes(
     _assert_public_staged_diff(repo)
     _git(repo, "commit", "-m", f"Publish {netuid} corpus snapshot {snapshot}")
     if push:
-        _git(repo, "push")
+        _git_push(repo)
     return True
 
 
