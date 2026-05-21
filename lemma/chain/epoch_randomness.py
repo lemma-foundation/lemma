@@ -48,9 +48,9 @@ def resolve_chain_block_epoch_randomness(
 ) -> EpochRandomness:
     """Resolve block-hash randomness for one active tempo."""
     if subtensor is None:
-        import bittensor as bt
+        from lemma.chain.subtensor import connect_subtensor
 
-        subtensor = bt.Subtensor(network=settings.bt_network or None)
+        subtensor = connect_subtensor(settings)
 
     current_block = int(subtensor.get_current_block())
     hyperparams = cast(

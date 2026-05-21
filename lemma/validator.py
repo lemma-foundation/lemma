@@ -78,9 +78,9 @@ def _now() -> str:
 def current_active_tempo(settings: LemmaSettings, *, now: datetime | None = None) -> int:
     """Return the tempo used for the active task window."""
     if settings.active_tempo_source == "chain":
-        import bittensor as bt
+        from lemma.chain.subtensor import connect_subtensor
 
-        subtensor = bt.Subtensor(network=settings.bt_network or None)
+        subtensor = connect_subtensor(settings)
         block = int(subtensor.get_current_block())
         hyperparams = subtensor.get_subnet_hyperparameters(settings.netuid, block=block)
         tempo = int(cast(Any, hyperparams).tempo)

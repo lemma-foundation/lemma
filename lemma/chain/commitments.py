@@ -252,8 +252,10 @@ def wallet_hotkey_address(settings: LemmaSettings) -> str:
 def submit_chain_commitment(settings: LemmaSettings, payload: str) -> ChainCommitmentSubmission:
     import bittensor as bt
 
+    from lemma.chain.subtensor import connect_subtensor
+
     wallet = bt.Wallet(name=settings.wallet_cold, hotkey=settings.wallet_hot)
-    subtensor = bt.Subtensor(network=settings.bt_network or None)
+    subtensor = connect_subtensor(settings)
     response = subtensor.set_commitment(
         wallet=wallet,
         netuid=settings.netuid,
@@ -298,8 +300,8 @@ def read_storage_commitment(settings: LemmaSettings, hotkey: str | None = None) 
 
 
 def read_all_commitments(settings: LemmaSettings) -> dict[str, str]:
-    import bittensor as bt
+    from lemma.chain.subtensor import connect_subtensor
 
-    subtensor = bt.Subtensor(network=settings.bt_network or None)
+    subtensor = connect_subtensor(settings)
     commitments: Mapping[str, str] = subtensor.get_all_commitments(settings.netuid)
     return {str(hotkey): str(payload) for hotkey, payload in commitments.items()}
