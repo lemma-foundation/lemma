@@ -32,6 +32,7 @@ For a file-based smoke loop, set `LEMMA_SUBMISSION_SPOOL_DIR` or pass `--submiss
 For a mainnet-shaped local/testnet loop, pass `--bucket-reveals-jsonl` with post-reveal miner bucket artifacts. The validator recomputes each miner's Merkle root from `(slot_index, ciphertext_sha256)` pairs before turning revealed proofs into submissions. Add `--verify-chain-commitments` to read the miner's on-chain bucket commitment, and add `--verify-drand-reveals` to decrypt each bucket ciphertext and require it to match the revealed proof; production mode enables both checks for bucket reveals. Binary ciphertexts should be JSON-encoded as `base64:<payload>` or `0x<hex>`.
 The file spool is suitable for local smoke tests and controlled testnet runs. Mainnet settlement is bucket/commitment-shaped: proof packages must be authenticated by the miner's chain commitment or by a direct hotkey signature, and must carry commit/reveal fields.
 Run `uv run python scripts/refresh_site_current_problems.py --site-repo /opt/lemmasub.net --commit --push` from the validator-side publish timer to refresh the public website's active-problem dashboard.
+For a live website feed, run `uv run python scripts/serve_current_problems.py --host localhost --port 8731` behind a TLS proxy such as `api.lemmasub.net`; the static site falls back to the committed JSON snapshot if that API is unavailable.
 
 ## Runtime Steps
 

@@ -79,6 +79,14 @@ uv run python scripts/refresh_site_current_problems.py --site-repo /opt/lemmasub
 
 The script only writes `data/current-problems.json` in the site checkout. It refuses to commit if the site repo already has staged changes, and it scans the staged dashboard diff before committing.
 
+For a live dashboard endpoint, run the narrow JSON server on the validator host and put a TLS proxy in front of it:
+
+```bash
+uv run python scripts/serve_current_problems.py --host localhost --port 8731
+```
+
+The server exposes `GET /current-problems.json` and `GET /healthz`, sends CORS headers for the static website, and does not expose submissions, proofs, wallets, or operator state. Keep `refresh_site_current_problems.py` as the fallback snapshot publisher.
+
 After checking the published snapshot, anchor the latest storage root on Bittensor:
 
 ```bash

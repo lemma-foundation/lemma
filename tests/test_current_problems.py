@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from lemma.common.config import LemmaSettings
+from lemma.current_problem_server import CurrentProblemService
 from lemma.current_problems import build_current_problems_snapshot, write_current_problems_snapshot
 from lemma.task_supply import make_task
 from lemma.tasks import TaskRegistry
@@ -118,3 +119,35 @@ def test_refresh_site_current_problems_script_writes_site_json(tmp_path: Path) -
     payload = json.loads((site_repo / "data" / "current-problems.json").read_text(encoding="utf-8"))
     assert summary["task_count"] == payload["task_count"]
     assert payload["schema_version"] == 1
+
+
+def test_current_problem_service_serves_snapshot() -> None:
+    settings = LemmaSettings(active_task_count=1, frontier_depth=0, active_queue_seed="pytest")
+
+    def snapshot_builder(_settings: LemmaSettings, *, tempo: int | None = None):
+        return build_current_problems_snapshot(
+            settings,
+            registry=_registry(),
+            generated_at="2026-05-20T00:00:00Z",
+            tempo=0 if tempo is None else tempo,
+        )
+
+    service = CurrentProblemService(settings, snapshot_builder=snapshot_builder)
+    status, body = service.response("/current-problems.json?t=1")
+    payload = json.loads(body)
+
+    assert status == 200
+    assert payload["schema_version"] == 1
+    assert payload["task_count"] == 1
+
+
+def test_current_problem_service_has_health_and_404() -> None:
+    service = CurrentProblemService(LemmaSettings())
+
+    health_status, health_body = service.response("/healthz")
+    missing_status, missing_body = service.response("/missing")
+
+    assert health_status == 200
+    assert json.loads(health_body)["ok"] is True
+    assert missing_status == 404
+    assert json.loads(missing_body)["error"] == "not found"
