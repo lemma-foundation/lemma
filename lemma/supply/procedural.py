@@ -281,6 +281,7 @@ def _candidate_from_source(
     metadata = {
         "activation_status": "paid",
         "supply_mode": "procedural",
+        "tempo": tempo,
         "mutation_depth": 2,
         "mutation_chain": mutation_chain,
         "generation_seed": generation_seed,

@@ -19,6 +19,7 @@ from lemma.scoring import VerificationRecord, score_epoch
 from lemma.submissions import build_submission, sign_submission
 from lemma.supply.gates import GATE_VERSION
 from lemma.supply.slot_weight import slot_weight_receipt_for_task
+from lemma.supply.triviality_budget import TrivialityRetargetConfig, triviality_budget_receipt
 from lemma.task_activation import task_reward_eligibility
 from lemma.task_supply import make_task
 from lemma.tasks import (
@@ -45,9 +46,20 @@ def _task(source_license: str = "CC-BY-4.0"):
     ).model_copy(update={"difficulty_band": "medium"})
 
 
-def _procedural_metadata(*, mutation_depth: int = 2, generation_seed: str = "pytest-depth2") -> dict[str, object]:
+def _procedural_metadata(
+    *,
+    mutation_depth: int = 2,
+    generation_seed: str = "pytest-depth2",
+    tempo: int = 0,
+) -> dict[str, object]:
+    triviality_budget = triviality_budget_receipt(
+        (),
+        tempo=tempo,
+        config=TrivialityRetargetConfig(genesis_budget_s=5, max_budget_s=5),
+    )
     return {
         "supply_mode": "procedural",
+        "tempo": tempo,
         "mutation_depth": mutation_depth,
         "mutation_chain": [
             {"operator": "generalize", "input_hash": "1" * 64, "output_hash": "2" * 64},
@@ -69,15 +81,15 @@ def _procedural_metadata(*, mutation_depth: int = 2, generation_seed: str = "pyt
         "typecheck_reason": "ok",
         "prop_gate_reason": "ok",
         "triviality_stack": ["pytest"],
-        "triviality_budget_s": 5,
         "triviality_reason": "baseline_failed",
         "baseline_solver": None,
+        **triviality_budget.metadata(),
     }
 
 
-def _production_task(*, mutation_depth: int = 2, generation_seed: str = "pytest-depth2"):
+def _production_task(*, mutation_depth: int = 2, generation_seed: str = "pytest-depth2", tempo: int = 0):
     metadata = {
-        **_procedural_metadata(mutation_depth=mutation_depth, generation_seed=generation_seed),
+        **_procedural_metadata(mutation_depth=mutation_depth, generation_seed=generation_seed, tempo=tempo),
         "gate_version": GATE_VERSION,
     }
     task = _task().model_copy(
@@ -385,6 +397,15 @@ def test_production_mode_rejects_tampered_slot_weight_receipt() -> None:
     )
 
     assert production_supply_rejection_reason(tampered) == "slot_weight_basis_points"
+
+
+def test_production_mode_rejects_missing_triviality_retarget_receipt() -> None:
+    task = _production_task()
+    metadata = dict(task.metadata)
+    metadata.pop("triviality_budget_version")
+    tampered = task.model_copy(update={"metadata": metadata})
+
+    assert production_supply_rejection_reason(tampered) == "triviality_budget_version"
 
 
 def test_production_mode_requires_epoch_randomness_active_seed() -> None:

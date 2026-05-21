@@ -21,6 +21,7 @@ from lemma.supply.mixed import build_mixed_registry_tasks
 from lemma.supply.procedural import build_procedural_registry_tasks
 from lemma.supply.queue import advance_active_pool, initial_active_pool
 from lemma.supply.slot_weight import slot_weight_receipt_for_candidate
+from lemma.supply.triviality_budget import BurnRateRecord, TrivialityRetargetConfig, triviality_budget_receipt
 from lemma.tasks import SourceRef
 
 
@@ -106,9 +107,15 @@ def test_mixed_registry_requires_launch_vetted_candidates() -> None:
 
 
 def test_procedural_registry_requires_depth_two_metadata() -> None:
+    triviality_budget = triviality_budget_receipt(
+        (),
+        tempo=0,
+        config=TrivialityRetargetConfig(genesis_budget_s=5, max_budget_s=5),
+    )
     metadata: dict[str, object] = {
         "activation_status": "paid",
         "supply_mode": "procedural",
+        "tempo": 0,
         "mutation_depth": 2,
         "mutation_chain": [
             {"operator": "generalize", "input_hash": "1" * 64, "output_hash": "2" * 64},
@@ -131,9 +138,9 @@ def test_procedural_registry_requires_depth_two_metadata() -> None:
         "typecheck_reason": "ok",
         "prop_gate_reason": "ok",
         "triviality_stack": ["pytest"],
-        "triviality_budget_s": 5,
         "triviality_reason": "baseline_failed",
         "baseline_solver": None,
+        **triviality_budget.metadata(),
     }
     good = mathlib_snapshot.fixture_candidates()[0].model_copy(
         update={
@@ -185,6 +192,39 @@ def test_curriculum_separates_depth_from_validator_capacity() -> None:
     assert harder.state.active_K == 20
     assert more_capacity.state.frontier_depth == 2
     assert more_capacity.state.active_K > 20
+
+
+def test_triviality_budget_retargets_from_public_burn_history() -> None:
+    config = TrivialityRetargetConfig(
+        genesis_budget_s=100,
+        min_budget_s=10,
+        max_budget_s=1000,
+        window_tempos=2,
+        low_burn_basis_points=4000,
+        high_burn_basis_points=7000,
+        max_step_basis_points=2500,
+    )
+
+    low_burn = triviality_budget_receipt(
+        (
+            BurnRateRecord(tempo=0, burn_rate_basis_points=1000),
+            BurnRateRecord(tempo=1, burn_rate_basis_points=2000),
+        ),
+        tempo=2,
+        config=config,
+    )
+    high_burn = triviality_budget_receipt(
+        (
+            BurnRateRecord(tempo=0, burn_rate_basis_points=9000),
+            BurnRateRecord(tempo=1, burn_rate_basis_points=10000),
+        ),
+        tempo=2,
+        config=config,
+    )
+
+    assert low_burn.budget_s > config.genesis_budget_s
+    assert high_burn.budget_s < config.genesis_budget_s
+    assert low_burn.inputs["settlement_count"] == 2
 
 
 def test_economic_simulator_never_redistributes_unsolved_slots() -> None:

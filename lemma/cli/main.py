@@ -489,6 +489,12 @@ def tasks_build_mixed_registry_cmd(
 @click.option("--prior-corpus-dir", type=click.Path(file_okay=False, path_type=Path), default=None)
 @click.option("--citation-alpha", type=click.FloatRange(min=0.0, max=1.0), default=0.25, show_default=True)
 @click.option("--citation-weight-cap", type=click.FloatRange(min=1.0), default=100.0, show_default=True)
+@click.option(
+    "--triviality-retarget-jsonl",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Public settlement JSONL used to retarget the triviality budget T(t).",
+)
 @click.option("--assume-gates", is_flag=True, help="Dev-only: skip Lean gate execution.")
 def tasks_generate_procedural_depth2_cmd(
     snapshot_path: Path,
@@ -501,13 +507,19 @@ def tasks_generate_procedural_depth2_cmd(
     prior_corpus_dir: Path | None,
     citation_alpha: float,
     citation_weight_cap: float,
+    triviality_retarget_jsonl: Path | None,
     assume_gates: bool,
 ) -> None:
     """Generate depth-2 procedural task candidates from public epoch inputs."""
     from lemma.supply.gates import LeanProceduralGateRunner
     from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
     from lemma.supply.procedural import corpus_sources_from_dir, generate_depth2_candidates, source_pool_hash
+    from lemma.supply.triviality_budget import triviality_budget_receipt_for_settings
 
+    settings = LemmaSettings()
+    if triviality_retarget_jsonl is not None:
+        settings = settings.model_copy(update={"procedural_triviality_retarget_jsonl": triviality_retarget_jsonl})
+    triviality_budget = triviality_budget_receipt_for_settings(settings, tempo=tempo)
     sources = mathlib_candidates_from_jsonl(snapshot_path, limit=source_limit)
     if prior_corpus_dir is not None:
         sources = sources + corpus_sources_from_dir(prior_corpus_dir, before_tempo=tempo)
@@ -519,7 +531,9 @@ def tasks_generate_procedural_depth2_cmd(
         tempo=tempo,
         citation_alpha=citation_alpha,
         citation_weight_cap=citation_weight_cap,
-        gate_runner=None if assume_gates else LeanProceduralGateRunner(LemmaSettings()),
+        gate_runner=None
+        if assume_gates
+        else LeanProceduralGateRunner(settings, triviality_budget_receipt=triviality_budget),
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text("".join(candidate.model_dump_json() + "\n" for candidate in candidates), encoding="utf-8")
@@ -528,6 +542,10 @@ def tasks_generate_procedural_depth2_cmd(
             {
                 "output": str(output_path),
                 "source_pool_sha256": source_pool_hash(sources),
+                "triviality_budget_s": triviality_budget.budget_s,
+                "triviality_retarget_sha256": hashlib.sha256(
+                    json.dumps(triviality_budget.inputs, sort_keys=True, separators=(",", ":")).encode()
+                ).hexdigest(),
                 "candidates": len(candidates),
             },
             indent=2,
@@ -554,6 +572,12 @@ def tasks_generate_procedural_depth2_cmd(
 @click.option("--prior-corpus-dir", type=click.Path(file_okay=False, path_type=Path), default=None)
 @click.option("--citation-alpha", type=click.FloatRange(min=0.0, max=1.0), default=0.25, show_default=True)
 @click.option("--citation-weight-cap", type=click.FloatRange(min=1.0), default=100.0, show_default=True)
+@click.option(
+    "--triviality-retarget-jsonl",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Public settlement JSONL used to retarget the triviality budget T(t).",
+)
 def tasks_rebuild_procedural_registry_cmd(
     snapshot_path: Path,
     output_path: Path,
@@ -566,6 +590,7 @@ def tasks_rebuild_procedural_registry_cmd(
     prior_corpus_dir: Path | None,
     citation_alpha: float,
     citation_weight_cap: float,
+    triviality_retarget_jsonl: Path | None,
 ) -> None:
     """Rebuild the production procedural registry from public inputs."""
     from lemma.supply.gates import LeanProceduralGateRunner
@@ -576,8 +601,13 @@ def tasks_rebuild_procedural_registry_cmd(
         generate_depth2_candidates,
         source_pool_hash,
     )
+    from lemma.supply.triviality_budget import triviality_budget_receipt_for_settings
     from lemma.task_supply import write_registry
 
+    settings = LemmaSettings()
+    if triviality_retarget_jsonl is not None:
+        settings = settings.model_copy(update={"procedural_triviality_retarget_jsonl": triviality_retarget_jsonl})
+    triviality_budget = triviality_budget_receipt_for_settings(settings, tempo=tempo)
     sources = mathlib_candidates_from_jsonl(snapshot_path, limit=source_limit)
     if prior_corpus_dir is not None:
         sources = sources + corpus_sources_from_dir(prior_corpus_dir, before_tempo=tempo)
@@ -589,7 +619,7 @@ def tasks_rebuild_procedural_registry_cmd(
         tempo=tempo,
         citation_alpha=citation_alpha,
         citation_weight_cap=citation_weight_cap,
-        gate_runner=LeanProceduralGateRunner(LemmaSettings()),
+        gate_runner=LeanProceduralGateRunner(settings, triviality_budget_receipt=triviality_budget),
     )
     build = build_procedural_registry_tasks(candidates, seed=generation_seed, frontier_depth=frontier_depth)
     if build.rejected:
@@ -602,6 +632,10 @@ def tasks_rebuild_procedural_registry_cmd(
                 "output": str(output_path),
                 "registry_sha256": hashlib.sha256(output_path.read_bytes()).hexdigest(),
                 "source_pool_sha256": source_pool_hash(sources),
+                "triviality_budget_s": triviality_budget.budget_s,
+                "triviality_retarget_sha256": hashlib.sha256(
+                    json.dumps(triviality_budget.inputs, sort_keys=True, separators=(",", ":")).encode()
+                ).hexdigest(),
                 "tasks": len(build.tasks),
             },
             indent=2,

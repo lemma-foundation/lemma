@@ -19,6 +19,7 @@ from lemma.supply.procedural import (
     source_pool_hash,
 )
 from lemma.supply.slot_weight import slot_weight_receipt_for_candidate
+from lemma.supply.triviality_budget import TrivialityRetargetConfig, triviality_budget_receipt
 from lemma.task_supply import make_task
 from lemma.validator import active_epoch_seed, active_tasks_for_validation, task_registry_for_validation
 
@@ -50,6 +51,11 @@ def _write_snapshot(path: Path) -> None:
 def _fake_lean_gate(self, candidate, *, seen_canonical_hashes) -> ProceduralGateVerdict:  # noqa: ANN001, ARG001
     canonical_hash = str(candidate.metadata.get("canonical_hash") or "")
     slot_weight = slot_weight_receipt_for_candidate(candidate)
+    triviality_budget = triviality_budget_receipt(
+        (),
+        tempo=int(candidate.metadata["tempo"]),
+        config=TrivialityRetargetConfig(genesis_budget_s=5, max_budget_s=5),
+    )
     return ProceduralGateVerdict(
         typechecked=True,
         prop_gate_passed=True,
@@ -62,9 +68,9 @@ def _fake_lean_gate(self, candidate, *, seen_canonical_hashes) -> ProceduralGate
             "typecheck_reason": "ok",
             "prop_gate_reason": "ok",
             "triviality_stack": ["pytest"],
-            "triviality_budget_s": 5,
             "triviality_reason": "baseline_failed",
             "baseline_solver": None,
+            **triviality_budget.metadata(),
             **slot_weight.metadata(),
         },
     )
@@ -150,6 +156,7 @@ def test_lean_gate_runner_records_generation_time_gates(monkeypatch: pytest.Monk
 
     assert verdict.accepted is True
     assert verdict.metadata["gate_runner"] == "lean"
+    assert verdict.metadata["triviality_budget_version"] == "lemma-triviality-retarget-v1"
     assert verdict.metadata["triviality_reason"] == "baseline_failed"
     assert calls[:2] == ["typecheck", "prop"]
     assert "triviality" in calls

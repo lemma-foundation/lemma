@@ -23,6 +23,7 @@ from lemma.supply.gates import ProceduralGateVerdict
 from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
 from lemma.supply.procedural import procedural_operator_bundle_hash, source_pool_hash
 from lemma.supply.slot_weight import slot_weight_receipt_for_candidate
+from lemma.supply.triviality_budget import TrivialityRetargetConfig, triviality_budget_receipt
 from lemma.tasks import load_task_registry
 from lemma.validator import active_epoch_seed, active_tasks_for_validation, task_registry_for_validation
 
@@ -46,6 +47,11 @@ def _proof_for(theorem_name: str) -> str:
 def _fake_lean_gate(self, candidate, *, seen_canonical_hashes) -> ProceduralGateVerdict:  # noqa: ANN001, ARG001
     canonical_hash = str(candidate.metadata.get("canonical_hash") or "")
     slot_weight = slot_weight_receipt_for_candidate(candidate)
+    triviality_budget = triviality_budget_receipt(
+        (),
+        tempo=int(candidate.metadata["tempo"]),
+        config=TrivialityRetargetConfig(genesis_budget_s=5, max_budget_s=5),
+    )
     return ProceduralGateVerdict(
         typechecked=True,
         prop_gate_passed=True,
@@ -58,9 +64,9 @@ def _fake_lean_gate(self, candidate, *, seen_canonical_hashes) -> ProceduralGate
             "typecheck_reason": "ok",
             "prop_gate_reason": "ok",
             "triviality_stack": ["pytest"],
-            "triviality_budget_s": 5,
             "triviality_reason": "baseline_failed",
             "baseline_solver": None,
+            **triviality_budget.metadata(),
             **slot_weight.metadata(),
         },
     )

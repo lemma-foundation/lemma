@@ -93,6 +93,43 @@ class LemmaSettings(BaseSettings):
         ge=1,
         validation_alias="LEMMA_PROCEDURAL_TRIVIALITY_BUDGET_S",
     )
+    procedural_triviality_retarget_jsonl: Path | None = Field(
+        default=None,
+        validation_alias="LEMMA_PROCEDURAL_TRIVIALITY_RETARGET_JSONL",
+    )
+    procedural_triviality_retarget_window_tempos: int = Field(
+        default=8,
+        ge=1,
+        validation_alias="LEMMA_PROCEDURAL_TRIVIALITY_RETARGET_WINDOW_TEMPOS",
+    )
+    procedural_triviality_min_budget_s: int = Field(
+        default=1,
+        ge=1,
+        validation_alias="LEMMA_PROCEDURAL_TRIVIALITY_MIN_BUDGET_S",
+    )
+    procedural_triviality_max_budget_s: int = Field(
+        default=1200,
+        ge=1,
+        validation_alias="LEMMA_PROCEDURAL_TRIVIALITY_MAX_BUDGET_S",
+    )
+    procedural_triviality_low_burn_rate: float = Field(
+        default=0.40,
+        ge=0.0,
+        le=1.0,
+        validation_alias="LEMMA_PROCEDURAL_TRIVIALITY_LOW_BURN_RATE",
+    )
+    procedural_triviality_high_burn_rate: float = Field(
+        default=0.70,
+        ge=0.0,
+        le=1.0,
+        validation_alias="LEMMA_PROCEDURAL_TRIVIALITY_HIGH_BURN_RATE",
+    )
+    procedural_triviality_max_step_rate: float = Field(
+        default=0.25,
+        ge=0.0,
+        le=1.0,
+        validation_alias="LEMMA_PROCEDURAL_TRIVIALITY_MAX_STEP_RATE",
+    )
     verify_registry_signatures: bool = Field(
         default=False,
         validation_alias="LEMMA_VERIFY_REGISTRY_SIGNATURES",

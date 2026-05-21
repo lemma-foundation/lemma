@@ -83,6 +83,7 @@ uv run lemma tasks rebuild-procedural-registry \
   --epoch-randomness "$EPOCH_RANDOMNESS_JSON" \
   --tempo "$TEMPO" \
   --count "$K" \
+  --triviality-retarget-jsonl public-settlements.jsonl \
   --output tasks/mainnet.registry.json
 ```
 
@@ -90,9 +91,9 @@ The procedural generator derives rows from the source pool and epoch seed; it is
 not a static playlist. The procedural builder rejects paid rows unless they
 carry procedural depth-2 provenance, chain/drand anchoring, source-pool and
 operator-bundle hashes, clean license state, a recomputable `slot_weight`
-receipt, and a Lean-backed gate receipt. Production receipts must come from the
+receipt, a recomputable `T(t)` triviality-budget receipt, and a Lean-backed gate receipt. Production receipts must come from the
 `lean` gate runner: Lean typecheck, kernel Prop gate, canonical novelty, the
-pinned triviality stack, and deterministic import/dependency slot-weight
+pinned triviality stack retargeted from public burn history, and deterministic import/dependency slot-weight
 calculation must all run during generation, and any candidate solved by the
 stack is excluded from paid supply.
 
@@ -109,6 +110,7 @@ LEMMA_PROCEDURAL_CITATION_ALPHA=0.25
 LEMMA_PROCEDURAL_CITATION_WEIGHT_CAP=100
 LEMMA_PROCEDURAL_GATE_TIMEOUT_S=120
 LEMMA_PROCEDURAL_TRIVIALITY_BUDGET_S=120
+LEMMA_PROCEDURAL_TRIVIALITY_RETARGET_JSONL=public-settlements.jsonl
 LEMMA_ACTIVE_SEED_MODE=epoch_randomness
 LEMMA_ACTIVE_EPOCH_RANDOMNESS_SOURCE=chain_drand
 ```

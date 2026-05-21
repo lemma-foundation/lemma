@@ -10,6 +10,7 @@ from typing import Any
 from lemma.common.config import LemmaSettings
 from lemma.supply.gates import GATE_VERSION
 from lemma.supply.slot_weight import SLOT_WEIGHT_VERSION, slot_weight_receipt_for_task
+from lemma.supply.triviality_budget import TRIVIALITY_BUDGET_VERSION
 from lemma.task_activation import activation_status_for, task_reward_eligibility
 from lemma.tasks import LemmaTask, TaskRegistry
 
@@ -45,6 +46,8 @@ def production_supply_rejection_reason(task: LemmaTask) -> str:
         return "drand_round"
     if not _has_int(metadata, "anchor_block"):
         return "anchor_block"
+    if not _has_int(metadata, "tempo"):
+        return "tempo"
     for key in ("source_pool_hash", "operator_bundle_hash", "canonical_hash"):
         if not _has_hex64(metadata, key):
             return key
@@ -60,6 +63,15 @@ def production_supply_rejection_reason(task: LemmaTask) -> str:
         return "triviality"
     if _positive_float(metadata.get("triviality_budget_s")) is None:
         return "triviality_budget_s"
+    if metadata.get("triviality_budget_version") != TRIVIALITY_BUDGET_VERSION:
+        return "triviality_budget_version"
+    retarget_inputs = metadata.get("triviality_retarget_inputs")
+    if not isinstance(retarget_inputs, dict):
+        return "triviality_retarget_inputs"
+    if retarget_inputs.get("version") != TRIVIALITY_BUDGET_VERSION:
+        return "triviality_retarget_inputs"
+    if retarget_inputs.get("target_tempo") != metadata.get("tempo"):
+        return "triviality_retarget_inputs"
     if metadata.get("baseline_solved") is True:
         return "baseline_solved"
     if metadata.get("novelty_status") != "passed":
@@ -89,6 +101,9 @@ def procedural_gate_receipt_sha256(task: LemmaTask) -> str:
         "triviality_checked": metadata.get("triviality_checked"),
         "triviality_stack": metadata.get("triviality_stack"),
         "triviality_budget_s": metadata.get("triviality_budget_s"),
+        "triviality_budget_version": metadata.get("triviality_budget_version"),
+        "triviality_burn_rate_basis_points": metadata.get("triviality_burn_rate_basis_points"),
+        "triviality_retarget_inputs": metadata.get("triviality_retarget_inputs"),
         "triviality_reason": metadata.get("triviality_reason"),
         "baseline_solved": metadata.get("baseline_solved"),
         "baseline_solver": metadata.get("baseline_solver"),

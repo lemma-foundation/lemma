@@ -11,6 +11,10 @@ from lemma.lean.sandbox import VerifyReason, VerifyResult
 from lemma.lean.verify_runner import run_lean_verify
 from lemma.problems.base import Problem
 from lemma.supply.slot_weight import slot_weight_receipt_for_candidate
+from lemma.supply.triviality_budget import (
+    TrivialityBudgetReceipt,
+    static_triviality_budget_receipt,
+)
 from lemma.supply.types import TaskCandidate
 
 GATE_VERSION = "lemma-procedural-gates-v2"
@@ -68,6 +72,7 @@ class AssumedProceduralGateRunner:
         canonical_hash = str(candidate.metadata.get("canonical_hash") or "")
         novelty = "duplicate" if canonical_hash in set(seen_canonical_hashes) else "passed"
         slot_weight = slot_weight_receipt_for_candidate(candidate)
+        budget = static_triviality_budget_receipt(1)
         return ProceduralGateVerdict(
             typechecked=True,
             prop_gate_passed=True,
@@ -78,6 +83,7 @@ class AssumedProceduralGateRunner:
             metadata={
                 "gate_runner": "assumed",
                 "triviality_stack": [name for name, _body in TRIVIALITY_STACK],
+                **budget.metadata(),
                 **slot_weight.metadata(),
             },
         )
@@ -86,10 +92,18 @@ class AssumedProceduralGateRunner:
 class LeanProceduralGateRunner:
     """Lean-backed implementation of the four paid-production gates."""
 
-    def __init__(self, settings: LemmaSettings) -> None:
+    def __init__(
+        self,
+        settings: LemmaSettings,
+        *,
+        triviality_budget_receipt: TrivialityBudgetReceipt | None = None,
+    ) -> None:
         self.settings = settings
         self.gate_timeout_s = min(settings.lean_verify_timeout_s, settings.procedural_gate_timeout_s)
-        self.triviality_budget_s = min(settings.lean_verify_timeout_s, settings.procedural_triviality_budget_s)
+        self.triviality_budget_receipt = triviality_budget_receipt or static_triviality_budget_receipt(
+            min(settings.lean_verify_timeout_s, settings.procedural_triviality_budget_s)
+        )
+        self.triviality_budget_s = self.triviality_budget_receipt.budget_s
 
     def __call__(
         self,
@@ -115,9 +129,9 @@ class LeanProceduralGateRunner:
                 "typecheck_reason": typecheck.reason,
                 "prop_gate_reason": prop.reason,
                 "triviality_stack": [name for name, _body in TRIVIALITY_STACK],
-                "triviality_budget_s": self.triviality_budget_s,
                 "triviality_reason": baseline_reason,
                 "baseline_solver": baseline_solver,
+                **self.triviality_budget_receipt.metadata(),
                 **slot_weight.metadata(),
             },
         )

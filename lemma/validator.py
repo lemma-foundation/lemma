@@ -179,6 +179,7 @@ def _procedural_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> Ta
         generate_depth2_candidates,
         source_pool_hash,
     )
+    from lemma.supply.triviality_budget import triviality_budget_receipt_for_settings
 
     if settings.procedural_source_jsonl is None:
         raise RuntimeError("procedural supply requires LEMMA_PROCEDURAL_SOURCE_JSONL")
@@ -199,6 +200,7 @@ def _procedural_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> Ta
     )
     generation_seed = active_epoch_seed(settings, tempo=tempo, epoch_randomness=epoch_randomness)
     count = settings.procedural_candidate_count or settings.active_task_count
+    triviality_budget = triviality_budget_receipt_for_settings(settings, tempo=tempo)
     candidates = generate_depth2_candidates(
         sources,
         generation_seed=generation_seed,
@@ -207,7 +209,11 @@ def _procedural_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> Ta
         tempo=tempo,
         citation_alpha=settings.procedural_citation_alpha,
         citation_weight_cap=settings.procedural_citation_weight_cap,
-        gate_runner=LeanProceduralGateRunner(settings) if settings.protocol_mode == "production" else None,
+        gate_runner=(
+            LeanProceduralGateRunner(settings, triviality_budget_receipt=triviality_budget)
+            if settings.protocol_mode == "production"
+            else None
+        ),
     )
     build = build_procedural_registry_tasks(candidates, seed=generation_seed, frontier_depth=settings.frontier_depth)
     if build.rejected:

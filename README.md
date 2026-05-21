@@ -77,7 +77,7 @@ The submission spool is a file inbox for miner submission JSON files; consumed f
 `--bucket-reveals-jsonl` is the adapter for the mainnet-shaped path: a miner bucket reveal must match the miner's on-chain committed Merkle root before it can enter scoring. Add `--verify-chain-commitments` to read the miner's on-chain bucket commitment and `--verify-drand-reveals` to decrypt bucket ciphertexts and require the decrypted proof to match the revealed proof; production mode enables both checks for bucket reveals.
 Live weight writes require both `LEMMA_ENABLE_SET_WEIGHTS=1` and `--set-weights`; smoke passes should stay on `--no-set-weights`.
 When a live write is attempted, the validator appends a public-safe local receipt to `weight-submissions.jsonl` under `LEMMA_OPERATOR_DATA_DIR`, including the resolved UID vector and extrinsic hash when the Bittensor client returns one.
-Production mode additionally requires procedural depth-2 paid supply rebuilt from a pinned public source pool and chain/drand epoch randomness, hotkey-authenticated miner submissions, commit/reveal fields on revealed submissions, network-disabled Lean verification, and strong Lean-derived proof identity for paid rewards. Registry files can be mirrored as caches; they are not the procedural problem authority.
+Production mode additionally requires procedural depth-2 paid supply rebuilt from a pinned public source pool, chain/drand epoch randomness, public burn-rate retargeting for `T(t)`, hotkey-authenticated miner submissions, commit/reveal fields on revealed submissions, network-disabled Lean verification, and strong Lean-derived proof identity for paid rewards. Registry files can be mirrored as caches; they are not the procedural problem authority.
 
 ## Try The Loop Locally
 
