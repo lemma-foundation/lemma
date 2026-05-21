@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Callable
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from threading import Lock
 from urllib.parse import urlsplit
 
 from lemma.common.config import LemmaSettings
@@ -21,10 +23,14 @@ class CurrentProblemService:
         *,
         tempo: int | None = None,
         snapshot_builder: SnapshotBuilder = build_current_problems_snapshot,
+        cache_seconds: float = 30.0,
     ) -> None:
         self.settings = settings
         self.tempo = tempo
         self.snapshot_builder = snapshot_builder
+        self.cache_seconds = cache_seconds
+        self._cache: tuple[float, bytes] | None = None
+        self._lock = Lock()
 
     def response(self, raw_path: str) -> tuple[int, bytes]:
         path = urlsplit(raw_path).path
@@ -32,12 +38,24 @@ class CurrentProblemService:
             return HTTPStatus.OK, b'{"ok":true}\n'
         if path in {"/", "/current-problems.json"}:
             try:
-                snapshot = self.snapshot_builder(self.settings, tempo=self.tempo)
+                return HTTPStatus.OK, self._snapshot_body()
             except Exception:
                 return HTTPStatus.SERVICE_UNAVAILABLE, b'{"error":"problem feed unavailable"}\n'
-            payload = snapshot.model_dump(mode="json", exclude_none=True)
-            return HTTPStatus.OK, (json.dumps(payload, sort_keys=True) + "\n").encode()
         return HTTPStatus.NOT_FOUND, b'{"error":"not found"}\n'
+
+    def _snapshot_body(self) -> bytes:
+        now = time.monotonic()
+        if self._cache and self._cache[0] > now:
+            return self._cache[1]
+        with self._lock:
+            now = time.monotonic()
+            if self._cache and self._cache[0] > now:
+                return self._cache[1]
+            snapshot = self.snapshot_builder(self.settings, tempo=self.tempo)
+            payload = snapshot.model_dump(mode="json", exclude_none=True)
+            body = (json.dumps(payload, sort_keys=True) + "\n").encode()
+            self._cache = (now + self.cache_seconds, body)
+            return body
 
 
 def make_handler(service: CurrentProblemService) -> type[BaseHTTPRequestHandler]:
