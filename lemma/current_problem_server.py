@@ -23,7 +23,7 @@ class CurrentProblemService:
         *,
         tempo: int | None = None,
         snapshot_builder: SnapshotBuilder = build_current_problems_snapshot,
-        cache_seconds: float = 30.0,
+        cache_seconds: float = 300.0,
     ) -> None:
         self.settings = settings
         self.tempo = tempo
