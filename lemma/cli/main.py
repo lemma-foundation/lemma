@@ -489,6 +489,7 @@ def tasks_build_mixed_registry_cmd(
 @click.option("--prior-corpus-dir", type=click.Path(file_okay=False, path_type=Path), default=None)
 @click.option("--citation-alpha", type=click.FloatRange(min=0.0, max=1.0), default=0.25, show_default=True)
 @click.option("--citation-weight-cap", type=click.FloatRange(min=1.0), default=100.0, show_default=True)
+@click.option("--assume-gates", is_flag=True, help="Dev-only: skip Lean gate execution.")
 def tasks_generate_procedural_depth2_cmd(
     snapshot_path: Path,
     output_path: Path,
@@ -500,8 +501,10 @@ def tasks_generate_procedural_depth2_cmd(
     prior_corpus_dir: Path | None,
     citation_alpha: float,
     citation_weight_cap: float,
+    assume_gates: bool,
 ) -> None:
     """Generate depth-2 procedural task candidates from public epoch inputs."""
+    from lemma.supply.gates import LeanProceduralGateRunner
     from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
     from lemma.supply.procedural import corpus_sources_from_dir, generate_depth2_candidates, source_pool_hash
 
@@ -516,6 +519,7 @@ def tasks_generate_procedural_depth2_cmd(
         tempo=tempo,
         citation_alpha=citation_alpha,
         citation_weight_cap=citation_weight_cap,
+        gate_runner=None if assume_gates else LeanProceduralGateRunner(LemmaSettings()),
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text("".join(candidate.model_dump_json() + "\n" for candidate in candidates), encoding="utf-8")
@@ -564,6 +568,7 @@ def tasks_rebuild_procedural_registry_cmd(
     citation_weight_cap: float,
 ) -> None:
     """Rebuild the production procedural registry from public inputs."""
+    from lemma.supply.gates import LeanProceduralGateRunner
     from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
     from lemma.supply.procedural import (
         build_procedural_registry_tasks,
@@ -584,6 +589,7 @@ def tasks_rebuild_procedural_registry_cmd(
         tempo=tempo,
         citation_alpha=citation_alpha,
         citation_weight_cap=citation_weight_cap,
+        gate_runner=LeanProceduralGateRunner(LemmaSettings()),
     )
     build = build_procedural_registry_tasks(candidates, seed=generation_seed, frontier_depth=frontier_depth)
     if build.rejected:

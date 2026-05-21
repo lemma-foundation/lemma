@@ -13,6 +13,7 @@ from lemma.lean.sandbox import VerifyResult
 from lemma.protocol_invariants import enforce_production_invariants, procedural_gate_receipt_sha256
 from lemma.scoring import VerificationRecord, score_epoch
 from lemma.submissions import build_submission, sign_submission
+from lemma.supply.gates import GATE_VERSION
 from lemma.task_activation import task_reward_eligibility
 from lemma.task_supply import make_task
 from lemma.tasks import (
@@ -60,6 +61,13 @@ def _procedural_metadata(*, mutation_depth: int = 2, generation_seed: str = "pyt
         "slot_weight": 1.0,
         "license_state": "clean_open",
         "triviality_checked": True,
+        "gate_runner": "lean",
+        "typecheck_reason": "ok",
+        "prop_gate_reason": "ok",
+        "triviality_stack": ["pytest"],
+        "triviality_budget_s": 5,
+        "triviality_reason": "baseline_failed",
+        "baseline_solver": None,
     }
 
 
@@ -70,7 +78,7 @@ def _production_task(*, mutation_depth: int = 2, generation_seed: str = "pytest-
             "source_ref": SourceRef(kind="procedural", name="pytest-depth2"),
             "metadata": {
                 **_procedural_metadata(mutation_depth=mutation_depth, generation_seed=generation_seed),
-                "gate_version": "lemma-procedural-gates-v1",
+                "gate_version": GATE_VERSION,
             },
         }
     )

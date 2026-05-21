@@ -13,6 +13,7 @@ from typing import Any
 
 from lemma.license import license_state_for
 from lemma.protocol_invariants import procedural_gate_receipt_sha256, production_supply_rejection_reason
+from lemma.supply.gates import GATE_VERSION, AssumedProceduralGateRunner, ProceduralGateRunner, ProceduralGateVerdict
 from lemma.supply.types import TaskCandidate
 from lemma.task_supply import deterministic_queue
 from lemma.tasks import LemmaTask, SourceRef
@@ -137,6 +138,7 @@ def generate_depth2_candidates(
     tempo: int,
     citation_alpha: float = 0.25,
     citation_weight_cap: float = 100.0,
+    gate_runner: ProceduralGateRunner | None = None,
 ) -> tuple[TaskCandidate, ...]:
     """Generate fresh procedural candidates from public source rows.
 
@@ -159,29 +161,33 @@ def generate_depth2_candidates(
         citation_alpha=citation_alpha,
         citation_weight_cap=citation_weight_cap,
     )
+    runner = gate_runner or AssumedProceduralGateRunner()
     out: list[TaskCandidate] = []
     seen: set[str] = set()
     cursor = 0
-    while len(out) < count:
+    attempt_limit = max(count * 50, len(ordered) * 20)
+    while len(out) < count and cursor < attempt_limit:
         source = ordered[cursor % len(ordered)]
         chain = _operator_chain(generation_seed, cursor)
-        candidate = _with_gate_receipt(
-            _candidate_from_source(
-                source,
-                generation_seed=generation_seed,
-                epoch_fields=epoch_fields,
-                operator_chain=chain,
-                source_pool_hash_value=pool_hash,
-                operator_bundle_hash=operator_hash,
-                tempo=tempo,
-                sequence=cursor,
-            )
+        candidate = _candidate_from_source(
+            source,
+            generation_seed=generation_seed,
+            epoch_fields=epoch_fields,
+            operator_chain=chain,
+            source_pool_hash_value=pool_hash,
+            operator_bundle_hash=operator_hash,
+            tempo=tempo,
+            sequence=cursor,
         )
+        verdict = runner(candidate, seen_canonical_hashes=seen)
+        candidate = _with_gate_receipt(candidate, verdict)
         canonical_hash = str(candidate.metadata["canonical_hash"])
-        if canonical_hash not in seen:
+        if verdict.accepted:
             seen.add(canonical_hash)
             out.append(candidate)
         cursor += 1
+    if len(out) < count:
+        raise ValueError(f"procedural gates accepted {len(out)} candidates, needed {count}")
     return tuple(out)
 
 
@@ -276,13 +282,6 @@ def _candidate_from_source(
         "source_pool_hash": source_pool_hash_value,
         "operator_bundle_hash": operator_bundle_hash,
         "canonical_hash": canonical_hash,
-        "typechecked": True,
-        "prop_gate_passed": True,
-        "triviality_checked": True,
-        "baseline_solved": False,
-        "novelty_status": "passed",
-        "slot_weight": float(max(1, source.queue_depth + 1)),
-        "gate_version": "lemma-procedural-gates-v1",
         "license_state": license_state_for(source.source_license, str(source.metadata.get("license_state") or "")),
         "source_task_id": source.id,
         "source_theorem_name": source.theorem_name,
@@ -307,9 +306,20 @@ def _candidate_from_source(
     )
 
 
-def _with_gate_receipt(candidate: TaskCandidate) -> TaskCandidate:
-    task = candidate.to_task()
-    metadata = {**candidate.metadata, "gate_receipt_sha256": procedural_gate_receipt_sha256(task)}
+def _with_gate_receipt(candidate: TaskCandidate, verdict: ProceduralGateVerdict) -> TaskCandidate:
+    metadata = {
+        **candidate.metadata,
+        **verdict.metadata,
+        "typechecked": verdict.typechecked,
+        "prop_gate_passed": verdict.prop_gate_passed,
+        "triviality_checked": verdict.triviality_checked,
+        "baseline_solved": verdict.baseline_solved,
+        "novelty_status": verdict.novelty_status,
+        "slot_weight": verdict.slot_weight,
+        "gate_version": GATE_VERSION,
+    }
+    task = candidate.model_copy(update={"metadata": metadata}).to_task()
+    metadata = {**metadata, "gate_receipt_sha256": procedural_gate_receipt_sha256(task)}
     return candidate.model_copy(update={"metadata": metadata})
 
 

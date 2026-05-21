@@ -171,6 +171,7 @@ def task_registry_for_validation(settings: LemmaSettings, *, tempo: int) -> Task
 
 
 def _procedural_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> TaskRegistry:
+    from lemma.supply.gates import LeanProceduralGateRunner
     from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
     from lemma.supply.procedural import (
         build_procedural_registry_tasks,
@@ -206,6 +207,7 @@ def _procedural_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> Ta
         tempo=tempo,
         citation_alpha=settings.procedural_citation_alpha,
         citation_weight_cap=settings.procedural_citation_weight_cap,
+        gate_runner=LeanProceduralGateRunner(settings) if settings.protocol_mode == "production" else None,
     )
     build = build_procedural_registry_tasks(candidates, seed=generation_seed, frontier_depth=settings.frontier_depth)
     if build.rejected:

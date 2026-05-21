@@ -16,6 +16,7 @@ from lemma.supply.controller import (
     read_curriculum_records,
     retarget_curriculum,
 )
+from lemma.supply.gates import GATE_VERSION
 from lemma.supply.mixed import build_mixed_registry_tasks
 from lemma.supply.procedural import build_procedural_registry_tasks
 from lemma.supply.queue import advance_active_pool, initial_active_pool
@@ -125,7 +126,14 @@ def test_procedural_registry_requires_depth_two_metadata() -> None:
         "novelty_status": "passed",
         "slot_weight": 2.0,
         "license_state": "clean_open",
-        "gate_version": "lemma-procedural-gates-v1",
+        "gate_version": GATE_VERSION,
+        "gate_runner": "lean",
+        "typecheck_reason": "ok",
+        "prop_gate_reason": "ok",
+        "triviality_stack": ["pytest"],
+        "triviality_budget_s": 5,
+        "triviality_reason": "baseline_failed",
+        "baseline_solver": None,
     }
     good = mathlib_snapshot.fixture_candidates()[0].model_copy(
         update={

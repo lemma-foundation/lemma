@@ -65,7 +65,7 @@ uv run lemma tasks rebuild-procedural-registry \
   --output tasks/mainnet.registry.json
 ```
 
-Cut scale, not shape: reduce `K`, source samples, and the operator bundle if needed, but keep depth-2 generation, novelty, Prop gates, deterministic slot weights, miner hotkey authentication, and strong proof identity. The registry file is a cache; validators rebuild from pinned source rows plus chain/drand. Tempo remains 72 minutes / 360 blocks until subnet tempo customization exists.
+Cut scale, not shape: reduce `K`, source samples, and the operator bundle if needed, but keep depth-2 generation, Lean-backed novelty/typecheck/Prop/triviality gates, deterministic slot weights, miner hotkey authentication, and strong proof identity. The registry file is a cache; validators rebuild from pinned source rows plus chain/drand. Tempo remains 72 minutes / 360 blocks until subnet tempo customization exists.
 
 On the launch host, production preflight must be green before accepting submissions:
 
@@ -76,6 +76,8 @@ LEMMA_PROCEDURAL_SOURCE_JSONL=snapshot.jsonl \
 LEMMA_PROCEDURAL_PRIOR_CORPUS_DIR=corpus \
 LEMMA_PROCEDURAL_SOURCE_SHA256_EXPECTED=<source-pool-sha256> \
 LEMMA_PROCEDURAL_CITATION_ALPHA=0.25 \
+LEMMA_PROCEDURAL_GATE_TIMEOUT_S=120 \
+LEMMA_PROCEDURAL_TRIVIALITY_BUDGET_S=120 \
 LEMMA_PROCEDURAL_CITATION_WEIGHT_CAP=100 \
 LEMMA_REQUIRE_SUBMISSION_SIGNATURES=1 \
 LEMMA_REQUIRE_COMMIT_REVEAL=1 \

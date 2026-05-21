@@ -8,6 +8,7 @@ import re
 from typing import Any
 
 from lemma.common.config import LemmaSettings
+from lemma.supply.gates import GATE_VERSION
 from lemma.task_activation import activation_status_for, task_reward_eligibility
 from lemma.tasks import LemmaTask, TaskRegistry
 
@@ -46,20 +47,24 @@ def production_supply_rejection_reason(task: LemmaTask) -> str:
     for key in ("source_pool_hash", "operator_bundle_hash", "canonical_hash"):
         if not _has_hex64(metadata, key):
             return key
+    if metadata.get("gate_version") != GATE_VERSION:
+        return "gate_version"
+    if metadata.get("gate_runner") != "lean":
+        return "gate_runner"
     if metadata.get("typechecked") is not True:
         return "typecheck"
     if metadata.get("prop_gate_passed") is not True:
         return "prop_gate"
     if metadata.get("triviality_checked") is not True:
         return "triviality"
+    if _positive_float(metadata.get("triviality_budget_s")) is None:
+        return "triviality_budget_s"
     if metadata.get("baseline_solved") is True:
         return "baseline_solved"
     if metadata.get("novelty_status") != "passed":
         return "novelty_status"
     if _positive_float(metadata.get("slot_weight")) is None:
         return "slot_weight"
-    if metadata.get("gate_version") != "lemma-procedural-gates-v1":
-        return "gate_version"
     if metadata.get("gate_receipt_sha256") != procedural_gate_receipt_sha256(task):
         return "gate_receipt_sha256"
     return ""
@@ -68,15 +73,23 @@ def production_supply_rejection_reason(task: LemmaTask) -> str:
 def procedural_gate_receipt_sha256(task: LemmaTask) -> str:
     metadata = task.metadata
     payload = {
-        "version": "lemma-procedural-gates-v1",
+        "version": GATE_VERSION,
         "task_id": task.id,
         "target_sha256": task.target_sha256,
         "canonical_hash": metadata.get("canonical_hash"),
+        "gate_runner": metadata.get("gate_runner"),
         "typechecked": metadata.get("typechecked"),
+        "typecheck_reason": metadata.get("typecheck_reason"),
         "prop_gate_passed": metadata.get("prop_gate_passed"),
+        "prop_gate_reason": metadata.get("prop_gate_reason"),
         "triviality_checked": metadata.get("triviality_checked"),
+        "triviality_stack": metadata.get("triviality_stack"),
+        "triviality_budget_s": metadata.get("triviality_budget_s"),
+        "triviality_reason": metadata.get("triviality_reason"),
         "baseline_solved": metadata.get("baseline_solved"),
+        "baseline_solver": metadata.get("baseline_solver"),
         "novelty_status": metadata.get("novelty_status"),
+        "slot_weight": metadata.get("slot_weight"),
         "source_pool_hash": metadata.get("source_pool_hash"),
         "operator_bundle_hash": metadata.get("operator_bundle_hash"),
         "mutation_chain": metadata.get("mutation_chain"),

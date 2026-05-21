@@ -19,6 +19,7 @@ from lemma.common.config import LemmaSettings
 from lemma.lean.sandbox import VerifyResult
 from lemma.operator import OperatorDiagnosticsReport, OperatorPreflightReport, OperatorRegistryInspectReport
 from lemma.submissions import build_submission
+from lemma.supply.gates import ProceduralGateVerdict
 from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
 from lemma.supply.procedural import procedural_operator_bundle_hash, source_pool_hash
 from lemma.tasks import load_task_registry
@@ -38,6 +39,27 @@ def _proof_for(theorem_name: str) -> str:
             "end Submission",
             "",
         ]
+    )
+
+
+def _fake_lean_gate(self, candidate, *, seen_canonical_hashes) -> ProceduralGateVerdict:  # noqa: ANN001, ARG001
+    canonical_hash = str(candidate.metadata.get("canonical_hash") or "")
+    return ProceduralGateVerdict(
+        typechecked=True,
+        prop_gate_passed=True,
+        triviality_checked=True,
+        baseline_solved=False,
+        novelty_status="duplicate" if canonical_hash in set(seen_canonical_hashes) else "passed",
+        slot_weight=1.0,
+        metadata={
+            "gate_runner": "lean",
+            "typecheck_reason": "ok",
+            "prop_gate_reason": "ok",
+            "triviality_stack": ["pytest"],
+            "triviality_budget_s": 5,
+            "triviality_reason": "baseline_failed",
+            "baseline_solver": None,
+        },
     )
 
 
@@ -289,6 +311,7 @@ def test_production_like_procedural_submission_smoke(monkeypatch: pytest.MonkeyP
         "lemma.validator.resolve_active_epoch_randomness",
         lambda settings, *, tempo: active_randomness,
     )
+    monkeypatch.setattr("lemma.supply.gates.LeanProceduralGateRunner.__call__", _fake_lean_gate)
     source_hash = source_pool_hash(mathlib_candidates_from_jsonl(snapshot_path))
     base_settings = LemmaSettings(
         _env_file=None,

@@ -87,12 +87,13 @@ uv run lemma tasks rebuild-procedural-registry \
 ```
 
 The procedural generator derives rows from the source pool and epoch seed; it is
-not a static playlist. The procedural builder still rejects candidates unless
-paid rows carry procedural depth-2 metadata, a two-step mutation chain,
-chain/drand anchoring, source-pool and operator-bundle hashes, Prop-gate
-success, novelty success, typecheck confirmation, triviality-check
-confirmation, a failed baseline-solver result, clean license state, and
-deterministic `slot_weight`.
+not a static playlist. The procedural builder rejects paid rows unless they
+carry procedural depth-2 provenance, chain/drand anchoring, source-pool and
+operator-bundle hashes, clean license state, deterministic `slot_weight`, and a
+Lean-backed gate receipt. Production receipts must come from the `lean` gate
+runner: Lean typecheck, kernel Prop gate, canonical novelty, and the pinned
+triviality stack must all run during generation, and any candidate solved by
+the stack is excluded from paid supply.
 
 The mixed builder remains useful for local smoke and curriculum tuning. It is not the paid production supply path.
 
@@ -105,6 +106,8 @@ LEMMA_PROCEDURAL_PRIOR_CORPUS_DIR=corpus
 LEMMA_PROCEDURAL_SOURCE_SHA256_EXPECTED=<source-pool-sha256>
 LEMMA_PROCEDURAL_CITATION_ALPHA=0.25
 LEMMA_PROCEDURAL_CITATION_WEIGHT_CAP=100
+LEMMA_PROCEDURAL_GATE_TIMEOUT_S=120
+LEMMA_PROCEDURAL_TRIVIALITY_BUDGET_S=120
 LEMMA_ACTIVE_SEED_MODE=epoch_randomness
 LEMMA_ACTIVE_EPOCH_RANDOMNESS_SOURCE=chain_drand
 ```

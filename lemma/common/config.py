@@ -83,6 +83,16 @@ class LemmaSettings(BaseSettings):
         ge=1.0,
         validation_alias="LEMMA_PROCEDURAL_CITATION_WEIGHT_CAP",
     )
+    procedural_gate_timeout_s: int = Field(
+        default=120,
+        ge=1,
+        validation_alias="LEMMA_PROCEDURAL_GATE_TIMEOUT_S",
+    )
+    procedural_triviality_budget_s: int = Field(
+        default=120,
+        ge=1,
+        validation_alias="LEMMA_PROCEDURAL_TRIVIALITY_BUDGET_S",
+    )
     verify_registry_signatures: bool = Field(
         default=False,
         validation_alias="LEMMA_VERIFY_REGISTRY_SIGNATURES",

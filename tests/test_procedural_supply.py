@@ -3,13 +3,16 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from lemma.common.config import LemmaSettings
 from lemma.corpus import build_corpus_row, write_jsonl
 from lemma.lean.sandbox import VerifyResult
 from lemma.protocol_invariants import enforce_production_invariants
 from lemma.submissions import build_submission
+from lemma.supply.gates import LeanProceduralGateRunner, ProceduralGateVerdict
 from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
 from lemma.supply.procedural import (
+    build_procedural_registry_tasks,
     corpus_sources_from_dir,
     generate_depth2_candidates,
     procedural_operator_bundle_hash,
@@ -41,6 +44,27 @@ def _write_snapshot(path: Path) -> None:
         },
     ]
     path.write_text("".join(json.dumps(row, sort_keys=True) + "\n" for row in rows), encoding="utf-8")
+
+
+def _fake_lean_gate(self, candidate, *, seen_canonical_hashes) -> ProceduralGateVerdict:  # noqa: ANN001, ARG001
+    canonical_hash = str(candidate.metadata.get("canonical_hash") or "")
+    return ProceduralGateVerdict(
+        typechecked=True,
+        prop_gate_passed=True,
+        triviality_checked=True,
+        baseline_solved=False,
+        novelty_status="duplicate" if canonical_hash in set(seen_canonical_hashes) else "passed",
+        slot_weight=1.0,
+        metadata={
+            "gate_runner": "lean",
+            "typecheck_reason": "ok",
+            "prop_gate_reason": "ok",
+            "triviality_stack": ["pytest"],
+            "triviality_budget_s": 5,
+            "triviality_reason": "baseline_failed",
+            "baseline_solver": None,
+        },
+    )
 
 
 def test_depth2_generation_is_epoch_seeded_not_static(tmp_path: Path) -> None:
@@ -79,6 +103,55 @@ def test_depth2_generation_is_epoch_seeded_not_static(tmp_path: Path) -> None:
     assert all(candidate.metadata["source_pool_hash"] == source_pool_hash(sources) for candidate in first)
 
 
+def test_procedural_registry_rejects_assumed_gate_receipts(tmp_path: Path) -> None:
+    snapshot = tmp_path / "snapshot.jsonl"
+    _write_snapshot(snapshot)
+    candidates = generate_depth2_candidates(
+        mathlib_candidates_from_jsonl(snapshot),
+        generation_seed="epoch-a",
+        epoch_randomness=json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
+        count=1,
+        tempo=3,
+    )
+
+    build = build_procedural_registry_tasks(candidates, seed="epoch-a")
+
+    assert build.tasks == ()
+    assert build.rejected[0].reason == "gate_runner"
+
+
+def test_lean_gate_runner_records_generation_time_gates(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    snapshot = tmp_path / "snapshot.jsonl"
+    _write_snapshot(snapshot)
+    candidate = generate_depth2_candidates(
+        mathlib_candidates_from_jsonl(snapshot),
+        generation_seed="epoch-a",
+        epoch_randomness=json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
+        count=1,
+        tempo=3,
+    )[0]
+    calls: list[str] = []
+
+    def fake_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001, ARG001
+        if problem.id.endswith(".gate"):
+            gate_source = str(problem.extra["challenge_full"])
+            calls.append("typecheck" if "def typecheck_gate" in gate_source else "prop")
+            return VerifyResult(passed=True, reason="ok")
+        calls.append("triviality")
+        return VerifyResult(passed=False, reason="compile_error")
+
+    monkeypatch.setattr("lemma.supply.gates.run_lean_verify", fake_verify)
+    verdict = LeanProceduralGateRunner(
+        LemmaSettings(_env_file=None, lean_use_docker=False, procedural_gate_timeout_s=5)
+    )(candidate, seen_canonical_hashes=())
+
+    assert verdict.accepted is True
+    assert verdict.metadata["gate_runner"] == "lean"
+    assert verdict.metadata["triviality_reason"] == "baseline_failed"
+    assert calls[:2] == ["typecheck", "prop"]
+    assert "triviality" in calls
+
+
 def test_procedural_supply_mode_rebuilds_active_registry_from_public_inputs(
     monkeypatch, tmp_path: Path
 ) -> None:
@@ -97,6 +170,7 @@ def test_procedural_supply_mode_rebuilds_active_registry_from_public_inputs(
         sort_keys=True,
     )
     monkeypatch.setattr("lemma.validator.resolve_active_epoch_randomness", lambda settings, *, tempo: randomness)
+    monkeypatch.setattr("lemma.supply.gates.LeanProceduralGateRunner.__call__", _fake_lean_gate)
     settings = LemmaSettings(
         _env_file=None,
         task_supply_mode="procedural",
@@ -160,6 +234,7 @@ def test_procedural_source_pool_includes_prior_accepted_corpus(
         "lemma.validator.resolve_active_epoch_randomness",
         lambda settings, *, tempo: json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
     )
+    monkeypatch.setattr("lemma.supply.gates.LeanProceduralGateRunner.__call__", _fake_lean_gate)
     settings = LemmaSettings(
         _env_file=None,
         task_supply_mode="procedural",
