@@ -5,6 +5,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from lemma.common.config import LemmaSettings
 from lemma.current_problem_server import CurrentProblemService
 from lemma.current_problems import build_current_problems_snapshot, write_current_problems_snapshot
@@ -96,6 +98,21 @@ def test_current_problem_snapshot_rotates_by_tempo() -> None:
     second = build_current_problems_snapshot(settings, registry=_registry(), tempo=1)
 
     assert first.tasks[0].task_id != second.tasks[0].task_id
+
+
+def test_current_problem_snapshot_enforces_production_boundary() -> None:
+    settings = LemmaSettings(
+        protocol_mode="production",
+        task_registry_sha256_expected="a" * 64,
+        active_seed_mode="epoch_randomness",
+        active_epoch_randomness_source="chain_drand",
+        require_submission_signatures=True,
+        require_commit_reveal=True,
+        require_strong_proof_identity=True,
+    )
+
+    with pytest.raises(RuntimeError, match="signature-verified registry bytes"):
+        build_current_problems_snapshot(settings, registry=_registry(), tempo=0)
 
 
 def test_refresh_site_current_problems_script_writes_site_json(tmp_path: Path) -> None:

@@ -93,6 +93,7 @@ def build_current_problems_snapshot(
     tempo: int | None = None,
 ) -> CurrentProblemsSnapshot:
     """Build the public active-task snapshot without proof or operator state."""
+    from lemma.protocol_invariants import enforce_production_invariants
     from lemma.tasks import fetch_task_registry
     from lemma.validator import (
         active_epoch_randomness_sha256,
@@ -101,7 +102,11 @@ def build_current_problems_snapshot(
         current_active_tempo,
     )
 
-    task_registry = registry or fetch_task_registry(settings)
+    task_registry = registry or fetch_task_registry(
+        settings,
+        verify_signature=settings.protocol_mode == "production" or settings.verify_registry_signatures,
+    )
+    enforce_production_invariants(settings, task_registry)
     active_tempo = current_active_tempo(settings) if tempo is None else tempo
     active_tasks = active_tasks_for_validation(task_registry, settings, tempo=active_tempo)
     tasks = tuple(_problem(task) for task in active_tasks)
