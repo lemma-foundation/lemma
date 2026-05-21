@@ -9,6 +9,7 @@ from typing import Any
 
 from lemma.common.config import LemmaSettings
 from lemma.supply.gates import GATE_VERSION
+from lemma.supply.slot_weight import SLOT_WEIGHT_VERSION, slot_weight_receipt_for_task
 from lemma.task_activation import activation_status_for, task_reward_eligibility
 from lemma.tasks import LemmaTask, TaskRegistry
 
@@ -63,6 +64,9 @@ def production_supply_rejection_reason(task: LemmaTask) -> str:
         return "baseline_solved"
     if metadata.get("novelty_status") != "passed":
         return "novelty_status"
+    slot_weight_reason = _slot_weight_rejection_reason(task)
+    if slot_weight_reason:
+        return slot_weight_reason
     if _positive_float(metadata.get("slot_weight")) is None:
         return "slot_weight"
     if metadata.get("gate_receipt_sha256") != procedural_gate_receipt_sha256(task):
@@ -90,6 +94,9 @@ def procedural_gate_receipt_sha256(task: LemmaTask) -> str:
         "baseline_solver": metadata.get("baseline_solver"),
         "novelty_status": metadata.get("novelty_status"),
         "slot_weight": metadata.get("slot_weight"),
+        "slot_weight_version": metadata.get("slot_weight_version"),
+        "slot_weight_basis_points": metadata.get("slot_weight_basis_points"),
+        "slot_weight_inputs": metadata.get("slot_weight_inputs"),
         "source_pool_hash": metadata.get("source_pool_hash"),
         "operator_bundle_hash": metadata.get("operator_bundle_hash"),
         "mutation_chain": metadata.get("mutation_chain"),
@@ -125,6 +132,21 @@ def _positive_float(value: Any) -> float | None:
     except (TypeError, ValueError):
         return None
     return number if number > 0 else None
+
+
+def _slot_weight_rejection_reason(task: LemmaTask) -> str:
+    metadata = task.metadata
+    if metadata.get("slot_weight_version") != SLOT_WEIGHT_VERSION:
+        return "slot_weight_version"
+    expected = slot_weight_receipt_for_task(task)
+    if metadata.get("slot_weight_basis_points") != expected.basis_points:
+        return "slot_weight_basis_points"
+    if metadata.get("slot_weight_inputs") != expected.inputs:
+        return "slot_weight_inputs"
+    observed = _positive_float(metadata.get("slot_weight"))
+    if observed is None or abs(observed - expected.weight) > 1e-9:
+        return "slot_weight"
+    return ""
 
 
 def enforce_production_invariants(settings: LemmaSettings, registry: TaskRegistry) -> None:

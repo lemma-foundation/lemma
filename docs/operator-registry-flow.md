@@ -34,9 +34,10 @@ uv run lemma tasks rebuild-procedural-registry \
 
 The procedural builder rejects paid candidates that do not carry procedural
 depth-2 metadata, chain/drand anchoring, clean license state, deterministic
-slot weight metadata, and a Lean-backed generation receipt. The receipt must
-come from the `lean` gate runner, which runs typecheck, Prop, novelty, and the
-pinned triviality stack before paid activation.
+slot-weight receipt metadata, and a Lean-backed generation receipt. The receipt
+must come from the `lean` gate runner, which runs typecheck, Prop, novelty, the
+pinned triviality stack, and import/dependency slot-weight calculation before
+paid activation.
 
 The mixed builder remains available for local smoke and curriculum work. It is not the paid production path.
 

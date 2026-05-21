@@ -89,6 +89,10 @@ def corpus_sources_from_dir(corpus_dir: Path, *, before_tempo: int | None = None
                     queue_depth=task.queue_depth,
                     metadata={
                         "citation_weight": row.dependencies.dependency_depth or 1,
+                        "direct_dependency_count": row.dependencies.direct_dependency_count,
+                        "dependency_depth": row.dependencies.dependency_depth,
+                        "transitive_dependency_hash": row.dependencies.transitive_dependency_hash,
+                        "lemma_rows_used": (row.row_id,),
                         "license_state": license_state_for(
                             row.source_license,
                             str(row.metadata.get("license_state") or ""),
@@ -123,6 +127,9 @@ def source_pool_hash(sources: tuple[TaskCandidate, ...]) -> str:
             "mathlib_rev": source.mathlib_rev,
             "queue_depth": source.queue_depth,
             "citation_weight": _metadata_float(source.metadata.get("citation_weight")) or 1.0,
+            "direct_dependency_count": _metadata_int(source.metadata.get("direct_dependency_count")),
+            "dependency_depth": _metadata_int(source.metadata.get("dependency_depth")),
+            "transitive_dependency_hash": str(source.metadata.get("transitive_dependency_hash") or ""),
         }
         for source in sorted(sources, key=lambda item: item.id)
     ]
@@ -287,6 +294,16 @@ def _candidate_from_source(
         "source_theorem_name": source.theorem_name,
         "source_target_sha256": _hash_text(source.statement),
     }
+    for key in (
+        "citation_weight",
+        "direct_dependency_count",
+        "dependency_depth",
+        "transitive_dependency_hash",
+        "lemma_rows_used",
+        "substrate_row_id",
+    ):
+        if key in source.metadata:
+            metadata[key] = source.metadata[key]
     return TaskCandidate(
         id=f"lemma.procedural.{canonical_hash[:16]}",
         title=f"Procedural {source.title or source.theorem_name}",
@@ -394,6 +411,16 @@ def _metadata_float(value: object) -> float | None:
         except ValueError:
             return None
         return out if math.isfinite(out) else None
+    return None
+
+
+def _metadata_int(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int) and value >= 0:
+        return value
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
     return None
 
 

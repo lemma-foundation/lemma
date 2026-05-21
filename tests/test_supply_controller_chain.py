@@ -20,6 +20,7 @@ from lemma.supply.gates import GATE_VERSION
 from lemma.supply.mixed import build_mixed_registry_tasks
 from lemma.supply.procedural import build_procedural_registry_tasks
 from lemma.supply.queue import advance_active_pool, initial_active_pool
+from lemma.supply.slot_weight import slot_weight_receipt_for_candidate
 from lemma.tasks import SourceRef
 
 
@@ -105,7 +106,7 @@ def test_mixed_registry_requires_launch_vetted_candidates() -> None:
 
 
 def test_procedural_registry_requires_depth_two_metadata() -> None:
-    metadata = {
+    metadata: dict[str, object] = {
         "activation_status": "paid",
         "supply_mode": "procedural",
         "mutation_depth": 2,
@@ -124,7 +125,6 @@ def test_procedural_registry_requires_depth_two_metadata() -> None:
         "triviality_checked": True,
         "baseline_solved": False,
         "novelty_status": "passed",
-        "slot_weight": 2.0,
         "license_state": "clean_open",
         "gate_version": GATE_VERSION,
         "gate_runner": "lean",
@@ -144,7 +144,20 @@ def test_procedural_registry_requires_depth_two_metadata() -> None:
         }
     )
     good = good.model_copy(
-        update={"metadata": {**good.metadata, "gate_receipt_sha256": procedural_gate_receipt_sha256(good.to_task())}}
+        update={
+            "metadata": {
+                **good.metadata,
+                **slot_weight_receipt_for_candidate(good).metadata(),
+            }
+        }
+    )
+    good = good.model_copy(
+        update={
+            "metadata": {
+                **good.metadata,
+                "gate_receipt_sha256": procedural_gate_receipt_sha256(good.to_task()),
+            }
+        }
     )
     depth_one = good.model_copy(
         update={
@@ -157,7 +170,7 @@ def test_procedural_registry_requires_depth_two_metadata() -> None:
 
     assert [task.id for task in build.tasks] == [good.id]
     assert build.tasks[0].source_stream == "procedural"
-    assert build.tasks[0].metadata["slot_weight"] == 2.0
+    assert build.tasks[0].metadata["slot_weight_version"] == "lemma-slot-weight-v1"
     assert build.rejected[0].reason == "mutation_depth"
 
 

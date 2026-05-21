@@ -10,10 +10,15 @@ from lemma.common.config import LemmaSettings
 from lemma.corpus import build_corpus_row
 from lemma.lean.proof_identity import proof_identity
 from lemma.lean.sandbox import VerifyResult
-from lemma.protocol_invariants import enforce_production_invariants, procedural_gate_receipt_sha256
+from lemma.protocol_invariants import (
+    enforce_production_invariants,
+    procedural_gate_receipt_sha256,
+    production_supply_rejection_reason,
+)
 from lemma.scoring import VerificationRecord, score_epoch
 from lemma.submissions import build_submission, sign_submission
 from lemma.supply.gates import GATE_VERSION
+from lemma.supply.slot_weight import slot_weight_receipt_for_task
 from lemma.task_activation import task_reward_eligibility
 from lemma.task_supply import make_task
 from lemma.tasks import (
@@ -58,7 +63,6 @@ def _procedural_metadata(*, mutation_depth: int = 2, generation_seed: str = "pyt
         "prop_gate_passed": True,
         "novelty_status": "passed",
         "baseline_solved": False,
-        "slot_weight": 1.0,
         "license_state": "clean_open",
         "triviality_checked": True,
         "gate_runner": "lean",
@@ -72,16 +76,18 @@ def _procedural_metadata(*, mutation_depth: int = 2, generation_seed: str = "pyt
 
 
 def _production_task(*, mutation_depth: int = 2, generation_seed: str = "pytest-depth2"):
+    metadata = {
+        **_procedural_metadata(mutation_depth=mutation_depth, generation_seed=generation_seed),
+        "gate_version": GATE_VERSION,
+    }
     task = _task().model_copy(
         update={
             "source_stream": "procedural",
             "source_ref": SourceRef(kind="procedural", name="pytest-depth2"),
-            "metadata": {
-                **_procedural_metadata(mutation_depth=mutation_depth, generation_seed=generation_seed),
-                "gate_version": GATE_VERSION,
-            },
+            "metadata": metadata,
         }
     )
+    task = task.model_copy(update={"metadata": {**task.metadata, **slot_weight_receipt_for_task(task).metadata()}})
     return task.model_copy(
         update={"metadata": {**task.metadata, "gate_receipt_sha256": procedural_gate_receipt_sha256(task)}}
     )
@@ -365,6 +371,20 @@ def test_production_mode_rejects_depth_one_paid_supply() -> None:
 
     with pytest.raises(RuntimeError, match="mutation_depth"):
         enforce_production_invariants(settings, registry)
+
+
+def test_production_mode_rejects_tampered_slot_weight_receipt() -> None:
+    task = _production_task()
+    tampered = task.model_copy(
+        update={
+            "metadata": {
+                **task.metadata,
+                "slot_weight_basis_points": int(task.metadata["slot_weight_basis_points"]) + 1,
+            }
+        }
+    )
+
+    assert production_supply_rejection_reason(tampered) == "slot_weight_basis_points"
 
 
 def test_production_mode_requires_epoch_randomness_active_seed() -> None:

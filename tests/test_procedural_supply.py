@@ -18,6 +18,7 @@ from lemma.supply.procedural import (
     procedural_operator_bundle_hash,
     source_pool_hash,
 )
+from lemma.supply.slot_weight import slot_weight_receipt_for_candidate
 from lemma.task_supply import make_task
 from lemma.validator import active_epoch_seed, active_tasks_for_validation, task_registry_for_validation
 
@@ -48,13 +49,14 @@ def _write_snapshot(path: Path) -> None:
 
 def _fake_lean_gate(self, candidate, *, seen_canonical_hashes) -> ProceduralGateVerdict:  # noqa: ANN001, ARG001
     canonical_hash = str(candidate.metadata.get("canonical_hash") or "")
+    slot_weight = slot_weight_receipt_for_candidate(candidate)
     return ProceduralGateVerdict(
         typechecked=True,
         prop_gate_passed=True,
         triviality_checked=True,
         baseline_solved=False,
         novelty_status="duplicate" if canonical_hash in set(seen_canonical_hashes) else "passed",
-        slot_weight=1.0,
+        slot_weight=slot_weight.weight,
         metadata={
             "gate_runner": "lean",
             "typecheck_reason": "ok",
@@ -63,6 +65,7 @@ def _fake_lean_gate(self, candidate, *, seen_canonical_hashes) -> ProceduralGate
             "triviality_budget_s": 5,
             "triviality_reason": "baseline_failed",
             "baseline_solver": None,
+            **slot_weight.metadata(),
         },
     )
 
@@ -150,6 +153,45 @@ def test_lean_gate_runner_records_generation_time_gates(monkeypatch: pytest.Monk
     assert verdict.metadata["triviality_reason"] == "baseline_failed"
     assert calls[:2] == ["typecheck", "prop"]
     assert "triviality" in calls
+
+
+def test_procedural_slot_weight_receipt_uses_dependency_metadata(tmp_path: Path) -> None:
+    snapshot = tmp_path / "snapshot.jsonl"
+    snapshot.write_text(
+        json.dumps(
+            {
+                "theorem_name": "Deep.weight",
+                "type_expr": "True",
+                "imports": ["Mathlib.Data.Nat.Basic", "Mathlib.Algebra.Group.Basic"],
+                "mathlib_rev": "abc123",
+                "source_path": "Mathlib/Deep.lean",
+                "source_license": "Apache-2.0",
+                "queue_depth": 2,
+                "citation_weight": 7.5,
+                "direct_dependency_count": 11,
+                "dependency_depth": 5,
+                "transitive_dependency_hash": "a" * 64,
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    candidate = generate_depth2_candidates(
+        mathlib_candidates_from_jsonl(snapshot),
+        generation_seed="epoch-a",
+        epoch_randomness=json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
+        count=1,
+        tempo=3,
+    )[0]
+    inputs = candidate.metadata["slot_weight_inputs"]
+
+    assert candidate.metadata["slot_weight_version"] == "lemma-slot-weight-v1"
+    assert inputs["direct_dependency_count"] == 11
+    assert inputs["dependency_depth"] == 5
+    assert inputs["import_breadth"] == 2
+    assert candidate.metadata["slot_weight_basis_points"] > 1000
 
 
 def test_procedural_supply_mode_rebuilds_active_registry_from_public_inputs(

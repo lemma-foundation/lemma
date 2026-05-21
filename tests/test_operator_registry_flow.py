@@ -22,6 +22,7 @@ from lemma.submissions import build_submission
 from lemma.supply.gates import ProceduralGateVerdict
 from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
 from lemma.supply.procedural import procedural_operator_bundle_hash, source_pool_hash
+from lemma.supply.slot_weight import slot_weight_receipt_for_candidate
 from lemma.tasks import load_task_registry
 from lemma.validator import active_epoch_seed, active_tasks_for_validation, task_registry_for_validation
 
@@ -44,13 +45,14 @@ def _proof_for(theorem_name: str) -> str:
 
 def _fake_lean_gate(self, candidate, *, seen_canonical_hashes) -> ProceduralGateVerdict:  # noqa: ANN001, ARG001
     canonical_hash = str(candidate.metadata.get("canonical_hash") or "")
+    slot_weight = slot_weight_receipt_for_candidate(candidate)
     return ProceduralGateVerdict(
         typechecked=True,
         prop_gate_passed=True,
         triviality_checked=True,
         baseline_solved=False,
         novelty_status="duplicate" if canonical_hash in set(seen_canonical_hashes) else "passed",
-        slot_weight=1.0,
+        slot_weight=slot_weight.weight,
         metadata={
             "gate_runner": "lean",
             "typecheck_reason": "ok",
@@ -59,6 +61,7 @@ def _fake_lean_gate(self, candidate, *, seen_canonical_hashes) -> ProceduralGate
             "triviality_budget_s": 5,
             "triviality_reason": "baseline_failed",
             "baseline_solver": None,
+            **slot_weight.metadata(),
         },
     )
 

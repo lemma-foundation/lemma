@@ -10,6 +10,7 @@ from lemma.common.config import LemmaSettings
 from lemma.lean.sandbox import VerifyReason, VerifyResult
 from lemma.lean.verify_runner import run_lean_verify
 from lemma.problems.base import Problem
+from lemma.supply.slot_weight import slot_weight_receipt_for_candidate
 from lemma.supply.types import TaskCandidate
 
 GATE_VERSION = "lemma-procedural-gates-v2"
@@ -66,16 +67,18 @@ class AssumedProceduralGateRunner:
     ) -> ProceduralGateVerdict:
         canonical_hash = str(candidate.metadata.get("canonical_hash") or "")
         novelty = "duplicate" if canonical_hash in set(seen_canonical_hashes) else "passed"
+        slot_weight = slot_weight_receipt_for_candidate(candidate)
         return ProceduralGateVerdict(
             typechecked=True,
             prop_gate_passed=True,
             triviality_checked=True,
             baseline_solved=False,
             novelty_status=novelty,
-            slot_weight=_slot_weight(candidate),
+            slot_weight=slot_weight.weight,
             metadata={
                 "gate_runner": "assumed",
                 "triviality_stack": [name for name, _body in TRIVIALITY_STACK],
+                **slot_weight.metadata(),
             },
         )
 
@@ -99,13 +102,14 @@ class LeanProceduralGateRunner:
         typecheck = self._compile_gate(candidate, _typecheck_gate_source(candidate))
         prop = self._compile_gate(candidate, _prop_gate_source(candidate)) if typecheck.passed else typecheck
         triviality_checked, baseline_solved, baseline_solver, baseline_reason = self._run_triviality_stack(candidate)
+        slot_weight = slot_weight_receipt_for_candidate(candidate)
         return ProceduralGateVerdict(
             typechecked=typecheck.passed,
             prop_gate_passed=prop.passed,
             triviality_checked=triviality_checked,
             baseline_solved=baseline_solved,
             novelty_status=novelty,
-            slot_weight=_slot_weight(candidate),
+            slot_weight=slot_weight.weight,
             metadata={
                 "gate_runner": "lean",
                 "typecheck_reason": typecheck.reason,
@@ -114,6 +118,7 @@ class LeanProceduralGateRunner:
                 "triviality_budget_s": self.triviality_budget_s,
                 "triviality_reason": baseline_reason,
                 "baseline_solver": baseline_solver,
+                **slot_weight.metadata(),
             },
         )
 
@@ -141,10 +146,6 @@ class LeanProceduralGateRunner:
             if result.reason in _INFRA_FAILURES:
                 return False, False, None, result.reason
         return True, False, None, "baseline_failed"
-
-
-def _slot_weight(candidate: TaskCandidate) -> float:
-    return float(max(1, candidate.queue_depth + len(candidate.imports)))
 
 
 def _gate_problem(candidate: TaskCandidate, gate_source: str) -> Problem:

@@ -33,6 +33,7 @@ Optional fields:
 - `topic` / `subtopic`: deterministic topic labels from the Mathlib source path.
 - `difficulty_score`: deterministic classifier score used to assign `queue_depth`.
 - `citation_weight`: pinned dependency in-degree or capped sampling weight for procedural source selection.
+- `direct_dependency_count`, `dependency_depth`, `transitive_dependency_hash`: pinned dependency-graph fields used by deterministic paid-slot weight receipts.
 - `baseline_solved`: whether an operator baseline tactic stack solved the task before paid activation.
 
 The public importer currently accepts only ASCII dotted theorem and import names. That keeps task ids, generated Lean files, and corpus replay stable while the production extractor is still a separate audited tool.

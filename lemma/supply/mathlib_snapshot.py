@@ -48,6 +48,9 @@ class MathlibSnapshotRow(BaseModel):
     subtopic: str | None = None
     difficulty_score: int | None = Field(default=None, ge=0)
     citation_weight: float | None = Field(default=None, ge=0.0)
+    direct_dependency_count: int | None = Field(default=None, ge=0)
+    dependency_depth: int | None = Field(default=None, ge=0)
+    transitive_dependency_hash: str | None = Field(default=None)
     baseline_solved: bool | None = None
 
     @field_validator("theorem_name")
@@ -102,6 +105,16 @@ class MathlibSnapshotRow(BaseModel):
             raise ValueError("proof_sha256 must be 64 hex characters")
         return text.lower()
 
+    @field_validator("transitive_dependency_hash")
+    @classmethod
+    def _validate_transitive_dependency_hash(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        text = _required_text(value, "transitive_dependency_hash")
+        if not _HEX_SHA256.fullmatch(text):
+            raise ValueError("transitive_dependency_hash must be 64 hex characters")
+        return text.lower()
+
 
 def _task_id(theorem_name: str) -> str:
     slug = _SAFE_ID.sub("_", theorem_name.strip()).strip("._-")
@@ -132,6 +145,12 @@ def candidate_from_row(row: MathlibSnapshotRow) -> TaskCandidate:
         metadata["difficulty_score"] = row.difficulty_score
     if row.citation_weight is not None:
         metadata["citation_weight"] = row.citation_weight
+    if row.direct_dependency_count is not None:
+        metadata["direct_dependency_count"] = row.direct_dependency_count
+    if row.dependency_depth is not None:
+        metadata["dependency_depth"] = row.dependency_depth
+    if row.transitive_dependency_hash is not None:
+        metadata["transitive_dependency_hash"] = row.transitive_dependency_hash
     if row.baseline_solved is not None:
         metadata["baseline_solved"] = row.baseline_solved
         metadata["triviality_checked"] = True
