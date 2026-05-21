@@ -9,6 +9,7 @@ from lemma.cli.main import main
 from lemma.supply.mathlib_extract import (
     ExtractConfig,
     _erase_universe_levels,
+    _merge_elaborated_binders,
     _parse_check_output,
     _type_from_check_line,
     extract_snapshot_rows,
@@ -118,6 +119,15 @@ def test_check_output_parser_handles_wrapped_lines() -> None:
     )
 
     assert parsed["Finset.disjoint_filter"].endswith("∀ x ∈ s, p x → ¬q x")
+
+
+def test_elaborated_type_keeps_source_target_named_args() -> None:
+    merged = _merge_elaborated_binders(
+        "associator (R := R) = 0",
+        "∀ {R : Type _} [NonUnitalRing R], associator = 0",
+    )
+
+    assert merged == "∀ {R : Type _} [NonUnitalRing R], associator (R := R) = 0"
 
 
 def test_universe_level_erasure_keeps_task_type_self_contained() -> None:
