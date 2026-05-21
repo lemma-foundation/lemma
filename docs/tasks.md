@@ -94,7 +94,7 @@ deterministic `slot_weight`.
 
 The mixed builder remains useful for local smoke and curriculum tuning. It is not the paid production supply path.
 
-In production procedural mode, validators rebuild the same registry locally:
+In production procedural mode, validators rebuild the same active task set locally:
 
 ```bash
 LEMMA_TASK_SUPPLY_MODE=procedural
@@ -152,9 +152,9 @@ Only tasks in the selected active window are valid for scoring in that validator
 
 ## Registry
 
-`tasks/registry.json` is a dev seed. Published registries must be pinned by SHA256 and archived so corpus rows can be replayed later.
+`tasks/registry.json` is a dev seed. In production, validators rebuild procedural tasks from a pinned public source pool plus epoch randomness. Published registries are caches and replay artifacts, not authority.
 
-`signed_by` and `signature` are metadata unless registry signature verification is enabled. Production mode requires both byte-for-byte SHA256 pinning through `LEMMA_TASK_REGISTRY_SHA256_EXPECTED` and verified registry signatures. Signature metadata must not bypass the SHA256 check.
+`signed_by` and `signature` are metadata unless registry signature verification is enabled for a dev or cache-distribution flow. Production mode requires `LEMMA_TASK_SUPPLY_MODE=procedural` and `LEMMA_PROCEDURAL_SOURCE_SHA256_EXPECTED`; registry signatures do not make registry-mode supply production-valid.
 
 ```bash
 uv run lemma tasks list
@@ -164,4 +164,4 @@ uv run lemma tasks extract-mathlib-snapshot --mathlib-root /path/to/mathlib --ou
 uv run lemma tasks build-mathlib-snapshot --input snapshot.jsonl --output tasks/mathlib-snapshot.registry.json
 ```
 
-See [Operator Registry Flow](operator-registry-flow.md) for the production sequence that pins the registry hash, configures the active window, validates submissions, and exports corpus data.
+See [Operator Registry Flow](operator-registry-flow.md) for the production sequence that pins the source pool, configures the active window, validates submissions, and exports corpus data.

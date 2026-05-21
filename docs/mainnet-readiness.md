@@ -14,9 +14,9 @@ The `mainnet` profile runs formatting, typing, security scans, dependency audit,
 
 The local production-like smoke is covered by `tests/test_operator_registry_flow.py`. It proves:
 
-- procedural depth-2 supply can build a production-shaped registry;
-- the registry can be signed and signature-verified;
-- production preflight passes only with SHA pinning, signature verification, procedural depth-2 supply, chain/drand epoch randomness, live miner authentication, commit/reveal fields, strong proof identity, and disabled Lean networking;
+- procedural depth-2 supply can build a production-shaped registry cache;
+- validators rebuild the active task set from a pinned public source pool plus chain/drand epoch randomness;
+- production preflight passes only with procedural supply mode, source-pool SHA pinning, procedural depth-2 supply, chain/drand epoch randomness, live miner authentication, commit/reveal fields, strong proof identity, and disabled Lean networking;
 - a signed revealed submission can be verified, scored, written to corpus, and exported without setting weights;
 - the rewarded corpus row carries strong structural proof identity.
 
@@ -40,8 +40,7 @@ Closed burn-in is at least 72 continuous testnet hours with controlled miners. P
 
 For both burn-ins:
 
-- registry bytes are SHA-pinned and signature-verified;
-- paid task supply is procedural, fresh, depth-2, validator-rebuildable, and generated from chain/drand epoch randomness;
+- paid task supply is procedural, fresh, depth-2, validator-rebuildable from a SHA-pinned public source pool, and generated from chain/drand epoch randomness;
 - miner submissions are signed;
 - revealed submissions are authenticated by miner chain commitments or direct hotkey signatures and carry commit/reveal fields;
 - miner bucket reveals fail closed unless their `(slot_index, ciphertext_sha256)` Merkle root matches the miner's on-chain committed root and drand decryption matches the revealed proof;

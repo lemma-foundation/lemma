@@ -5,6 +5,7 @@ from __future__ import annotations
 from lemma.chain.burn_or_recycle import UnearnedAllocation
 from lemma.chain.commitments import CommitmentEnvelope, ciphertext_sha256
 from lemma.chain.weights import _wait_for_commit_reveal_window, allocation_vector, resolve_weight_plan
+from lemma.protocol_invariants import procedural_gate_receipt_sha256
 from lemma.simulate import MinerCapability, simulate_tempos
 from lemma.supply import auto_formalize, conjecture_gen, mathlib_snapshot, perturbations, state_graph, variants
 from lemma.supply.controller import (
@@ -124,6 +125,7 @@ def test_procedural_registry_requires_depth_two_metadata() -> None:
         "novelty_status": "passed",
         "slot_weight": 2.0,
         "license_state": "clean_open",
+        "gate_version": "lemma-procedural-gates-v1",
     }
     good = mathlib_snapshot.fixture_candidates()[0].model_copy(
         update={
@@ -133,10 +135,13 @@ def test_procedural_registry_requires_depth_two_metadata() -> None:
             "metadata": metadata,
         }
     )
+    good = good.model_copy(
+        update={"metadata": {**good.metadata, "gate_receipt_sha256": procedural_gate_receipt_sha256(good.to_task())}}
+    )
     depth_one = good.model_copy(
         update={
             "id": "lemma.procedural.depth1",
-            "metadata": {**metadata, "mutation_depth": 1, "mutation_chain": metadata["mutation_chain"][:1]},
+            "metadata": {**good.metadata, "mutation_depth": 1, "mutation_chain": metadata["mutation_chain"][:1]},
         }
     )
 

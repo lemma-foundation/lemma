@@ -10,7 +10,7 @@ from lemma.common.config import LemmaSettings
 from lemma.corpus import build_corpus_row
 from lemma.lean.proof_identity import proof_identity
 from lemma.lean.sandbox import VerifyResult
-from lemma.protocol_invariants import enforce_production_invariants
+from lemma.protocol_invariants import enforce_production_invariants, procedural_gate_receipt_sha256
 from lemma.scoring import VerificationRecord, score_epoch
 from lemma.submissions import build_submission, sign_submission
 from lemma.task_activation import task_reward_eligibility
@@ -64,13 +64,37 @@ def _procedural_metadata(*, mutation_depth: int = 2, generation_seed: str = "pyt
 
 
 def _production_task(*, mutation_depth: int = 2, generation_seed: str = "pytest-depth2"):
-    return _task().model_copy(
+    task = _task().model_copy(
         update={
             "source_stream": "procedural",
             "source_ref": SourceRef(kind="procedural", name="pytest-depth2"),
-            "metadata": _procedural_metadata(mutation_depth=mutation_depth, generation_seed=generation_seed),
+            "metadata": {
+                **_procedural_metadata(mutation_depth=mutation_depth, generation_seed=generation_seed),
+                "gate_version": "lemma-procedural-gates-v1",
+            },
         }
     )
+    return task.model_copy(
+        update={"metadata": {**task.metadata, "gate_receipt_sha256": procedural_gate_receipt_sha256(task)}}
+    )
+
+
+def _production_settings(**updates: object) -> LemmaSettings:
+    base = {
+        "_env_file": None,
+        "protocol_mode": "production",
+        "task_supply_mode": "procedural",
+        "procedural_source_sha256_expected": "4" * 64,
+        "procedural_operator_bundle_sha256_expected": "5" * 64,
+        "enabled_domains": ("lean",),
+        "lean_sandbox_network": "none",
+        "require_submission_signatures": True,
+        "require_commit_reveal": True,
+        "require_strong_proof_identity": True,
+        "active_seed_mode": "epoch_randomness",
+        "active_epoch_randomness_source": "chain_drand",
+    }
+    return LemmaSettings(**(base | updates))
 
 
 def _proof() -> str:
@@ -211,16 +235,7 @@ def test_production_validator_does_not_reward_weak_identity(
         "lemma.validator.resolve_active_epoch_randomness",
         lambda settings, *, tempo: "pytest-anchor-block-and-drand",
     )
-    settings = LemmaSettings(
-        _env_file=None,
-        protocol_mode="production",
-        task_registry_sha256_expected="0" * 64,
-        require_submission_signatures=True,
-        require_commit_reveal=True,
-        require_strong_proof_identity=True,
-        active_seed_mode="epoch_randomness",
-        active_epoch_randomness_source="chain_drand",
-        lean_sandbox_network="none",
+    settings = _production_settings(
         operator_data_dir=tmp_path / "operator",
         corpus_output_dir=tmp_path / "corpus",
     )
@@ -257,36 +272,23 @@ def test_production_validator_does_not_reward_weak_identity(
     assert result.corpus_rows[0].rewarded is False
 
 
-def test_production_mode_requires_verified_registry_signature() -> None:
+def test_production_mode_requires_procedural_supply_mode() -> None:
     task = _production_task()
     registry = TaskRegistry(schema_version=1, tasks=(task,), sha256="0" * 64, signature_status="metadata_only")
-    settings = LemmaSettings(
-        _env_file=None,
-        protocol_mode="production",
+    settings = _production_settings(
+        task_supply_mode="registry",
         task_registry_sha256_expected="0" * 64,
-        enabled_domains=("lean",),
-        lean_sandbox_network="none",
-        require_submission_signatures=True,
-        require_commit_reveal=True,
-        require_strong_proof_identity=True,
     )
 
-    with pytest.raises(RuntimeError, match="signature-verified"):
+    with pytest.raises(RuntimeError, match="LEMMA_TASK_SUPPLY_MODE=procedural"):
         enforce_production_invariants(settings, registry)
 
 
 def test_production_mode_requires_lean_only_domains() -> None:
     task = _production_task()
     registry = TaskRegistry(schema_version=1, tasks=(task,), sha256="0" * 64, signature_status="verified")
-    settings = LemmaSettings(
-        _env_file=None,
-        protocol_mode="production",
-        task_registry_sha256_expected="0" * 64,
+    settings = _production_settings(
         enabled_domains=("lean", "verus"),
-        lean_sandbox_network="none",
-        require_submission_signatures=True,
-        require_commit_reveal=True,
-        require_strong_proof_identity=True,
     )
 
     with pytest.raises(RuntimeError, match="only lean"):
@@ -294,19 +296,13 @@ def test_production_mode_requires_lean_only_domains() -> None:
 
 
 def test_production_mode_rejects_curated_paid_supply() -> None:
-    registry = TaskRegistry(schema_version=1, tasks=(_task(),), sha256="0" * 64, signature_status="verified")
-    settings = LemmaSettings(
-        _env_file=None,
-        protocol_mode="production",
-        task_registry_sha256_expected="0" * 64,
-        enabled_domains=("lean",),
-        lean_sandbox_network="none",
-        require_submission_signatures=True,
-        require_commit_reveal=True,
-        require_strong_proof_identity=True,
+    task = _task().model_copy(update={"metadata": {**_task().metadata, "source_pool_hash": "4" * 64}})
+    registry = TaskRegistry(schema_version=1, tasks=(task,), sha256="0" * 64, signature_status="verified")
+    settings = _production_settings(
+        procedural_operator_bundle_sha256_expected=None,
     )
 
-    with pytest.raises(RuntimeError, match="procedural depth-2"):
+    with pytest.raises(RuntimeError, match="source_stream"):
         enforce_production_invariants(settings, registry)
 
 
@@ -317,16 +313,7 @@ def test_production_mode_rejects_depth_one_paid_supply() -> None:
         sha256="0" * 64,
         signature_status="verified",
     )
-    settings = LemmaSettings(
-        _env_file=None,
-        protocol_mode="production",
-        task_registry_sha256_expected="0" * 64,
-        enabled_domains=("lean",),
-        lean_sandbox_network="none",
-        require_submission_signatures=True,
-        require_commit_reveal=True,
-        require_strong_proof_identity=True,
-    )
+    settings = _production_settings()
 
     with pytest.raises(RuntimeError, match="mutation_depth"):
         enforce_production_invariants(settings, registry)
@@ -334,16 +321,7 @@ def test_production_mode_rejects_depth_one_paid_supply() -> None:
 
 def test_production_mode_requires_epoch_randomness_active_seed() -> None:
     registry = TaskRegistry(schema_version=1, tasks=(_production_task(),), sha256="0" * 64, signature_status="verified")
-    settings = LemmaSettings(
-        _env_file=None,
-        protocol_mode="production",
-        task_registry_sha256_expected="0" * 64,
-        enabled_domains=("lean",),
-        lean_sandbox_network="none",
-        require_submission_signatures=True,
-        require_commit_reveal=True,
-        require_strong_proof_identity=True,
-    )
+    settings = _production_settings(active_seed_mode="static", active_epoch_randomness_source="manual")
 
     with pytest.raises(RuntimeError, match="LEMMA_ACTIVE_SEED_MODE=epoch_randomness"):
         enforce_production_invariants(settings, registry)
@@ -368,7 +346,7 @@ def test_testnet_protocol_mode_enforces_production_rules() -> None:
     )
 
     assert settings.protocol_mode == "production"
-    with pytest.raises(RuntimeError, match="procedural depth-2"):
+    with pytest.raises(RuntimeError, match="LEMMA_TASK_SUPPLY_MODE=procedural"):
         enforce_production_invariants(settings, registry)
 
 

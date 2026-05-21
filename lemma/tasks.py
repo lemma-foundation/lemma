@@ -47,8 +47,8 @@ RegistrySignatureStatus = Literal["unsigned", "metadata_only", "verified"]
 class RegistrySignatureVerifier(Protocol):
     """Optional registry-signature verifier.
 
-    The production validator path trusts registry byte hashes. Signature
-    verification is explicit so metadata fields cannot silently become trust.
+    Registry signatures are an optional cache-distribution check. Production
+    validators rebuild procedural supply from pinned public inputs.
     """
 
     def verify_registry(self, *, raw: bytes, signed_by: str, signature: str) -> bool:

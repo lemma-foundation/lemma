@@ -176,12 +176,13 @@ def _build_operator_state(
         active_tempo = current_active_tempo(settings)
         registry = task_registry_for_validation(settings, tempo=active_tempo)
         checks.append(_check("registry_load", True, f"{len(registry.tasks)} tasks"))
-    except (TaskError, OSError) as e:
+    except (RuntimeError, TaskError, OSError) as e:
         checks.append(_check("registry_load", False, str(e)))
 
+    production_or_procedural = settings.protocol_mode == "production" or settings.task_supply_mode == "procedural"
     expected_pin = (
         (settings.procedural_source_sha256_expected or "").strip()
-        if settings.task_supply_mode == "procedural"
+        if production_or_procedural
         else (settings.task_registry_sha256_expected or "").strip()
     )
     checks.append(
@@ -190,11 +191,11 @@ def _build_operator_state(
             bool(expected_pin),
             (
                 "procedural source SHA256 pin is set"
-                if settings.task_supply_mode == "procedural" and expected_pin
+                if production_or_procedural and expected_pin
                 else "LEMMA_TASK_REGISTRY_SHA256_EXPECTED is set"
                 if expected_pin
                 else "missing procedural source SHA256 pin"
-                if settings.task_supply_mode == "procedural"
+                if production_or_procedural
                 else "missing registry SHA256 pin"
             ),
         )
@@ -246,6 +247,7 @@ def _build_operator_state(
         from lemma.protocol_invariants import production_supply_rejections
 
         rejections = production_supply_rejections(registry) if registry is not None else ()
+        procedural_ok = settings.task_supply_mode == "procedural" and not rejections
         checks.extend(
             [
                 _check(
@@ -281,10 +283,12 @@ def _build_operator_state(
                 ),
                 _check(
                     "procedural_supply",
-                    not rejections,
+                    procedural_ok,
                     (
                         "paid supply is procedural depth-2"
-                        if not rejections
+                        if procedural_ok
+                        else "LEMMA_TASK_SUPPLY_MODE must be procedural"
+                        if settings.task_supply_mode != "procedural"
                         else "paid supply rejected: " + ", ".join(rejections[:5])
                     ),
                 ),

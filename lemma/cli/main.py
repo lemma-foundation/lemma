@@ -371,8 +371,8 @@ def tasks_build_mathlib_snapshot_cmd(
 )
 @click.option("--output", "output_path", type=click.Path(dir_okay=False, path_type=Path), required=True)
 @click.option("--key-uri", default=None, help="Development signer URI, for example //Alice.")
-@click.option("--wallet-cold", default=None, help="Bittensor cold wallet name for production signing.")
-@click.option("--wallet-hot", default=None, help="Bittensor hotkey name for production signing.")
+@click.option("--wallet-cold", default=None, help="Bittensor cold wallet name for registry-cache signing.")
+@click.option("--wallet-hot", default=None, help="Bittensor hotkey name for registry-cache signing.")
 def tasks_sign_registry_cmd(
     input_path: Path,
     output_path: Path,
@@ -380,7 +380,7 @@ def tasks_sign_registry_cmd(
     wallet_cold: str | None,
     wallet_hot: str | None,
 ) -> None:
-    """Attach a real registry signature and print the final SHA256 pin."""
+    """Attach a registry-cache signature and print the final SHA256 pin."""
     from lemma.tasks import registry_signing_payload
 
     payload = json.loads(input_path.read_text(encoding="utf-8"))

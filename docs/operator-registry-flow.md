@@ -12,9 +12,9 @@ uv run lemma tasks build-mathlib-snapshot \
   --output tasks/mathlib-snapshot.registry.json
 ```
 
-The command writes deterministic `queue_position` values and prints `registry_sha256`. Keep the JSON artifact and the SHA256 together; validators should pin both.
+The command writes deterministic `queue_position` values and prints `registry_sha256`. Keep the JSON artifact and the SHA256 together for dev smoke and replay.
 
-`signed_by` and `signature` fields are archived metadata unless the validator is configured with an explicit registry-signature verifier. They are not a substitute for `LEMMA_TASK_REGISTRY_SHA256_EXPECTED`.
+`signed_by` and `signature` fields are archived metadata unless the validator is configured with an explicit registry-signature verifier. They are cache checks, not production authority.
 
 For production-shaped supply, rebuild depth-2 procedural candidates from the
 public source snapshot and the tempo's epoch seed:
@@ -56,7 +56,7 @@ LEMMA_CORPUS_OUTPUT_DIR=corpus
 LEMMA_OPERATOR_DATA_DIR=validator-data
 ```
 
-`LEMMA_ACTIVE_K` is validator throughput. `LEMMA_FRONTIER_DEPTH` and registry depth control difficulty. Payment uses deterministic active slot weights, not subjective validator scores.
+`LEMMA_ACTIVE_K` is validator throughput. `LEMMA_FRONTIER_DEPTH` and generated queue depth control difficulty. Payment uses deterministic active slot weights, not subjective validator scores.
 
 Inspect registry depth before accepting submissions:
 
@@ -72,7 +72,7 @@ Run the operator preflight before accepting submissions:
 uv run lemma operator preflight
 ```
 
-The command fails if the registry or procedural source pool is not pinned, the active window cannot fill `K`, output directories cannot be prepared, or the Lean verifier backend is not configured.
+The command fails if the procedural source pool is not pinned in production mode, the active window cannot fill `K`, output directories cannot be prepared, or the Lean verifier backend is not configured.
 It emits a versioned JSON report with `schema_version`, `ok`, `registry_sha256`, `active_K`, `frontier_depth`, and `checks`.
 
 For reproducible support/debugging, write a diagnostics file before accepting submissions:
@@ -81,7 +81,7 @@ For reproducible support/debugging, write a diagnostics file before accepting su
 uv run lemma operator diagnostics --output operator-diagnostics-before.json
 ```
 
-The diagnostics file contains the preflight report, registry summary, artifact counts, registry hash, and current active task ids. It does not include environment variables, credentials, wallet names, hostnames, IPs, or local filesystem paths. The before-run file proves the validator was configured against the intended pinned registry and active window.
+The diagnostics file contains the preflight report, registry summary, artifact counts, registry hash, and current active task ids. It does not include environment variables, credentials, wallet names, hostnames, IPs, or local filesystem paths. The before-run file proves the validator was configured against the intended pinned source pool and active window.
 
 ## 3. Validate Submissions
 

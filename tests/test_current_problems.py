@@ -110,7 +110,7 @@ def test_current_problem_snapshot_enforces_production_boundary() -> None:
         require_strong_proof_identity=True,
     )
 
-    with pytest.raises(RuntimeError, match="signature-verified registry bytes"):
+    with pytest.raises(RuntimeError, match="LEMMA_TASK_SUPPLY_MODE=procedural"):
         build_current_problems_snapshot(settings, registry=_registry(), tempo=0)
 
 

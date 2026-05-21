@@ -27,9 +27,9 @@ Validators reject:
 
 Verification runs in a pinned Lean/mathlib environment. Docker verification disables networking by default. Remote workers require bearer auth for non-loopback binds.
 
-## Registry Pinning
+## Source Pinning
 
-Validators trust task registry bytes pinned by `LEMMA_TASK_REGISTRY_SHA256_EXPECTED`. Production mode also requires verified registry signatures. The signature covers the canonical registry payload without `signed_by` and `signature`; the SHA256 pin still covers the exact published file bytes.
+Production validators trust the pinned public procedural source pool, not a private registry publisher. Registry files can be published as distribution caches, but production validators must rebuild the active task set from `LEMMA_PROCEDURAL_SOURCE_JSONL`, `LEMMA_PROCEDURAL_SOURCE_SHA256_EXPECTED`, and chain/drand epoch randomness.
 
 ## Scoring Defenses
 

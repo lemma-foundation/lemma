@@ -75,13 +75,13 @@ uv run lemma tasks build-mathlib-snapshot \
   --output tasks/mathlib-snapshot.registry.json
 ```
 
-The builder validates each row, orders shallow tasks before deeper tasks, writes deterministic `queue_position` values, and prints `registry_sha256`. Operators should pin the registry bytes and expected SHA256 before validation.
+The builder validates each row, orders shallow tasks before deeper tasks, writes deterministic `queue_position` values, and prints `registry_sha256`. This is useful for local smoke tests and cache artifacts.
 
-Externally produced `signed_by` and `signature` metadata can be attached during registry build, but this command does not perform production signing or verification. Validators must still pin `registry_sha256`.
+Externally produced `signed_by` and `signature` metadata can be attached during registry build, but signatures do not make a registry production-authoritative. Production validators use procedural supply mode with a pinned source-pool hash.
 
 ## Validator Boundary
 
-The validator reads the pinned registry and validates task-bound submissions against the active deterministic K-slot window. It rejects rows outside the active window, mismatched task versions, mismatched target hashes, duplicate winning proofs, and policy failures.
+In dev registry mode, the validator reads the pinned registry and validates task-bound submissions against the active deterministic K-slot window. In production mode, it rebuilds procedural tasks from the pinned source pool plus epoch randomness first. It rejects rows outside the active window, mismatched task versions, mismatched target hashes, duplicate winning proofs, and policy failures.
 
 Solved active slots earn their deterministic active slot share. Unsolved-slot value is not redistributed to current solvers; the production default routes it to burn.
 

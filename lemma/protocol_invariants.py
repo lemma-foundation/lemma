@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from typing import Any
 
@@ -56,7 +58,31 @@ def production_supply_rejection_reason(task: LemmaTask) -> str:
         return "novelty_status"
     if _positive_float(metadata.get("slot_weight")) is None:
         return "slot_weight"
+    if metadata.get("gate_version") != "lemma-procedural-gates-v1":
+        return "gate_version"
+    if metadata.get("gate_receipt_sha256") != procedural_gate_receipt_sha256(task):
+        return "gate_receipt_sha256"
     return ""
+
+
+def procedural_gate_receipt_sha256(task: LemmaTask) -> str:
+    metadata = task.metadata
+    payload = {
+        "version": "lemma-procedural-gates-v1",
+        "task_id": task.id,
+        "target_sha256": task.target_sha256,
+        "canonical_hash": metadata.get("canonical_hash"),
+        "typechecked": metadata.get("typechecked"),
+        "prop_gate_passed": metadata.get("prop_gate_passed"),
+        "triviality_checked": metadata.get("triviality_checked"),
+        "baseline_solved": metadata.get("baseline_solved"),
+        "novelty_status": metadata.get("novelty_status"),
+        "source_pool_hash": metadata.get("source_pool_hash"),
+        "operator_bundle_hash": metadata.get("operator_bundle_hash"),
+        "mutation_chain": metadata.get("mutation_chain"),
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+    return hashlib.sha256(canonical).hexdigest()
 
 
 def production_supply_rejections(registry: TaskRegistry) -> tuple[str, ...]:
@@ -95,23 +121,19 @@ def enforce_production_invariants(settings: LemmaSettings, registry: TaskRegistr
         return
     if tuple(settings.enabled_domains) != ("lean",):
         raise RuntimeError("production mode currently supports only lean: LEMMA_ENABLED_DOMAINS must be lean")
-    if settings.task_supply_mode == "registry":
-        if not settings.task_registry_sha256_expected:
-            raise RuntimeError("production mode requires LEMMA_TASK_REGISTRY_SHA256_EXPECTED")
-        if registry.signature_status != "verified":
-            raise RuntimeError("production mode requires signature-verified registry bytes")
-    else:
-        expected_source = _normalize_sha256(settings.procedural_source_sha256_expected)
-        if not expected_source:
-            raise RuntimeError("procedural production mode requires LEMMA_PROCEDURAL_SOURCE_SHA256_EXPECTED")
-        source_hashes = {str(task.metadata.get("source_pool_hash") or "") for task in registry.tasks}
-        if source_hashes != {expected_source}:
-            raise RuntimeError("procedural production mode source pool hash mismatch")
-        expected_operator = _normalize_sha256(settings.procedural_operator_bundle_sha256_expected)
-        if expected_operator:
-            operator_hashes = {str(task.metadata.get("operator_bundle_hash") or "") for task in registry.tasks}
-            if operator_hashes != {expected_operator}:
-                raise RuntimeError("procedural production mode operator bundle hash mismatch")
+    if settings.task_supply_mode != "procedural":
+        raise RuntimeError("production mode requires LEMMA_TASK_SUPPLY_MODE=procedural")
+    expected_source = _normalize_sha256(settings.procedural_source_sha256_expected)
+    if not expected_source:
+        raise RuntimeError("procedural production mode requires LEMMA_PROCEDURAL_SOURCE_SHA256_EXPECTED")
+    source_hashes = {str(task.metadata.get("source_pool_hash") or "") for task in registry.tasks}
+    if source_hashes != {expected_source}:
+        raise RuntimeError("procedural production mode source pool hash mismatch")
+    expected_operator = _normalize_sha256(settings.procedural_operator_bundle_sha256_expected)
+    if expected_operator:
+        operator_hashes = {str(task.metadata.get("operator_bundle_hash") or "") for task in registry.tasks}
+        if operator_hashes != {expected_operator}:
+            raise RuntimeError("procedural production mode operator bundle hash mismatch")
     if settings.lean_sandbox_network.strip().lower() not in {"none", "no"}:
         raise RuntimeError("production mode requires network-disabled verifier runs")
     if not settings.require_submission_signatures:

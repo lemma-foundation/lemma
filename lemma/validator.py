@@ -160,10 +160,12 @@ def active_epoch_randomness_sha256(
 
 def task_registry_for_validation(settings: LemmaSettings, *, tempo: int) -> TaskRegistry:
     """Load the active task registry for the configured supply mode."""
+    if settings.protocol_mode == "production" and settings.task_supply_mode != "procedural":
+        raise RuntimeError("production mode requires LEMMA_TASK_SUPPLY_MODE=procedural")
     if settings.task_supply_mode == "registry":
         return fetch_task_registry(
             settings,
-            verify_signature=settings.protocol_mode == "production" or settings.verify_registry_signatures,
+            verify_signature=settings.verify_registry_signatures,
         )
     return _procedural_registry_for_tempo(settings, tempo=tempo)
 
