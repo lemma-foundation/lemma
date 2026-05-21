@@ -12,6 +12,20 @@ Launch interfaces distinguish production paid supply from development/test suppl
 
 Paid mainnet supply is `procedural`: every paid task must be generated from the pinned source pool by a deterministic depth-2 mutation chain anchored to chain/drand state. Validators should be able to rebuild the same active pool from the same public inputs.
 
+Paid mainnet also uses epoch-derived active selection. Development and testnet may keep a static queue seed, but production requires `LEMMA_ACTIVE_SEED_MODE=epoch_randomness` and `LEMMA_ACTIVE_EPOCH_RANDOMNESS_SOURCE=chain_drand`. The internal epoch number is the chain tempo index; it can be displayed as 1-based in UI, but validators use the same 0-based integer from `block // tempo`.
+
+The chain/drand source is deterministic: validators take the epoch's first chain block, read that block's hash and timestamp, map the timestamp to the Drand Quicknet round, fetch that round's signature, and hash those public fields into the epoch seed. A validator that resolves different public fields lands on a different active-set manifest and should fail closed.
+
+For each production epoch, validators derive:
+
+```text
+epoch_randomness = hash(anchor_block_hash, anchor_block_timestamp, drand_round, drand_signature)
+epoch_seed = hash(netuid, tempo, LEMMA_ACTIVE_QUEUE_SEED, epoch_randomness)
+active_selection_seed = hash(epoch_seed, registry_sha256, frontier_depth)
+```
+
+Paid procedural rows must carry that `epoch_seed` as `metadata.generation_seed`. This keeps generation procedural while preventing a static future playlist: rows generated for a different epoch seed fail production activation.
+
 Development, testnet, and curriculum interfaces cover these streams:
 
 - `mathlib_snapshot`: proof-erased Mathlib statements.
@@ -112,6 +126,8 @@ Validator selection uses:
 LEMMA_ACTIVE_K
 LEMMA_FRONTIER_DEPTH
 LEMMA_ACTIVE_QUEUE_SEED
+LEMMA_ACTIVE_SEED_MODE
+LEMMA_ACTIVE_EPOCH_RANDOMNESS_SOURCE
 ```
 
 Only tasks in the selected active window are valid for scoring in that validator pass.

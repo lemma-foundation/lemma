@@ -111,3 +111,7 @@ def enforce_production_invariants(settings: LemmaSettings, registry: TaskRegistr
     if rejections:
         detail = ", ".join(rejections[:5])
         raise RuntimeError(f"production mode requires paid procedural depth-2 supply: {detail}")
+    if settings.active_seed_mode != "epoch_randomness":
+        raise RuntimeError("production mode requires LEMMA_ACTIVE_SEED_MODE=epoch_randomness")
+    if settings.active_epoch_randomness_source != "chain_drand":
+        raise RuntimeError("production mode requires LEMMA_ACTIVE_EPOCH_RANDOMNESS_SOURCE=chain_drand")

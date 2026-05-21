@@ -35,7 +35,7 @@ Validators trust task registry bytes pinned by `LEMMA_TASK_REGISTRY_SHA256_EXPEC
 
 Proofs are deduplicated by Lean proof-term hash or Lean-derived structural fingerprint when available. Script fallback is labelled as `script_sha256` or `normalized_script_sha256` and is not treated as exact structural identity. Public proof release should wait until the scoring window closes. Baseline-solved tasks and held-out benchmark claims are kept out of paid activation.
 
-First valid committed reveal wins each theorem slot. Re-submitting another miner's proof after reveal should not pay because rank is anchored to the miner's Merkle-root commit block, not local file arrival time. Validators must reproduce the active task set deterministically before scoring. Curated and mixed supply are useful for development and testnet work, but paid mainnet tasks must be fresh procedural depth-2 rows to avoid pre-computation collapse.
+First valid committed reveal wins each theorem slot. Re-submitting another miner's proof after reveal should not pay because rank is anchored to the miner's Merkle-root commit block, not local file arrival time. Validators must reproduce the active task set deterministically before scoring. Curated and mixed supply are useful for development and testnet work, but paid mainnet tasks must be fresh procedural depth-2 rows generated from the current epoch seed to avoid pre-computation collapse.
 
 ## Privacy
 

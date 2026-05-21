@@ -9,7 +9,7 @@ Production Lemma is the Lean proof corpus loop:
 5. compute miner weights from deterministic active slot weights and burn unearned share by default;
 6. publish accepted corpus rows and a small corpus index.
 
-Mainnet production mode is stricter than local/testnet smoke mode. It fails closed unless the task registry is SHA-pinned and signature-verified, paid tasks are procedural depth-2 supply, live miner submissions are hotkey-authenticated, commit/reveal fields are present, Lean verifier networking is disabled, and paid rewards require strong Lean-derived proof identity.
+Mainnet production mode is stricter than local/testnet smoke mode. It fails closed unless the task registry is SHA-pinned and signature-verified, paid tasks are procedural depth-2 supply generated from chain/drand epoch randomness, live miner submissions are hotkey-authenticated, commit/reveal fields are present, Lean verifier networking is disabled, and paid rewards require strong Lean-derived proof identity.
 The launch gate sequence is tracked in [Mainnet Readiness](mainnet-readiness.md).
 
 ## Operator Rules
@@ -41,6 +41,8 @@ LEMMA_REQUIRE_SUBMISSION_SIGNATURES=1
 LEMMA_REQUIRE_COMMIT_REVEAL=1
 LEMMA_REQUIRE_STRONG_PROOF_IDENTITY=1
 LEMMA_ACTIVE_TEMPO_SOURCE=chain
+LEMMA_ACTIVE_SEED_MODE=epoch_randomness
+LEMMA_ACTIVE_EPOCH_RANDOMNESS_SOURCE=chain_drand
 LEAN_SANDBOX_NETWORK=none
 ```
 

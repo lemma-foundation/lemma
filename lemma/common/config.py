@@ -81,6 +81,15 @@ class LemmaSettings(BaseSettings):
     active_task_count: int = Field(default=20, ge=1, validation_alias="LEMMA_ACTIVE_K")
     frontier_depth: int = Field(default=0, ge=0, validation_alias="LEMMA_FRONTIER_DEPTH")
     active_queue_seed: str = Field(default="lemma-active-queue", validation_alias="LEMMA_ACTIVE_QUEUE_SEED")
+    active_seed_mode: Literal["static", "epoch_randomness"] = Field(
+        default="static",
+        validation_alias="LEMMA_ACTIVE_SEED_MODE",
+    )
+    active_epoch_randomness_source: Literal["manual", "chain_drand"] = Field(
+        default="manual",
+        validation_alias="LEMMA_ACTIVE_EPOCH_RANDOMNESS_SOURCE",
+    )
+    active_epoch_randomness: str = Field(default="", validation_alias="LEMMA_ACTIVE_EPOCH_RANDOMNESS")
     active_tempo_seconds: int = Field(default=4320, ge=1, validation_alias="LEMMA_ACTIVE_TEMPO_SECONDS")
     active_tempo_source: Literal["wall_clock", "chain"] = Field(
         default="wall_clock",

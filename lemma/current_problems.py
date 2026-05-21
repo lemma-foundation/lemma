@@ -49,6 +49,10 @@ class CurrentProblemsSnapshot(BaseModel):
     active_K: int = Field(ge=1)
     tempo: int = Field(ge=0)
     active_tempo_seconds: int = Field(ge=1)
+    active_seed_mode: Literal["static", "epoch_randomness"] = "static"
+    active_epoch_randomness_source: Literal["manual", "chain_drand"] = "manual"
+    active_epoch_randomness_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    active_selection_seed_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     frontier_depth: int = Field(ge=0)
     active_queue_seed: str
     task_count: int = Field(ge=0)
@@ -90,7 +94,12 @@ def build_current_problems_snapshot(
 ) -> CurrentProblemsSnapshot:
     """Build the public active-task snapshot without proof or operator state."""
     from lemma.tasks import fetch_task_registry
-    from lemma.validator import active_tasks_for_validation, current_active_tempo
+    from lemma.validator import (
+        active_epoch_randomness_sha256,
+        active_selection_seed_sha256,
+        active_tasks_for_validation,
+        current_active_tempo,
+    )
 
     task_registry = registry or fetch_task_registry(settings)
     active_tempo = current_active_tempo(settings) if tempo is None else tempo
@@ -104,6 +113,10 @@ def build_current_problems_snapshot(
         active_K=settings.active_task_count,
         tempo=active_tempo,
         active_tempo_seconds=settings.active_tempo_seconds,
+        active_seed_mode=settings.active_seed_mode,
+        active_epoch_randomness_source=settings.active_epoch_randomness_source,
+        active_epoch_randomness_sha256=active_epoch_randomness_sha256(settings, tempo=active_tempo),
+        active_selection_seed_sha256=active_selection_seed_sha256(task_registry, settings, tempo=active_tempo),
         frontier_depth=settings.frontier_depth,
         active_queue_seed=settings.active_queue_seed,
         task_count=len(tasks),

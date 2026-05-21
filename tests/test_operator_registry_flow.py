@@ -9,11 +9,13 @@ import pytest
 from bittensor_wallet import Keypair
 from click.testing import CliRunner
 from lemma.cli.main import main
+from lemma.common.config import LemmaSettings
 from lemma.lean.sandbox import VerifyResult
 from lemma.operator import OperatorDiagnosticsReport, OperatorPreflightReport, OperatorRegistryInspectReport
 from lemma.submissions import build_submission, sign_submission
 from lemma.supply.types import TaskCandidate, lean_stub
 from lemma.tasks import SourceRef, Ss58RegistrySignatureVerifier, load_task_registry
+from lemma.validator import active_epoch_seed
 
 
 def _proof_for(theorem_name: str) -> str:
@@ -270,6 +272,20 @@ def test_production_like_signed_registry_submission_smoke(
     registry_path = tmp_path / "tasks" / "mainnet.registry.json"
     signed_registry_path = tmp_path / "tasks" / "mainnet.signed.registry.json"
     theorem_name = "mainnet_readiness_true"
+    active_randomness = "pytest-anchor-block-and-drand"
+    monkeypatch.setattr(
+        "lemma.validator.resolve_active_epoch_randomness",
+        lambda settings, *, tempo: active_randomness,
+    )
+    generation_seed = active_epoch_seed(
+        LemmaSettings(
+            _env_file=None,
+            active_seed_mode="epoch_randomness",
+            active_epoch_randomness_source="chain_drand",
+            active_queue_seed="mainnet-readiness",
+        ),
+        tempo=0,
+    )
     candidate = TaskCandidate(
         id="lemma.procedural.mainnet_readiness_true",
         title="Mainnet readiness true",
@@ -295,7 +311,7 @@ def test_production_like_signed_registry_submission_smoke(
                 {"operator": "generalize", "input_hash": "1" * 64, "output_hash": "2" * 64},
                 {"operator": "specialize", "input_hash": "2" * 64, "output_hash": "3" * 64},
             ],
-            "generation_seed": "mainnet-readiness",
+            "generation_seed": generation_seed,
             "drand_round": 10,
             "anchor_block": 360,
             "source_pool_hash": "4" * 64,
@@ -384,7 +400,10 @@ def test_production_like_signed_registry_submission_smoke(
         "LEMMA_ACTIVE_K": "1",
         "LEMMA_FRONTIER_DEPTH": "0",
         "LEMMA_ACTIVE_QUEUE_SEED": "mainnet-readiness",
+        "LEMMA_ACTIVE_SEED_MODE": "epoch_randomness",
+        "LEMMA_ACTIVE_EPOCH_RANDOMNESS_SOURCE": "chain_drand",
         "LEMMA_ACTIVE_TEMPO_SOURCE": "wall_clock",
+        "LEMMA_ACTIVE_TEMPO_SECONDS": "999999999999",
         "LEMMA_CORPUS_OUTPUT_DIR": str(tmp_path / "corpus"),
         "LEMMA_OPERATOR_DATA_DIR": str(tmp_path / "operator"),
         "LEMMA_USE_DOCKER": "1",

@@ -22,7 +22,7 @@ from lemma.tasks import (
     load_task_registry,
     registry_signing_payload,
 )
-from lemma.validator import validate_once
+from lemma.validator import active_epoch_seed, active_tasks_for_validation, validate_once
 
 
 def _task(source_license: str = "CC-BY-4.0"):
@@ -39,7 +39,7 @@ def _task(source_license: str = "CC-BY-4.0"):
     ).model_copy(update={"difficulty_band": "medium"})
 
 
-def _procedural_metadata(*, mutation_depth: int = 2) -> dict[str, object]:
+def _procedural_metadata(*, mutation_depth: int = 2, generation_seed: str = "pytest-depth2") -> dict[str, object]:
     return {
         "supply_mode": "procedural",
         "mutation_depth": mutation_depth,
@@ -47,7 +47,7 @@ def _procedural_metadata(*, mutation_depth: int = 2) -> dict[str, object]:
             {"operator": "generalize", "input_hash": "1" * 64, "output_hash": "2" * 64},
             {"operator": "specialize", "input_hash": "2" * 64, "output_hash": "3" * 64},
         ][:mutation_depth],
-        "generation_seed": "pytest-depth2",
+        "generation_seed": generation_seed,
         "drand_round": 12,
         "anchor_block": 360,
         "source_pool_hash": "4" * 64,
@@ -63,12 +63,12 @@ def _procedural_metadata(*, mutation_depth: int = 2) -> dict[str, object]:
     }
 
 
-def _production_task(*, mutation_depth: int = 2):
+def _production_task(*, mutation_depth: int = 2, generation_seed: str = "pytest-depth2"):
     return _task().model_copy(
         update={
             "source_stream": "procedural",
             "source_ref": SourceRef(kind="procedural", name="pytest-depth2"),
-            "metadata": _procedural_metadata(mutation_depth=mutation_depth),
+            "metadata": _procedural_metadata(mutation_depth=mutation_depth, generation_seed=generation_seed),
         }
     )
 
@@ -204,8 +204,27 @@ def test_registry_signature_verifies_canonical_payload() -> None:
     assert registry.signature_status == "verified"
 
 
-def test_production_validator_does_not_reward_weak_identity(tmp_path) -> None:
-    task = _production_task()
+def test_production_validator_does_not_reward_weak_identity(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    monkeypatch.setattr(
+        "lemma.validator.resolve_active_epoch_randomness",
+        lambda settings, *, tempo: "pytest-anchor-block-and-drand",
+    )
+    settings = LemmaSettings(
+        _env_file=None,
+        protocol_mode="production",
+        task_registry_sha256_expected="0" * 64,
+        require_submission_signatures=True,
+        require_commit_reveal=True,
+        require_strong_proof_identity=True,
+        active_seed_mode="epoch_randomness",
+        active_epoch_randomness_source="chain_drand",
+        lean_sandbox_network="none",
+        operator_data_dir=tmp_path / "operator",
+        corpus_output_dir=tmp_path / "corpus",
+    )
+    task = _production_task(generation_seed=active_epoch_seed(settings, tempo=0))
     keypair = Keypair.create_from_uri("//LemmaProdMiner")
     submission = sign_submission(
         build_submission(
@@ -222,17 +241,6 @@ def test_production_validator_does_not_reward_weak_identity(tmp_path) -> None:
         ),
         keypair,
     )
-    settings = LemmaSettings(
-        _env_file=None,
-        protocol_mode="production",
-        task_registry_sha256_expected="0" * 64,
-        require_submission_signatures=True,
-        require_commit_reveal=True,
-        require_strong_proof_identity=True,
-        lean_sandbox_network="none",
-        operator_data_dir=tmp_path / "operator",
-        corpus_output_dir=tmp_path / "corpus",
-    )
     registry = TaskRegistry(schema_version=1, tasks=(task,), sha256="0" * 64, signature_status="verified")
 
     result = validate_once(
@@ -240,6 +248,7 @@ def test_production_validator_does_not_reward_weak_identity(tmp_path) -> None:
         [submission],
         registry=registry,
         verify_submission=lambda task, submission: VerifyResult(passed=True, reason="ok"),
+        tempo=0,
         no_set_weights=True,
     )
 
@@ -321,3 +330,75 @@ def test_production_mode_rejects_depth_one_paid_supply() -> None:
 
     with pytest.raises(RuntimeError, match="mutation_depth"):
         enforce_production_invariants(settings, registry)
+
+
+def test_production_mode_requires_epoch_randomness_active_seed() -> None:
+    registry = TaskRegistry(schema_version=1, tasks=(_production_task(),), sha256="0" * 64, signature_status="verified")
+    settings = LemmaSettings(
+        _env_file=None,
+        protocol_mode="production",
+        task_registry_sha256_expected="0" * 64,
+        enabled_domains=("lean",),
+        lean_sandbox_network="none",
+        require_submission_signatures=True,
+        require_commit_reveal=True,
+        require_strong_proof_identity=True,
+    )
+
+    with pytest.raises(RuntimeError, match="LEMMA_ACTIVE_SEED_MODE=epoch_randomness"):
+        enforce_production_invariants(settings, registry)
+
+    with pytest.raises(RuntimeError, match="LEMMA_ACTIVE_EPOCH_RANDOMNESS_SOURCE=chain_drand"):
+        enforce_production_invariants(settings.model_copy(update={"active_seed_mode": "epoch_randomness"}), registry)
+
+
+def test_production_active_tasks_must_match_epoch_generation_seed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "lemma.validator.resolve_active_epoch_randomness",
+        lambda settings, *, tempo: "pytest-anchor-block-and-drand",
+    )
+    settings = LemmaSettings(
+        _env_file=None,
+        protocol_mode="production",
+        active_seed_mode="epoch_randomness",
+        active_epoch_randomness_source="chain_drand",
+    )
+    registry = TaskRegistry(schema_version=1, tasks=(_production_task(),), sha256="0" * 64, signature_status="verified")
+
+    with pytest.raises(RuntimeError, match="active epoch randomness"):
+        active_tasks_for_validation(registry, settings, tempo=3)
+
+    seed = active_epoch_seed(settings, tempo=3)
+    current_epoch_registry = TaskRegistry(
+        schema_version=1,
+        tasks=(_production_task(generation_seed=seed),),
+        sha256="0" * 64,
+        signature_status="verified",
+    )
+
+    assert active_tasks_for_validation(current_epoch_registry, settings, tempo=3)[0].metadata["generation_seed"] == seed
+
+
+def test_production_active_tasks_must_match_epoch_anchor_fields(monkeypatch: pytest.MonkeyPatch) -> None:
+    randomness = json.dumps(
+        {
+            "source": "chain_drand",
+            "anchor_block": 720,
+            "drand_round": 11,
+            "anchor_block_hash": "0xabc",
+            "drand_signature": "0xsig",
+        },
+        sort_keys=True,
+    )
+    monkeypatch.setattr("lemma.validator.resolve_active_epoch_randomness", lambda settings, *, tempo: randomness)
+    settings = LemmaSettings(
+        _env_file=None,
+        protocol_mode="production",
+        active_seed_mode="epoch_randomness",
+        active_epoch_randomness_source="chain_drand",
+    )
+    task = _production_task(generation_seed=active_epoch_seed(settings, tempo=3))
+    registry = TaskRegistry(schema_version=1, tasks=(task,), sha256="0" * 64, signature_status="verified")
+
+    with pytest.raises(RuntimeError, match="anchor_block"):
+        active_tasks_for_validation(registry, settings, tempo=3)

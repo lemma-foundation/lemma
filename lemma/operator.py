@@ -27,6 +27,7 @@ PreflightCheckName = Literal[
     "live_submission_signatures",
     "commit_reveal",
     "strong_proof_identity",
+    "epoch_randomness",
     "procedural_supply",
 ]
 
@@ -192,19 +193,23 @@ def _build_operator_state(
     if registry is not None:
         signature_ok = registry.signature_status == "verified" if settings.protocol_mode == "production" else True
         checks.append(_check("registry_signature", signature_ok, registry.signature_status))
-        active_tasks = active_tasks_for_validation(registry, settings)
-        active_task_ids = tuple(task.id for task in active_tasks)
-        registry_inspect = _inspect_registry(registry, settings, active_task_count=len(active_tasks))
-        checks.append(
-            _check(
-                "active_window",
-                len(active_tasks) == settings.active_task_count,
-                (
-                    f"{len(active_tasks)} active / K={settings.active_task_count} "
-                    f"at frontier_depth={settings.frontier_depth}"
-                ),
+        try:
+            active_tasks = active_tasks_for_validation(registry, settings)
+        except RuntimeError as e:
+            checks.append(_check("active_window", False, str(e)))
+        else:
+            active_task_ids = tuple(task.id for task in active_tasks)
+            registry_inspect = _inspect_registry(registry, settings, active_task_count=len(active_tasks))
+            checks.append(
+                _check(
+                    "active_window",
+                    len(active_tasks) == settings.active_task_count,
+                    (
+                        f"{len(active_tasks)} active / K={settings.active_task_count} "
+                        f"at frontier_depth={settings.frontier_depth}"
+                    ),
+                )
             )
-        )
 
     corpus_ok, corpus_detail = _ensure_dir(settings.corpus_output_dir)
     checks.append(_check("corpus_output_dir", corpus_ok, corpus_detail))
@@ -255,6 +260,12 @@ def _build_operator_state(
                     "strong_proof_identity",
                     settings.require_strong_proof_identity,
                     "LEMMA_REQUIRE_STRONG_PROOF_IDENTITY must be enabled",
+                ),
+                _check(
+                    "epoch_randomness",
+                    settings.active_seed_mode == "epoch_randomness"
+                    and settings.active_epoch_randomness_source == "chain_drand",
+                    "production active selection must use chain/drand epoch randomness",
                 ),
                 _check(
                     "procedural_supply",

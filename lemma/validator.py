@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
@@ -11,6 +12,7 @@ from typing import Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from lemma.chain.epoch_randomness import resolve_chain_drand_epoch_randomness
 from lemma.chain.weights import ChainWeightSubmission
 from lemma.common.config import LemmaSettings
 from lemma.corpus import CorpusRow, build_corpus_row, write_corpus_index, write_jsonl
@@ -40,6 +42,12 @@ class ValidatorRunSummary(BaseModel):
     run_at: str
     registry_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
     active_K: int = Field(ge=0)
+    active_tempo: int | None = Field(default=None, ge=0)
+    active_seed_mode: Literal["static", "epoch_randomness"] = "static"
+    active_epoch_randomness_source: Literal["manual", "chain_drand"] = "manual"
+    active_epoch_randomness_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    active_selection_seed_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    active_task_ids: tuple[str, ...] = ()
     frontier_depth: int = Field(ge=0)
     verified_count: int = Field(ge=0)
     accepted_unique_count: int = Field(ge=0)
@@ -81,6 +89,98 @@ def current_active_tempo(settings: LemmaSettings, *, now: datetime | None = None
         return block // tempo
     instant = now or datetime.now(UTC)
     return int(instant.timestamp() // settings.active_tempo_seconds)
+
+
+def _hash_payload(payload: dict[str, object]) -> str:
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def resolve_active_epoch_randomness(settings: LemmaSettings, *, tempo: int) -> str:
+    """Return the public randomness material for one active epoch."""
+    if settings.active_epoch_randomness_source == "manual":
+        randomness = settings.active_epoch_randomness.strip()
+        if not randomness:
+            raise RuntimeError("epoch-randomness active selection requires LEMMA_ACTIVE_EPOCH_RANDOMNESS")
+        return randomness
+    return resolve_chain_drand_epoch_randomness(settings, tempo=tempo).seed_material()
+
+
+def active_epoch_seed(settings: LemmaSettings, *, tempo: int, epoch_randomness: str | None = None) -> str:
+    """Return the seed that paid procedural tasks must be generated from."""
+    if settings.protocol_mode == "production" and settings.active_seed_mode != "epoch_randomness":
+        raise RuntimeError("production mode requires LEMMA_ACTIVE_SEED_MODE=epoch_randomness")
+    if settings.active_seed_mode == "static":
+        return settings.active_queue_seed
+    randomness = epoch_randomness or resolve_active_epoch_randomness(settings, tempo=tempo)
+    return _hash_payload(
+        {
+            "version": "lemma-epoch-seed-v1",
+            "netuid": settings.netuid,
+            "tempo": tempo,
+            "salt": settings.active_queue_seed,
+            "epoch_randomness": randomness,
+        }
+    )
+
+
+def active_selection_seed(
+    registry: TaskRegistry, settings: LemmaSettings, *, tempo: int, epoch_randomness: str | None = None
+) -> str:
+    """Return the deterministic active-window seed for one registry and tempo."""
+    epoch_seed = active_epoch_seed(settings, tempo=tempo, epoch_randomness=epoch_randomness)
+    if settings.active_seed_mode == "static":
+        return epoch_seed
+    return _hash_payload(
+        {
+            "version": "lemma-active-selection-v1",
+            "epoch_seed": epoch_seed,
+            "registry_sha256": registry.sha256,
+            "frontier_depth": settings.frontier_depth,
+        }
+    )
+
+
+def active_selection_seed_sha256(
+    registry: TaskRegistry, settings: LemmaSettings, *, tempo: int, epoch_randomness: str | None = None
+) -> str:
+    return hashlib.sha256(
+        active_selection_seed(registry, settings, tempo=tempo, epoch_randomness=epoch_randomness).encode()
+    ).hexdigest()
+
+
+def active_epoch_randomness_sha256(
+    settings: LemmaSettings, *, tempo: int, epoch_randomness: str | None = None
+) -> str | None:
+    if settings.active_seed_mode == "static":
+        return None
+    randomness = epoch_randomness or resolve_active_epoch_randomness(settings, tempo=tempo)
+    return hashlib.sha256(randomness.encode()).hexdigest()
+
+
+def _enforce_epoch_generated_paid_tasks(
+    tasks: Sequence[LemmaTask], expected_seed: str, epoch_randomness: str
+) -> None:
+    try:
+        epoch_fields = json.loads(epoch_randomness)
+    except json.JSONDecodeError:
+        epoch_fields = {}
+    expected_anchor_block = epoch_fields.get("anchor_block") if isinstance(epoch_fields, dict) else None
+    expected_drand_round = epoch_fields.get("drand_round") if isinstance(epoch_fields, dict) else None
+    mismatches: list[str] = []
+    for task in tasks:
+        if not task_reward_eligibility(task).eligible:
+            continue
+        metadata = task.metadata
+        if metadata.get("generation_seed") != expected_seed:
+            mismatches.append(f"{task.id}:generation_seed")
+        if isinstance(expected_anchor_block, int) and metadata.get("anchor_block") != expected_anchor_block:
+            mismatches.append(f"{task.id}:anchor_block")
+        if isinstance(expected_drand_round, int) and metadata.get("drand_round") != expected_drand_round:
+            mismatches.append(f"{task.id}:drand_round")
+    if mismatches:
+        detail = ", ".join(mismatches[:5])
+        raise RuntimeError(f"production paid tasks must use active epoch randomness: {detail}")
 
 
 def _weight_receipt(
@@ -135,11 +235,24 @@ def active_tasks_for_validation(
     if active_k == 0:
         return ()
     active_tempo = current_active_tempo(settings) if tempo is None else tempo
+    epoch_randomness = (
+        resolve_active_epoch_randomness(settings, tempo=active_tempo)
+        if settings.active_seed_mode == "epoch_randomness"
+        else None
+    )
+    if settings.protocol_mode == "production":
+        if epoch_randomness is None:
+            raise RuntimeError("production mode requires LEMMA_ACTIVE_SEED_MODE=epoch_randomness")
+        _enforce_epoch_generated_paid_tasks(
+            registry.tasks,
+            active_epoch_seed(settings, tempo=active_tempo, epoch_randomness=epoch_randomness),
+            epoch_randomness,
+        )
     pool = initial_active_pool(
         candidates,
         active_K=active_k,
         tempo=active_tempo,
-        seed=settings.active_queue_seed,
+        seed=active_selection_seed(registry, settings, tempo=active_tempo, epoch_randomness=epoch_randomness),
         frontier_depth=settings.frontier_depth,
     )
     by_id = {task.id: task for task in pool.queue}
@@ -240,7 +353,8 @@ def validate_once(
         verify_signature=settings.protocol_mode == "production" or settings.verify_registry_signatures,
     )
     enforce_production_invariants(settings, registry)
-    active_tasks = active_tasks_for_validation(registry, settings, tempo=tempo)
+    active_tempo = current_active_tempo(settings) if tempo is None else tempo
+    active_tasks = active_tasks_for_validation(registry, settings, tempo=active_tempo)
     tasks = {task.id: task for task in active_tasks}
     verify = verify_submission or _default_verify(settings)
     validator = validator_hotkey or settings.wallet_hot
@@ -401,6 +515,12 @@ def validate_once(
         run_at=_now(),
         registry_sha256=registry.sha256,
         active_K=len(active_tasks),
+        active_tempo=active_tempo,
+        active_seed_mode=settings.active_seed_mode,
+        active_epoch_randomness_source=settings.active_epoch_randomness_source,
+        active_epoch_randomness_sha256=active_epoch_randomness_sha256(settings, tempo=active_tempo),
+        active_selection_seed_sha256=active_selection_seed_sha256(registry, settings, tempo=active_tempo),
+        active_task_ids=tuple(task.id for task in active_tasks),
         frontier_depth=settings.frontier_depth,
         verified_count=len(records),
         accepted_unique_count=len(score.valid_unique_proofs),
