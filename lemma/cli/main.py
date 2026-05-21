@@ -81,10 +81,14 @@ def _read_text(path: Path) -> str:
 
 def _load_registry():
     from lemma.tasks import TaskError, fetch_task_registry
+    from lemma.validator import current_active_tempo, production_task_registry
 
+    settings = LemmaSettings()
     try:
-        return fetch_task_registry(LemmaSettings())
-    except (TaskError, OSError) as e:
+        if settings.protocol_mode == "production":
+            return production_task_registry(settings, tempo=current_active_tempo(settings))
+        return fetch_task_registry(settings)
+    except (TaskError, OSError, RuntimeError, ValueError) as e:
         raise click.ClickException(str(e)) from e
 
 
@@ -126,8 +130,10 @@ def _show_task(task_id: str) -> None:
 
 @main.command("setup")
 @click.option("--env-file", "env_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
-@click.option("--task-registry-url", default=None, help="Task registry JSON URL or path.")
-@click.option("--task-registry-sha256", default=None, help="Optional task registry SHA256 pin.")
+@click.option("--task-registry-url", default=None, help="Local/dev task registry JSON URL or path.")
+@click.option("--task-registry-sha256", default=None, help="Optional local/dev task registry SHA256 pin.")
+@click.option("--task-source-pool-url", default=None, help="Production source-pool JSONL URL or path.")
+@click.option("--task-source-pool-sha256", default=None, help="Production source-pool SHA256 pin.")
 @click.option("--corpus-output-dir", default=None, help="Local directory for corpus JSONL deltas.")
 @click.option("--operator-data-dir", default=None, help="Local directory for validator receipts.")
 @click.option("--submission-spool-dir", default=None, help="Validator inbox for pending submission files.")
@@ -149,6 +155,8 @@ def setup_cmd(
     env_path: Path | None,
     task_registry_url: str | None,
     task_registry_sha256: str | None,
+    task_source_pool_url: str | None,
+    task_source_pool_sha256: str | None,
     corpus_output_dir: str | None,
     operator_data_dir: str | None,
     submission_spool_dir: str | None,
@@ -191,6 +199,10 @@ def setup_cmd(
     }
     if task_registry_sha256:
         updates["LEMMA_TASK_REGISTRY_SHA256_EXPECTED"] = task_registry_sha256
+    if task_source_pool_url:
+        updates["LEMMA_TASK_SOURCE_POOL_URL"] = task_source_pool_url
+    if task_source_pool_sha256:
+        updates["LEMMA_TASK_SOURCE_POOL_SHA256_EXPECTED"] = task_source_pool_sha256
     if submission_spool_dir:
         updates["LEMMA_SUBMISSION_SPOOL_DIR"] = submission_spool_dir
     if prover_command:
@@ -215,6 +227,7 @@ def status_cmd() -> None:
     click.echo(stylize("  wallet_hot        ", dim=True) + settings.wallet_hot)
     click.echo(stylize("  netuid            ", dim=True) + str(settings.netuid))
     click.echo(stylize("  task_registry_url ", dim=True) + settings.task_registry_url)
+    click.echo(stylize("  source_pool_url   ", dim=True) + (settings.task_source_pool_url or "(not configured)"))
     click.echo(stylize("  corpus_index_url  ", dim=True) + (settings.corpus_index_url or "(local)"))
     click.echo(stylize("  corpus_output_dir ", dim=True) + str(settings.corpus_output_dir))
     click.echo(stylize("  schema_version    ", dim=True) + settings.schema_version)
@@ -490,7 +503,7 @@ def tasks_build_procedural_registry_cmd(
     seed: str,
     frontier_depth: int | None,
 ) -> None:
-    """Build a production-shaped procedural depth-2 task registry."""
+    """Build a local procedural depth-2 task registry."""
     from lemma.supply.procedural import build_procedural_registry_tasks, candidates_from_jsonl
     from lemma.supply.types import TaskCandidate
     from lemma.task_supply import write_registry
@@ -1002,10 +1015,12 @@ def validate_cmd(
         from lemma.chain.commitments import read_all_commitments
         from lemma.chain.miner_buckets import read_bucket_reveals_jsonl, submissions_from_bucket_reveals
         from lemma.tasks import fetch_task_registry
+        from lemma.validator import current_active_tempo, production_task_registry
 
-        registry = fetch_task_registry(
-            settings,
-            verify_signature=settings.protocol_mode == "production" or settings.verify_registry_signatures,
+        registry = (
+            production_task_registry(settings, tempo=current_active_tempo(settings))
+            if settings.protocol_mode == "production"
+            else fetch_task_registry(settings, verify_signature=settings.verify_registry_signatures)
         )
         reveals = read_bucket_reveals_jsonl(bucket_reveals_jsonl)
         bucket_reveal_count = len(reveals)

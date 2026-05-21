@@ -2,7 +2,7 @@
 
 Lemma tasks are exact verifier targets with source and license metadata.
 
-Miners do not choose arbitrary targets for scoring. Validators publish an active deterministic queue, and every submission must bind to one exact task row.
+Miners do not choose arbitrary targets for scoring. Validators derive the active deterministic queue from public inputs, and every submission must bind to one exact task row.
 
 Lean theorem proving is the only active production domain today. Legacy Lean tasks use `schema_version: 1`; dataset exports upgrade them to task schema v2 with `domain_id: lean`, `verifier_id: lake-build`, and `task_type: theorem_proving`.
 
@@ -10,21 +10,21 @@ Lean theorem proving is the only active production domain today. Legacy Lean tas
 
 Launch interfaces distinguish production paid supply from development supply.
 
-Paid production supply is `procedural`: every paid task must be generated from the pinned source pool by a deterministic depth-2 mutation chain anchored to chain/drand state. Validators should be able to rebuild the same active pool from the same public inputs.
+Paid production supply is `procedural`: every paid task is generated from the pinned public source pool and the future finalized Bittensor tempo-boundary block hash. There is no paid production registry publisher. Validators derive the same active tasks from the same public inputs.
 
-Paid production also uses epoch-derived active selection. Development may keep a static queue seed, but SN467 burn-in and mainnet both require `LEMMA_ACTIVE_SEED_MODE=epoch_randomness` and `LEMMA_ACTIVE_EPOCH_RANDOMNESS_SOURCE=chain_drand`. The internal epoch number is the chain tempo index; it can be displayed as 1-based in UI, but validators use the same 0-based integer from `block // tempo`.
+Paid production uses epoch-derived generation. Development may keep a static queue seed, but production requires `LEMMA_ACTIVE_SEED_MODE=epoch_randomness` and `LEMMA_ACTIVE_EPOCH_RANDOMNESS_SOURCE=chain_block_hash`. The internal epoch number is the chain tempo index; it can be displayed as 1-based in UI, but validators use the same 0-based integer from `block // tempo`.
 
-The chain/drand source is deterministic: validators take the epoch's first chain block, read that block's hash and timestamp, map the timestamp to the Drand Quicknet round, fetch that round's signature, and hash those public fields into the epoch seed. A validator that resolves different public fields lands on a different active-set manifest and should fail closed.
+The block-hash source is deterministic: validators take the epoch's first chain block and read that block hash. A validator that resolves different public fields lands on different task targets and should fail closed.
 
 For each production epoch, validators derive:
 
 ```text
-epoch_randomness = hash(anchor_block_hash, anchor_block_timestamp, drand_round, drand_signature)
+epoch_randomness = hash(anchor_block_hash)
 epoch_seed = hash(netuid, tempo, LEMMA_ACTIVE_QUEUE_SEED, epoch_randomness)
-active_selection_seed = hash(epoch_seed, registry_sha256, frontier_depth)
+active_tasks = generate(source_pool, epoch_seed, frontier_depth, K)
 ```
 
-Paid procedural rows must carry that `epoch_seed` as `metadata.generation_seed`. This keeps generation procedural while preventing a static future playlist: rows generated for a different epoch seed fail production activation.
+Paid procedural rows carry that `epoch_seed` as `metadata.generation_seed` and the anchor block hash as `metadata.anchor_block_hash`. This prevents a static future playlist: rows generated for a different epoch seed fail production activation.
 
 Development and curriculum interfaces cover these streams:
 
@@ -71,23 +71,16 @@ uv run lemma tasks build-mathlib-snapshot \
 
 The command writes deterministic `queue_position` values after shallow-first task ordering and prints the registry SHA256. Operators can attach externally produced `signed_by` / `signature` metadata, but the command does not sign or verify the registry.
 
-For production-shaped supply, package depth-2 procedural candidates:
+For production-shaped supply, configure the source pool directly:
 
 ```bash
-uv run lemma tasks build-procedural-registry \
-  --candidate-jsonl procedural-depth2-candidates.jsonl \
-  --output tasks/mainnet.registry.json
+LEMMA_TASK_SOURCE_POOL_URL=snapshot.jsonl
+LEMMA_TASK_SOURCE_POOL_SHA256_EXPECTED=<snapshot_jsonl_sha256>
+LEMMA_ACTIVE_SEED_MODE=epoch_randomness
+LEMMA_ACTIVE_EPOCH_RANDOMNESS_SOURCE=chain_block_hash
 ```
 
-The procedural builder rejects candidates unless paid rows carry procedural depth-2 metadata, a two-step mutation chain, chain/drand anchoring, source-pool and operator-bundle hashes, Prop-gate success, novelty success, typecheck confirmation, triviality-check confirmation, a failed baseline-solver result, clean license state, and deterministic `slot_weight`.
-
-The mixed builder remains useful for local smoke and curriculum tuning. It is not the paid production supply path.
-
-Sign the built registry before production use:
-
-```bash
-uv run lemma tasks sign-registry --input tasks/mainnet.registry.json --output tasks/mainnet.signed.registry.json
-```
+When the epoch block exists, validators generate the active tasks directly from those inputs. The generator records the two-step transformation from Mathlib snapshot row to seed-bound procedural task. The mixed builder remains useful for local smoke and curriculum tuning. It is not the paid production supply path.
 
 See [Mathlib Extraction Contract](mathlib-extraction.md) for the JSONL row contract and the off-chain extraction boundary.
 
@@ -134,9 +127,9 @@ Only tasks in the selected active window are valid for scoring in that validator
 
 ## Registry
 
-`tasks/registry.json` is a dev seed. Published registries must be pinned by SHA256 and archived so corpus rows can be replayed later.
+`tasks/registry.json` is a dev seed. Local registries are still useful for smoke tests, curriculum experiments, and replay fixtures.
 
-`signed_by` and `signature` are metadata unless registry signature verification is enabled. Production mode requires both byte-for-byte SHA256 pinning through `LEMMA_TASK_REGISTRY_SHA256_EXPECTED` and verified registry signatures. Signature metadata must not bypass the SHA256 check.
+`signed_by` and `signature` are metadata unless registry signature verification is enabled. They do not choose paid production problems.
 
 ```bash
 uv run lemma tasks list
@@ -146,4 +139,4 @@ uv run lemma tasks extract-mathlib-snapshot --mathlib-root /path/to/mathlib --ou
 uv run lemma tasks build-mathlib-snapshot --input snapshot.jsonl --output tasks/mathlib-snapshot.registry.json
 ```
 
-See [Operator Registry Flow](operator-registry-flow.md) for the production sequence that pins the registry hash, configures the active window, validates submissions, and exports corpus data.
+See [Operator Flow](operator-registry-flow.md) for the production sequence that pins the source pool, configures block-hash generation, validates submissions, and exports corpus data.

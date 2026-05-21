@@ -91,6 +91,18 @@ def test_registry_signature_metadata_is_not_trusted_without_verifier() -> None:
         load_task_registry(tampered, digest)
 
 
+def test_registry_content_hash_ignores_signature_metadata() -> None:
+    payload = {"schema_version": 1, "tasks": [_task_payload()]}
+    first_raw = json.dumps({**payload, "signed_by": "signer-a", "signature": "sig-a"}, sort_keys=True).encode()
+    second_raw = json.dumps({**payload, "signed_by": "signer-b", "signature": "sig-b"}, sort_keys=True).encode()
+
+    first = load_task_registry(first_raw)
+    second = load_task_registry(second_raw)
+
+    assert first.sha256 != second.sha256
+    assert first.content_sha256 == second.content_sha256
+
+
 def test_registry_signature_fields_must_be_paired() -> None:
     raw = json.dumps({"schema_version": 1, "signed_by": "fixture-signer", "tasks": [_task_payload()]}).encode()
 

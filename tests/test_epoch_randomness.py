@@ -1,25 +1,12 @@
 from __future__ import annotations
 
-from lemma.chain.epoch_randomness import (
-    DRAND_QUICKNET_GENESIS_TIME,
-    drand_round_for_timestamp,
-    resolve_chain_drand_epoch_randomness,
-)
+from lemma.chain.epoch_randomness import resolve_chain_block_epoch_randomness
 from lemma.common.config import LemmaSettings
 
 
-def test_drand_round_for_timestamp_uses_quicknet_period() -> None:
-    assert drand_round_for_timestamp(DRAND_QUICKNET_GENESIS_TIME) == 1
-    assert drand_round_for_timestamp(DRAND_QUICKNET_GENESIS_TIME + 2) == 1
-    assert drand_round_for_timestamp(DRAND_QUICKNET_GENESIS_TIME + 3) == 2
-
-
-def test_chain_drand_epoch_randomness_anchors_to_tempo_boundary() -> None:
+def test_chain_block_epoch_randomness_anchors_to_tempo_boundary() -> None:
     class Hyperparams:
         tempo = 360
-
-    class BlockInfo:
-        timestamp = DRAND_QUICKNET_GENESIS_TIME + 30
 
     class Subtensor:
         def get_current_block(self) -> int:
@@ -34,35 +21,21 @@ def test_chain_drand_epoch_randomness_anchors_to_tempo_boundary() -> None:
             assert block == 720
             return "0xanchor"
 
-        def get_block_info(self, block: int | None = None, block_hash: str | None = None) -> BlockInfo:
-            assert block == 720
-            assert block_hash is None
-            return BlockInfo()
-
-    def signature(round_no: int) -> str:
-        assert round_no == 11
-        return "0xsig"
-
-    randomness = resolve_chain_drand_epoch_randomness(
+    randomness = resolve_chain_block_epoch_randomness(
         LemmaSettings(_env_file=None, netuid=467),
         subtensor=Subtensor(),
-        drand_signature_for_round=signature,
     )
 
+    assert randomness.source == "chain_block_hash"
     assert randomness.tempo == 2
     assert randomness.anchor_block == 720
     assert randomness.anchor_block_hash == "0xanchor"
-    assert randomness.drand_round == 11
-    assert randomness.drand_signature == "0xsig"
     assert randomness.seed_material() == randomness.seed_material()
 
 
-def test_chain_drand_epoch_randomness_accepts_millisecond_chain_timestamps() -> None:
+def test_chain_block_epoch_randomness_rejects_future_tempo() -> None:
     class Hyperparams:
         tempo = 360
-
-    class BlockInfo:
-        timestamp = (DRAND_QUICKNET_GENESIS_TIME + 30) * 1000
 
     class Subtensor:
         def get_current_block(self) -> int:
@@ -74,18 +47,9 @@ def test_chain_drand_epoch_randomness_accepts_millisecond_chain_timestamps() -> 
         def get_block_hash(self, block: int | None = None) -> str:
             return "0xanchor"
 
-        def get_block_info(self, block: int | None = None, block_hash: str | None = None) -> BlockInfo:
-            return BlockInfo()
-
-    def signature(round_no: int) -> str:
-        assert round_no == 11
-        return "0xsig"
-
-    randomness = resolve_chain_drand_epoch_randomness(
-        LemmaSettings(_env_file=None, netuid=467),
-        subtensor=Subtensor(),
-        drand_signature_for_round=signature,
-    )
-
-    assert randomness.anchor_block_timestamp == DRAND_QUICKNET_GENESIS_TIME + 30
-    assert randomness.drand_round == 11
+    try:
+        resolve_chain_block_epoch_randomness(LemmaSettings(_env_file=None), tempo=3, subtensor=Subtensor())
+    except RuntimeError as e:
+        assert "future epoch randomness" in str(e)
+    else:
+        raise AssertionError("future tempo should fail closed")

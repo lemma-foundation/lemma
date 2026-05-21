@@ -15,8 +15,13 @@ from lemma.supply.controller import (
     read_curriculum_records,
     retarget_curriculum,
 )
+from lemma.supply.mathlib_snapshot import MathlibSnapshotRow
 from lemma.supply.mixed import build_mixed_registry_tasks
-from lemma.supply.procedural import build_procedural_registry_tasks
+from lemma.supply.procedural import (
+    build_epoch_tasks_from_mathlib_rows,
+    build_procedural_registry_tasks,
+    generate_depth2_candidates_from_mathlib_rows,
+)
 from lemma.supply.queue import advance_active_pool, initial_active_pool
 from lemma.tasks import SourceRef
 
@@ -112,15 +117,11 @@ def test_procedural_registry_requires_depth_two_metadata() -> None:
             {"operator": "specialize", "input_hash": "2" * 64, "output_hash": "3" * 64},
         ],
         "generation_seed": "tempo-0",
-        "drand_round": 10,
         "anchor_block": 360,
+        "anchor_block_hash": "0xabc",
         "source_pool_hash": "4" * 64,
         "operator_bundle_hash": "5" * 64,
         "canonical_hash": "6" * 64,
-        "typechecked": True,
-        "prop_gate_passed": True,
-        "triviality_checked": True,
-        "baseline_solved": False,
         "novelty_status": "passed",
         "slot_weight": 2.0,
         "license_state": "clean_open",
@@ -146,6 +147,94 @@ def test_procedural_registry_requires_depth_two_metadata() -> None:
     assert build.tasks[0].source_stream == "procedural"
     assert build.tasks[0].metadata["slot_weight"] == 2.0
     assert build.rejected[0].reason == "mutation_depth"
+
+
+def test_procedural_depth2_generator_is_block_hash_bound() -> None:
+    rows = (
+        MathlibSnapshotRow(
+            theorem_name="Nat.zero_add",
+            type_expr="∀ n : Nat, 0 + n = n",
+            imports=("Mathlib.Data.Nat.Basic",),
+            mathlib_rev="abc123",
+            source_path="Mathlib/Data/Nat/Basic.lean",
+            source_line=10,
+            source_license="Apache-2.0",
+            proof_sha256="a" * 64,
+            queue_depth=2,
+        ),
+    )
+
+    first = generate_depth2_candidates_from_mathlib_rows(
+        rows,
+        generation_seed="epoch-a",
+        anchor_block=360,
+        anchor_block_hash="0xaaa",
+    )
+    second = generate_depth2_candidates_from_mathlib_rows(
+        rows,
+        generation_seed="epoch-a",
+        anchor_block=360,
+        anchor_block_hash="0xaaa",
+    )
+    changed_epoch = generate_depth2_candidates_from_mathlib_rows(
+        rows,
+        generation_seed="epoch-b",
+        anchor_block=720,
+        anchor_block_hash="0xbbb",
+    )
+
+    assert first[0].id == second[0].id
+    assert first[0].id != changed_epoch[0].id
+    assert first[0].source_stream == "procedural"
+    assert first[0].metadata["mutation_depth"] == 2
+    assert first[0].metadata["generation_seed"] == "epoch-a"
+    assert first[0].metadata["anchor_block"] == 360
+    assert first[0].metadata["anchor_block_hash"] == "0xaaa"
+    assert first[0].metadata["seed_variant"] in {"and_true_right", "and_true_left", "and_self", "or_false"}
+    assert first[0].type_expr != "∀ n : Nat, 0 + n = n"
+
+    build = build_procedural_registry_tasks(first, seed="procedural", frontier_depth=2)
+
+    assert len(build.tasks) == 1
+    assert build.rejected == ()
+
+
+def test_epoch_tasks_are_derived_without_registry_rebuild() -> None:
+    rows = (
+        MathlibSnapshotRow(
+            theorem_name="Smoke.true",
+            type_expr="True",
+            imports=("Mathlib",),
+            mathlib_rev="abc123",
+            source_path="Mathlib/Smoke.lean",
+            source_line=1,
+            source_license="Apache-2.0",
+            queue_depth=0,
+        ),
+        MathlibSnapshotRow(
+            theorem_name="Smoke.forallEq",
+            type_expr="∀ n : Nat, n = n",
+            imports=("Mathlib",),
+            mathlib_rev="abc123",
+            source_path="Mathlib/Smoke.lean",
+            source_line=2,
+            source_license="Apache-2.0",
+            queue_depth=1,
+        ),
+    )
+    tasks = build_epoch_tasks_from_mathlib_rows(
+        rows,
+        generation_seed="epoch-a",
+        anchor_block=360,
+        anchor_block_hash="0xaaa",
+        active_k=1,
+        frontier_depth=1,
+    )
+
+    assert len(tasks) == 1
+    assert tasks[0].source_stream == "procedural"
+    assert tasks[0].metadata["generation_seed"] == "epoch-a"
+    assert tasks[0].metadata["anchor_block_hash"] == "0xaaa"
 
 
 def test_curriculum_separates_depth_from_validator_capacity() -> None:

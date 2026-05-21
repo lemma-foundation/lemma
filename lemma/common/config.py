@@ -53,6 +53,14 @@ class LemmaSettings(BaseSettings):
         default=None,
         validation_alias="LEMMA_TASK_REGISTRY_SHA256_EXPECTED",
     )
+    task_source_pool_url: str = Field(
+        default="",
+        validation_alias="LEMMA_TASK_SOURCE_POOL_URL",
+    )
+    task_source_pool_sha256_expected: str | None = Field(
+        default=None,
+        validation_alias="LEMMA_TASK_SOURCE_POOL_SHA256_EXPECTED",
+    )
     verify_registry_signatures: bool = Field(
         default=False,
         validation_alias="LEMMA_VERIFY_REGISTRY_SIGNATURES",
@@ -85,7 +93,7 @@ class LemmaSettings(BaseSettings):
         default="static",
         validation_alias="LEMMA_ACTIVE_SEED_MODE",
     )
-    active_epoch_randomness_source: Literal["manual", "chain_drand"] = Field(
+    active_epoch_randomness_source: Literal["manual", "chain_block_hash"] = Field(
         default="manual",
         validation_alias="LEMMA_ACTIVE_EPOCH_RANDOMNESS_SOURCE",
     )

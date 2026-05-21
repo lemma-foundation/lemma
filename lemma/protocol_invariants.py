@@ -37,21 +37,13 @@ def production_supply_rejection_reason(task: LemmaTask) -> str:
             return "mutation_chain"
     if not _has_text(metadata, "generation_seed"):
         return "generation_seed"
-    if not _has_int(metadata, "drand_round"):
-        return "drand_round"
     if not _has_int(metadata, "anchor_block"):
         return "anchor_block"
+    if not _has_text(metadata, "anchor_block_hash"):
+        return "anchor_block_hash"
     for key in ("source_pool_hash", "operator_bundle_hash", "canonical_hash"):
         if not _has_hex64(metadata, key):
             return key
-    if metadata.get("typechecked") is not True:
-        return "typecheck"
-    if metadata.get("prop_gate_passed") is not True:
-        return "prop_gate"
-    if metadata.get("triviality_checked") is not True:
-        return "triviality"
-    if metadata.get("baseline_solved") is True:
-        return "baseline_solved"
     if metadata.get("novelty_status") != "passed":
         return "novelty_status"
     if _positive_float(metadata.get("slot_weight")) is None:
@@ -95,10 +87,10 @@ def enforce_production_invariants(settings: LemmaSettings, registry: TaskRegistr
         return
     if tuple(settings.enabled_domains) != ("lean",):
         raise RuntimeError("production mode currently supports only lean: LEMMA_ENABLED_DOMAINS must be lean")
-    if not settings.task_registry_sha256_expected:
-        raise RuntimeError("production mode requires LEMMA_TASK_REGISTRY_SHA256_EXPECTED")
-    if registry.signature_status != "verified":
-        raise RuntimeError("production mode requires signature-verified registry bytes")
+    if not settings.task_source_pool_url.strip():
+        raise RuntimeError("production mode requires LEMMA_TASK_SOURCE_POOL_URL")
+    if not settings.task_source_pool_sha256_expected:
+        raise RuntimeError("production mode requires LEMMA_TASK_SOURCE_POOL_SHA256_EXPECTED")
     if settings.lean_sandbox_network.strip().lower() not in {"none", "no"}:
         raise RuntimeError("production mode requires network-disabled verifier runs")
     if not settings.require_submission_signatures:
@@ -113,5 +105,5 @@ def enforce_production_invariants(settings: LemmaSettings, registry: TaskRegistr
         raise RuntimeError(f"production mode requires paid procedural depth-2 supply: {detail}")
     if settings.active_seed_mode != "epoch_randomness":
         raise RuntimeError("production mode requires LEMMA_ACTIVE_SEED_MODE=epoch_randomness")
-    if settings.active_epoch_randomness_source != "chain_drand":
-        raise RuntimeError("production mode requires LEMMA_ACTIVE_EPOCH_RANDOMNESS_SOURCE=chain_drand")
+    if settings.active_epoch_randomness_source != "chain_block_hash":
+        raise RuntimeError("production mode requires LEMMA_ACTIVE_EPOCH_RANDOMNESS_SOURCE=chain_block_hash")

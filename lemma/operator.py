@@ -165,7 +165,7 @@ def _build_operator_state(
     settings: LemmaSettings,
 ) -> tuple[OperatorPreflightReport, tuple[str, ...], OperatorRegistryInspectReport | None]:
     from lemma.tasks import TaskError, fetch_task_registry
-    from lemma.validator import active_tasks_for_validation
+    from lemma.validator import active_tasks_for_validation, current_active_tempo, production_task_registry
 
     checks: list[OperatorPreflightCheck] = []
     active_task_ids: tuple[str, ...] = ()
@@ -173,26 +173,39 @@ def _build_operator_state(
     registry = None
 
     try:
-        registry = fetch_task_registry(
-            settings,
-            verify_signature=settings.protocol_mode == "production" or settings.verify_registry_signatures,
-        )
-        checks.append(_check("registry_load", True, f"{len(registry.tasks)} tasks"))
-    except (TaskError, OSError) as e:
+        if settings.protocol_mode == "production":
+            registry = production_task_registry(settings, tempo=current_active_tempo(settings))
+            checks.append(_check("registry_load", True, f"{len(registry.tasks)} generated tasks from source pool"))
+        else:
+            registry = fetch_task_registry(settings, verify_signature=settings.verify_registry_signatures)
+            checks.append(_check("registry_load", True, f"{len(registry.tasks)} tasks"))
+    except (TaskError, OSError, ValueError, RuntimeError) as e:
         checks.append(_check("registry_load", False, str(e)))
 
-    expected_pin = (settings.task_registry_sha256_expected or "").strip()
+    expected_pin = (
+        (settings.task_source_pool_sha256_expected or "").strip()
+        if settings.protocol_mode == "production"
+        else (settings.task_registry_sha256_expected or "").strip()
+    )
     checks.append(
         _check(
             "registry_hash_pin",
             bool(expected_pin),
-            "LEMMA_TASK_REGISTRY_SHA256_EXPECTED is set" if expected_pin else "missing registry SHA256 pin",
+            (
+                "LEMMA_TASK_SOURCE_POOL_SHA256_EXPECTED is set"
+                if settings.protocol_mode == "production" and expected_pin
+                else "LEMMA_TASK_REGISTRY_SHA256_EXPECTED is set"
+                if expected_pin
+                else "missing source pool SHA256 pin"
+                if settings.protocol_mode == "production"
+                else "missing registry SHA256 pin"
+            ),
         )
     )
 
     if registry is not None:
-        signature_ok = registry.signature_status == "verified" if settings.protocol_mode == "production" else True
-        checks.append(_check("registry_signature", signature_ok, registry.signature_status))
+        if settings.protocol_mode != "production":
+            checks.append(_check("registry_signature", True, registry.signature_status))
         try:
             active_tasks = active_tasks_for_validation(registry, settings)
         except RuntimeError as e:
@@ -264,16 +277,18 @@ def _build_operator_state(
                 _check(
                     "epoch_randomness",
                     settings.active_seed_mode == "epoch_randomness"
-                    and settings.active_epoch_randomness_source == "chain_drand",
-                    "production active selection must use chain/drand epoch randomness",
+                    and settings.active_epoch_randomness_source == "chain_block_hash",
+                    "production active selection must use chain block-hash epoch randomness",
                 ),
                 _check(
                     "procedural_supply",
-                    not rejections,
+                    registry is not None and not rejections,
                     (
                         "paid supply is procedural depth-2"
-                        if not rejections
+                        if registry is not None and not rejections
                         else "paid supply rejected: " + ", ".join(rejections[:5])
+                        if rejections
+                        else "paid supply unavailable"
                     ),
                 ),
             ]

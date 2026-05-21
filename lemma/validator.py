@@ -12,7 +12,7 @@ from typing import Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from lemma.chain.epoch_randomness import resolve_chain_drand_epoch_randomness
+from lemma.chain.epoch_randomness import resolve_chain_block_epoch_randomness
 from lemma.chain.weights import ChainWeightSubmission
 from lemma.common.config import LemmaSettings
 from lemma.corpus import CorpusRow, build_corpus_row, write_corpus_index, write_jsonl
@@ -44,7 +44,7 @@ class ValidatorRunSummary(BaseModel):
     active_K: int = Field(ge=0)
     active_tempo: int | None = Field(default=None, ge=0)
     active_seed_mode: Literal["static", "epoch_randomness"] = "static"
-    active_epoch_randomness_source: Literal["manual", "chain_drand"] = "manual"
+    active_epoch_randomness_source: Literal["manual", "chain_block_hash"] = "manual"
     active_epoch_randomness_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     active_selection_seed_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     active_task_ids: tuple[str, ...] = ()
@@ -103,7 +103,7 @@ def resolve_active_epoch_randomness(settings: LemmaSettings, *, tempo: int) -> s
         if not randomness:
             raise RuntimeError("epoch-randomness active selection requires LEMMA_ACTIVE_EPOCH_RANDOMNESS")
         return randomness
-    return resolve_chain_drand_epoch_randomness(settings, tempo=tempo).seed_material()
+    return resolve_chain_block_epoch_randomness(settings, tempo=tempo).seed_material()
 
 
 def active_epoch_seed(settings: LemmaSettings, *, tempo: int, epoch_randomness: str | None = None) -> str:
@@ -135,7 +135,7 @@ def active_selection_seed(
         {
             "version": "lemma-active-selection-v1",
             "epoch_seed": epoch_seed,
-            "registry_sha256": registry.sha256,
+            "registry_content_sha256": registry.content_sha256 or registry.sha256,
             "frontier_depth": settings.frontier_depth,
         }
     )
@@ -158,6 +158,42 @@ def active_epoch_randomness_sha256(
     return hashlib.sha256(randomness.encode()).hexdigest()
 
 
+def production_task_registry(settings: LemmaSettings, *, tempo: int) -> TaskRegistry:
+    """Generate the production task set from public source pool and block hash."""
+    from lemma.supply.procedural import build_epoch_tasks_from_mathlib_rows, source_pool_from_url
+
+    if not settings.task_source_pool_url.strip():
+        raise RuntimeError("production mode requires LEMMA_TASK_SOURCE_POOL_URL")
+    if not settings.task_source_pool_sha256_expected:
+        raise RuntimeError("production mode requires LEMMA_TASK_SOURCE_POOL_SHA256_EXPECTED")
+    epoch_randomness = resolve_active_epoch_randomness(settings, tempo=tempo)
+    try:
+        epoch_fields = json.loads(epoch_randomness)
+    except json.JSONDecodeError as e:
+        raise RuntimeError("production epoch randomness must be structured block-hash material") from e
+    anchor_block = epoch_fields.get("anchor_block")
+    anchor_block_hash = epoch_fields.get("anchor_block_hash")
+    if not isinstance(anchor_block, int) or not isinstance(anchor_block_hash, str):
+        raise RuntimeError("production epoch randomness must include anchor block and block hash")
+
+    source_pool = source_pool_from_url(settings.task_source_pool_url, settings.task_source_pool_sha256_expected)
+    tasks = build_epoch_tasks_from_mathlib_rows(
+        source_pool.rows,
+        generation_seed=active_epoch_seed(settings, tempo=tempo, epoch_randomness=epoch_randomness),
+        anchor_block=anchor_block,
+        anchor_block_hash=anchor_block_hash,
+        active_k=settings.active_task_count,
+        frontier_depth=settings.frontier_depth,
+    )
+    return TaskRegistry(
+        schema_version=1,
+        tasks=tasks,
+        sha256=source_pool.sha256,
+        content_sha256=source_pool.sha256,
+        signature_status="unsigned",
+    )
+
+
 def _enforce_epoch_generated_paid_tasks(
     tasks: Sequence[LemmaTask], expected_seed: str, epoch_randomness: str
 ) -> None:
@@ -166,7 +202,7 @@ def _enforce_epoch_generated_paid_tasks(
     except json.JSONDecodeError:
         epoch_fields = {}
     expected_anchor_block = epoch_fields.get("anchor_block") if isinstance(epoch_fields, dict) else None
-    expected_drand_round = epoch_fields.get("drand_round") if isinstance(epoch_fields, dict) else None
+    expected_anchor_hash = epoch_fields.get("anchor_block_hash") if isinstance(epoch_fields, dict) else None
     mismatches: list[str] = []
     for task in tasks:
         if not task_reward_eligibility(task).eligible:
@@ -176,8 +212,8 @@ def _enforce_epoch_generated_paid_tasks(
             mismatches.append(f"{task.id}:generation_seed")
         if isinstance(expected_anchor_block, int) and metadata.get("anchor_block") != expected_anchor_block:
             mismatches.append(f"{task.id}:anchor_block")
-        if isinstance(expected_drand_round, int) and metadata.get("drand_round") != expected_drand_round:
-            mismatches.append(f"{task.id}:drand_round")
+        if isinstance(expected_anchor_hash, str) and metadata.get("anchor_block_hash") != expected_anchor_hash:
+            mismatches.append(f"{task.id}:anchor_block_hash")
     if mismatches:
         detail = ", ".join(mismatches[:5])
         raise RuntimeError(f"production paid tasks must use active epoch randomness: {detail}")
@@ -348,12 +384,15 @@ def validate_once(
     chain_authenticated_keys: frozenset[ChainAuthenticatedKey] = frozenset(),
 ) -> ValidatorRunResult:
     """Verify submissions, score unique proofs, and write local corpus artifacts."""
-    registry = registry or fetch_task_registry(
-        settings,
-        verify_signature=settings.protocol_mode == "production" or settings.verify_registry_signatures,
-    )
-    enforce_production_invariants(settings, registry)
     active_tempo = current_active_tempo(settings) if tempo is None else tempo
+    if settings.protocol_mode == "production":
+        registry = production_task_registry(settings, tempo=active_tempo)
+    else:
+        registry = registry or fetch_task_registry(
+            settings,
+            verify_signature=settings.verify_registry_signatures,
+        )
+    enforce_production_invariants(settings, registry)
     active_tasks = active_tasks_for_validation(registry, settings, tempo=active_tempo)
     tasks = {task.id: task for task in active_tasks}
     verify = verify_submission or _default_verify(settings)

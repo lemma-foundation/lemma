@@ -33,7 +33,7 @@ The configured prover command receives one JSON task on stdin and returns JSON w
 
 ## Custom Miners
 
-Competitive miners can replace the CLI entirely. The contract is the task registry plus a valid task-bound proof submission; how a miner gets there is open. Agents, custom Lean worker pools, model-training loops, remote schedulers, direct protocol clients, or non-Python implementations are all fine if the validator accepts the output.
+Competitive miners can replace the CLI entirely. The contract is the active task target plus a valid task-bound proof submission; how a miner gets there is open. Agents, custom Lean worker pools, model-training loops, remote schedulers, direct protocol clients, or non-Python implementations are all fine if the validator accepts the output.
 
 Mainnet-shaped runs write timelocked blobs to the miner bucket and anchor rank with a Merkle-root chain commitment.
 

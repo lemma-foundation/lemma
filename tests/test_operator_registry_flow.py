@@ -13,9 +13,7 @@ from lemma.common.config import LemmaSettings
 from lemma.lean.sandbox import VerifyResult
 from lemma.operator import OperatorDiagnosticsReport, OperatorPreflightReport, OperatorRegistryInspectReport
 from lemma.submissions import build_submission, sign_submission
-from lemma.supply.types import TaskCandidate, lean_stub
-from lemma.tasks import SourceRef, Ss58RegistrySignatureVerifier, load_task_registry
-from lemma.validator import active_epoch_seed
+from lemma.tasks import load_task_registry
 
 
 def _proof_for(theorem_name: str) -> str:
@@ -264,111 +262,51 @@ def test_operator_registry_flow_smoke(monkeypatch: pytest.MonkeyPatch, tmp_path:
     assert benchmark_record["provenance"]["validator_hotkey"] == "validator-smoke"
 
 
-def test_production_like_signed_registry_submission_smoke(
+def test_production_like_block_hash_source_pool_submission_smoke(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     runner = CliRunner()
-    candidate_path = tmp_path / "candidates.jsonl"
-    registry_path = tmp_path / "tasks" / "mainnet.registry.json"
-    signed_registry_path = tmp_path / "tasks" / "mainnet.signed.registry.json"
-    theorem_name = "mainnet_readiness_true"
-    active_randomness = "pytest-anchor-block-and-drand"
+    source_pool_path = tmp_path / "source-pool.jsonl"
+    source_pool_path.write_text(
+        json.dumps(
+            {
+                "theorem_name": "Smoke.true",
+                "type_expr": "True",
+                "imports": ["Mathlib"],
+                "mathlib_rev": "mainnet-readiness-rev",
+                "source_path": "Mathlib/Smoke.lean",
+                "source_line": 1,
+                "source_license": "Apache-2.0",
+                "queue_depth": 0,
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    source_pool_sha256 = __import__("hashlib").sha256(source_pool_path.read_bytes()).hexdigest()
+    active_randomness = json.dumps(
+        {"source": "chain_block_hash", "anchor_block": 360, "anchor_block_hash": "0xanchor"},
+        sort_keys=True,
+    )
     monkeypatch.setattr(
         "lemma.validator.resolve_active_epoch_randomness",
         lambda settings, *, tempo: active_randomness,
     )
-    generation_seed = active_epoch_seed(
-        LemmaSettings(
-            _env_file=None,
-            active_seed_mode="epoch_randomness",
-            active_epoch_randomness_source="chain_drand",
-            active_queue_seed="mainnet-readiness",
-        ),
-        tempo=0,
+    task_settings = LemmaSettings(
+        _env_file=None,
+        protocol_mode="production",
+        task_source_pool_url=str(source_pool_path),
+        task_source_pool_sha256_expected=source_pool_sha256,
+        active_task_count=1,
+        frontier_depth=0,
+        active_queue_seed="mainnet-readiness",
+        active_seed_mode="epoch_randomness",
+        active_epoch_randomness_source="chain_block_hash",
     )
-    candidate = TaskCandidate(
-        id="lemma.procedural.mainnet_readiness_true",
-        title="Mainnet readiness true",
-        source_stream="procedural",
-        source_ref=SourceRef(
-            kind="procedural",
-            name="mainnet_readiness_true",
-            commit="anchor-block-360",
-        ),
-        source_license="Apache-2.0",
-        imports=("Mathlib",),
-        theorem_name=theorem_name,
-        type_expr="True",
-        statement=f"theorem {theorem_name} : True := by\n  sorry",
-        submission_stub=lean_stub(theorem_name, "True"),
-        mathlib_rev="mainnet-readiness-rev",
-        queue_depth=0,
-        metadata={
-            "activation_status": "paid",
-            "supply_mode": "procedural",
-            "mutation_depth": 2,
-            "mutation_chain": [
-                {"operator": "generalize", "input_hash": "1" * 64, "output_hash": "2" * 64},
-                {"operator": "specialize", "input_hash": "2" * 64, "output_hash": "3" * 64},
-            ],
-            "generation_seed": generation_seed,
-            "drand_round": 10,
-            "anchor_block": 360,
-            "source_pool_hash": "4" * 64,
-            "operator_bundle_hash": "5" * 64,
-            "canonical_hash": "6" * 64,
-            "typechecked": True,
-            "prop_gate_passed": True,
-            "novelty_status": "passed",
-            "baseline_solved": False,
-            "slot_weight": 1.0,
-            "license_state": "clean_open",
-            "triviality_checked": True,
-        },
-    )
-    candidate_path.write_text(candidate.model_dump_json() + "\n", encoding="utf-8")
+    from lemma.validator import production_task_registry
 
-    build = runner.invoke(
-        main,
-        [
-            "tasks",
-            "build-procedural-registry",
-            "--candidate-jsonl",
-            str(candidate_path),
-            "--output",
-            str(registry_path),
-            "--seed",
-            "mainnet-readiness",
-            "--frontier-depth",
-            "0",
-        ],
-        env={"LEMMA_PREFER_PROCESS_ENV": "1"},
-    )
-    assert build.exit_code == 0, build.output
-
-    sign_registry = runner.invoke(
-        main,
-        [
-            "tasks",
-            "sign-registry",
-            "--input",
-            str(registry_path),
-            "--output",
-            str(signed_registry_path),
-            "--key-uri",
-            "//LemmaRegistrySigner",
-        ],
-        env={"LEMMA_PREFER_PROCESS_ENV": "1"},
-    )
-    assert sign_registry.exit_code == 0, sign_registry.output
-    signed_registry_sha256 = json.loads(sign_registry.output)["registry_sha256"]
-    registry = load_task_registry(
-        signed_registry_path.read_bytes(),
-        signed_registry_sha256,
-        signature_verifier=Ss58RegistrySignatureVerifier(),
-    )
-    active_task = registry.get(candidate.id)
-
+    active_task = production_task_registry(task_settings, tempo=0).tasks[0]
     miner_keypair = Keypair.create_from_uri("//LemmaMainnetReadinessMiner")
     submission = sign_submission(
         build_submission(
@@ -391,17 +329,16 @@ def test_production_like_signed_registry_submission_smoke(
     env = {
         "LEMMA_PREFER_PROCESS_ENV": "1",
         "LEMMA_PROTOCOL_MODE": "production",
-        "LEMMA_VERIFY_REGISTRY_SIGNATURES": "1",
         "LEMMA_REQUIRE_SUBMISSION_SIGNATURES": "1",
         "LEMMA_REQUIRE_COMMIT_REVEAL": "1",
         "LEMMA_REQUIRE_STRONG_PROOF_IDENTITY": "1",
-        "LEMMA_TASK_REGISTRY_URL": str(signed_registry_path),
-        "LEMMA_TASK_REGISTRY_SHA256_EXPECTED": signed_registry_sha256,
+        "LEMMA_TASK_SOURCE_POOL_URL": str(source_pool_path),
+        "LEMMA_TASK_SOURCE_POOL_SHA256_EXPECTED": source_pool_sha256,
         "LEMMA_ACTIVE_K": "1",
         "LEMMA_FRONTIER_DEPTH": "0",
         "LEMMA_ACTIVE_QUEUE_SEED": "mainnet-readiness",
         "LEMMA_ACTIVE_SEED_MODE": "epoch_randomness",
-        "LEMMA_ACTIVE_EPOCH_RANDOMNESS_SOURCE": "chain_drand",
+        "LEMMA_ACTIVE_EPOCH_RANDOMNESS_SOURCE": "chain_block_hash",
         "LEMMA_ACTIVE_TEMPO_SOURCE": "wall_clock",
         "LEMMA_ACTIVE_TEMPO_SECONDS": "999999999999",
         "LEMMA_CORPUS_OUTPUT_DIR": str(tmp_path / "corpus"),
@@ -416,7 +353,7 @@ def test_production_like_signed_registry_submission_smoke(
     preflight_payload = OperatorPreflightReport.model_validate_json(preflight.output)
     checks = {check.name: check for check in preflight_payload.checks}
     assert preflight_payload.ok is True
-    assert checks["registry_signature"].detail == "verified"
+    assert checks["registry_hash_pin"].detail == "LEMMA_TASK_SOURCE_POOL_SHA256_EXPECTED is set"
     assert checks["lean_network"].ok is True
     assert checks["live_submission_signatures"].ok is True
     assert checks["commit_reveal"].ok is True
@@ -509,7 +446,8 @@ def test_production_preflight_fails_closed_without_launch_flags(tmp_path: Path) 
     assert preflight.exit_code == 1
     payload = OperatorPreflightReport.model_validate_json(preflight.output)
     checks = {check.name: check.ok for check in payload.checks}
-    assert checks["registry_signature"] is False
+    assert checks["registry_load"] is False
+    assert checks["registry_hash_pin"] is False
     assert checks["lean_network"] is False
     assert checks["live_submission_signatures"] is False
     assert checks["commit_reveal"] is False

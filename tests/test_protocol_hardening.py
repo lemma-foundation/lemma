@@ -22,7 +22,7 @@ from lemma.tasks import (
     load_task_registry,
     registry_signing_payload,
 )
-from lemma.validator import active_epoch_seed, active_tasks_for_validation, validate_once
+from lemma.validator import active_epoch_seed, active_selection_seed, active_tasks_for_validation, validate_once
 
 
 def _task(source_license: str = "CC-BY-4.0"):
@@ -48,18 +48,14 @@ def _procedural_metadata(*, mutation_depth: int = 2, generation_seed: str = "pyt
             {"operator": "specialize", "input_hash": "2" * 64, "output_hash": "3" * 64},
         ][:mutation_depth],
         "generation_seed": generation_seed,
-        "drand_round": 12,
         "anchor_block": 360,
+        "anchor_block_hash": "0xabc",
         "source_pool_hash": "4" * 64,
         "operator_bundle_hash": "5" * 64,
         "canonical_hash": "6" * 64,
-        "typechecked": True,
-        "prop_gate_passed": True,
         "novelty_status": "passed",
-        "baseline_solved": False,
         "slot_weight": 1.0,
         "license_state": "clean_open",
-        "triviality_checked": True,
     }
 
 
@@ -204,27 +200,71 @@ def test_registry_signature_verifies_canonical_payload() -> None:
     assert registry.signature_status == "verified"
 
 
+def test_active_selection_uses_unsigned_registry_content_hash() -> None:
+    task = _production_task()
+    payload = {
+        "schema_version": 1,
+        "tasks": [task.model_dump(mode="json", exclude_none=True)],
+    }
+    first = load_task_registry(json.dumps({**payload, "signed_by": "a", "signature": "sig-a"}).encode())
+    second = load_task_registry(json.dumps({**payload, "signed_by": "b", "signature": "sig-b"}).encode())
+    settings = LemmaSettings(
+        _env_file=None,
+        active_seed_mode="epoch_randomness",
+        active_epoch_randomness_source="manual",
+        active_epoch_randomness="pytest-randomness",
+    )
+
+    assert first.sha256 != second.sha256
+    assert first.content_sha256 == second.content_sha256
+    assert active_selection_seed(first, settings, tempo=0) == active_selection_seed(second, settings, tempo=0)
+
+
 def test_production_validator_does_not_reward_weak_identity(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
+    source_pool = tmp_path / "source-pool.jsonl"
+    source_pool.write_text(
+        json.dumps(
+            {
+                "theorem_name": "Smoke.true",
+                "type_expr": "True",
+                "imports": ["Mathlib"],
+                "mathlib_rev": "abc123",
+                "source_path": "Mathlib/Smoke.lean",
+                "source_license": "Apache-2.0",
+                "queue_depth": 0,
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    active_randomness = json.dumps(
+        {"source": "chain_block_hash", "anchor_block": 360, "anchor_block_hash": "0xabc"},
+        sort_keys=True,
+    )
     monkeypatch.setattr(
         "lemma.validator.resolve_active_epoch_randomness",
-        lambda settings, *, tempo: "pytest-anchor-block-and-drand",
+        lambda settings, *, tempo: active_randomness,
     )
     settings = LemmaSettings(
         _env_file=None,
         protocol_mode="production",
-        task_registry_sha256_expected="0" * 64,
+        task_source_pool_url=str(source_pool),
+        task_source_pool_sha256_expected=__import__("hashlib").sha256(source_pool.read_bytes()).hexdigest(),
         require_submission_signatures=True,
         require_commit_reveal=True,
         require_strong_proof_identity=True,
         active_seed_mode="epoch_randomness",
-        active_epoch_randomness_source="chain_drand",
+        active_epoch_randomness_source="chain_block_hash",
         lean_sandbox_network="none",
         operator_data_dir=tmp_path / "operator",
         corpus_output_dir=tmp_path / "corpus",
     )
-    task = _production_task(generation_seed=active_epoch_seed(settings, tempo=0))
+    from lemma.validator import production_task_registry
+
+    task = production_task_registry(settings, tempo=0).tasks[0]
     keypair = Keypair.create_from_uri("//LemmaProdMiner")
     submission = sign_submission(
         build_submission(
@@ -241,12 +281,9 @@ def test_production_validator_does_not_reward_weak_identity(
         ),
         keypair,
     )
-    registry = TaskRegistry(schema_version=1, tasks=(task,), sha256="0" * 64, signature_status="verified")
-
     result = validate_once(
         settings,
         [submission],
-        registry=registry,
         verify_submission=lambda task, submission: VerifyResult(passed=True, reason="ok"),
         tempo=0,
         no_set_weights=True,
@@ -257,22 +294,29 @@ def test_production_validator_does_not_reward_weak_identity(
     assert result.corpus_rows[0].rewarded is False
 
 
-def test_production_mode_requires_verified_registry_signature() -> None:
+def test_production_mode_requires_pinned_source_pool() -> None:
     task = _production_task()
-    registry = TaskRegistry(schema_version=1, tasks=(task,), sha256="0" * 64, signature_status="metadata_only")
+    registry = TaskRegistry(schema_version=1, tasks=(task,), sha256="0" * 64)
     settings = LemmaSettings(
         _env_file=None,
         protocol_mode="production",
-        task_registry_sha256_expected="0" * 64,
         enabled_domains=("lean",),
         lean_sandbox_network="none",
         require_submission_signatures=True,
         require_commit_reveal=True,
         require_strong_proof_identity=True,
+        active_seed_mode="epoch_randomness",
+        active_epoch_randomness_source="chain_block_hash",
     )
 
-    with pytest.raises(RuntimeError, match="signature-verified"):
+    with pytest.raises(RuntimeError, match="LEMMA_TASK_SOURCE_POOL_URL"):
         enforce_production_invariants(settings, registry)
+
+    with pytest.raises(RuntimeError, match="LEMMA_TASK_SOURCE_POOL_SHA256_EXPECTED"):
+        enforce_production_invariants(
+            settings.model_copy(update={"task_source_pool_url": "source-pool.jsonl"}),
+            registry,
+        )
 
 
 def test_production_mode_requires_lean_only_domains() -> None:
@@ -281,8 +325,11 @@ def test_production_mode_requires_lean_only_domains() -> None:
     settings = LemmaSettings(
         _env_file=None,
         protocol_mode="production",
-        task_registry_sha256_expected="0" * 64,
+        task_source_pool_url="source-pool.jsonl",
+        task_source_pool_sha256_expected="0" * 64,
         enabled_domains=("lean", "verus"),
+        active_seed_mode="epoch_randomness",
+        active_epoch_randomness_source="chain_block_hash",
         lean_sandbox_network="none",
         require_submission_signatures=True,
         require_commit_reveal=True,
@@ -298,8 +345,11 @@ def test_production_mode_rejects_curated_paid_supply() -> None:
     settings = LemmaSettings(
         _env_file=None,
         protocol_mode="production",
-        task_registry_sha256_expected="0" * 64,
+        task_source_pool_url="source-pool.jsonl",
+        task_source_pool_sha256_expected="0" * 64,
         enabled_domains=("lean",),
+        active_seed_mode="epoch_randomness",
+        active_epoch_randomness_source="chain_block_hash",
         lean_sandbox_network="none",
         require_submission_signatures=True,
         require_commit_reveal=True,
@@ -320,8 +370,11 @@ def test_production_mode_rejects_depth_one_paid_supply() -> None:
     settings = LemmaSettings(
         _env_file=None,
         protocol_mode="production",
-        task_registry_sha256_expected="0" * 64,
+        task_source_pool_url="source-pool.jsonl",
+        task_source_pool_sha256_expected="0" * 64,
         enabled_domains=("lean",),
+        active_seed_mode="epoch_randomness",
+        active_epoch_randomness_source="chain_block_hash",
         lean_sandbox_network="none",
         require_submission_signatures=True,
         require_commit_reveal=True,
@@ -337,7 +390,8 @@ def test_production_mode_requires_epoch_randomness_active_seed() -> None:
     settings = LemmaSettings(
         _env_file=None,
         protocol_mode="production",
-        task_registry_sha256_expected="0" * 64,
+        task_source_pool_url="source-pool.jsonl",
+        task_source_pool_sha256_expected="0" * 64,
         enabled_domains=("lean",),
         lean_sandbox_network="none",
         require_submission_signatures=True,
@@ -348,20 +402,24 @@ def test_production_mode_requires_epoch_randomness_active_seed() -> None:
     with pytest.raises(RuntimeError, match="LEMMA_ACTIVE_SEED_MODE=epoch_randomness"):
         enforce_production_invariants(settings, registry)
 
-    with pytest.raises(RuntimeError, match="LEMMA_ACTIVE_EPOCH_RANDOMNESS_SOURCE=chain_drand"):
+    with pytest.raises(RuntimeError, match="LEMMA_ACTIVE_EPOCH_RANDOMNESS_SOURCE=chain_block_hash"):
         enforce_production_invariants(settings.model_copy(update={"active_seed_mode": "epoch_randomness"}), registry)
 
 
 def test_production_active_tasks_must_match_epoch_generation_seed(monkeypatch: pytest.MonkeyPatch) -> None:
+    active_randomness = json.dumps(
+        {"source": "chain_block_hash", "anchor_block": 360, "anchor_block_hash": "0xabc"},
+        sort_keys=True,
+    )
     monkeypatch.setattr(
         "lemma.validator.resolve_active_epoch_randomness",
-        lambda settings, *, tempo: "pytest-anchor-block-and-drand",
+        lambda settings, *, tempo: active_randomness,
     )
     settings = LemmaSettings(
         _env_file=None,
         protocol_mode="production",
         active_seed_mode="epoch_randomness",
-        active_epoch_randomness_source="chain_drand",
+        active_epoch_randomness_source="chain_block_hash",
     )
     registry = TaskRegistry(schema_version=1, tasks=(_production_task(),), sha256="0" * 64, signature_status="verified")
 
@@ -382,11 +440,9 @@ def test_production_active_tasks_must_match_epoch_generation_seed(monkeypatch: p
 def test_production_active_tasks_must_match_epoch_anchor_fields(monkeypatch: pytest.MonkeyPatch) -> None:
     randomness = json.dumps(
         {
-            "source": "chain_drand",
+            "source": "chain_block_hash",
             "anchor_block": 720,
-            "drand_round": 11,
             "anchor_block_hash": "0xabc",
-            "drand_signature": "0xsig",
         },
         sort_keys=True,
     )
@@ -395,7 +451,7 @@ def test_production_active_tasks_must_match_epoch_anchor_fields(monkeypatch: pyt
         _env_file=None,
         protocol_mode="production",
         active_seed_mode="epoch_randomness",
-        active_epoch_randomness_source="chain_drand",
+        active_epoch_randomness_source="chain_block_hash",
     )
     task = _production_task(generation_seed=active_epoch_seed(settings, tempo=3))
     registry = TaskRegistry(schema_version=1, tasks=(task,), sha256="0" * 64, signature_status="verified")

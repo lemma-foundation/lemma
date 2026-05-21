@@ -47,8 +47,9 @@ RegistrySignatureStatus = Literal["unsigned", "metadata_only", "verified"]
 class RegistrySignatureVerifier(Protocol):
     """Optional registry-signature verifier.
 
-    The production validator path trusts registry byte hashes. Signature
-    verification is explicit so metadata fields cannot silently become trust.
+    Production paid tasks are generated from pinned public inputs. Registry
+    signatures are explicit local/dev artifact checks so metadata fields cannot
+    silently become trust.
     """
 
     def verify_registry(self, *, raw: bytes, signed_by: str, signature: str) -> bool:
@@ -57,7 +58,7 @@ class RegistrySignatureVerifier(Protocol):
 
 
 def registry_signing_payload(payload: dict[str, Any]) -> bytes:
-    """Canonical bytes signed by registry authorities.
+    """Canonical bytes signed for local/dev registry artifacts.
 
     The published registry file can be pretty-printed and SHA-pinned exactly as
     written. The signature covers the registry content with signature metadata
@@ -232,6 +233,7 @@ class TaskRegistry:
     schema_version: int
     tasks: tuple[LemmaTask, ...]
     sha256: str
+    content_sha256: str | None = None
     signed_by: str | None = None
     signature: str | None = None
     signature_status: RegistrySignatureStatus = "unsigned"
@@ -319,6 +321,7 @@ def load_task_registry(
     if not isinstance(rows, list):
         raise TaskError("task registry must contain a tasks list")
     signed_by, signature = _signature_metadata(payload)
+    content_sha256 = hashlib.sha256(registry_signing_payload(payload)).hexdigest()
     signature_status = _signature_status(
         raw=registry_signing_payload(payload),
         signed_by=signed_by,
@@ -333,6 +336,7 @@ def load_task_registry(
         schema_version=1,
         tasks=tasks,
         sha256=digest,
+        content_sha256=content_sha256,
         signed_by=signed_by,
         signature=signature,
         signature_status=signature_status,
