@@ -1049,6 +1049,8 @@ def validate_cmd(
         raise click.ClickException("choose either --set-weights or --no-set-weights")
     if set_weights and not settings.enable_set_weights:
         raise click.ClickException("set LEMMA_ENABLE_SET_WEIGHTS=1 before using --set-weights")
+    active_tempo: int | None = None
+    epoch_randomness: str | None = None
     registry = None
     chain_authenticated_keys: frozenset[tuple[str, str, str]] = frozenset()
     bucket_reveal_count = 0
@@ -1073,11 +1075,19 @@ def validate_cmd(
         from lemma.tasks import fetch_task_registry
         from lemma.validator import current_active_tempo, production_task_registry
 
-        registry = (
-            production_task_registry(settings, tempo=current_active_tempo(settings))
-            if settings.protocol_mode == "production"
-            else fetch_task_registry(settings, verify_signature=settings.verify_registry_signatures)
-        )
+        if settings.protocol_mode == "production":
+            from lemma.chain.epoch_randomness import resolve_chain_block_epoch_randomness
+
+            active_epoch = resolve_chain_block_epoch_randomness(settings)
+            active_tempo = active_epoch.tempo
+            epoch_randomness = active_epoch.seed_material()
+            if active_tempo is None or epoch_randomness is None:
+                raise click.ClickException("production validation could not resolve active epoch randomness")
+            registry = production_task_registry(settings, tempo=active_tempo, epoch_randomness=epoch_randomness)
+        else:
+            registry = fetch_task_registry(settings, verify_signature=settings.verify_registry_signatures)
+        if active_tempo is None:
+            active_tempo = current_active_tempo(settings)
         reveals = list(read_bucket_reveals_jsonl(bucket_reveals_jsonl)) if bucket_reveals_jsonl else []
         if effective_bucket_reveals_dir is not None:
             dir_reveals, bucket_reveal_paths = read_bucket_reveals_dir(effective_bucket_reveals_dir)
@@ -1094,7 +1104,12 @@ def validate_cmd(
         )
         bucket_submissions, chain_authenticated_keys = submissions_from_bucket_reveals(
             tuple(reveals),
-            active_tasks_for_validation(registry, settings),
+            active_tasks_for_validation(
+                registry,
+                settings,
+                tempo=active_tempo,
+                epoch_randomness=epoch_randomness,
+            ),
             verify_drand=verify_drand_reveals,
             chain_commitments=chain_commitments,
         )
@@ -1113,6 +1128,8 @@ def validate_cmd(
         submissions,
         registry=registry,
         validator_hotkey=validator_hotkey,
+        tempo=active_tempo,
+        epoch_randomness=epoch_randomness,
         no_set_weights=(not set_weights) or no_set_weights or not once,
         require_signatures=require_signatures,
         require_commit_reveal=require_commit_reveal,

@@ -158,7 +158,9 @@ def active_epoch_randomness_sha256(
     return hashlib.sha256(randomness.encode()).hexdigest()
 
 
-def production_task_registry(settings: LemmaSettings, *, tempo: int) -> TaskRegistry:
+def production_task_registry(
+    settings: LemmaSettings, *, tempo: int, epoch_randomness: str | None = None
+) -> TaskRegistry:
     """Generate the production task set from public source pool and block hash."""
     from lemma.supply.procedural import build_epoch_tasks_from_mathlib_rows, source_pool_from_url
 
@@ -166,7 +168,7 @@ def production_task_registry(settings: LemmaSettings, *, tempo: int) -> TaskRegi
         raise RuntimeError("production mode requires LEMMA_TASK_SOURCE_POOL_URL")
     if not settings.task_source_pool_sha256_expected:
         raise RuntimeError("production mode requires LEMMA_TASK_SOURCE_POOL_SHA256_EXPECTED")
-    epoch_randomness = resolve_active_epoch_randomness(settings, tempo=tempo)
+    epoch_randomness = epoch_randomness or resolve_active_epoch_randomness(settings, tempo=tempo)
     try:
         epoch_fields = json.loads(epoch_randomness)
     except json.JSONDecodeError as e:
@@ -264,6 +266,7 @@ def active_tasks_for_validation(
     settings: LemmaSettings,
     *,
     tempo: int | None = None,
+    epoch_randomness: str | None = None,
 ) -> tuple[LemmaTask, ...]:
     """Select the deterministic active K-window from a registry."""
     candidates = tuple(task for task in registry.tasks if task.queue_depth <= settings.frontier_depth)
@@ -271,24 +274,29 @@ def active_tasks_for_validation(
     if active_k == 0:
         return ()
     active_tempo = current_active_tempo(settings) if tempo is None else tempo
-    epoch_randomness = (
-        resolve_active_epoch_randomness(settings, tempo=active_tempo)
+    resolved_epoch_randomness = (
+        epoch_randomness or resolve_active_epoch_randomness(settings, tempo=active_tempo)
         if settings.active_seed_mode == "epoch_randomness"
         else None
     )
     if settings.protocol_mode == "production":
-        if epoch_randomness is None:
+        if resolved_epoch_randomness is None:
             raise RuntimeError("production mode requires LEMMA_ACTIVE_SEED_MODE=epoch_randomness")
         _enforce_epoch_generated_paid_tasks(
             registry.tasks,
-            active_epoch_seed(settings, tempo=active_tempo, epoch_randomness=epoch_randomness),
-            epoch_randomness,
+            active_epoch_seed(settings, tempo=active_tempo, epoch_randomness=resolved_epoch_randomness),
+            resolved_epoch_randomness,
         )
     pool = initial_active_pool(
         candidates,
         active_K=active_k,
         tempo=active_tempo,
-        seed=active_selection_seed(registry, settings, tempo=active_tempo, epoch_randomness=epoch_randomness),
+        seed=active_selection_seed(
+            registry,
+            settings,
+            tempo=active_tempo,
+            epoch_randomness=resolved_epoch_randomness,
+        ),
         frontier_depth=settings.frontier_depth,
     )
     by_id = {task.id: task for task in pool.queue}
@@ -377,6 +385,7 @@ def validate_once(
     validator_hotkey: str | None = None,
     epoch: int | None = None,
     tempo: int | None = None,
+    epoch_randomness: str | None = None,
     no_set_weights: bool = False,
     require_signatures: bool = False,
     require_commit_reveal: bool = False,
@@ -386,14 +395,19 @@ def validate_once(
     """Verify submissions, score unique proofs, and write local corpus artifacts."""
     active_tempo = current_active_tempo(settings) if tempo is None else tempo
     if settings.protocol_mode == "production":
-        registry = production_task_registry(settings, tempo=active_tempo)
+        registry = production_task_registry(settings, tempo=active_tempo, epoch_randomness=epoch_randomness)
     else:
         registry = registry or fetch_task_registry(
             settings,
             verify_signature=settings.verify_registry_signatures,
         )
     enforce_production_invariants(settings, registry)
-    active_tasks = active_tasks_for_validation(registry, settings, tempo=active_tempo)
+    active_tasks = active_tasks_for_validation(
+        registry,
+        settings,
+        tempo=active_tempo,
+        epoch_randomness=epoch_randomness,
+    )
     tasks = {task.id: task for task in active_tasks}
     verify = verify_submission or _default_verify(settings)
     validator = validator_hotkey or settings.wallet_hot
@@ -557,8 +571,17 @@ def validate_once(
         active_tempo=active_tempo,
         active_seed_mode=settings.active_seed_mode,
         active_epoch_randomness_source=settings.active_epoch_randomness_source,
-        active_epoch_randomness_sha256=active_epoch_randomness_sha256(settings, tempo=active_tempo),
-        active_selection_seed_sha256=active_selection_seed_sha256(registry, settings, tempo=active_tempo),
+        active_epoch_randomness_sha256=active_epoch_randomness_sha256(
+            settings,
+            tempo=active_tempo,
+            epoch_randomness=epoch_randomness,
+        ),
+        active_selection_seed_sha256=active_selection_seed_sha256(
+            registry,
+            settings,
+            tempo=active_tempo,
+            epoch_randomness=epoch_randomness,
+        ),
         active_task_ids=tuple(task.id for task in active_tasks),
         frontier_depth=settings.frontier_depth,
         verified_count=len(records),

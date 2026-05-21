@@ -437,6 +437,59 @@ def test_production_active_tasks_must_match_epoch_generation_seed(monkeypatch: p
     assert active_tasks_for_validation(current_epoch_registry, settings, tempo=3)[0].metadata["generation_seed"] == seed
 
 
+def test_validate_once_reuses_resolved_epoch_randomness(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    randomness = json.dumps(
+        {
+            "source": "chain_block_hash",
+            "anchor_block": 360,
+            "anchor_block_hash": "0xabc",
+        },
+        sort_keys=True,
+    )
+    settings = LemmaSettings(
+        _env_file=None,
+        protocol_mode="production",
+        task_source_pool_url="source-pool.jsonl",
+        task_source_pool_sha256_expected="0" * 64,
+        require_submission_signatures=True,
+        require_commit_reveal=True,
+        require_strong_proof_identity=True,
+        active_seed_mode="epoch_randomness",
+        active_epoch_randomness_source="chain_block_hash",
+        lean_sandbox_network="none",
+        operator_data_dir=tmp_path / "operator",
+        corpus_output_dir=tmp_path / "corpus",
+    )
+    seed = active_epoch_seed(settings, tempo=3, epoch_randomness=randomness)
+    registry = TaskRegistry(
+        schema_version=1,
+        tasks=(_production_task(generation_seed=seed),),
+        sha256="0" * 64,
+        signature_status="unsigned",
+    )
+
+    def fail_if_resolved(settings: LemmaSettings, *, tempo: int) -> str:
+        raise AssertionError("epoch randomness should already be resolved")
+
+    def fake_production_registry(
+        settings: LemmaSettings, *, tempo: int, epoch_randomness: str | None = None
+    ) -> TaskRegistry:
+        assert tempo == 3
+        assert epoch_randomness == randomness
+        return registry
+
+    monkeypatch.setattr("lemma.validator.resolve_active_epoch_randomness", fail_if_resolved)
+    monkeypatch.setattr("lemma.validator.production_task_registry", fake_production_registry)
+
+    result = validate_once(settings, [], tempo=3, epoch_randomness=randomness, no_set_weights=True)
+
+    assert result.summary.active_tempo == 3
+    assert result.summary.active_epoch_randomness_sha256 is not None
+
+
 def test_production_active_tasks_must_match_epoch_anchor_fields(monkeypatch: pytest.MonkeyPatch) -> None:
     randomness = json.dumps(
         {
