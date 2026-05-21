@@ -1,6 +1,6 @@
 # Mainnet Readiness
 
-Mainnet readiness is a gate sequence, not one command. A launch candidate must pass the local proof spine, then SN467 live testnet smoke, then closed burn-in, then public burn-in, then final mainnet cutover.
+Mainnet readiness is a gate sequence, not one command. A launch candidate must pass the local proof spine, then SN467 production-mode smoke, then closed burn-in, then public burn-in, then final mainnet cutover.
 
 ## Local Gate
 
@@ -22,15 +22,15 @@ The local production-like smoke is covered by `tests/test_operator_registry_flow
 
 ## SN467 Gate
 
-Use SN467 as the live testnet proving ground:
+Use SN467 as the live proving ground for the production protocol. Testnet changes the chain target, not Lemma's protocol behavior:
 
 ```bash
 export BT_NETWORK=test
 export BT_NETUID=467
-export LEMMA_PROTOCOL_MODE=testnet
+export LEMMA_PROTOCOL_MODE=production
 ```
 
-Run the same artifact set locally first, then copy it into a clean validator/miner directory on the testnet hosts. The first live pass must use `--no-set-weights`. The controlled chain-write pass must set `LEMMA_ENABLE_SET_WEIGHTS=1` and use `--set-weights`.
+Run the same artifact set locally first, then copy it into a clean validator/miner directory on the testnet hosts. The first live pass must use `--no-set-weights`. The controlled chain-write pass must set `LEMMA_ENABLE_SET_WEIGHTS=1` and use `--set-weights`. The mainnet cutover should only change `BT_NETWORK` and `BT_NETUID`.
 
 Accept the gate only when `weight-submissions.jsonl` has resolved UIDs, `success=true`, an extrinsic hash, and the validator never reports `weights_set=true` without a confirmed successful response.
 

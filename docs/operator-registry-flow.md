@@ -26,7 +26,7 @@ uv run lemma tasks build-procedural-registry \
 
 The procedural builder rejects paid candidates that do not carry procedural depth-2 metadata, chain/drand anchoring, typecheck and Prop gates, novelty status, clean license state, and deterministic slot weight metadata.
 
-The mixed builder remains available for local smoke, testnet supply exercises, and curriculum work. It is not the paid mainnet path.
+The mixed builder remains available for local smoke and curriculum work. It is not the paid production path.
 
 Sign the registry after building it:
 

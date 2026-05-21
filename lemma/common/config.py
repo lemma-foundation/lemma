@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic_settings.sources import PydanticBaseSettingsSource
 
@@ -98,7 +98,7 @@ class LemmaSettings(BaseSettings):
     schema_version: str = Field(default="v2", validation_alias="LEMMA_SCHEMA_VERSION")
     enabled_domains: tuple[str, ...] = Field(default=("lean",), validation_alias="LEMMA_ENABLED_DOMAINS")
     experimental_domains: tuple[str, ...] = Field(default=(), validation_alias="LEMMA_EXPERIMENTAL_DOMAINS")
-    protocol_mode: Literal["dev", "testnet", "production"] = Field(
+    protocol_mode: Literal["dev", "production"] = Field(
         default="dev",
         validation_alias="LEMMA_PROTOCOL_MODE",
     )
@@ -149,6 +149,7 @@ class LemmaSettings(BaseSettings):
         default=False,
         validation_alias="LEMMA_LEAN_WORKSPACE_CACHE_INCLUDE_SUBMISSION_HASH",
     )
+
     lemma_lean_docker_worker: str = Field(default="", validation_alias="LEMMA_LEAN_DOCKER_WORKER")
     lean_verify_remote_url: str | None = Field(default=None, validation_alias="LEMMA_LEAN_VERIFY_REMOTE_URL")
     lean_verify_remote_bearer: str | None = Field(default=None, validation_alias="LEMMA_LEAN_VERIFY_REMOTE_BEARER")
@@ -163,3 +164,10 @@ class LemmaSettings(BaseSettings):
     )
 
     log_level: str = Field(default="INFO", validation_alias="LOG_LEVEL")
+
+    @field_validator("protocol_mode", mode="before")
+    @classmethod
+    def _normalize_protocol_mode(cls, value: Any) -> Any:
+        if isinstance(value, str) and value.strip().lower() == "testnet":
+            return "production"
+        return value

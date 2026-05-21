@@ -108,6 +108,17 @@ def test_task_env_names_work(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     assert s.netuid == 42
 
 
+def test_testnet_protocol_mode_uses_production_rules(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    monkeypatch.delenv("LEMMA_PREFER_PROCESS_ENV", raising=False)
+    env_file = tmp_path / ".env"
+    env_file.write_text('LEMMA_PROTOCOL_MODE="testnet"\n', encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    s = LemmaSettings(_env_file=str(env_file))
+
+    assert s.protocol_mode == "production"
+
+
 def test_stale_bounty_env_names_are_ignored(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     monkeypatch.delenv("LEMMA_PREFER_PROCESS_ENV", raising=False)
     stale_prefix = "LEMMA_" + "BOUNTY_"

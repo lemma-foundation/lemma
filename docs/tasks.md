@@ -8,11 +8,11 @@ Lean theorem proving is the only active production domain today. Legacy Lean tas
 
 ## Supply Streams
 
-Launch interfaces distinguish production paid supply from development/test supply.
+Launch interfaces distinguish production paid supply from development supply.
 
-Paid mainnet supply is `procedural`: every paid task must be generated from the pinned source pool by a deterministic depth-2 mutation chain anchored to chain/drand state. Validators should be able to rebuild the same active pool from the same public inputs.
+Paid production supply is `procedural`: every paid task must be generated from the pinned source pool by a deterministic depth-2 mutation chain anchored to chain/drand state. Validators should be able to rebuild the same active pool from the same public inputs.
 
-Paid mainnet also uses epoch-derived active selection. Development and testnet may keep a static queue seed, but production requires `LEMMA_ACTIVE_SEED_MODE=epoch_randomness` and `LEMMA_ACTIVE_EPOCH_RANDOMNESS_SOURCE=chain_drand`. The internal epoch number is the chain tempo index; it can be displayed as 1-based in UI, but validators use the same 0-based integer from `block // tempo`.
+Paid production also uses epoch-derived active selection. Development may keep a static queue seed, but SN467 burn-in and mainnet both require `LEMMA_ACTIVE_SEED_MODE=epoch_randomness` and `LEMMA_ACTIVE_EPOCH_RANDOMNESS_SOURCE=chain_drand`. The internal epoch number is the chain tempo index; it can be displayed as 1-based in UI, but validators use the same 0-based integer from `block // tempo`.
 
 The chain/drand source is deterministic: validators take the epoch's first chain block, read that block's hash and timestamp, map the timestamp to the Drand Quicknet round, fetch that round's signature, and hash those public fields into the epoch seed. A validator that resolves different public fields lands on a different active-set manifest and should fail closed.
 
@@ -26,7 +26,7 @@ active_selection_seed = hash(epoch_seed, registry_sha256, frontier_depth)
 
 Paid procedural rows must carry that `epoch_seed` as `metadata.generation_seed`. This keeps generation procedural while preventing a static future playlist: rows generated for a different epoch seed fail production activation.
 
-Development, testnet, and curriculum interfaces cover these streams:
+Development and curriculum interfaces cover these streams:
 
 - `mathlib_snapshot`: proof-erased Mathlib statements.
 - `mathlib_perturbation`: nearby variants of known theorems.
@@ -81,7 +81,7 @@ uv run lemma tasks build-procedural-registry \
 
 The procedural builder rejects candidates unless paid rows carry procedural depth-2 metadata, a two-step mutation chain, chain/drand anchoring, source-pool and operator-bundle hashes, Prop-gate success, novelty success, typecheck confirmation, triviality-check confirmation, a failed baseline-solver result, clean license state, and deterministic `slot_weight`.
 
-The mixed builder remains useful for local smoke, SN467 experiments, and curriculum tuning. It is not the paid mainnet supply path.
+The mixed builder remains useful for local smoke and curriculum tuning. It is not the paid production supply path.
 
 Sign the built registry before production use:
 

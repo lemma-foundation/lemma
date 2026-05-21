@@ -130,6 +130,7 @@ def test_public_surfaces_do_not_reintroduce_legacy_protocol_language() -> None:
         "v1 rewards",
         "spacetime" + "-tao",
         "lemma" + "-wta",
+        "lemma_protocol_mode=testnet",
     ]
     for fragment in forbidden:
         assert fragment not in lowered

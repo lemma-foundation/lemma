@@ -20,7 +20,7 @@ Lean theorem supply
 - `lemma.task_supply`: dev-seed tasks and activation gates.
 - `lemma.supply`: deterministic queue, curriculum controller, and fixture-backed supply stream interfaces.
 - `lemma.supply.procedural`: production-shaped procedural depth-2 registry builder.
-- `lemma.supply.mixed`: non-production mixed-supply builder for local/testnet/curriculum work.
+- `lemma.supply.mixed`: non-production mixed-supply builder for local and curriculum work.
 - `lemma.submissions`: task-bound proof package schema and signing payloads, including commit/reveal fields.
 - `lemma.miner`: local-command prover adapter, adapter-backed local verification, one-shot submission build.
 - `lemma.validator`: submission validation, verifier registry calls, scoring, corpus writing.

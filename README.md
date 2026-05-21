@@ -74,7 +74,7 @@ uv run lemma validate --once --submission-spool submission-spool --no-set-weight
 
 The validator path fetches active tasks, validates task-bound submissions, runs Lean, scores accepted proofs, withholds unsolved-slot value from current solvers, and writes local corpus deltas.
 The submission spool is a file inbox for miner submission JSON files; consumed files move to `processed/` after a successful validator pass.
-`--bucket-reveals-jsonl` is the local/testnet adapter for the mainnet-shaped path: a miner bucket reveal must match the miner's on-chain committed Merkle root before it can enter scoring. Add `--verify-chain-commitments` to read the miner's on-chain bucket commitment and `--verify-drand-reveals` to decrypt bucket ciphertexts and require the decrypted proof to match the revealed proof; production mode enables both checks for bucket reveals.
+`--bucket-reveals-jsonl` is the adapter for the mainnet-shaped path: a miner bucket reveal must match the miner's on-chain committed Merkle root before it can enter scoring. Add `--verify-chain-commitments` to read the miner's on-chain bucket commitment and `--verify-drand-reveals` to decrypt bucket ciphertexts and require the decrypted proof to match the revealed proof; production mode enables both checks for bucket reveals.
 Live weight writes require both `LEMMA_ENABLE_SET_WEIGHTS=1` and `--set-weights`; smoke passes should stay on `--no-set-weights`.
 When a live write is attempted, the validator appends a public-safe local receipt to `weight-submissions.jsonl` under `LEMMA_OPERATOR_DATA_DIR`, including the resolved UID vector and extrinsic hash when the Bittensor client returns one.
 Production mode additionally requires a SHA-pinned, signature-verified registry, procedural depth-2 paid supply, hotkey-authenticated miner submissions, commit/reveal fields on revealed submissions, network-disabled Lean verification, and strong Lean-derived proof identity for paid rewards.
@@ -83,7 +83,7 @@ Production mode additionally requires a SHA-pinned, signature-verified registry,
 
 Use [examples/operator-smoke](examples/operator-smoke/README.md) to build a pinned registry, package one proof submission, run a validator pass, and export corpus artifacts.
 
-For production-shaped registries, package deterministic depth-2 procedural supply and sign the final registry before configuring validators. The detailed operator path lives in [Operator Registry Flow](docs/operator-registry-flow.md). Curated Mathlib and mixed supply remain useful for local smoke, testnet exercises, and curriculum development. Paid mainnet supply must be procedural, fresh, depth-2, and chain/drand anchored.
+For production-shaped registries, package deterministic depth-2 procedural supply and sign the final registry before configuring validators. The detailed operator path lives in [Operator Registry Flow](docs/operator-registry-flow.md). Curated Mathlib and mixed supply remain useful for local smoke and curriculum development. SN467 burn-in uses the paid mainnet supply path on the test chain.
 
 ## Corpus Export
 
