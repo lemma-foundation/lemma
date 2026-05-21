@@ -142,6 +142,36 @@ def test_bucket_reveal_requires_matching_chain_commitment(tmp_path: Path) -> Non
         raise AssertionError("bad chain commitment should fail closed")
 
 
+def test_bucket_reveal_can_skip_bad_chain_commitment_without_poisoning_batch(tmp_path: Path) -> None:
+    task = _task()
+    registry = TaskRegistry(schema_version=1, tasks=(task,), sha256="0" * 64)
+    active_tasks = active_tasks_for_validation(registry, _settings(tmp_path), tempo=7)
+    good = _reveal(miner="hk-good", commit_block=10, ciphertext="cipher-good", proof=_proof("  trivial"))
+    bad = _reveal(miner="hk-bad", commit_block=11, ciphertext="cipher-bad", proof=_proof("  exact True.intro"))
+    rejections: list[str] = []
+    chain_commitments = {
+        "hk-good": miner_bucket_commitment_payload(
+            tempo=good.tempo,
+            drand_round=good.drand_round,
+            merkle_root=good.merkle_root,
+        ),
+        "hk-bad": "wrong",
+    }
+
+    submissions, authenticated = submissions_from_bucket_reveals(
+        (bad, good),
+        active_tasks,
+        chain_commitments=chain_commitments,
+        strict=False,
+        rejection_log=rejections.append,
+    )
+
+    assert len(submissions) == 1
+    assert submissions[0].solver_hotkey == "hk-good"
+    assert (submissions[0].task_id, "hk-good", submissions[0].proof_sha256) in authenticated
+    assert rejections == ["hk-bad: chain commitment mismatch"]
+
+
 def test_bucket_reveal_can_verify_drand_decrypted_payload(tmp_path: Path) -> None:
     task = _task()
     registry = TaskRegistry(schema_version=1, tasks=(task,), sha256="0" * 64)

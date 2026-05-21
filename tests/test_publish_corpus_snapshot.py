@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import hashlib
+import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
 from scripts.publish_corpus_snapshot import (
+    commit_repo_changes,
     github_release_command,
     hippius_commands,
     huggingface_commands,
+    public_repo_paths,
     release_notes,
     snapshot_id,
     snapshot_label,
@@ -116,3 +119,39 @@ def test_huggingface_commands_upload_append_only_snapshot_paths(tmp_path: Path) 
     assert "snapshots/2026-05-20T02-32-08Z/storage-index.json" in flattened
     assert "--repo-type" in flattened
     assert "dataset" in flattened
+
+
+def test_commit_repo_changes_stages_only_public_corpus_paths(tmp_path: Path) -> None:
+    repo = tmp_path / "lemma-corpus"
+    _write(repo / "README.md", "- corpus rows: `0`\n")
+    _write(repo / "DATASET_CARD.md", "dataset\n")
+    for relative, text in {
+        "registries/sn467/registry.json": "{}\n",
+        "corpus/sn467/epoch-000001.jsonl": '{"row": 1}\n',
+        "indexes/sn467/corpus-index.json": '{"rows": 1}\n',
+        "exports/sn467/lemma-proofs.jsonl": '{"proof": true}\n',
+        "canonical/sn467/storage-index.json": '{"epochs": []}\n',
+        "MANIFEST.sha256": "hash  file\n",
+    }.items():
+        _write(repo / relative, text)
+    _write(repo / "scratch.txt", "private local scratch\n")
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+    subprocess.run(["git", "add", "--", *public_repo_paths("sn467")], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "initial"], cwd=repo, check=True, capture_output=True)
+    _write(repo / "corpus/sn467/epoch-000002.jsonl", '{"row": 2}\n')
+    _write(repo / "scratch.txt", "updated scratch\n")
+
+    committed = commit_repo_changes(repo, netuid="sn467", snapshot="2026-05-21T01-41-21Z", push=False, dry_run=False)
+
+    assert committed is True
+    changed = subprocess.run(
+        ["git", "show", "--name-only", "--format=", "HEAD"],
+        cwd=repo,
+        check=True,
+        text=True,
+        capture_output=True,
+    ).stdout.splitlines()
+    assert "corpus/sn467/epoch-000002.jsonl" in changed
+    assert "scratch.txt" not in changed

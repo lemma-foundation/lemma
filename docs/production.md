@@ -66,7 +66,7 @@ For the full registry-to-validator-to-export sequence, see [Operator Registry Fl
 Publish the current public corpus snapshot after a closed SN467 production-mode pass:
 
 ```bash
-uv run python scripts/publish_corpus_snapshot.py --repo ~/lemma-corpus --netuid sn467
+uv run python scripts/publish_corpus_snapshot.py --repo ~/lemma-corpus --netuid sn467 --push-repo
 ```
 
 This regenerates the public index/export, builds deterministic accepted-entry directories under `canonical/sn467/`, writes `MANIFEST.sha256`, uploads a timestamped Hippius snapshot, creates the GitHub immutable release mirror, and syncs an append-only Hugging Face dataset snapshot. Hippius, GitHub, and Hugging Face credentials must stay in the operator environment, never in repo files.

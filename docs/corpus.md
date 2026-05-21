@@ -32,7 +32,7 @@ canonical/sn467/commitments/tempo-000001.json
 From the Lemma repo, publish a prepared `lemma-corpus` checkout with:
 
 ```bash
-uv run python scripts/publish_corpus_snapshot.py --repo ~/lemma-corpus --netuid sn467
+uv run python scripts/publish_corpus_snapshot.py --repo ~/lemma-corpus --netuid sn467 --push-repo
 ```
 
 For a no-upload preview:

@@ -992,6 +992,7 @@ def validate_cmd(
     registry = None
     chain_authenticated_keys: frozenset[tuple[str, str, str]] = frozenset()
     bucket_reveal_count = 0
+    bucket_rejections: list[str] = []
     submissions = read_submissions_jsonl(submissions_jsonl) if submissions_jsonl else []
     spool_dir = submission_spool or settings.submission_spool_dir
     spool_paths: tuple[Path, ...] = ()
@@ -1019,6 +1020,8 @@ def validate_cmd(
             active_tasks_for_validation(registry, settings),
             verify_drand=verify_drand_reveals or settings.protocol_mode == "production",
             chain_commitments=chain_commitments,
+            strict=False,
+            rejection_log=bucket_rejections.append,
         )
         submissions.extend(bucket_submissions)
     if not once and submissions_jsonl is None and spool_dir is None and bucket_reveals_jsonl is None:
@@ -1042,6 +1045,7 @@ def validate_cmd(
         "scores": result.score.scores,
         "submission_files_consumed": len(spool_paths),
         "bucket_reveals_consumed": bucket_reveal_count,
+        "bucket_reveals_rejected": len(bucket_rejections),
         "weights": result.score.weights,
         "corpus_rows": len(result.corpus_rows),
         "unearned_policy": result.summary.unearned_policy,

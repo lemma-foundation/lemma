@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -24,6 +25,12 @@ DEFAULT_BUCKET = "lemma-corpus-sn467"
 DEFAULT_ENDPOINT = "https://s3.hippius.com"
 DEFAULT_GITHUB_REPO = "lemma-foundation/lemma-corpus"
 DEFAULT_REGION = "decentralized"
+LEAK_PATTERN = re.compile(
+    "AGENT" + r"[_ ]STATE|Agent " + "State|\\." + "env|" + "/" + "Users/|root" + "@|"
+    r"\b(?:\d{1,3}\.){3}\d{1,3}\b|BEGIN (?:RSA|OPENSSH|PRIVATE)|"
+    "api[_-]?key|to" + "ken|mne" + "monic|sec" + "ret|s" + "sh",
+    re.IGNORECASE,
+)
 
 
 def snapshot_id(now: datetime | None = None) -> str:
@@ -236,6 +243,67 @@ def github_release_command(
     ]
 
 
+def public_repo_paths(netuid: str) -> tuple[str, ...]:
+    return (
+        "README.md",
+        "DATASET_CARD.md",
+        "MANIFEST.sha256",
+        f"registries/{netuid}",
+        f"corpus/{netuid}",
+        f"indexes/{netuid}",
+        f"exports/{netuid}",
+        f"canonical/{netuid}",
+    )
+
+
+def _git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", *args],
+        cwd=repo,
+        check=check,
+        text=True,
+        capture_output=True,
+    )
+
+
+def _assert_public_staged_diff(repo: Path) -> None:
+    diff = _git(repo, "diff", "--cached").stdout
+    if match := LEAK_PATTERN.search(diff):
+        raise SystemExit(f"staged corpus diff matched leak pattern: {match.group(0)}")
+
+
+def commit_repo_changes(
+    repo: Path,
+    *,
+    netuid: str,
+    snapshot: str,
+    push: bool,
+    dry_run: bool,
+) -> bool:
+    paths = public_repo_paths(netuid)
+    if dry_run:
+        print("$ " + shlex.join(["git", "-C", str(repo), "add", "--", *paths]))
+        commit_command = ["git", "-C", str(repo), "commit", "-m", f"Publish {netuid} corpus snapshot {snapshot}"]
+        print("$ " + shlex.join(commit_command))
+        if push:
+            print("$ " + shlex.join(["git", "-C", str(repo), "push"]))
+        return False
+
+    staged_before = _git(repo, "diff", "--cached", "--name-only").stdout.splitlines()
+    if staged_before:
+        raise SystemExit(f"corpus repo already has staged changes: {', '.join(staged_before)}")
+
+    _git(repo, "add", "--", *paths)
+    staged = _git(repo, "diff", "--cached", "--quiet", check=False)
+    if staged.returncode == 0:
+        return False
+    _assert_public_staged_diff(repo)
+    _git(repo, "commit", "-m", f"Publish {netuid} corpus snapshot {snapshot}")
+    if push:
+        _git(repo, "push")
+    return True
+
+
 def run(cmd: list[str], *, dry_run: bool, env: dict[str, str] | None = None, cwd: Path | None = None) -> None:
     print("$ " + shlex.join(cmd))
     if dry_run:
@@ -275,6 +343,8 @@ def main() -> int:
         help="prepare files but do not upload the Hugging Face mirror",
     )
     parser.add_argument("--dry-run", action="store_true", help="print commands without running upload/release steps")
+    parser.add_argument("--commit-repo", action="store_true", help="Commit prepared corpus files in the repo checkout")
+    parser.add_argument("--push-repo", action="store_true", help="Push prepared corpus repo changes after committing")
     args = parser.parse_args()
 
     repo = args.repo.expanduser().resolve()
@@ -287,6 +357,13 @@ def main() -> int:
     storage_index_path = Path(storage_index["path"])
     env = os.environ.copy()
     env.setdefault("AWS_DEFAULT_REGION", args.region)
+    committed_repo = commit_repo_changes(
+        repo,
+        netuid=args.netuid,
+        snapshot=args.snapshot,
+        push=args.push_repo,
+        dry_run=args.dry_run,
+    ) if args.commit_repo or args.push_repo else False
 
     if not args.dry_run and not args.skip_hippius:
         require_env(("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"))
@@ -348,6 +425,8 @@ def main() -> int:
                 "huggingface_repo": args.hf_repo_id,
                 "hippius_uri": f"s3://{args.bucket}/snapshots/{args.snapshot}/",
                 "manifest": str(manifest_path),
+                "repo_committed": committed_repo,
+                "repo_pushed": bool(args.push_repo and committed_repo),
                 "snapshot": args.snapshot,
                 "storage_epochs": len(storage_index["epochs"]),
                 "storage_index": str(storage_index_path),
