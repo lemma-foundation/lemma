@@ -4,30 +4,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 from lemma.chain.commitments import (
-    ChainCommitmentSubmission,
     ciphertext_sha256,
     miner_bucket_commitment_payload,
     miner_bucket_key,
     miner_submission_merkle_root,
 )
 from lemma.chain.drand import ciphertext_bytes, encode_ciphertext
-from lemma.chain.miner_buckets import (
-    MinerBucketReveal,
-    RevealedBucketBlob,
-    archive_bucket_reveals,
-    build_bucket_reveal,
-    build_revealed_bucket_blob,
-    read_bucket_reveals_dir,
-    read_bucket_reveals_jsonl,
-    submissions_from_bucket_reveals,
-    write_bucket_reveal,
-)
+from lemma.chain.miner_buckets import MinerBucketReveal, RevealedBucketBlob, submissions_from_bucket_reveals
 from lemma.common.config import LemmaSettings
 from lemma.lean.sandbox import VerifyResult
-from lemma.miner import MineOnceResult, publish_bucket_reveal
-from lemma.submissions import build_submission
 from lemma.task_supply import make_task
 from lemma.tasks import TaskRegistry
 from lemma.validator import active_tasks_for_validation, validate_once
@@ -124,30 +110,6 @@ def test_bucket_reveal_validates_merkle_root_before_validator_scoring(tmp_path: 
         assert "Merkle root mismatch" in str(e)
     else:
         raise AssertionError("bad Merkle root should fail closed")
-
-
-def test_bucket_reveal_directory_round_trips_and_archives(tmp_path: Path) -> None:
-    reveal = build_bucket_reveal(
-        tempo=7,
-        miner_hotkey="hk-a",
-        drand_round=0,
-        commit_block=10,
-        commit_extrinsic_hash="0xabc",
-        blobs=(build_revealed_bucket_blob(slot_index=0, proof_script=_proof("  trivial")),),
-    )
-    path = tmp_path / "bucket" / "tempo_7" / "hk-a.json"
-
-    write_bucket_reveal(path, reveal)
-    reveals, paths = read_bucket_reveals_dir(tmp_path / "bucket")
-
-    assert read_bucket_reveals_jsonl(path) == (reveal,)
-    assert reveals == (reveal,)
-    assert paths == (path,)
-
-    archive_bucket_reveals(paths, tmp_path / "bucket")
-
-    assert not path.exists()
-    assert len(list((tmp_path / "bucket" / "processed").rglob("hk-a.json"))) == 1
 
 
 def test_bucket_reveal_requires_matching_chain_commitment(tmp_path: Path) -> None:
@@ -264,49 +226,3 @@ def test_validator_accepts_chain_authenticated_reveals_and_ranks_by_commit_block
         ("hk-early", True, 10, 77),
         ("hk-late", False, 20, 77),
     ]
-
-
-def test_publish_bucket_reveal_commits_before_writing_artifact(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    task = _task()
-    submission = build_submission(task, solver_hotkey="hk-a", proof_script=_proof("  trivial"))
-    mined = MineOnceResult(
-        task=task,
-        submission=submission,
-        verification=VerifyResult(passed=True, reason="ok"),
-        active_slot_index=0,
-    )
-    seen: dict[str, object] = {}
-
-    def fake_submit(
-        settings: LemmaSettings,
-        *,
-        tempo: int,
-        drand_round: int,
-        merkle_root: str,
-    ) -> ChainCommitmentSubmission:
-        seen.update({"tempo": tempo, "drand_round": drand_round, "merkle_root": merkle_root})
-        return ChainCommitmentSubmission(
-            success=True,
-            payload="payload",
-            hotkey="hk-a",
-            extrinsic_hash="0xcommit",
-            block_number=123,
-        )
-
-    monkeypatch.setattr("lemma.chain.commitments.submit_miner_bucket_commitment", fake_submit)
-
-    result = publish_bucket_reveal(
-        _settings(tmp_path).model_copy(update={"active_tempo_seconds": 10**12}),
-        mined,
-        bucket_dir=tmp_path / "bucket",
-        bucket_url="https://bucket.example",
-        commit=True,
-    )
-    reveal = read_bucket_reveals_jsonl(result.path)[0]
-
-    assert seen["merkle_root"] == reveal.merkle_root
-    assert reveal.commit_block == 123
-    assert reveal.commit_extrinsic_hash == "0xcommit"
-    assert reveal.bucket_url == "https://bucket.example/tempo_0/hk-a.json"
-    assert result.commitment is not None
-    assert (tmp_path / "operator" / "miner-bucket-commits.jsonl").exists()

@@ -19,7 +19,7 @@ Lean theorem supply
 - `lemma.tasks`: Lean task schema, provenance, registry loading, target hashing.
 - `lemma.task_supply`: dev-seed tasks and activation gates.
 - `lemma.supply`: deterministic queue, curriculum controller, and fixture-backed supply stream interfaces.
-- `lemma.supply.procedural`: block-hash procedural task generation from pinned source pools.
+- `lemma.supply.procedural`: production-shaped procedural depth-2 registry builder.
 - `lemma.supply.mixed`: non-production mixed-supply builder for local and curriculum work.
 - `lemma.submissions`: task-bound proof package schema and signing payloads, including commit/reveal fields.
 - `lemma.miner`: local-command prover adapter, adapter-backed local verification, one-shot submission build.
@@ -29,7 +29,7 @@ Lean theorem supply
 - `lemma.corpus`: replayable row building, JSONL validation/replay, corpus indexing, v2 row/export helpers.
 - `lemma.graph`: row-level graph nodes and dependency edges used by corpus exports.
 - `lemma.lean`: Docker or worker-backed Lean verification.
-- `lemma.chain`: typed interfaces for commitments, bucket reveals, optional drand helpers, weights, and burn/recycle rails.
+- `lemma.chain`: typed future interfaces for commitments, drand, weights, and burn/recycle rails.
 
 ## Controllers
 
@@ -43,4 +43,4 @@ Lemma does not custody funds and does not route owner emissions through contract
 
 The production architecture is Lean-first and math-first. Generic verifier adapters are internal/research extension points, not the public product. Public docs should describe the active Lean path unless they are explicitly marked as research.
 
-`LEMMA_PROTOCOL_MODE=production` fails closed unless `LEMMA_ENABLED_DOMAINS` is exactly `lean`, the source pool is SHA-pinned, paid tasks are procedural depth-2 and generated from the epoch's Bittensor block hash, live miner submissions are hotkey-authenticated, commit/reveal fields are required, strong proof identity is required for reward, and Lean verifier networking is disabled. File submissions authenticate by signature; bucket-path submissions authenticate by the miner's chain commitment.
+`LEMMA_PROTOCOL_MODE=production` fails closed unless `LEMMA_ENABLED_DOMAINS` is exactly `lean`, the task registry is SHA-pinned, the registry signature status is verified, paid tasks are procedural depth-2 and generated from chain/drand epoch randomness, live miner submissions are hotkey-authenticated, commit/reveal fields are required, strong proof identity is required for reward, and Lean verifier networking is disabled. File submissions authenticate by signature; bucket-path submissions authenticate by the miner's chain commitment.

@@ -142,9 +142,7 @@ def submit_bittensor_weights(settings: LemmaSettings, weights: dict[str, float])
     """Submit resolved weights through the pinned Bittensor client."""
     import bittensor as bt
 
-    from lemma.chain.subtensor import connect_subtensor
-
-    subtensor = connect_subtensor(settings)
+    subtensor = bt.Subtensor(network=settings.bt_network or None)
     metagraph = subtensor.metagraph(settings.netuid, lite=True)
     plan = resolve_weight_plan(weights, tuple(metagraph.hotkeys))
     wallet = bt.Wallet(name=settings.wallet_cold, hotkey=settings.wallet_hot)

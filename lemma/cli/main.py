@@ -81,14 +81,10 @@ def _read_text(path: Path) -> str:
 
 def _load_registry():
     from lemma.tasks import TaskError, fetch_task_registry
-    from lemma.validator import current_active_tempo, production_task_registry
 
-    settings = LemmaSettings()
     try:
-        if settings.protocol_mode == "production":
-            return production_task_registry(settings, tempo=current_active_tempo(settings))
-        return fetch_task_registry(settings)
-    except (TaskError, OSError, RuntimeError, ValueError) as e:
+        return fetch_task_registry(LemmaSettings())
+    except (TaskError, OSError) as e:
         raise click.ClickException(str(e)) from e
 
 
@@ -130,10 +126,8 @@ def _show_task(task_id: str) -> None:
 
 @main.command("setup")
 @click.option("--env-file", "env_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
-@click.option("--task-registry-url", default=None, help="Local/dev task registry JSON URL or path.")
-@click.option("--task-registry-sha256", default=None, help="Optional local/dev task registry SHA256 pin.")
-@click.option("--task-source-pool-url", default=None, help="Production source-pool JSONL URL or path.")
-@click.option("--task-source-pool-sha256", default=None, help="Production source-pool SHA256 pin.")
+@click.option("--task-registry-url", default=None, help="Task registry JSON URL or path.")
+@click.option("--task-registry-sha256", default=None, help="Optional task registry SHA256 pin.")
 @click.option("--corpus-output-dir", default=None, help="Local directory for corpus JSONL deltas.")
 @click.option("--operator-data-dir", default=None, help="Local directory for validator receipts.")
 @click.option("--submission-spool-dir", default=None, help="Validator inbox for pending submission files.")
@@ -155,8 +149,6 @@ def setup_cmd(
     env_path: Path | None,
     task_registry_url: str | None,
     task_registry_sha256: str | None,
-    task_source_pool_url: str | None,
-    task_source_pool_sha256: str | None,
     corpus_output_dir: str | None,
     operator_data_dir: str | None,
     submission_spool_dir: str | None,
@@ -199,10 +191,6 @@ def setup_cmd(
     }
     if task_registry_sha256:
         updates["LEMMA_TASK_REGISTRY_SHA256_EXPECTED"] = task_registry_sha256
-    if task_source_pool_url:
-        updates["LEMMA_TASK_SOURCE_POOL_URL"] = task_source_pool_url
-    if task_source_pool_sha256:
-        updates["LEMMA_TASK_SOURCE_POOL_SHA256_EXPECTED"] = task_source_pool_sha256
     if submission_spool_dir:
         updates["LEMMA_SUBMISSION_SPOOL_DIR"] = submission_spool_dir
     if prover_command:
@@ -227,7 +215,6 @@ def status_cmd() -> None:
     click.echo(stylize("  wallet_hot        ", dim=True) + settings.wallet_hot)
     click.echo(stylize("  netuid            ", dim=True) + str(settings.netuid))
     click.echo(stylize("  task_registry_url ", dim=True) + settings.task_registry_url)
-    click.echo(stylize("  source_pool_url   ", dim=True) + (settings.task_source_pool_url or "(not configured)"))
     click.echo(stylize("  corpus_index_url  ", dim=True) + (settings.corpus_index_url or "(local)"))
     click.echo(stylize("  corpus_output_dir ", dim=True) + str(settings.corpus_output_dir))
     click.echo(stylize("  schema_version    ", dim=True) + settings.schema_version)
@@ -248,9 +235,6 @@ def status_cmd() -> None:
 @click.option("--solver-hotkey", default=None, help="Override solver attribution.")
 @click.option("--sign", "sign_submission", is_flag=True, help="Sign the submission with the configured hotkey wallet.")
 @click.option("--output", "output_path", type=click.Path(dir_okay=False, path_type=Path), default=None)
-@click.option("--bucket-dir", type=click.Path(file_okay=False, path_type=Path), default=None)
-@click.option("--bucket-url", default=None, help="Public base URL for --bucket-dir reveal files.")
-@click.option("--commit-bucket", is_flag=True, help="Commit the bucket Merkle root on chain before publishing.")
 def mine_cmd(
     once: bool,
     task_id: str | None,
@@ -258,9 +242,6 @@ def mine_cmd(
     solver_hotkey: str | None,
     sign_submission: bool,
     output_path: Path | None,
-    bucket_dir: Path | None,
-    bucket_url: str | None,
-    commit_bucket: bool,
 ) -> None:
     """Run the reference miner path and build a verified submission.
 
@@ -270,21 +251,11 @@ def mine_cmd(
       lemma mine --once
       lemma mine --once --task-id lemma.sample.true_intro --output submission.json
     """
-    from lemma.miner import ProverError, mine_once, publish_bucket_reveal
+    from lemma.miner import ProverError, mine_once
 
     settings = LemmaSettings()
     if not once:
         click.echo(stylize("Running one miner iteration. Use a process supervisor to repeat it.", dim=True))
-    if settings.protocol_mode == "production" and bucket_dir is None and settings.miner_bucket_dir is None:
-        raise click.ClickException("production mining requires LEMMA_MINER_BUCKET_DIR or --bucket-dir")
-    effective_bucket_dir = bucket_dir or settings.miner_bucket_dir
-    if commit_bucket:
-        from lemma.chain.commitments import wallet_hotkey_address
-
-        chain_hotkey = wallet_hotkey_address(settings)
-        if solver_hotkey and solver_hotkey != chain_hotkey:
-            raise click.ClickException("bucket commitments must use the configured wallet hotkey address")
-        solver_hotkey = chain_hotkey
     try:
         result = mine_once(
             settings,
@@ -293,39 +264,12 @@ def mine_cmd(
             solver_hotkey=solver_hotkey,
             sign=sign_submission,
         )
-        bucket_result = (
-            publish_bucket_reveal(
-                settings,
-                result,
-                bucket_dir=effective_bucket_dir,
-                bucket_url=bucket_url if bucket_url is not None else settings.miner_bucket_url,
-                commit=commit_bucket,
-            )
-            if effective_bucket_dir is not None
-            else None
-        )
     except ProverError as e:
         raise click.ClickException(str(e)) from e
     text = result.submission.model_dump_json(indent=2, exclude_none=True)
     if output_path:
         output_path.write_text(text + "\n", encoding="utf-8")
         click.echo(stylize(f"Wrote {output_path}", fg="green", bold=True))
-    if bucket_result:
-        click.echo(
-            json.dumps(
-                {
-                    "bucket_reveal": str(bucket_result.path),
-                    "commit_block": bucket_result.commit_block,
-                    "committed": bucket_result.commitment is not None,
-                    "merkle_root": bucket_result.reveal_merkle_root,
-                    "task_id": result.task.id,
-                },
-                indent=2,
-                sort_keys=True,
-            )
-        )
-    elif output_path:
-        return
     else:
         click.echo(text)
 
@@ -546,7 +490,7 @@ def tasks_build_procedural_registry_cmd(
     seed: str,
     frontier_depth: int | None,
 ) -> None:
-    """Build a local procedural depth-2 task registry."""
+    """Build a production-shaped procedural depth-2 task registry."""
     from lemma.supply.procedural import build_procedural_registry_tasks, candidates_from_jsonl
     from lemma.supply.types import TaskCandidate
     from lemma.task_supply import write_registry
@@ -1006,8 +950,6 @@ def operator_registry_inspect_cmd() -> None:
 @click.option("--submissions-jsonl", type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None)
 @click.option("--submission-spool", type=click.Path(file_okay=False, path_type=Path), default=None)
 @click.option("--bucket-reveals-jsonl", type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None)
-@click.option("--bucket-reveals-dir", type=click.Path(file_okay=False, path_type=Path), default=None)
-@click.option("--bucket-reveals-url", default=None, help="HTTP(S) URL returning bucket reveal JSON or JSONL.")
 @click.option("--verify-chain-commitments", is_flag=True, help="Read chain commitments for bucket reveals.")
 @click.option("--verify-drand-reveals", is_flag=True, help="Decrypt bucket ciphertexts and match revealed proofs.")
 @click.option("--validator-hotkey", default=None, help="Override validator attribution.")
@@ -1020,8 +962,6 @@ def validate_cmd(
     submissions_jsonl: Path | None,
     submission_spool: Path | None,
     bucket_reveals_jsonl: Path | None,
-    bucket_reveals_dir: Path | None,
-    bucket_reveals_url: str | None,
     verify_chain_commitments: bool,
     verify_drand_reveals: bool,
     validator_hotkey: str | None,
@@ -1049,53 +989,25 @@ def validate_cmd(
         raise click.ClickException("choose either --set-weights or --no-set-weights")
     if set_weights and not settings.enable_set_weights:
         raise click.ClickException("set LEMMA_ENABLE_SET_WEIGHTS=1 before using --set-weights")
-    active_tempo: int | None = None
-    epoch_randomness: str | None = None
     registry = None
     chain_authenticated_keys: frozenset[tuple[str, str, str]] = frozenset()
     bucket_reveal_count = 0
-    bucket_reveal_paths: tuple[Path, ...] = ()
     submissions = read_submissions_jsonl(submissions_jsonl) if submissions_jsonl else []
     spool_dir = submission_spool or settings.submission_spool_dir
     spool_paths: tuple[Path, ...] = ()
     if spool_dir is not None:
         spool_submissions, spool_paths = read_submission_spool(spool_dir)
         submissions.extend(spool_submissions)
-    effective_bucket_reveals_dir = bucket_reveals_dir or settings.bucket_reveals_dir
-    effective_bucket_reveals_url = bucket_reveals_url if bucket_reveals_url is not None else settings.bucket_reveals_url
-    if bucket_reveals_jsonl is not None or effective_bucket_reveals_dir is not None or effective_bucket_reveals_url:
+    if bucket_reveals_jsonl is not None:
         from lemma.chain.commitments import read_all_commitments
-        from lemma.chain.miner_buckets import (
-            archive_bucket_reveals,
-            fetch_bucket_reveals_url,
-            read_bucket_reveals_dir,
-            read_bucket_reveals_jsonl,
-            submissions_from_bucket_reveals,
-        )
+        from lemma.chain.miner_buckets import read_bucket_reveals_jsonl, submissions_from_bucket_reveals
         from lemma.tasks import fetch_task_registry
-        from lemma.validator import current_active_tempo, production_task_registry
 
-        if settings.protocol_mode == "production":
-            from lemma.chain.epoch_randomness import resolve_chain_block_epoch_randomness
-
-            active_epoch = resolve_chain_block_epoch_randomness(settings)
-            active_tempo = active_epoch.tempo
-            epoch_randomness = active_epoch.seed_material()
-            if active_tempo is None or epoch_randomness is None:
-                raise click.ClickException("production validation could not resolve active epoch randomness")
-            registry = production_task_registry(settings, tempo=active_tempo, epoch_randomness=epoch_randomness)
-        else:
-            registry = fetch_task_registry(settings, verify_signature=settings.verify_registry_signatures)
-        if active_tempo is None:
-            active_tempo = current_active_tempo(settings)
-        reveals = list(read_bucket_reveals_jsonl(bucket_reveals_jsonl)) if bucket_reveals_jsonl else []
-        if effective_bucket_reveals_dir is not None:
-            dir_reveals, bucket_reveal_paths = read_bucket_reveals_dir(effective_bucket_reveals_dir)
-            reveals.extend(dir_reveals)
-        if effective_bucket_reveals_url:
-            reveals.extend(
-                fetch_bucket_reveals_url(effective_bucket_reveals_url, timeout_s=settings.bucket_reveals_http_timeout_s)
-            )
+        registry = fetch_task_registry(
+            settings,
+            verify_signature=settings.protocol_mode == "production" or settings.verify_registry_signatures,
+        )
+        reveals = read_bucket_reveals_jsonl(bucket_reveals_jsonl)
         bucket_reveal_count = len(reveals)
         chain_commitments = (
             read_all_commitments(settings)
@@ -1103,33 +1015,19 @@ def validate_cmd(
             else None
         )
         bucket_submissions, chain_authenticated_keys = submissions_from_bucket_reveals(
-            tuple(reveals),
-            active_tasks_for_validation(
-                registry,
-                settings,
-                tempo=active_tempo,
-                epoch_randomness=epoch_randomness,
-            ),
-            verify_drand=verify_drand_reveals,
+            reveals,
+            active_tasks_for_validation(registry, settings),
+            verify_drand=verify_drand_reveals or settings.protocol_mode == "production",
             chain_commitments=chain_commitments,
         )
         submissions.extend(bucket_submissions)
-    if (
-        not once
-        and submissions_jsonl is None
-        and spool_dir is None
-        and bucket_reveals_jsonl is None
-        and effective_bucket_reveals_dir is None
-        and not effective_bucket_reveals_url
-    ):
+    if not once and submissions_jsonl is None and spool_dir is None and bucket_reveals_jsonl is None:
         click.echo(stylize("No live miner intake configured; running a local dry validator iteration.", dim=True))
     result = validate_once(
         settings,
         submissions,
         registry=registry,
         validator_hotkey=validator_hotkey,
-        tempo=active_tempo,
-        epoch_randomness=epoch_randomness,
         no_set_weights=(not set_weights) or no_set_weights or not once,
         require_signatures=require_signatures,
         require_commit_reveal=require_commit_reveal,
@@ -1137,8 +1035,6 @@ def validate_cmd(
     )
     if spool_paths and spool_dir is not None:
         archive_submission_spool(spool_paths, spool_dir)
-    if bucket_reveal_paths and effective_bucket_reveals_dir is not None:
-        archive_bucket_reveals(bucket_reveal_paths, effective_bucket_reveals_dir)
     output = {
         "verified": len(result.verification_records),
         "accepted_unique": len(result.score.valid_unique_proofs),

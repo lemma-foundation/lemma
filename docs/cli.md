@@ -11,7 +11,7 @@ uv run lemma mine --once --prover-command "python prover.py" --output submission
 uv run lemma validate --once --submission-spool submission-spool --no-set-weights
 ```
 
-`setup` writes local task/source-pool, corpus, active-window, wallet, unearned-allocation, and optional prover settings. `status` shows active task configuration, verifier settings, wallet names, and prover command.
+`setup` writes local task, corpus, active-window, wallet, unearned-allocation, and optional prover settings. `status` shows the active registry, verifier settings, wallet names, and prover command.
 
 `mine` runs one reference proof-search iteration. It sends a task JSON object to the configured prover command and expects a JSON proof response on stdout. Serious miners can replace this path with their own agents, workers, models, schedulers, or direct protocol clients.
 
@@ -21,4 +21,4 @@ uv run lemma validate --once --submission-spool submission-spool --no-set-weight
 
 The stable surface is the protocol output, not the CLI implementation. Miners can use any infrastructure that produces valid task-bound proof submissions. Validators should configure their environment and run `lemma validate`; lower-level diagnostics and corpus tooling remain internal/debug surfaces during this first simplification pass.
 
-Task, submission, verification-result, score-event, and corpus-row shapes live under `spec/`. Corpus and operator flows are documented separately in [Corpus](corpus.md) and [Operator Flow](operator-registry-flow.md).
+Task, submission, verification-result, score-event, and corpus-row shapes live under `spec/`. Corpus and registry operator flows are documented separately in [Corpus](corpus.md) and [Operator Registry Flow](operator-registry-flow.md).

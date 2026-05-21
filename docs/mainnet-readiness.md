@@ -14,8 +14,9 @@ The `mainnet` profile runs formatting, typing, security scans, dependency audit,
 
 The local production-like smoke is covered by `tests/test_operator_registry_flow.py`. It proves:
 
-- procedural depth-2 supply is derived from a pinned source pool and epoch block hash;
-- production preflight passes only with source-pool SHA pinning, block-hash epoch randomness, live miner authentication, commit/reveal fields, strong proof identity, and disabled Lean networking;
+- procedural depth-2 supply can build a production-shaped registry;
+- the registry can be signed and signature-verified;
+- production preflight passes only with SHA pinning, signature verification, procedural depth-2 supply, chain/drand epoch randomness, live miner authentication, commit/reveal fields, strong proof identity, and disabled Lean networking;
 - a signed revealed submission can be verified, scored, written to corpus, and exported without setting weights;
 - the rewarded corpus row carries strong structural proof identity.
 
@@ -39,19 +40,28 @@ Closed burn-in is at least 72 continuous testnet hours with controlled miners. P
 
 For both burn-ins:
 
-- source-pool bytes are SHA-pinned;
-- paid task supply is procedural, fresh, depth-2, and generated from the epoch's Bittensor block hash;
+- registry bytes are SHA-pinned and signature-verified;
+- paid task supply is procedural, fresh, depth-2, validator-rebuildable, and generated from chain/drand epoch randomness;
 - miner submissions are signed;
 - revealed submissions are authenticated by miner chain commitments or direct hotkey signatures and carry commit/reveal fields;
-- miner bucket reveals fail closed unless their `(slot_index, ciphertext_sha256)` Merkle root matches the miner's on-chain committed root;
+- miner bucket reveals fail closed unless their `(slot_index, ciphertext_sha256)` Merkle root matches the miner's on-chain committed root and drand decryption matches the revealed proof;
 - Lean verification runs with networking disabled;
 - paid rewards require strong proof identity;
 - every accepted public corpus row replays from clean artifacts;
-- diagnostics expose source-pool hash, active `K`, frontier depth, verifier health, disk/cache pressure, accepted unique count, corpus rows, weight receipts, set-weight latency, and storage-root readback without private operator state.
+- diagnostics expose registry hash, active `K`, frontier depth, verifier health, disk/cache pressure, accepted unique count, corpus rows, weight receipts, set-weight latency, and storage-root readback without private operator state.
 
 ## Mainnet Cutover
 
-Pin the public source-pool JSONL and make every validator derive paid tasks from that pool plus the epoch boundary block hash.
+Build the launch registry only from procedural depth-2 candidates:
+
+```bash
+uv run lemma tasks build-procedural-registry \
+  --candidate-jsonl procedural-depth2-candidates.jsonl \
+  --output tasks/mainnet.registry.json
+uv run lemma tasks sign-registry \
+  --input tasks/mainnet.registry.json \
+  --output tasks/mainnet.signed.registry.json
+```
 
 Cut scale, not shape: reduce `K`, source samples, and the operator bundle if needed, but keep depth-2 generation, novelty, Prop gates, deterministic slot weights, miner hotkey authentication, and strong proof identity. Tempo remains 72 minutes / 360 blocks until subnet tempo customization exists.
 
@@ -59,14 +69,13 @@ On the launch host, production preflight must be green before accepting submissi
 
 ```bash
 LEMMA_PROTOCOL_MODE=production \
-LEMMA_TASK_SOURCE_POOL_URL=tasks/source-pool.jsonl \
-LEMMA_TASK_SOURCE_POOL_SHA256_EXPECTED=<source_pool_sha256> \
+LEMMA_VERIFY_REGISTRY_SIGNATURES=1 \
 LEMMA_REQUIRE_SUBMISSION_SIGNATURES=1 \
 LEMMA_REQUIRE_COMMIT_REVEAL=1 \
 LEMMA_REQUIRE_STRONG_PROOF_IDENTITY=1 \
 LEMMA_ACTIVE_TEMPO_SOURCE=chain \
 LEMMA_ACTIVE_SEED_MODE=epoch_randomness \
-LEMMA_ACTIVE_EPOCH_RANDOMNESS_SOURCE=chain_block_hash \
+LEMMA_ACTIVE_EPOCH_RANDOMNESS_SOURCE=chain_drand \
 LEAN_SANDBOX_NETWORK=none \
 uv run lemma operator preflight
 ```

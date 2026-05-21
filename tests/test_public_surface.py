@@ -153,9 +153,8 @@ def test_operator_registry_flow_covers_registry_validation_and_export() -> None:
     text = Path("docs/operator-registry-flow.md").read_text(encoding="utf-8")
 
     required = [
-        "pinned source pool + Bittensor epoch boundary block hash",
-        "LEMMA_TASK_SOURCE_POOL_SHA256_EXPECTED=<source_pool_sha256>",
-        "LEMMA_ACTIVE_EPOCH_RANDOMNESS_SOURCE=chain_block_hash",
+        "uv run lemma tasks build-mathlib-snapshot",
+        "LEMMA_TASK_REGISTRY_SHA256_EXPECTED=<registry_sha256>",
         "LEMMA_ACTIVE_K=10",
         "uv run lemma validate",
         "operator-diagnostics-before.json",

@@ -7,7 +7,6 @@ import re
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
-import httpx
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from lemma.chain.commitments import (
@@ -16,7 +15,7 @@ from lemma.chain.commitments import (
     miner_bucket_key,
     miner_submission_merkle_root,
 )
-from lemma.chain.drand import decrypt_timelocked_payload, encode_ciphertext
+from lemma.chain.drand import decrypt_timelocked_payload
 from lemma.submissions import LemmaSubmission, proof_sha256
 from lemma.tasks import LemmaTask
 
@@ -57,107 +56,14 @@ class MinerBucketReveal(BaseModel):
 
 
 def read_bucket_reveals_jsonl(path: Path) -> tuple[MinerBucketReveal, ...]:
-    return _read_bucket_reveals_text(path.read_text(encoding="utf-8"), source=str(path))
-
-
-def read_bucket_reveals_dir(root: Path) -> tuple[tuple[MinerBucketReveal, ...], tuple[Path, ...]]:
-    paths = tuple(
-        sorted(
-            path
-            for suffix in ("*.json", "*.jsonl")
-            for path in root.rglob(suffix)
-            if path.is_file() and "processed" not in path.parts
-        )
-    )
     reveals: list[MinerBucketReveal] = []
-    for path in paths:
-        reveals.extend(read_bucket_reveals_jsonl(path))
-    return tuple(reveals), paths
-
-
-def fetch_bucket_reveals_url(url: str, *, timeout_s: float) -> tuple[MinerBucketReveal, ...]:
-    response = httpx.get(url, timeout=timeout_s, follow_redirects=True)
-    response.raise_for_status()
-    return _read_bucket_reveals_text(response.text, source=url)
-
-
-def bucket_reveal_path(root: Path, *, tempo: int, miner_hotkey: str) -> Path:
-    safe_hotkey = re.sub(r"[^0-9A-Za-z_.-]", "_", miner_hotkey)
-    return root / f"tempo_{tempo}" / f"{safe_hotkey}.json"
-
-
-def write_bucket_reveal(path: Path, reveal: MinerBucketReveal) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(reveal.model_dump_json(indent=2) + "\n", encoding="utf-8")
-
-
-def archive_bucket_reveals(paths: tuple[Path, ...], root: Path) -> None:
-    from datetime import UTC, datetime
-
-    processed = root / "processed"
-    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    for idx, path in enumerate(paths):
-        if not path.exists():
-            continue
-        try:
-            rel = path.relative_to(root)
-        except ValueError:
-            rel = Path(path.name)
-        target = processed / f"{stamp}-{idx:04d}" / rel
-        target.parent.mkdir(parents=True, exist_ok=True)
-        path.replace(target)
-
-
-def build_revealed_bucket_blob(*, slot_index: int, proof_script: str) -> RevealedBucketBlob:
-    ciphertext = encode_ciphertext(proof_script.encode("utf-8"))
-    return RevealedBucketBlob(slot_index=slot_index, ciphertext=ciphertext, proof_script=proof_script)
-
-
-def build_bucket_reveal(
-    *,
-    tempo: int,
-    miner_hotkey: str,
-    drand_round: int,
-    commit_block: int,
-    commit_extrinsic_hash: str,
-    blobs: tuple[RevealedBucketBlob, ...],
-    bucket_url: str = "",
-) -> MinerBucketReveal:
-    return MinerBucketReveal(
-        tempo=tempo,
-        miner_hotkey=miner_hotkey,
-        drand_round=drand_round,
-        commit_block=commit_block,
-        commit_extrinsic_hash=commit_extrinsic_hash,
-        merkle_root=miner_submission_merkle_root(_blob_pairs(blobs)),
-        bucket_url=bucket_url,
-        blobs=blobs,
-    )
-
-
-def _read_bucket_reveals_text(text: str, *, source: str) -> tuple[MinerBucketReveal, ...]:
-    reveals: list[MinerBucketReveal] = []
-    stripped = text.strip()
-    if not stripped:
-        return ()
-    try:
-        payload = json.loads(stripped)
-    except json.JSONDecodeError:
-        payload = None
-    if isinstance(payload, dict):
-        return (MinerBucketReveal.model_validate(payload),)
-    if isinstance(payload, list):
-        return tuple(MinerBucketReveal.model_validate(item) for item in payload)
-    if payload is not None:
-        raise ValueError(f"{source}: expected reveal object, array, or JSONL rows")
-
-    for no, line in enumerate(text.splitlines(), start=1):
+    for no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         if not line.strip():
             continue
         try:
             reveals.append(MinerBucketReveal.model_validate(json.loads(line)))
         except (json.JSONDecodeError, ValueError) as e:
-            raise ValueError(f"{source}:{no}: invalid miner bucket reveal: {e}") from e
+            raise ValueError(f"{path}:{no}: invalid miner bucket reveal: {e}") from e
     return tuple(reveals)
 
 
@@ -238,19 +144,11 @@ def _verified_proof_script(
 
 
 def _claimed_pairs(reveal: MinerBucketReveal) -> tuple[tuple[int, str], ...]:
-    return _blob_pairs(reveal.blobs, miner_hotkey=reveal.miner_hotkey)
-
-
-def _blob_pairs(
-    blobs: tuple[RevealedBucketBlob, ...],
-    *,
-    miner_hotkey: str = "miner",
-) -> tuple[tuple[int, str], ...]:
     seen: set[int] = set()
     pairs: list[tuple[int, str]] = []
-    for blob in blobs:
+    for blob in reveal.blobs:
         if blob.slot_index in seen:
-            raise ValueError(f"{miner_hotkey}: duplicate slot index {blob.slot_index}")
+            raise ValueError(f"{reveal.miner_hotkey}: duplicate slot index {blob.slot_index}")
         seen.add(blob.slot_index)
         pairs.append((blob.slot_index, ciphertext_sha256(blob.ciphertext.encode("utf-8"))))
     return tuple(sorted(pairs))

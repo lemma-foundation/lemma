@@ -50,7 +50,7 @@ class CurrentProblemsSnapshot(BaseModel):
     tempo: int = Field(ge=0)
     active_tempo_seconds: int = Field(ge=1)
     active_seed_mode: Literal["static", "epoch_randomness"] = "static"
-    active_epoch_randomness_source: Literal["manual", "chain_block_hash"] = "manual"
+    active_epoch_randomness_source: Literal["manual", "chain_drand"] = "manual"
     active_epoch_randomness_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     active_selection_seed_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     frontier_depth: int = Field(ge=0)
@@ -100,15 +100,14 @@ def build_current_problems_snapshot(
         active_selection_seed_sha256,
         active_tasks_for_validation,
         current_active_tempo,
-        production_task_registry,
     )
 
-    active_tempo = current_active_tempo(settings) if tempo is None else tempo
-    if settings.protocol_mode == "production":
-        task_registry = production_task_registry(settings, tempo=active_tempo)
-    else:
-        task_registry = registry or fetch_task_registry(settings, verify_signature=settings.verify_registry_signatures)
+    task_registry = registry or fetch_task_registry(
+        settings,
+        verify_signature=settings.protocol_mode == "production" or settings.verify_registry_signatures,
+    )
     enforce_production_invariants(settings, task_registry)
+    active_tempo = current_active_tempo(settings) if tempo is None else tempo
     active_tasks = active_tasks_for_validation(task_registry, settings, tempo=active_tempo)
     tasks = tuple(_problem(task) for task in active_tasks)
     return CurrentProblemsSnapshot(

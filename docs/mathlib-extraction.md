@@ -1,11 +1,11 @@
 # Mathlib Extraction Contract
 
-Mathlib extraction is an off-chain supply step. Validators consume a pinned source pool; they do not crawl Mathlib, run auto-formalization, or trust extracted proofs during scoring.
+Mathlib extraction is an off-chain supply step. Validators consume pinned task artifacts; they do not crawl Mathlib, run auto-formalization, or trust extracted proofs during scoring.
 
 The intended path is:
 
 ```text
-pinned Mathlib checkout -> proof-erased source-pool JSONL -> block-hash generated tasks -> validator -> corpus export
+pinned Mathlib checkout -> proof-erased snapshot JSONL -> pinned task registry -> validator -> corpus export
 ```
 
 ## Snapshot Rows
@@ -63,11 +63,11 @@ uv run lemma tasks extract-mathlib-snapshot \
   --output snapshot.jsonl
 ```
 
-The extractor reads theorem and lemma declarations, erases proofs to hashes, derives topic labels from source paths, and assigns `queue_depth` from statement shape, import topic, and proof-block span. Use `--elaborate-types` for live batches so Lean `#check` output supplies self-contained theorem types instead of relying on source text that may reference file-local variables. It is an off-chain operator tool. Production validators consume the pinned snapshot as their source pool.
+The extractor reads theorem and lemma declarations, erases proofs to hashes, derives topic labels from source paths, and assigns `queue_depth` from statement shape, import topic, and proof-block span. Use `--elaborate-types` for live batches so Lean `#check` output supplies self-contained theorem types instead of relying on source text that may reference file-local variables. It is an off-chain operator tool. Validators still consume only pinned snapshot and registry artifacts.
 
-## Local Registry Build
+## Registry Build
 
-Build a deterministic registry from a snapshot for local smoke and replay:
+Build a deterministic registry from a snapshot:
 
 ```bash
 uv run lemma tasks build-mathlib-snapshot \
@@ -75,13 +75,13 @@ uv run lemma tasks build-mathlib-snapshot \
   --output tasks/mathlib-snapshot.registry.json
 ```
 
-The builder validates each row, orders shallow tasks before deeper tasks, writes deterministic `queue_position` values, and prints `registry_sha256`. Operators should pin registry bytes for local replay fixtures.
+The builder validates each row, orders shallow tasks before deeper tasks, writes deterministic `queue_position` values, and prints `registry_sha256`. Operators should pin the registry bytes and expected SHA256 before validation.
 
-Externally produced `signed_by` and `signature` metadata can be attached during registry build, but this command does not choose paid production problems.
+Externally produced `signed_by` and `signature` metadata can be attached during registry build, but this command does not perform production signing or verification. Validators must still pin `registry_sha256`.
 
 ## Validator Boundary
 
-In production, the validator reads the pinned source pool and epoch block hash, derives the active deterministic K-slot window, and validates task-bound submissions against those generated targets. It rejects rows outside the active window, mismatched task versions, mismatched target hashes, duplicate winning proofs, and policy failures.
+The validator reads the pinned registry and validates task-bound submissions against the active deterministic K-slot window. It rejects rows outside the active window, mismatched task versions, mismatched target hashes, duplicate winning proofs, and policy failures.
 
 Solved active slots earn their deterministic active slot share. Unsolved-slot value is not redistributed to current solvers; the production default routes it to burn.
 

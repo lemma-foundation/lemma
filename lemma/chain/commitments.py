@@ -228,20 +228,6 @@ def _receipt_int_value(response: object, field: str) -> int | None:
     return value if isinstance(value, int) else None
 
 
-def _commit_block_number(response: object, subtensor: object) -> int | None:
-    block_number = _receipt_int_value(response, "block_number")
-    if block_number is not None or not bool(getattr(response, "success", False)):
-        return block_number
-    current = getattr(subtensor, "get_current_block", None)
-    if not callable(current):
-        return None
-    try:
-        value = current()
-    except Exception:
-        return None
-    return value if isinstance(value, int) and value >= 0 else None
-
-
 def wallet_hotkey_address(settings: LemmaSettings) -> str:
     import bittensor as bt
 
@@ -249,13 +235,11 @@ def wallet_hotkey_address(settings: LemmaSettings) -> str:
     return str(wallet.hotkey.ss58_address)
 
 
-def submit_chain_commitment(settings: LemmaSettings, payload: str) -> ChainCommitmentSubmission:
+def submit_storage_commitment(settings: LemmaSettings, payload: str) -> ChainCommitmentSubmission:
     import bittensor as bt
 
-    from lemma.chain.subtensor import connect_subtensor
-
     wallet = bt.Wallet(name=settings.wallet_cold, hotkey=settings.wallet_hot)
-    subtensor = connect_subtensor(settings)
+    subtensor = bt.Subtensor(network=settings.bt_network or None)
     response = subtensor.set_commitment(
         wallet=wallet,
         netuid=settings.netuid,
@@ -272,26 +256,9 @@ def submit_chain_commitment(settings: LemmaSettings, payload: str) -> ChainCommi
         extrinsic_function=str(response.extrinsic_function or ""),
         extrinsic_hash=str(_receipt_value(response, "extrinsic_hash") or ""),
         block_hash=str(_receipt_value(response, "block_hash") or ""),
-        block_number=_commit_block_number(response, subtensor),
+        block_number=_receipt_int_value(response, "block_number"),
         extrinsic_fee_rao=getattr(response.extrinsic_fee, "rao", None) if response.extrinsic_fee else None,
     )
-
-
-def submit_miner_bucket_commitment(
-    settings: LemmaSettings,
-    *,
-    tempo: int,
-    drand_round: int,
-    merkle_root: str,
-) -> ChainCommitmentSubmission:
-    return submit_chain_commitment(
-        settings,
-        miner_bucket_commitment_payload(tempo=tempo, drand_round=drand_round, merkle_root=merkle_root),
-    )
-
-
-def submit_storage_commitment(settings: LemmaSettings, payload: str) -> ChainCommitmentSubmission:
-    return submit_chain_commitment(settings, payload)
 
 
 def read_storage_commitment(settings: LemmaSettings, hotkey: str | None = None) -> str:
@@ -300,8 +267,8 @@ def read_storage_commitment(settings: LemmaSettings, hotkey: str | None = None) 
 
 
 def read_all_commitments(settings: LemmaSettings) -> dict[str, str]:
-    from lemma.chain.subtensor import connect_subtensor
+    import bittensor as bt
 
-    subtensor = connect_subtensor(settings)
+    subtensor = bt.Subtensor(network=settings.bt_network or None)
     commitments: Mapping[str, str] = subtensor.get_all_commitments(settings.netuid)
     return {str(hotkey): str(payload) for hotkey, payload in commitments.items()}

@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 from lemma.chain.commitments import (
@@ -12,7 +11,6 @@ from lemma.chain.commitments import (
     load_storage_commitment,
     storage_commitment_file,
     storage_commitment_payload,
-    submit_chain_commitment,
 )
 
 
@@ -90,44 +88,6 @@ def test_storage_commitment_payload_rejects_drift(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="commitment_payload mismatch"):
         storage_commitment_payload(path)
-
-
-def test_submit_chain_commitment_falls_back_to_current_block(monkeypatch: pytest.MonkeyPatch) -> None:
-    from lemma.common.config import LemmaSettings
-
-    class Wallet:
-        def __init__(self, name: str, hotkey: str) -> None:
-            self.name = name
-            self.hotkey_name = hotkey
-            self.hotkey = SimpleNamespace(ss58_address="hk-test")
-
-    class Subtensor:
-        def __init__(self, network: str | None = None) -> None:
-            self.network = network
-
-        def set_commitment(self, **_kwargs: object) -> object:
-            return SimpleNamespace(
-                success=True,
-                message="Success",
-                extrinsic_function="Commitments.set_commitment",
-                extrinsic_receipt=SimpleNamespace(extrinsic_hash="0xcommit", block_hash="0xblock"),
-                extrinsic_fee=None,
-            )
-
-        def get_current_block(self) -> int:
-            return 456
-
-    monkeypatch.setitem(sys.modules, "bittensor", SimpleNamespace(Wallet=Wallet, Subtensor=Subtensor))
-
-    settings = LemmaSettings(_env_file=None).model_copy(
-        update={"wallet_cold": "cold", "wallet_hot": "hot", "netuid": 467, "bt_network": "test"}
-    )
-
-    result = submit_chain_commitment(settings, "payload")
-
-    assert result.success is True
-    assert result.extrinsic_hash == "0xcommit"
-    assert result.block_number == 456
 
 
 def test_cli_readback_hotkey_skips_wallet_lookup(

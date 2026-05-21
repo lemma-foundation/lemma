@@ -7,13 +7,11 @@ import shlex
 import subprocess
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
-from lemma.chain.commitments import ChainCommitmentSubmission
 from lemma.common.config import LemmaSettings
 from lemma.lean.sandbox import VerifyResult
 from lemma.store import append_jsonl
@@ -42,16 +40,6 @@ class MineOnceResult:
     task: LemmaTask
     submission: LemmaSubmission
     verification: VerifyResult
-    active_slot_index: int | None = None
-    active_tempo: int | None = None
-
-
-@dataclass(frozen=True)
-class BucketPublishResult:
-    path: Path
-    reveal_merkle_root: str
-    commit_block: int
-    commitment: ChainCommitmentSubmission | None = None
 
 
 def _strip_json_fence(content: str) -> str:
@@ -152,90 +140,6 @@ def sign_submission_with_wallet(settings: LemmaSettings, submission: LemmaSubmis
     return sign_submission(bound, keypair)
 
 
-def publish_bucket_reveal(
-    settings: LemmaSettings,
-    result: MineOnceResult,
-    *,
-    bucket_dir: Path,
-    bucket_url: str = "",
-    commit: bool = False,
-    drand_round: int = 0,
-) -> BucketPublishResult:
-    from lemma.chain.commitments import submit_miner_bucket_commitment
-    from lemma.chain.miner_buckets import (
-        bucket_reveal_path,
-        build_bucket_reveal,
-        build_revealed_bucket_blob,
-        write_bucket_reveal,
-    )
-    from lemma.validator import current_active_tempo
-
-    if result.active_slot_index is None:
-        raise ProverError("bucket publishing requires an active task slot")
-    tempo = result.active_tempo if result.active_tempo is not None else current_active_tempo(settings)
-    blob = build_revealed_bucket_blob(slot_index=result.active_slot_index, proof_script=result.submission.proof_script)
-    draft = build_bucket_reveal(
-        tempo=tempo,
-        miner_hotkey=result.submission.solver_hotkey,
-        drand_round=drand_round,
-        commit_block=0,
-        commit_extrinsic_hash="local",
-        blobs=(blob,),
-    )
-    commitment = None
-    commit_block = 0
-    commit_hash = "local"
-    if commit:
-        commitment = submit_miner_bucket_commitment(
-            settings,
-            tempo=tempo,
-            drand_round=drand_round,
-            merkle_root=draft.merkle_root,
-        )
-        append_jsonl(
-            settings.operator_data_dir / "miner-bucket-commits.jsonl",
-            [
-                {
-                    "created_at": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
-                    "tempo": tempo,
-                    "drand_round": drand_round,
-                    "merkle_root": draft.merkle_root,
-                    "success": commitment.success,
-                    "extrinsic_hash": commitment.extrinsic_hash,
-                    "block_number": commitment.block_number,
-                    "message": commitment.message,
-                }
-            ],
-        )
-        if not commitment.success:
-            raise ProverError(f"chain commitment failed: {commitment.message or 'unknown error'}")
-        if commitment.block_number is None:
-            raise ProverError("chain commitment did not return a block number")
-        if not commitment.extrinsic_hash:
-            raise ProverError("chain commitment did not return an extrinsic hash")
-        commit_block = commitment.block_number
-        commit_hash = commitment.extrinsic_hash
-
-    path = bucket_reveal_path(bucket_dir, tempo=tempo, miner_hotkey=result.submission.solver_hotkey)
-    public_url = f"{bucket_url.rstrip('/')}/{path.parent.name}/{path.name}" if bucket_url.strip() else ""
-    reveal = build_bucket_reveal(
-        tempo=tempo,
-        miner_hotkey=result.submission.solver_hotkey,
-        drand_round=drand_round,
-        commit_block=commit_block,
-        commit_extrinsic_hash=commit_hash,
-        blobs=(blob,),
-        bucket_url=public_url,
-    )
-    write_bucket_reveal(path, reveal)
-    return BucketPublishResult(
-        path=path,
-        reveal_merkle_root=reveal.merkle_root,
-        commit_block=commit_block,
-        commitment=commitment,
-    )
-
-
 def mine_once(
     settings: LemmaSettings,
     *,
@@ -246,24 +150,13 @@ def mine_once(
     sign: bool = False,
 ) -> MineOnceResult:
     """Fetch one active task, solve it, verify locally, and store the attempt."""
-    active_tempo = None
-    if registry is None and settings.protocol_mode == "production":
-        from lemma.validator import current_active_tempo, production_task_registry
-
-        active_tempo = current_active_tempo(settings)
-        registry = production_task_registry(settings, tempo=active_tempo)
     registry = registry or fetch_task_registry(settings)
-    active_tasks = eligible_tasks(active_tasks_for_validation(registry, settings, tempo=active_tempo))
     if task_id:
         task = registry.get(task_id)
-    elif active_tasks:
-        task = active_tasks[0]
+    elif tasks := eligible_tasks(active_tasks_for_validation(registry, settings)):
+        task = tasks[0]
     else:
         raise ProverError("no eligible active tasks")
-    try:
-        active_slot_index = tuple(task.id for task in active_tasks).index(task.id)
-    except ValueError:
-        active_slot_index = None
 
     proof = solve_task(settings, task, prover_command=prover_command)
     verifier = get_verifier(task.domain_id, settings=settings)
@@ -291,10 +184,4 @@ def mine_once(
             }
         ],
     )
-    return MineOnceResult(
-        task=task,
-        submission=submission,
-        verification=verification,
-        active_slot_index=active_slot_index,
-        active_tempo=active_tempo,
-    )
+    return MineOnceResult(task=task, submission=submission, verification=verification)

@@ -102,14 +102,15 @@ def test_current_problem_snapshot_rotates_by_tempo() -> None:
 def test_current_problem_snapshot_enforces_production_boundary() -> None:
     settings = LemmaSettings(
         protocol_mode="production",
+        task_registry_sha256_expected="a" * 64,
         active_seed_mode="epoch_randomness",
-        active_epoch_randomness_source="chain_block_hash",
+        active_epoch_randomness_source="chain_drand",
         require_submission_signatures=True,
         require_commit_reveal=True,
         require_strong_proof_identity=True,
     )
 
-    with pytest.raises(RuntimeError, match="LEMMA_TASK_SOURCE_POOL_URL"):
+    with pytest.raises(RuntimeError, match="signature-verified registry bytes"):
         build_current_problems_snapshot(settings, registry=_registry(), tempo=0)
 
 
@@ -154,30 +155,6 @@ def test_current_problem_service_serves_snapshot() -> None:
     assert status == 200
     assert payload["schema_version"] == 1
     assert payload["task_count"] == 1
-
-
-def test_current_problem_service_caches_snapshot() -> None:
-    settings = LemmaSettings(active_task_count=1, frontier_depth=0, active_queue_seed="pytest")
-    calls = 0
-
-    def snapshot_builder(_settings: LemmaSettings, *, tempo: int | None = None):
-        nonlocal calls
-        calls += 1
-        return build_current_problems_snapshot(
-            settings,
-            registry=_registry(),
-            generated_at=f"2026-05-20T00:00:0{calls}Z",
-            tempo=0 if tempo is None else tempo,
-        )
-
-    service = CurrentProblemService(settings, snapshot_builder=snapshot_builder)
-    first_status, first_body = service.response("/current-problems.json")
-    second_status, second_body = service.response("/current-problems.json")
-
-    assert first_status == 200
-    assert second_status == 200
-    assert first_body == second_body
-    assert calls == 1
 
 
 def test_current_problem_service_fails_closed() -> None:
