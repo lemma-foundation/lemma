@@ -228,6 +228,20 @@ def _receipt_int_value(response: object, field: str) -> int | None:
     return value if isinstance(value, int) else None
 
 
+def _commit_block_number(response: object, subtensor: object) -> int | None:
+    block_number = _receipt_int_value(response, "block_number")
+    if block_number is not None or not bool(getattr(response, "success", False)):
+        return block_number
+    current = getattr(subtensor, "get_current_block", None)
+    if not callable(current):
+        return None
+    try:
+        value = current()
+    except Exception:
+        return None
+    return value if isinstance(value, int) and value >= 0 else None
+
+
 def wallet_hotkey_address(settings: LemmaSettings) -> str:
     import bittensor as bt
 
@@ -256,7 +270,7 @@ def submit_chain_commitment(settings: LemmaSettings, payload: str) -> ChainCommi
         extrinsic_function=str(response.extrinsic_function or ""),
         extrinsic_hash=str(_receipt_value(response, "extrinsic_hash") or ""),
         block_hash=str(_receipt_value(response, "block_hash") or ""),
-        block_number=_receipt_int_value(response, "block_number"),
+        block_number=_commit_block_number(response, subtensor),
         extrinsic_fee_rao=getattr(response.extrinsic_fee, "rao", None) if response.extrinsic_fee else None,
     )
 
