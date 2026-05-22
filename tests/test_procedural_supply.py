@@ -247,6 +247,48 @@ def test_depth2_generation_skips_failed_mutations(tmp_path: Path) -> None:
     assert engine.calls >= 3
 
 
+def test_depth2_generation_attempt_limit_scales_with_requested_count() -> None:
+    class RejectingGate:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def __call__(self, candidate, *, seen_canonical_hashes):  # noqa: ANN001, ARG002
+            self.calls += 1
+            return ProceduralGateVerdict(
+                typechecked=True,
+                prop_gate_passed=True,
+                triviality_checked=True,
+                baseline_solved=False,
+                novelty_status="duplicate",
+                slot_weight=1.0,
+            )
+
+    sources = tuple(
+        fixture_candidate(
+            slug=f"source_{index}",
+            source_stream="mathlib_snapshot",
+            source_name="snapshot",
+            theorem_name=f"source_{index}",
+            type_expr="True",
+            queue_depth=0,
+        )
+        for index in range(100)
+    )
+    gate = RejectingGate()
+
+    with pytest.raises(ValueError, match="procedural gates accepted 0 candidates, needed 1"):
+        generate_depth2_candidates(
+            sources,
+            generation_seed="epoch-a",
+            epoch_randomness=json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
+            count=1,
+            tempo=3,
+            gate_runner=gate,
+        )
+
+    assert gate.calls == 50
+
+
 def test_procedural_registry_rejects_assumed_gate_receipts(tmp_path: Path) -> None:
     snapshot = tmp_path / "snapshot.jsonl"
     _write_snapshot(snapshot)

@@ -250,7 +250,7 @@ def generate_depth2_candidates(
     out: list[TaskCandidate] = []
     seen: set[str] = set()
     cursor = 0
-    attempt_limit = max(count * 50, len(ordered) * 20)
+    attempt_limit = count * 50
     while len(out) < count and cursor < attempt_limit:
         source = ordered[cursor % len(ordered)]
         chain = _operator_chain(generation_seed, cursor)
