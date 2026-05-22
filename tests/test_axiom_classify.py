@@ -8,6 +8,7 @@ from lemma.lean.cheats import (
     proof_term_hash_from_lean_output,
     structural_fingerprint_from_lean_output,
 )
+from lemma.lean.sandbox import _verification_stdout_tail
 
 
 def test_build_failed_triggers_driver_failed_heuristic() -> None:
@@ -46,3 +47,12 @@ def test_proof_term_hash_uses_lean_emitted_expr_key() -> None:
     text = "LEMMA_PROOF_TERM Submission.target (app const:True.intro:[] const:True:[])"
 
     assert proof_term_hash_from_lean_output(text)
+
+
+def test_verify_stdout_tail_preserves_lemma_markers() -> None:
+    text = "LEMMA_KERNEL_NORMAL_FORM abc\n" + ("x" * 3000)
+
+    tail = _verification_stdout_tail(text, limit=20)
+
+    assert "LEMMA_KERNEL_NORMAL_FORM abc" in tail
+    assert tail.endswith("x" * 20)

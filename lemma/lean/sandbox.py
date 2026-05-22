@@ -34,6 +34,7 @@ from lemma.lean.workspace import materialize_workspace, workspace_verify_cache_k
 from lemma.problems.base import Problem
 
 _DOCKER_VERIFY_SCRIPT = ".lemma_verify.sh"
+_LEMMA_OUTPUT_PREFIX = "LEMMA_"
 
 
 @lru_cache(maxsize=512)
@@ -108,6 +109,17 @@ def _docker_container_logs_text(container: Any) -> str:
             (out_b or b"").decode("utf-8", errors="replace") + "\n" + (err_b or b"").decode("utf-8", errors="replace")
         )
     return str(raw.decode("utf-8", errors="replace"))
+
+
+def _verification_stdout_tail(text: str, *, limit: int = 2000) -> str:
+    tail = text[-limit:]
+    marker_lines = [line for line in text.splitlines() if line.startswith(_LEMMA_OUTPUT_PREFIX)]
+    if not marker_lines:
+        return tail
+    marker_text = "\n".join(marker_lines)
+    if marker_text in tail:
+        return tail
+    return f"{marker_text}\n{tail}"
 
 
 def _dir_size_bytes(root: Path) -> int:
@@ -420,7 +432,7 @@ class LeanSandbox:
         return VerifyResult(
             passed=True,
             reason="ok",
-            stdout_tail=out[-2000:],
+            stdout_tail=_verification_stdout_tail(out),
             build_seconds=elapsed,
             proof_term_hash=proof_term_hash_from_lean_output(out),
             structural_fingerprint=structural_fingerprint_from_lean_output(out),
@@ -546,7 +558,7 @@ class LeanSandbox:
         return VerifyResult(
             passed=True,
             reason="ok",
-            stdout_tail=text[-2000:],
+            stdout_tail=_verification_stdout_tail(text),
             build_seconds=elapsed,
             proof_term_hash=proof_term_hash_from_lean_output(text),
             structural_fingerprint=structural_fingerprint_from_lean_output(text),
