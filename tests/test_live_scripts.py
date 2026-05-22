@@ -21,3 +21,10 @@ def test_bucket_miner_defaults_to_local_docker_verify() -> None:
 
     assert 'export LEMMA_LEAN_VERIFY_REMOTE_URL="${LEMMA_LEAN_VERIFY_REMOTE_URL:-}"' in miner
     assert "http://localhost:8787" not in miner
+
+
+def test_bucket_miner_prefers_verified_proof_dir_before_hosted_prover() -> None:
+    miner = (ROOT / "scripts" / "lemma-miner-once-to-bucket").read_text(encoding="utf-8")
+
+    assert '["/usr/local/bin/lemma-proof-dir-prover", "--resolve", task.id, str(proof_dir)]' in miner
+    assert "prover_command = proof_dir_prover if resolved_proof.returncode == 0 else configured_prover or None" in miner

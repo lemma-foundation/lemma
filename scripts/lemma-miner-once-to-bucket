@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -82,9 +83,17 @@ bucket_root = Path(os.environ["LEMMA_MINER_BUCKET_DIR"])
 bucket_dir = bucket_root / datetime.now(UTC).strftime("run-%Y%m%dT%H%M%SZ")
 configured_prover = settings.prover_command.strip()
 hosted_prover = settings.prover_base_url.strip() and settings.prover_model.strip()
-prover_command = configured_prover or None
+proof_dir = Path(os.environ["LEMMA_PROOF_DIR"])
+proof_dir_prover = f"/usr/local/bin/lemma-proof-dir-prover {proof_dir}"
+resolved_proof = subprocess.run(
+    ["/usr/local/bin/lemma-proof-dir-prover", "--resolve", task.id, str(proof_dir)],
+    text=True,
+    capture_output=True,
+    check=False,
+)
+prover_command = proof_dir_prover if resolved_proof.returncode == 0 else configured_prover or None
 if prover_command is None and not hosted_prover:
-    prover_command = f"/usr/local/bin/lemma-proof-dir-prover {Path(os.environ['LEMMA_PROOF_DIR'])}"
+    prover_command = proof_dir_prover
 try:
     mined = mine_once(
         settings,
