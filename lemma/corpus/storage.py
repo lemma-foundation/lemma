@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import shutil
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any
@@ -84,6 +85,8 @@ def build_active_pool_storage(
 ) -> dict[str, object]:
     active_dir = output_root / netuid / "active-pools" / f"tempo-{tempo:06d}"
     slots_dir = active_dir / "slots"
+    if active_dir.exists():
+        shutil.rmtree(active_dir)
     slots_dir.mkdir(parents=True, exist_ok=True)
 
     slots: list[dict[str, object]] = []
@@ -147,6 +150,8 @@ def build_epoch_storage_from_rows(
 ) -> dict[str, object]:
     tempo_dir = output_root / netuid / "tempos" / f"tempo-{tempo:06d}"
     entries_dir = tempo_dir / "entries"
+    if tempo_dir.exists():
+        shutil.rmtree(tempo_dir)
     entries_dir.mkdir(parents=True, exist_ok=True)
 
     entries: list[dict[str, object]] = []

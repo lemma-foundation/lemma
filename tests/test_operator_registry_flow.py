@@ -380,7 +380,8 @@ def test_production_like_procedural_submission_smoke(monkeypatch: pytest.MonkeyP
         lean_sandbox_network="none",
         wallet_hot="validator-mainnet-readiness",
     )
-    generation_seed = active_epoch_seed(base_settings, tempo=0)
+    reveal_tempo = 7
+    generation_seed = active_epoch_seed(base_settings, tempo=reveal_tempo)
 
     build = runner.invoke(
         main,
@@ -396,7 +397,7 @@ def test_production_like_procedural_submission_smoke(monkeypatch: pytest.MonkeyP
             "--epoch-randomness",
             active_randomness,
             "--tempo",
-            "0",
+            str(reveal_tempo),
             "--count",
             "1",
             "--frontier-depth",
@@ -414,8 +415,8 @@ def test_production_like_procedural_submission_smoke(monkeypatch: pytest.MonkeyP
     assert json.loads(build.output)["source_pool_sha256"] == source_hash
     assert json.loads(build.output)["import_graph_sha256"] == read_import_graph(import_graph_path).sha256
 
-    registry = task_registry_for_validation(base_settings, tempo=0)
-    active_task = active_tasks_for_validation(registry, base_settings, tempo=0)[0]
+    registry = task_registry_for_validation(base_settings, tempo=reveal_tempo)
+    active_task = active_tasks_for_validation(registry, base_settings, tempo=reveal_tempo)[0]
 
     miner_keypair = Keypair.create_from_uri("//LemmaMainnetReadinessMiner")
     proof_script = _proof_for(active_task.theorem_name)
@@ -423,7 +424,7 @@ def test_production_like_procedural_submission_smoke(monkeypatch: pytest.MonkeyP
     merkle_root = miner_submission_merkle_root(((0, ciphertext_sha256(ciphertext.encode("utf-8"))),))
     bucket_reveals_jsonl = tmp_path / "bucket-reveals.jsonl"
     reveal = MinerBucketReveal(
-        tempo=0,
+        tempo=reveal_tempo,
         miner_hotkey=miner_keypair.ss58_address,
         drand_round=10,
         drand_signature="0xsig",
@@ -438,7 +439,7 @@ def test_production_like_procedural_submission_smoke(monkeypatch: pytest.MonkeyP
         "lemma.chain.commitments.read_all_commitments",
         lambda settings: {
             miner_keypair.ss58_address: miner_bucket_commitment_payload(
-                tempo=0,
+                tempo=reveal_tempo,
                 drand_round=10,
                 merkle_root=merkle_root,
             )

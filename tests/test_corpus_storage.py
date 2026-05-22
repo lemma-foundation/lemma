@@ -109,6 +109,27 @@ def test_active_pool_and_accepted_storage_share_tempo_commitment(tmp_path: Path)
     assert commitment["tempo_commitment_payload"] == expected
 
 
+def test_rebuilding_same_tempo_removes_stale_storage_files(tmp_path: Path) -> None:
+    output_root = tmp_path / "canonical"
+    old_row = {
+        "row_id": "a" * 64,
+        "task_id": "task.old",
+        "proof_sha256": "b" * 64,
+        "queue_position": 0,
+        "solver_hotkey": "solver",
+        "validator_hotkey": "validator",
+    }
+
+    build_epoch_storage_from_rows([old_row], output_root, netuid="sn467", tempo=9, resolver="hippius-ipfs")
+    rebuilt = build_epoch_storage_from_rows([], output_root, netuid="sn467", tempo=9, resolver="hippius-ipfs")
+
+    tempo_dir = output_root / "sn467" / "tempos" / "tempo-000009"
+    assert rebuilt["entry_count"] == 0
+    assert sorted(path.relative_to(tempo_dir).as_posix() for path in tempo_dir.rglob("*") if path.is_file()) == [
+        "manifest.json"
+    ]
+
+
 def test_validator_cid_publish_rewrites_tempo_commitment_payload(tmp_path: Path) -> None:
     from lemma.validator import _write_cid_bound_commitment
 

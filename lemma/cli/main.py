@@ -1489,6 +1489,7 @@ def operator_registry_inspect_cmd() -> None:
 @click.option("--submissions-jsonl", type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None)
 @click.option("--submission-spool", type=click.Path(file_okay=False, path_type=Path), default=None)
 @click.option("--bucket-reveals-jsonl", type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None)
+@click.option("--bucket-reveals-dir", type=click.Path(file_okay=False, path_type=Path), default=None)
 @click.option("--miner-buckets-json", type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None)
 @click.option("--bucket-drand-round", type=int, default=None)
 @click.option("--bucket-drand-signature", default="")
@@ -1506,6 +1507,7 @@ def validate_cmd(
     submissions_jsonl: Path | None,
     submission_spool: Path | None,
     bucket_reveals_jsonl: Path | None,
+    bucket_reveals_dir: Path | None,
     miner_buckets_json: Path | None,
     bucket_drand_round: int | None,
     bucket_drand_signature: str,
@@ -1547,6 +1549,8 @@ def validate_cmd(
             "production validation requires --bucket-reveals-jsonl; direct JSON/spool intake is dev-only"
         )
     registry = None
+    validation_tempo: int | None = None
+    bucket_reveal_batch = None
     chain_authenticated_keys: frozenset[tuple[str, str, str]] = frozenset()
     bucket_reveal_count = 0
     bucket_rejections: list[str] = []
@@ -1565,6 +1569,7 @@ def validate_cmd(
         from lemma.validator import current_active_tempo, task_registry_for_validation
 
         active_tempo = current_active_tempo(settings)
+        validation_tempo = active_tempo
         registry = task_registry_for_validation(settings, tempo=active_tempo)
         chain_commitments = read_all_commitments(settings)
         miner_bucket_urls = _read_str_mapping(miner_buckets_json)
@@ -1577,6 +1582,7 @@ def validate_cmd(
             tempo=active_tempo,
             drand_round=bucket_drand_round,
             drand_signature=bucket_drand_signature,
+            rejection_log=bucket_rejections.append,
         )
         bucket_reveal_count += len(reveals)
         bucket_submissions, bucket_authenticated = submissions_from_bucket_reveals(
@@ -1589,14 +1595,73 @@ def validate_cmd(
         )
         chain_authenticated_keys = frozenset({*chain_authenticated_keys, *bucket_authenticated})
         submissions.extend(bucket_submissions)
+    if bucket_reveals_dir is not None:
+        from lemma.chain.commitments import read_all_commitments
+        from lemma.chain.miner_buckets import latest_bucket_reveal_batch, submissions_from_bucket_reveals
+        from lemma.validator import task_registry_for_validation
+
+        bucket_reveal_batch = latest_bucket_reveal_batch(bucket_reveals_dir)
+        if not bucket_reveal_batch.reveals:
+            click.echo(
+                json.dumps(
+                    {
+                        "verified": 0,
+                        "accepted_unique": 0,
+                        "credits": {},
+                        "scores": {},
+                        "submission_files_consumed": len(spool_paths),
+                        "bucket_reveals_consumed": 0,
+                        "bucket_reveals_rejected": 0,
+                        "weights": {},
+                        "corpus_rows": 0,
+                        "unearned_policy": settings.unearned_allocation_policy,
+                        "unearned_share": 0.0,
+                        "weights_set": False,
+                        "chain_commitment_set": False,
+                        "tempo_commitment_payload": "",
+                    },
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
+            return
+        reveal_tempo = bucket_reveal_batch.tempo
+        if reveal_tempo is None:
+            raise click.ClickException("bucket reveal directory did not resolve a tempo")
+        if validation_tempo is not None and validation_tempo != reveal_tempo:
+            raise click.ClickException("live miner intake sources must target the same tempo")
+        validation_tempo = reveal_tempo
+        registry = task_registry_for_validation(settings, tempo=reveal_tempo)
+        bucket_reveal_count += len(bucket_reveal_batch.reveals)
+        bucket_chain_commitments = (
+            read_all_commitments(settings)
+            if verify_chain_commitments or settings.protocol_mode == "production"
+            else None
+        )
+        bucket_submissions, bucket_authenticated = submissions_from_bucket_reveals(
+            bucket_reveal_batch.reveals,
+            active_tasks_for_validation(registry, settings, tempo=reveal_tempo),
+            verify_drand=verify_drand_reveals or settings.protocol_mode == "production",
+            chain_commitments=bucket_chain_commitments,
+            strict=False,
+            rejection_log=bucket_rejections.append,
+        )
+        chain_authenticated_keys = frozenset({*chain_authenticated_keys, *bucket_authenticated})
+        submissions.extend(bucket_submissions)
     if bucket_reveals_jsonl is not None:
         from lemma.chain.commitments import read_all_commitments
         from lemma.chain.miner_buckets import read_bucket_reveals_jsonl, submissions_from_bucket_reveals
         from lemma.validator import current_active_tempo, task_registry_for_validation
 
-        active_tempo = current_active_tempo(settings)
-        registry = task_registry_for_validation(settings, tempo=active_tempo)
         reveals = read_bucket_reveals_jsonl(bucket_reveals_jsonl)
+        reveal_tempos = {reveal.tempo for reveal in reveals}
+        if len(reveal_tempos) > 1:
+            raise click.ClickException("bucket reveal JSONL must contain exactly one tempo")
+        active_tempo = next(iter(reveal_tempos), current_active_tempo(settings))
+        if validation_tempo is not None and validation_tempo != active_tempo:
+            raise click.ClickException("live miner intake sources must target the same tempo")
+        validation_tempo = active_tempo
+        registry = task_registry_for_validation(settings, tempo=active_tempo)
         bucket_reveal_count += len(reveals)
         bucket_chain_commitments = (
             read_all_commitments(settings)
@@ -1618,12 +1683,14 @@ def validate_cmd(
         and submissions_jsonl is None
         and spool_dir is None
         and bucket_reveals_jsonl is None
+        and bucket_reveals_dir is None
         and miner_buckets_json is None
     ):
         click.echo(stylize("No live miner intake configured; running a local dry validator iteration.", dim=True))
     result = validate_once(
         settings,
         submissions,
+        tempo=validation_tempo,
         registry=registry,
         validator_hotkey=validator_hotkey,
         no_set_weights=(not set_weights) or no_set_weights or not once,
@@ -1633,6 +1700,10 @@ def validate_cmd(
     )
     if spool_paths and spool_dir is not None:
         archive_submission_spool(spool_paths, spool_dir)
+    if bucket_reveal_batch is not None:
+        from lemma.chain.miner_buckets import archive_bucket_reveal_batch
+
+        archive_bucket_reveal_batch(bucket_reveal_batch)
     output = {
         "verified": len(result.verification_records),
         "accepted_unique": len(result.score.valid_unique_proofs),

@@ -254,19 +254,23 @@ def generate_depth2_candidates(
     while len(out) < count and cursor < attempt_limit:
         source = ordered[cursor % len(ordered)]
         chain = _operator_chain(generation_seed, cursor)
-        candidate = _candidate_from_source(
-            source,
-            source_pool=ordered,
-            generation_seed=generation_seed,
-            epoch_fields=epoch_fields,
-            operator_chain=chain,
-            mutation_engine=mutator,
-            source_pool_hash_value=pool_hash,
-            source_pool_receipt_value=pool_receipt,
-            operator_bundle_hash=operator_hash,
-            tempo=tempo,
-            sequence=cursor,
-        )
+        try:
+            candidate = _candidate_from_source(
+                source,
+                source_pool=ordered,
+                generation_seed=generation_seed,
+                epoch_fields=epoch_fields,
+                operator_chain=chain,
+                mutation_engine=mutator,
+                source_pool_hash_value=pool_hash,
+                source_pool_receipt_value=pool_receipt,
+                operator_bundle_hash=operator_hash,
+                tempo=tempo,
+                sequence=cursor,
+            )
+        except ValueError:
+            cursor += 1
+            continue
         verdict = runner(candidate, seen_canonical_hashes=seen)
         candidate = _with_gate_receipt(candidate, verdict)
         canonical_hash = str(candidate.metadata["canonical_hash"])

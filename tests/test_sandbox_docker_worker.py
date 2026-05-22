@@ -18,6 +18,7 @@ def test_docker_verify_script_source_is_line_oriented(tmp_path: Path, monkeypatc
     script = sb._docker_verify_script_source(tmp_path)
 
     assert "lake exe cache get" not in script
+    assert "ln -s \"$p\" \".lake/packages/$(basename \"$p\")\"" in script
     assert "cp -a /opt/lemma-stub/lake-manifest.json ." in script
     assert "\nlake build Submission\n" in script
     assert "\nlake env lean AxiomCheck.lean\n" in script
@@ -30,7 +31,7 @@ def test_docker_verify_script_uses_workspace_build_target(tmp_path: Path, monkey
 
     script = sb._docker_verify_script_source(tmp_path)
 
-    assert "\nlake build Challenge\n" in script
+    assert "\nlake build Challenge Submission\n" in script
 
 
 def test_docker_worker_exec_uses_workdir_argv(tmp_path: Path, monkeypatch) -> None:

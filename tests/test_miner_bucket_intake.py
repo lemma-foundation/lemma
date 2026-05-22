@@ -14,6 +14,8 @@ from lemma.chain.drand import ciphertext_bytes, encode_ciphertext
 from lemma.chain.miner_buckets import (
     MinerBucketReveal,
     RevealedBucketBlob,
+    archive_bucket_reveal_batch,
+    latest_bucket_reveal_batch,
     poll_bucket_reveals,
     prepare_miner_bucket_publication,
     submissions_from_bucket_reveals,
@@ -129,6 +131,51 @@ def test_miner_bucket_publication_writes_uploadable_slot_objects(tmp_path: Path)
     assert (tmp_path / "bucket" / "tempo_7" / "slot_0.bin").read_bytes() == ciphertext
     assert uploaded == {"tempo_7/slot_0.bin": ciphertext}
     assert proof not in (tmp_path / "bucket" / "manifest.json").read_text(encoding="utf-8")
+
+
+def test_bucket_reveal_inbox_selects_latest_tempo_and_archives(tmp_path: Path) -> None:
+    inbox = tmp_path / "bucket-reveals"
+    inbox.mkdir()
+    old = _reveal(miner="hk-old", commit_block=5, ciphertext="old-cipher", proof=_proof("  trivial")).model_copy(
+        update={"tempo": 6}
+    )
+    latest = _reveal(miner="hk-new", commit_block=6, ciphertext="new-cipher", proof=_proof("  trivial"))
+    (inbox / "old.json").write_text(old.model_dump_json() + "\n", encoding="utf-8")
+    (inbox / "latest.json").write_text(latest.model_dump_json() + "\n", encoding="utf-8")
+
+    batch = latest_bucket_reveal_batch(inbox)
+
+    assert batch.tempo == 7
+    assert [reveal.miner_hotkey for reveal in batch.reveals] == ["hk-new"]
+    assert [path.name for path in batch.paths] == ["latest.json"]
+    assert [path.name for path in batch.stale_paths] == ["old.json"]
+
+    archive_bucket_reveal_batch(batch)
+
+    assert not (inbox / "old.json").exists()
+    assert not (inbox / "latest.json").exists()
+    assert (inbox / "processed" / "latest.json").exists()
+    assert (inbox / "stale" / "old.json").exists()
+
+
+def test_bucket_reveal_inbox_rejects_mixed_tempo_file(tmp_path: Path) -> None:
+    inbox = tmp_path / "bucket-reveals"
+    inbox.mkdir()
+    old = _reveal(miner="hk-old", commit_block=5, ciphertext="old-cipher", proof=_proof("  trivial")).model_copy(
+        update={"tempo": 6}
+    )
+    latest = _reveal(miner="hk-new", commit_block=6, ciphertext="new-cipher", proof=_proof("  trivial"))
+    (inbox / "mixed.jsonl").write_text(
+        old.model_dump_json() + "\n" + latest.model_dump_json() + "\n",
+        encoding="utf-8",
+    )
+
+    try:
+        latest_bucket_reveal_batch(inbox)
+    except ValueError as e:
+        assert "exactly one tempo" in str(e)
+    else:
+        raise AssertionError("mixed-tempo reveal files should fail closed")
 
 
 def test_bucket_reveal_validates_merkle_root_before_validator_scoring(tmp_path: Path) -> None:
@@ -263,6 +310,50 @@ def test_poll_bucket_reveals_builds_rows_from_public_bucket_and_chain_root(tmp_p
     assert reveals[0].commit_block == 123
     assert reveals[0].blobs[0].ciphertext == ciphertext_encoded
     assert reveals[0].blobs[0].proof_script == proof
+
+
+def test_poll_bucket_reveals_skips_bad_bucket_without_poisoning_batch(tmp_path: Path) -> None:
+    task = _task()
+    registry = TaskRegistry(schema_version=1, tasks=(task,), sha256="0" * 64)
+    active_tasks = active_tasks_for_validation(registry, _settings(tmp_path), tempo=7)
+    good_ciphertext = b"good-encrypted-proof"
+    bad_ciphertext = b"bad-encrypted-proof"
+    proof = _proof("  trivial")
+    rejections: list[str] = []
+
+    def get_object(url: str) -> bytes:
+        return bad_ciphertext if "bad" in url else good_ciphertext
+
+    def decrypt(ciphertext: str, _signature: str | None) -> bytes:
+        if ciphertext_bytes(ciphertext) == bad_ciphertext:
+            raise ValueError("bad miner ciphertext")
+        return proof.encode("utf-8")
+
+    reveals = poll_bucket_reveals(
+        miner_bucket_urls={"hk-bad": "https://bucket.example/bad", "hk-good": "https://bucket.example/good"},
+        chain_commitments={
+            "hk-bad": miner_bucket_commitment_payload(
+                tempo=7,
+                drand_round=77,
+                merkle_root=miner_submission_merkle_root(((0, ciphertext_sha256(bad_ciphertext)),)),
+            ),
+            "hk-good": miner_bucket_commitment_payload(
+                tempo=7,
+                drand_round=77,
+                merkle_root=miner_submission_merkle_root(((0, ciphertext_sha256(good_ciphertext)),)),
+            ),
+        },
+        active_tasks=active_tasks,
+        tempo=7,
+        drand_round=77,
+        drand_signature="0xsig",
+        get_object=get_object,
+        decrypt_timelocked=decrypt,
+        rejection_log=rejections.append,
+    )
+
+    assert [reveal.miner_hotkey for reveal in reveals] == ["hk-good"]
+    assert rejections == ["hk-bad: bad miner ciphertext"]
 
 
 def test_bucket_reveal_drand_verification_fails_closed(tmp_path: Path) -> None:

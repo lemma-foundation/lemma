@@ -11,7 +11,7 @@ from lemma.lean.sandbox import VerifyResult
 from lemma.protocol_invariants import enforce_production_invariants
 from lemma.submissions import build_submission
 from lemma.supply.gates import AssumedProceduralGateRunner, LeanProceduralGateRunner, ProceduralGateVerdict
-from lemma.supply.import_graph import ImportGraphRow, read_import_graph
+from lemma.supply.import_graph import ImportGraphRow, extract_import_graph_rows, read_import_graph
 from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
 from lemma.supply.mutation import LeanAstMutationEngine, PreviewMutationEngine
 from lemma.supply.novelty import novelty_cache_from_hashes, read_novelty_cache, statement_hash
@@ -76,6 +76,19 @@ def _write_import_graph(path: Path) -> None:
         ImportGraphRow(module="Mathlib.Algebra.Group.Basic", imports=("Mathlib.Init",)),
     )
     path.write_text("".join(row.model_dump_json() + "\n" for row in rows), encoding="utf-8")
+
+
+def test_import_graph_accepts_prime_module_names(tmp_path: Path) -> None:
+    mathlib_root = tmp_path / "mathlib"
+    module_path = mathlib_root / "Mathlib" / "Tactic" / "LinearCombination'.lean"
+    module_path.parent.mkdir(parents=True)
+    module_path.write_text("import Mathlib.Tactic.Widget'\n", encoding="utf-8")
+
+    rows = extract_import_graph_rows(mathlib_root, ("Mathlib/Tactic/LinearCombination'.lean",))
+
+    assert rows == (
+        ImportGraphRow(module="Mathlib.Tactic.LinearCombination'", imports=("Mathlib.Tactic.Widget'",)),
+    )
 
 
 def _fake_lean_gate(self, candidate, *, seen_canonical_hashes) -> ProceduralGateVerdict:  # noqa: ANN001
@@ -203,6 +216,35 @@ def test_depth2_generation_is_epoch_seeded_not_static(tmp_path: Path) -> None:
     assert all(candidate.metadata["source_pool_stream_counts"] == {"mathlib_snapshot": 2} for candidate in first)
     assert all(candidate.metadata["citation_alpha_basis_points"] == 5000 for candidate in first)
     assert all(candidate.metadata["citation_window_tempos"] == 2000 for candidate in first)
+
+
+def test_depth2_generation_skips_failed_mutations(tmp_path: Path) -> None:
+    class FlakyMutationEngine:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.preview = PreviewMutationEngine()
+
+        def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001
+            self.calls += 1
+            if self.calls == 1:
+                raise ValueError("bad generated mutation")
+            return self.preview.apply(source, type_expr, operator, step=step, param_seed=param_seed, peer=peer)
+
+    snapshot = tmp_path / "snapshot.jsonl"
+    _write_snapshot(snapshot)
+    engine = FlakyMutationEngine()
+
+    candidates = generate_depth2_candidates(
+        mathlib_candidates_from_jsonl(snapshot),
+        generation_seed="epoch-a",
+        epoch_randomness=json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
+        count=1,
+        tempo=3,
+        mutation_engine=engine,
+    )
+
+    assert len(candidates) == 1
+    assert engine.calls >= 3
 
 
 def test_procedural_registry_rejects_assumed_gate_receipts(tmp_path: Path) -> None:

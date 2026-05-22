@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "${LEMMA_APP_DIR:-/opt/lemma-sn467/app}"
+
+exec "${UV_BIN:-uv}" run lemma validate \
+  --once \
+  --bucket-reveals-dir "${LEMMA_BUCKET_REVEALS_DIR:-/var/lib/lemma/bucket-reveals}" \
+  --verify-chain-commitments \
+  --set-weights

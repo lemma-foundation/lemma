@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urljoin
 
@@ -33,6 +35,14 @@ EncryptTimelockedPayload = Callable[[bytes, int], bytes]
 GetBucketObject = Callable[[str], bytes | None]
 PutBucketObject = Callable[[str, bytes], None]
 RejectionLog = Callable[[str], None]
+
+
+@dataclass(frozen=True)
+class BucketRevealBatch:
+    tempo: int | None
+    reveals: tuple[MinerBucketReveal, ...]
+    paths: tuple[Path, ...]
+    stale_paths: tuple[Path, ...]
 
 
 class RevealedBucketBlob(BaseModel):
@@ -191,6 +201,58 @@ def read_bucket_reveals_jsonl(path: Path) -> tuple[MinerBucketReveal, ...]:
     return tuple(reveals)
 
 
+def read_bucket_reveal_file(path: Path) -> tuple[MinerBucketReveal, ...]:
+    if path.suffix == ".jsonl":
+        return read_bucket_reveals_jsonl(path)
+    if path.suffix != ".json":
+        raise ValueError(f"{path}: bucket reveal file must end in .json or .jsonl")
+    try:
+        return (MinerBucketReveal.model_validate(json.loads(path.read_text(encoding="utf-8"))),)
+    except (json.JSONDecodeError, ValueError) as e:
+        raise ValueError(f"{path}: invalid miner bucket reveal: {e}") from e
+
+
+def latest_bucket_reveal_batch(reveal_dir: Path) -> BucketRevealBatch:
+    if not reveal_dir.exists():
+        return BucketRevealBatch(None, (), (), ())
+    if not reveal_dir.is_dir():
+        raise ValueError(f"{reveal_dir} is not a directory")
+    by_path: list[tuple[Path, tuple[MinerBucketReveal, ...]]] = []
+    for path in sorted(p for p in reveal_dir.iterdir() if p.is_file() and p.suffix in {".json", ".jsonl"}):
+        reveals = read_bucket_reveal_file(path)
+        if not reveals:
+            continue
+        tempos = {reveal.tempo for reveal in reveals}
+        if len(tempos) != 1:
+            raise ValueError(f"{path}: bucket reveal file must contain exactly one tempo")
+        by_path.append((path, reveals))
+    if not by_path:
+        return BucketRevealBatch(None, (), (), ())
+    latest_tempo = max(reveals[0].tempo for _, reveals in by_path)
+    selected_paths = tuple(path for path, reveals in by_path if reveals[0].tempo == latest_tempo)
+    stale_paths = tuple(path for path, reveals in by_path if reveals[0].tempo != latest_tempo)
+    selected = tuple(reveal for path, reveals in by_path if path in selected_paths for reveal in reveals)
+    return BucketRevealBatch(latest_tempo, selected, selected_paths, stale_paths)
+
+
+def archive_bucket_reveal_batch(batch: BucketRevealBatch) -> None:
+    for path in batch.paths:
+        _move_bucket_reveal_file(path, "processed")
+    for path in batch.stale_paths:
+        _move_bucket_reveal_file(path, "stale")
+
+
+def _move_bucket_reveal_file(path: Path, dirname: str) -> None:
+    if not path.exists():
+        return
+    target_dir = path.parent / dirname
+    target_dir.mkdir(exist_ok=True)
+    target = target_dir / path.name
+    if target.exists():
+        target = target_dir / f"{path.stem}.{path.stat().st_mtime_ns}{path.suffix}"
+    shutil.move(str(path), str(target))
+
+
 def poll_bucket_reveals(
     *,
     miner_bucket_urls: Mapping[str, str],
@@ -202,43 +264,50 @@ def poll_bucket_reveals(
     drand_signature: str,
     get_object: GetBucketObject | None = None,
     decrypt_timelocked: DecryptTimelockedPayload = decrypt_timelocked_payload,
+    rejection_log: RejectionLog | None = None,
 ) -> tuple[MinerBucketReveal, ...]:
     """Build post-reveal rows by polling public miner buckets for active slot blobs."""
     getter = get_object or _http_get_object
     reveals: list[MinerBucketReveal] = []
     block_by_miner = commit_blocks or {}
     for miner_hotkey, bucket_url in sorted(miner_bucket_urls.items()):
-        commitment = chain_commitments.get(miner_hotkey, "")
         try:
+            commitment = chain_commitments.get(miner_hotkey, "")
             committed_tempo, committed_round, merkle_root = parse_miner_bucket_commitment_payload(commitment)
-        except ValueError:
-            continue
-        if committed_tempo != tempo or committed_round != drand_round:
-            continue
-        blobs: list[RevealedBucketBlob] = []
-        for slot_index in range(len(active_tasks)):
-            key = miner_bucket_key(tempo, slot_index)
-            ciphertext_raw = getter(_bucket_object_url(bucket_url, key))
-            if ciphertext_raw is None:
+            if committed_tempo != tempo or committed_round != drand_round:
                 continue
-            ciphertext = encode_ciphertext(ciphertext_raw)
-            proof_script = decrypt_timelocked(ciphertext, drand_signature).decode("utf-8")
-            blobs.append(RevealedBucketBlob(slot_index=slot_index, ciphertext=ciphertext, proof_script=proof_script))
-        if not blobs:
-            continue
-        reveal = MinerBucketReveal(
-            tempo=tempo,
-            miner_hotkey=miner_hotkey,
-            drand_round=drand_round,
-            drand_signature=drand_signature,
-            commit_block=max(0, int(block_by_miner.get(miner_hotkey, 0))),
-            commit_extrinsic_hash=commitment,
-            merkle_root=merkle_root,
-            bucket_url=bucket_url,
-            blobs=tuple(blobs),
-        )
-        if miner_submission_merkle_root(_claimed_pairs(reveal)) == merkle_root:
-            reveals.append(reveal)
+            blobs: list[RevealedBucketBlob] = []
+            for slot_index in range(len(active_tasks)):
+                key = miner_bucket_key(tempo, slot_index)
+                ciphertext_raw = getter(_bucket_object_url(bucket_url, key))
+                if ciphertext_raw is None:
+                    continue
+                ciphertext = encode_ciphertext(ciphertext_raw)
+                proof_script = decrypt_timelocked(ciphertext, drand_signature).decode("utf-8")
+                blobs.append(
+                    RevealedBucketBlob(slot_index=slot_index, ciphertext=ciphertext, proof_script=proof_script)
+                )
+            if not blobs:
+                continue
+            reveal = MinerBucketReveal(
+                tempo=tempo,
+                miner_hotkey=miner_hotkey,
+                drand_round=drand_round,
+                drand_signature=drand_signature,
+                commit_block=max(0, int(block_by_miner.get(miner_hotkey, 0))),
+                commit_extrinsic_hash=commitment,
+                merkle_root=merkle_root,
+                bucket_url=bucket_url,
+                blobs=tuple(blobs),
+            )
+            if miner_submission_merkle_root(_claimed_pairs(reveal)) == merkle_root:
+                reveals.append(reveal)
+        except ValueError as e:
+            if rejection_log is not None:
+                rejection_log(f"{miner_hotkey}: {e}")
+        except Exception as e:
+            if rejection_log is not None:
+                rejection_log(f"{miner_hotkey}: bucket poll failed: {e}")
     return tuple(reveals)
 
 

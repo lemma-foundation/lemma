@@ -73,6 +73,8 @@ def _lake_build_argv(work: Path) -> list[str]:
     target = target_path.read_text(encoding="utf-8").strip() if target_path.exists() else "Submission"
     if target not in {"Challenge", "Solution", "Submission"}:
         return ["lake", "build", "Submission"]
+    if target == "Challenge":
+        return ["lake", "build", "Challenge", "Submission"]
     return ["lake", "build", target]
 
 
@@ -285,6 +287,7 @@ class LeanSandbox:
             logger.debug("lean workspace cache prune skipped: {}", e)
             return
 
+        track_bytes = self.workspace_cache_max_bytes > 0
         for p in entries:
             try:
                 st = p.stat()
@@ -294,7 +297,7 @@ class LeanSandbox:
                 if now - st.st_mtime > 86_400:
                     stale_temps.append(p)
                 continue
-            warm_slots.append((st.st_mtime, p.name, p, _dir_size_bytes(p)))
+            warm_slots.append((st.st_mtime, p.name, p, _dir_size_bytes(p) if track_bytes else 0))
 
         to_delete: list[Path] = []
         warm_sorted = sorted(warm_slots)
@@ -443,8 +446,15 @@ class LeanSandbox:
         lines = [
             f"export LEAN_NUM_THREADS={shlex.quote(_lean_num_threads_value())}",
             "set -euo pipefail",
-            "if [ -d /opt/lemma-stub ] && [ ! -d .lake ]; then",
-            "  cp -a /opt/lemma-stub/.lake . 2>/dev/null || true",
+            "if [ -d /opt/lemma-stub/.lake ] && [ ! -d .lake ]; then",
+            "  mkdir -p .lake/packages",
+            "  if [ -d /opt/lemma-stub/.lake/build ]; then",
+            "    cp -a /opt/lemma-stub/.lake/build .lake/ 2>/dev/null || true",
+            "  fi",
+            "  for p in /opt/lemma-stub/.lake/packages/*; do",
+            "    [ -e \"$p\" ] || continue",
+            "    ln -s \"$p\" \".lake/packages/$(basename \"$p\")\"",
+            "  done",
             "fi",
             "if [ -d /opt/lemma-stub ] && [ ! -f lake-manifest.json ]; then",
             "  cp -a /opt/lemma-stub/lake-manifest.json . 2>/dev/null || true",
@@ -625,12 +635,23 @@ class LeanSandbox:
         mem = self.mem_mb * 1024 * 1024
         t0 = time.monotonic()
         container = None
+        host_root = self._docker_worker_host_root()
+        mount_point = self._docker_worker_mount_point()
+        volumes = {str(work.resolve()): {"bind": "/work", "mode": "rw"}}
+        working_dir = "/work"
+        if host_root is not None:
+            try:
+                working_dir = docker_worker_container_path(work, host_root, mount_point)
+                volumes = {str(host_root): {"bind": str(mount_point), "mode": "rw"}}
+            except ValueError:
+                working_dir = "/work"
+
         try:
             container = client.containers.create(
                 image=self.image,
                 command=["bash", script_name],
-                volumes={str(work.resolve()): {"bind": "/work", "mode": "rw"}},
-                working_dir="/work",
+                volumes=volumes,
+                working_dir=working_dir,
                 network_mode=self.network_mode,
                 nano_cpus=nano_cpus,
                 mem_limit=mem,

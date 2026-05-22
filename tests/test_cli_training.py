@@ -9,6 +9,8 @@ import sys
 import pytest
 from bittensor_wallet import Keypair
 from click.testing import CliRunner
+from lemma.chain.commitments import ciphertext_sha256, miner_submission_merkle_root
+from lemma.chain.miner_buckets import MinerBucketReveal, RevealedBucketBlob
 from lemma.cli.main import main
 from lemma.corpus import build_corpus_row, write_jsonl
 from lemma.lean.sandbox import VerifyResult
@@ -284,6 +286,77 @@ def test_validate_consumes_submission_spool(monkeypatch: pytest.MonkeyPatch, tmp
     assert len(list((spool / "processed").glob("*.json"))) == 1
 
     second = CliRunner().invoke(main, ["validate", "--once", "--no-set-weights"], env=env)
+
+    assert second.exit_code == 0, second.output
+    assert json.loads(second.output)["verified"] == 0
+
+
+def test_validate_consumes_latest_bucket_reveal_dir(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    inbox = tmp_path / "bucket-reveals"
+    inbox.mkdir()
+    task = make_task(
+        task_id="lemma.sample.true_intro",
+        title="Smoke-test True",
+        theorem_name="true_intro_sample",
+        type_expr="True",
+        source_stream="human_curated",
+        source_name="pytest",
+    )
+    registry_path = tmp_path / "registry.json"
+    write_registry([task], registry_path)
+    proof = _true_intro_proof()
+
+    def reveal(name: str, *, tempo: int) -> None:
+        ciphertext = f"{name}-cipher"
+        row = MinerBucketReveal(
+            tempo=tempo,
+            miner_hotkey=f"hk-{name}",
+            drand_round=77,
+            drand_signature="0xsig",
+            commit_block=tempo,
+            commit_extrinsic_hash=f"0x{name}",
+            merkle_root=miner_submission_merkle_root(
+                ((0, ciphertext_sha256(ciphertext.encode("utf-8"))),)
+            ),
+            blobs=(RevealedBucketBlob(slot_index=0, ciphertext=ciphertext, proof_script=proof),),
+        )
+        (inbox / f"{name}.json").write_text(row.model_dump_json() + "\n", encoding="utf-8")
+
+    reveal("old", tempo=6)
+    reveal("latest", tempo=7)
+
+    def fake_verify(*args: object, **kwargs: object) -> VerifyResult:
+        return VerifyResult(passed=True, reason="ok")
+
+    monkeypatch.setattr("lemma.verifiers.lean.run_lean_verify", fake_verify)
+    env = {
+        "LEMMA_PREFER_PROCESS_ENV": "1",
+        "LEMMA_OPERATOR_DATA_DIR": str(tmp_path / "operator"),
+        "LEMMA_CORPUS_OUTPUT_DIR": str(tmp_path / "corpus"),
+        "LEMMA_TASK_REGISTRY_URL": str(registry_path),
+        "LEMMA_ACTIVE_K": "1",
+    }
+
+    result = CliRunner().invoke(
+        main,
+        ["validate", "--once", "--bucket-reveals-dir", str(inbox), "--no-set-weights"],
+        env=env,
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["verified"] == 1
+    assert payload["accepted_unique"] == 1
+    assert payload["bucket_reveals_consumed"] == 1
+    assert payload["scores"] == {"hk-latest": 1.0}
+    assert (inbox / "processed" / "latest.json").exists()
+    assert (inbox / "stale" / "old.json").exists()
+
+    second = CliRunner().invoke(
+        main,
+        ["validate", "--once", "--bucket-reveals-dir", str(inbox), "--no-set-weights"],
+        env=env,
+    )
 
     assert second.exit_code == 0, second.output
     assert json.loads(second.output)["verified"] == 0

@@ -12,7 +12,7 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, field_validator
 
 IMPORT_GRAPH_VERSION = "lemma-import-graph-v1"
-_LEAN_MODULE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
+_LEAN_MODULE = re.compile(r"^[A-Za-z_][A-Za-z0-9_']*(?:\.[A-Za-z_][A-Za-z0-9_']*)*$")
 
 
 class ImportGraphRow(BaseModel):

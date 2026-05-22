@@ -173,9 +173,34 @@ def _target_decl(problem: Problem) -> str:
     return f"theorem {problem.theorem_name} : {problem.type_expr} := by"
 
 
+def _norm_decl(text: str) -> str:
+    return " ".join(text.split())
+
+
 def _top_level_target_indexes(problem: Problem, body: list[_Line]) -> list[int]:
-    decl = _target_decl(problem)
-    return [i for i, line in enumerate(body) if line.top_level and line.code.startswith(decl)]
+    decl = _norm_decl(_target_decl(problem))
+    out: list[int] = []
+    prefix = f"theorem {problem.theorem_name} :"
+    for i, line in enumerate(body):
+        if not line.top_level or not line.code.startswith(prefix):
+            continue
+        parts: list[str] = []
+        for candidate in body[i:]:
+            if candidate is not line and candidate.top_level:
+                break
+            parts.append(candidate.code)
+            if ":= by" in candidate.code:
+                break
+        if _norm_decl(" ".join(parts)).startswith(decl):
+            out.append(i)
+    return out
+
+
+def _target_decl_end_index(start: int, body: list[_Line]) -> int:
+    for i in range(start, len(body)):
+        if ":= by" in body[i].code:
+            return i
+    return start
 
 
 def _scan_strict(problem: Problem, body: list[_Line]) -> SubmissionPolicyScan:
@@ -184,7 +209,8 @@ def _scan_strict(problem: Problem, body: list[_Line]) -> SubmissionPolicyScan:
         return SubmissionPolicyScan(False, "expected exactly one exact target theorem")
     if target_indexes[0] != 0:
         return SubmissionPolicyScan(False, "target theorem must be the only top-level declaration")
-    for line in body[1:]:
+    target_end = _target_decl_end_index(target_indexes[0], body)
+    for line in body[target_end + 1 :]:
         if line.top_level:
             return SubmissionPolicyScan(False, f"line {line.no}: extra top-level command")
     return SubmissionPolicyScan(True)

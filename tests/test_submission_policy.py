@@ -62,6 +62,23 @@ def test_strict_envelope_accepts_exact_submission() -> None:
     assert scan.ok, scan.reason
 
 
+def test_strict_envelope_accepts_multiline_target_statement() -> None:
+    problem = Problem(
+        id="test/multiline",
+        theorem_name="target",
+        type_expr="∀ p : Prop,\n  p → True",
+        split="easy",
+        lean_toolchain="leanprover/lean4:v4.30.0-rc2",
+        mathlib_rev="5450b53e5ddc",
+        imports=("Mathlib",),
+    )
+    source = _src("theorem target : ∀ p : Prop,\n  p → True := by\n  intro _ _\n  trivial")
+
+    scan = scan_submission_policy(problem, source, policy="strict_envelope")
+
+    assert scan.ok, scan.reason
+
+
 @pytest.mark.parametrize(
     "src",
     [
