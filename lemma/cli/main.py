@@ -106,8 +106,16 @@ def _read_int_mapping(path: Path) -> dict[str, int]:
 def _load_registry():
     from lemma.tasks import TaskError, fetch_task_registry
 
+    settings = LemmaSettings()
+    if settings.task_supply_mode == "procedural":
+        from lemma.validator import current_active_tempo, task_registry_for_validation
+
+        try:
+            return task_registry_for_validation(settings, tempo=current_active_tempo(settings))
+        except (RuntimeError, ValueError, OSError, TaskError) as e:
+            raise click.ClickException(str(e)) from e
     try:
-        return fetch_task_registry(LemmaSettings())
+        return fetch_task_registry(settings)
     except (TaskError, OSError) as e:
         raise click.ClickException(str(e)) from e
 

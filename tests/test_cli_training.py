@@ -50,6 +50,43 @@ def test_task_show_aliases_match_goal_language() -> None:
         assert "Submission stub" in result.output
 
 
+def test_verify_uses_procedural_registry(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    proof = tmp_path / "Proof.lean"
+    proof.write_text(_true_intro_proof(), encoding="utf-8")
+    task = make_task(
+        task_id="lemma.procedural.test",
+        title="Procedural test",
+        theorem_name="true_intro_sample",
+        type_expr="True",
+        source_stream="procedural",
+        source_name="pytest",
+    )
+    registry = type("Registry", (), {"get": lambda self, task_id: task})()
+    calls = {}
+
+    def fake_registry(settings, *, tempo):  # noqa: ANN001
+        calls["mode"] = settings.task_supply_mode
+        calls["tempo"] = tempo
+        return registry
+
+    def fake_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001
+        calls["task_id"] = problem.id
+        return VerifyResult(passed=True, reason="ok")
+
+    monkeypatch.setattr("lemma.validator.current_active_tempo", lambda settings: 17)
+    monkeypatch.setattr("lemma.validator.task_registry_for_validation", fake_registry)
+    monkeypatch.setattr("lemma.lean.verify_runner.run_lean_verify", fake_verify)
+
+    result = CliRunner().invoke(
+        main,
+        ["verify", "lemma.procedural.test", "--submission", str(proof)],
+        env={"LEMMA_PREFER_PROCESS_ENV": "1", "LEMMA_TASK_SUPPLY_MODE": "procedural"},
+    )
+
+    assert result.exit_code == 0, result.output
+    assert calls == {"mode": "procedural", "tempo": 17, "task_id": "lemma.procedural.test"}
+
+
 def test_root_help_exposes_only_barebones_public_commands() -> None:
     result = CliRunner().invoke(main, ["--help"])
 
