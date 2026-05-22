@@ -409,6 +409,8 @@ def emit : Elab.Command.CommandElabM Unit := do
   let (output, params) ← mutate expr peer
   requireProp output
   let rendered ← ppTerm output
+  let roundtrip ← parseTermOrThrow rendered
+  requireProp roundtrip
   let payload := jsonObj [("type_expr", Json.str rendered), ("params", params)]
   IO.println <| "LEMMA_AST_MUTATION " ++ payload.compress
 

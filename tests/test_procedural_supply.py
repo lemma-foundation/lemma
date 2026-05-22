@@ -164,6 +164,7 @@ def test_lean_ast_mutation_engine_uses_lean_eval_output(monkeypatch: pytest.Monk
     assert result.type_expr == "∀ p : Prop, p → True"
     assert result.params["engine"] == "lean_ast_elaborator"
     assert "replaceIdent" in captured["problem"].extra["challenge_full"]
+    assert "let roundtrip ← parseTermOrThrow rendered" in captured["problem"].extra["challenge_full"]
     assert captured["problem"].extra["lean_eval_commands"] == ("#eval! LemmaProceduralMutator.emit",)
     assert "theorem lemma_ast_mutation_dummy : True" in captured["proof_script"]
 
