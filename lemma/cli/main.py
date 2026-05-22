@@ -255,6 +255,13 @@ def status_cmd() -> None:
 @main.command("mine")
 @click.option("--once", is_flag=True, help="Run one local proof-search iteration.")
 @click.option("--task-id", default=None, help="Solve one task id.")
+@click.option(
+    "--registry",
+    "registry_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Use a prebuilt task registry cache.",
+)
 @click.option("--prover-command", default=None, help="Override LEMMA_PROVER_COMMAND.")
 @click.option("--solver-hotkey", default=None, help="Override solver attribution.")
 @click.option("--sign", "sign_submission", is_flag=True, help="Sign the submission with the configured hotkey wallet.")
@@ -262,6 +269,7 @@ def status_cmd() -> None:
 def mine_cmd(
     once: bool,
     task_id: str | None,
+    registry_path: Path | None,
     prover_command: str | None,
     solver_hotkey: str | None,
     sign_submission: bool,
@@ -276,8 +284,13 @@ def mine_cmd(
       lemma mine --once --task-id lemma.sample.true_intro --output submission.json
     """
     from lemma.miner import ProverError, mine_once
+    from lemma.tasks import TaskError, load_task_registry
 
     settings = LemmaSettings()
+    try:
+        registry = load_task_registry(registry_path.read_bytes()) if registry_path is not None else None
+    except (OSError, TaskError) as e:
+        raise click.ClickException(str(e)) from e
     if not once:
         click.echo(stylize("Running one miner iteration. Use a process supervisor to repeat it.", dim=True))
     try:
@@ -285,6 +298,7 @@ def mine_cmd(
             settings,
             task_id=task_id,
             prover_command=prover_command,
+            registry=registry,
             solver_hotkey=solver_hotkey,
             sign=sign_submission,
         )
@@ -970,6 +984,32 @@ def tasks_rebuild_procedural_registry_cmd(
                 "import_graph_sha256": import_graph.sha256,
                 "import_graph_entries": import_graph.entry_count,
                 "tasks": len(build.tasks),
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+
+
+@tasks_cmd.command("rebuild-active-procedural-registry", hidden=True)
+@click.option("--output", "output_path", type=click.Path(dir_okay=False, path_type=Path), required=True)
+@click.option("--tempo", type=click.IntRange(min=0), default=None)
+def tasks_rebuild_active_procedural_registry_cmd(output_path: Path, tempo: int | None) -> None:
+    """Rebuild the active procedural registry cache from the current environment."""
+    from lemma.task_supply import write_registry
+    from lemma.validator import current_active_tempo, task_registry_for_validation
+
+    settings = LemmaSettings()
+    active_tempo = current_active_tempo(settings) if tempo is None else tempo
+    registry = task_registry_for_validation(settings, tempo=active_tempo)
+    write_registry(registry.tasks, output_path)
+    click.echo(
+        json.dumps(
+            {
+                "output": str(output_path),
+                "tempo": active_tempo,
+                "registry_sha256": hashlib.sha256(output_path.read_bytes()).hexdigest(),
+                "tasks": len(registry.tasks),
             },
             indent=2,
             sort_keys=True,

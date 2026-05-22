@@ -169,6 +169,54 @@ def test_mine_once_with_fake_prover(monkeypatch: pytest.MonkeyPatch, tmp_path) -
     assert '"task_id": "lemma.sample.true_intro"' in output.read_text(encoding="utf-8")
 
 
+def test_mine_once_accepts_registry_cache(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    task = make_task(
+        task_id="lemma.test.cached_true",
+        title="Cached True",
+        theorem_name="cached_true",
+        type_expr="True",
+        source_stream="human_curated",
+        source_name="pytest",
+    )
+    registry = tmp_path / "registry.json"
+    write_registry([task], registry)
+    prover = tmp_path / "prover.py"
+    prover.write_text(
+        "import json, sys\n"
+        "task = json.load(sys.stdin)\n"
+        "print(json.dumps({'task_id': task['task_id'], 'proof_script': " + repr(_true_intro_proof()) + "}))\n",
+        encoding="utf-8",
+    )
+    output = tmp_path / "submission.json"
+    monkeypatch.setenv("LEMMA_OPERATOR_DATA_DIR", str(tmp_path / "operator"))
+
+    def fake_verify(*args: object, **kwargs: object) -> VerifyResult:
+        return VerifyResult(passed=True, reason="ok")
+
+    monkeypatch.setattr("lemma.verifiers.lean.run_lean_verify", fake_verify)
+
+    result = CliRunner().invoke(
+        main,
+        [
+            "mine",
+            "--once",
+            "--registry",
+            str(registry),
+            "--task-id",
+            task.id,
+            "--prover-command",
+            f"{sys.executable} {prover}",
+            "--solver-hotkey",
+            "hk1",
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(output.read_text(encoding="utf-8"))["task_id"] == task.id
+
+
 def test_mine_once_signs_with_configured_wallet(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     keypair = Keypair.create_from_uri("//LemmaCliMiner")
     prover = tmp_path / "prover.py"

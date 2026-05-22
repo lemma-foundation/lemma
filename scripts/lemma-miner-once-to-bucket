@@ -1,0 +1,165 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+instance="${1:?miner instance required}"
+workdir="${LEMMA_APP_DIR:-/opt/lemma-sn467/app}"
+uv_bin="${LEMMA_UV_BIN:-/home/lemma/.local/bin/uv}"
+state_dir="/var/lib/lemma-miners/${instance}"
+bucket_root="${LEMMA_MINER_BUCKET_DIR:-/var/lib/lemma-miner-bucket/${instance}}"
+proof_dir="${LEMMA_PROOF_DIR:-/var/lib/lemma-codex-agent/proofs}"
+
+mkdir -p "$state_dir" "$bucket_root"
+chmod 700 "$state_dir"
+chmod 755 "$bucket_root"
+export HOME=/home/lemma
+export UV_CACHE_DIR=/home/lemma/.cache/uv
+export LEMMA_OPERATOR_DATA_DIR="$state_dir"
+export LEMMA_MINER_BUCKET_DIR="$bucket_root"
+export LEMMA_PROOF_DIR="$proof_dir"
+export LEMMA_LEAN_VERIFY_REMOTE_URL="${LEMMA_LEAN_VERIFY_REMOTE_URL:-http://localhost:8787}"
+export LEMMA_LEAN_VERIFY_WORKSPACE_CACHE_DIR="${LEMMA_LEAN_VERIFY_WORKSPACE_CACHE_DIR:-/var/lib/lemma-lean-cache}"
+export LEMMA_USE_DOCKER="${LEMMA_USE_DOCKER:-1}"
+
+result="$("$uv_bin" --directory "$workdir" run python - <<'PYBUCKET'
+from __future__ import annotations
+
+import json
+import os
+from datetime import UTC, datetime
+from pathlib import Path
+
+from lemma.chain.commitments import submit_storage_commitment, wallet_hotkey_address
+from lemma.chain.epoch_randomness import resolve_chain_drand_epoch_randomness
+from lemma.chain.miner_buckets import (
+    MinerBucketReveal,
+    RevealedBucketBlob,
+    prepare_miner_bucket_publication,
+    write_miner_bucket_publication,
+)
+from lemma.common.config import LemmaSettings
+from lemma.miner import ProverError, mine_once
+from lemma.task_supply import write_registry
+from lemma.tasks import load_task_registry
+from lemma.validator import active_tasks_for_validation, current_active_tempo, task_registry_for_validation
+
+
+def registry_cache_path(tempo: int) -> Path | None:
+    explicit = os.environ.get("LEMMA_ACTIVE_REGISTRY_JSON", "").strip()
+    if explicit:
+        return Path(explicit)
+    root = os.environ.get("LEMMA_ACTIVE_REGISTRY_CACHE_DIR", "").strip()
+    if not root:
+        return None
+    return Path(root) / f"tempo-{tempo}.registry.json"
+
+
+def registry_for_tempo(settings: LemmaSettings, tempo: int):
+    cache_path = registry_cache_path(tempo)
+    if cache_path is not None and cache_path.is_file():
+        return load_task_registry(cache_path.read_bytes()), str(cache_path), False
+    registry = task_registry_for_validation(settings, tempo=tempo)
+    if cache_path is not None:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = cache_path.with_name(cache_path.name + ".tmp")
+        write_registry(registry.tasks, tmp)
+        tmp.replace(cache_path)
+    return registry, str(cache_path) if cache_path is not None else "", True
+
+
+settings = LemmaSettings()
+tempo = current_active_tempo(settings)
+registry, registry_cache, registry_built = registry_for_tempo(settings, tempo)
+active = active_tasks_for_validation(registry, settings, tempo=tempo)
+if not active:
+    print(json.dumps({"idle": True, "reason": "no active tasks"}))
+    raise SystemExit(0)
+
+slot = int(os.environ.get("LEMMA_MINER_SLOT", "0"))
+period = max(1, int(os.environ.get("LEMMA_MINER_ROTATION_SECONDS", "1800")))
+task = active[(slot + int(datetime.now(UTC).timestamp() // period)) % len(active)]
+bucket_root = Path(os.environ["LEMMA_MINER_BUCKET_DIR"])
+bucket_dir = bucket_root / datetime.now(UTC).strftime("run-%Y%m%dT%H%M%SZ")
+try:
+    mined = mine_once(
+        settings,
+        task_id=task.id,
+        prover_command=f"/usr/local/bin/lemma-proof-dir-prover {Path(os.environ['LEMMA_PROOF_DIR'])}",
+        registry=registry,
+        sign=True,
+    )
+except ProverError as e:
+    print(
+        json.dumps(
+            {
+                "idle": True,
+                "task_id": task.id,
+                "reason": str(e),
+                "registry_cache": registry_cache,
+                "registry_built": registry_built,
+            }
+        )
+    )
+    raise SystemExit(0)
+
+miner_hotkey = wallet_hotkey_address(settings)
+randomness = resolve_chain_drand_epoch_randomness(settings, tempo=tempo)
+publication = prepare_miner_bucket_publication(
+    submissions=(mined.submission,),
+    active_tasks=active,
+    tempo=tempo,
+    miner_hotkey=miner_hotkey,
+    drand_round=randomness.drand_round,
+)
+write_miner_bucket_publication(publication, bucket_dir)
+commitment = submit_storage_commitment(settings, publication.commitment_payload)
+if not commitment.success:
+    raise SystemExit(f"commitment failed: {commitment.message}")
+reveal = MinerBucketReveal(
+    tempo=tempo,
+    miner_hotkey=miner_hotkey,
+    drand_round=randomness.drand_round,
+    drand_signature=randomness.drand_signature,
+    commit_block=commitment.block_number or 0,
+    commit_extrinsic_hash=commitment.extrinsic_hash or "unknown",
+    merkle_root=publication.merkle_root,
+    blobs=tuple(
+        RevealedBucketBlob(slot_index=blob.slot_index, ciphertext=blob.ciphertext, proof_script=mined.submission.proof_script)
+        for blob in publication.blobs
+    ),
+)
+reveal_path = bucket_dir / "bucket-reveal.jsonl"
+reveal_path.write_text(reveal.model_dump_json() + "\n", encoding="utf-8")
+print(
+    json.dumps(
+        {
+            "idle": False,
+            "task_id": task.id,
+            "reveal_path": str(reveal_path),
+            "registry_cache": registry_cache,
+            "registry_built": registry_built,
+        }
+    )
+)
+PYBUCKET
+)"
+
+idle="$(printf '%s' "$result" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("idle", False))')"
+task_id="$(printf '%s' "$result" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("task_id", ""))')"
+if [[ "$idle" == "True" ]]; then
+  reason="$(printf '%s' "$result" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("reason", "idle"))')"
+  echo "bucket miner idle task=${task_id}: ${reason}"
+  exit 0
+fi
+reveal="$(printf '%s' "$result" | python3 -c 'import json,sys; print(json.load(sys.stdin)["reveal_path"])')"
+stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+safe_instance="${instance//[^A-Za-z0-9_.-]/_}"
+remote_name="bucket-${safe_instance}-${stamp}-$$.json"
+/usr/bin/ssh \
+  -i /etc/lemma-miners/spool_ed25519 \
+  -o BatchMode=yes \
+  -o IdentitiesOnly=yes \
+  -o StrictHostKeyChecking=accept-new \
+  -o ConnectTimeout=10 \
+  "${LEMMA_VALIDATOR_SPOOL_TARGET:?}" \
+  "$remote_name" < "$reveal"
+echo "delivered ${remote_name} task=${task_id}"
