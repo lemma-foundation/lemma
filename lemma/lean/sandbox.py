@@ -19,8 +19,10 @@ from pydantic import BaseModel, Field
 from lemma.lean.cheats import (
     axiom_scan_ok,
     declaration_fingerprints_from_lean_output,
+    kernel_dependencies_from_lean_output,
     lake_build_environment_failed,
     lean_driver_failed,
+    proof_term_hash_from_lean_output,
     structural_fingerprint_from_lean_output,
 )
 from lemma.lean.submission_policy import (
@@ -139,6 +141,7 @@ class VerifyResult(BaseModel):
     proof_term_hash: str | None = None
     structural_fingerprint: str | None = None
     declaration_fingerprints: dict[str, str] = Field(default_factory=dict)
+    kernel_dependencies: tuple[str, ...] = ()
 
 
 class LeanSandbox:
@@ -416,8 +419,10 @@ class LeanSandbox:
             reason="ok",
             stdout_tail=out[-2000:],
             build_seconds=elapsed,
+            proof_term_hash=proof_term_hash_from_lean_output(out),
             structural_fingerprint=structural_fingerprint_from_lean_output(out),
             declaration_fingerprints=declaration_fingerprints_from_lean_output(out),
+            kernel_dependencies=kernel_dependencies_from_lean_output(out),
         )
 
     def _docker_worker_host_root(self) -> Path | None:
@@ -533,8 +538,10 @@ class LeanSandbox:
             reason="ok",
             stdout_tail=text[-2000:],
             build_seconds=elapsed,
+            proof_term_hash=proof_term_hash_from_lean_output(text),
             structural_fingerprint=structural_fingerprint_from_lean_output(text),
             declaration_fingerprints=declaration_fingerprints_from_lean_output(text),
+            kernel_dependencies=kernel_dependencies_from_lean_output(text),
         )
 
     def _verify_docker_cli_exec(

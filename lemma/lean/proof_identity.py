@@ -28,8 +28,10 @@ class ProofIdentity:
 
 
 def identity_strength(source: str) -> ProofIdentityStrength:
-    if source in {"proof_term_hash", "normalized_proof_term_hash", "structural_fingerprint"}:
+    if source in {"proof_term_hash", "normalized_proof_term_hash"}:
         return "strong"
+    if source == "structural_fingerprint":
+        return "medium"
     return "weak"
 
 
@@ -48,7 +50,7 @@ def proof_identity(
         return ProofIdentity(
             value=structural,
             source="structural_fingerprint",
-            strength="strong",
+            strength="medium",
             proof_term_hash=None,
         )
     if proof_script is not None:

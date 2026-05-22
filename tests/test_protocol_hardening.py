@@ -76,13 +76,18 @@ def _procedural_metadata(
         "mutation_chain": [
             {
                 "operator": "generalize",
-                "params": {"target": "fresh_prop_hypothesis", "binder": "p", "binder_type": "Prop"},
+                "params": {
+                    "target": "fresh_prop_hypothesis",
+                    "binder": "p",
+                    "binder_type": "Prop",
+                    "engine": "lean_ast_elaborator",
+                },
                 "input_hash": "1" * 64,
                 "output_hash": "2" * 64,
             },
             {
                 "operator": "specialize",
-                "params": {"binder": "p", "binder_type": "Prop", "value": "True"},
+                "params": {"binder": "p", "binder_type": "Prop", "value": "True", "engine": "lean_ast_elaborator"},
                 "input_hash": "2" * 64,
                 "output_hash": "3" * 64,
             },
@@ -218,7 +223,7 @@ def test_strong_identity_makes_useful_graph_row_full_reward_eligible() -> None:
     assert row.dependencies.mathlib_imports == ("Mathlib",)
 
 
-def test_structural_fingerprint_counts_as_strong_identity() -> None:
+def test_structural_fingerprint_counts_as_medium_identity() -> None:
     task = _task()
     submission = build_submission(task, solver_hotkey="hk", proof_script=_proof())
 
@@ -232,7 +237,8 @@ def test_structural_fingerprint_counts_as_strong_identity() -> None:
 
     assert row.proof_identity == "structural-hash"
     assert row.proof_identity_source == "structural_fingerprint"
-    assert row.proof_identity_strength == "strong"
+    assert row.proof_identity_strength == "medium"
+    assert row.full_reward_eligible is False
 
 
 def test_weak_identity_row_can_be_valid_without_full_reward_eligibility() -> None:
@@ -498,6 +504,16 @@ def test_production_mode_rejects_unpinned_operator_params() -> None:
     tampered = task.model_copy(update={"metadata": {**metadata, "mutation_chain": chain}})
 
     assert production_supply_rejection_reason(tampered) == "mutation_params"
+
+
+def test_production_mode_rejects_non_lean_ast_mutation_engine() -> None:
+    task = _production_task()
+    metadata = dict(task.metadata)
+    chain = [dict(step) for step in metadata["mutation_chain"]]
+    chain[0] = {**chain[0], "params": {**chain[0]["params"], "engine": "preview"}}
+    tampered = task.model_copy(update={"metadata": {**metadata, "mutation_chain": chain}})
+
+    assert production_supply_rejection_reason(tampered) == "mutation_engine"
 
 
 def test_production_mode_rejects_missing_novelty_cache_receipt() -> None:

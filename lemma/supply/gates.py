@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Protocol
@@ -22,6 +24,7 @@ from lemma.supply.types import TaskCandidate
 GATE_VERSION = "lemma-procedural-gates-v3"
 _TYPECHECK_GATE_DECL = "LemmaProceduralGate.typecheck_gate"
 _PROP_GATE_DECL = "LemmaProceduralGate.prop_gate"
+_KERNEL_NORMAL_MARKER = "LEMMA_KERNEL_NORMAL_FORM "
 TRIVIALITY_STACK = (
     ("trivial", "  trivial"),
     ("simp", "  simp"),
@@ -134,11 +137,16 @@ class LeanProceduralGateRunner:
             fingerprint_name=_TYPECHECK_GATE_DECL,
         )
         prop = (
-            self._compile_gate(candidate, _prop_gate_source(candidate), fingerprint_name=_PROP_GATE_DECL)
+            self._compile_gate(
+                candidate,
+                _prop_gate_source(candidate),
+                fingerprint_name=_PROP_GATE_DECL,
+                eval_commands=("#eval! LemmaProceduralGate.emit_kernel_normal",),
+            )
             if typecheck.passed
             else typecheck
         )
-        kernel_hash = _declaration_fingerprint(prop, _PROP_GATE_DECL) if prop.passed else ""
+        kernel_hash = _kernel_normal_hash(prop) if prop.passed else ""
         novelty = (
             _novelty_status(candidate, seen_canonical_hashes, self.novelty_cache, canonical_hash=kernel_hash)
             if kernel_hash
@@ -158,7 +166,7 @@ class LeanProceduralGateRunner:
                 "typecheck_reason": typecheck.reason,
                 "prop_gate_reason": prop.reason,
                 "kernel_canonical_hash": kernel_hash,
-                "kernel_canonical_name": _PROP_GATE_DECL,
+                "kernel_canonical_name": "LemmaProceduralGate.kernel_normal_form",
                 "canonical_hash": kernel_hash or candidate.metadata.get("canonical_hash"),
                 "triviality_stack": [name for name, _body in TRIVIALITY_STACK],
                 "triviality_reason": baseline_reason,
@@ -169,8 +177,15 @@ class LeanProceduralGateRunner:
             },
         )
 
-    def _compile_gate(self, candidate: TaskCandidate, gate_source: str, *, fingerprint_name: str) -> VerifyResult:
-        problem = _gate_problem(candidate, gate_source, fingerprint_name=fingerprint_name)
+    def _compile_gate(
+        self,
+        candidate: TaskCandidate,
+        gate_source: str,
+        *,
+        fingerprint_name: str,
+        eval_commands: tuple[str, ...] = (),
+    ) -> VerifyResult:
+        problem = _gate_problem(candidate, gate_source, fingerprint_name=fingerprint_name, eval_commands=eval_commands)
         return run_lean_verify(
             self.settings,
             verify_timeout_s=self.gate_timeout_s,
@@ -205,12 +220,22 @@ def _novelty_status(
     statement_hash = str(candidate.metadata.get("statement_hash") or "")
     canonical = str(canonical_hash or candidate.metadata.get("canonical_hash") or "")
     seen = set(seen_hashes)
+    if canonical_hash is not None:
+        if canonical in seen:
+            return "duplicate"
+        return "duplicate" if novelty_cache.contains(canonical) else "passed"
     if statement_hash in seen or canonical in seen:
         return "duplicate"
     return "duplicate" if novelty_cache.contains(statement_hash) or novelty_cache.contains(canonical) else "passed"
 
 
-def _gate_problem(candidate: TaskCandidate, gate_source: str, *, fingerprint_name: str) -> Problem:
+def _gate_problem(
+    candidate: TaskCandidate,
+    gate_source: str,
+    *,
+    fingerprint_name: str,
+    eval_commands: tuple[str, ...] = (),
+) -> Problem:
     return Problem(
         id=f"{candidate.id}.gate",
         theorem_name="lemma_gate_dummy",
@@ -223,14 +248,19 @@ def _gate_problem(candidate: TaskCandidate, gate_source: str, *, fingerprint_nam
             "challenge_full": gate_source,
             "lean_build_target": "Challenge",
             "lean_fingerprint_names": (fingerprint_name,),
+            "lean_eval_commands": eval_commands,
             "submission_policy": "strict_envelope",
         },
     )
 
 
-def _declaration_fingerprint(result: VerifyResult, name: str) -> str:
-    value = result.declaration_fingerprints.get(name, "")
-    return value if len(value) == 64 else ""
+def _kernel_normal_hash(result: VerifyResult) -> str:
+    for line in (result.stdout_tail + "\n" + result.stderr_tail).splitlines():
+        if line.startswith(_KERNEL_NORMAL_MARKER):
+            payload = line.removeprefix(_KERNEL_NORMAL_MARKER).strip()
+            if payload:
+                return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    return ""
 
 
 def _typecheck_gate_source(candidate: TaskCandidate) -> str:
@@ -249,7 +279,55 @@ def _typecheck_gate_source(candidate: TaskCandidate) -> str:
 def _prop_gate_source(candidate: TaskCandidate) -> str:
     return "\n".join(
         [
+            "import Lean",
+            "",
+            "open Lean",
+            "",
             "namespace LemmaProceduralGate",
+            "",
+            f"def canonicalSource : String := {_json_string(candidate.type_expr)}",
+            "",
+            "def parseTermOrThrow (source : String) : Elab.Command.CommandElabM (TSyntax `term) := do",
+            "  let env ← getEnv",
+            "  match Parser.runParserCategory env `term source with",
+            "  | Except.ok stx => pure ⟨stx⟩",
+            "  | Except.error e => throwError e",
+            "",
+            "def binderInfoKey : BinderInfo → String",
+            "  | BinderInfo.default => \"default\"",
+            "  | BinderInfo.implicit => \"implicit\"",
+            "  | BinderInfo.strictImplicit => \"strictImplicit\"",
+            "  | BinderInfo.instImplicit => \"instImplicit\"",
+            "",
+            "def literalKey : Literal → String",
+            "  | Literal.natVal n => \"nat:\" ++ toString n",
+            "  | Literal.strVal value => \"str:\" ++ reprStr value",
+            "",
+            "partial def exprKey : Expr → String",
+            "  | Expr.bvar i => \"bvar:\" ++ toString i",
+            "  | Expr.fvar id => \"fvar:\" ++ toString id.name",
+            "  | Expr.mvar id => \"mvar:\" ++ toString id.name",
+            "  | Expr.sort level => \"sort:\" ++ toString level",
+            "  | Expr.const name levels => \"const:\" ++ name.toString ++ \":\" ++ toString levels",
+            "  | Expr.app fn arg => \"(app \" ++ exprKey fn ++ \" \" ++ exprKey arg ++ \")\"",
+            "  | Expr.lam _ domain body info =>",
+            "      \"(lam \" ++ binderInfoKey info ++ \" \" ++ exprKey domain ++ \" \" ++ exprKey body ++ \")\"",
+            "  | Expr.forallE _ domain body info =>",
+            "      \"(forall \" ++ binderInfoKey info ++ \" \" ++ exprKey domain ++ \" \" ++ exprKey body ++ \")\"",
+            "  | Expr.letE _ type value body _ =>",
+            "      \"(let \" ++ exprKey type ++ \" \" ++ exprKey value ++ \" \" ++ exprKey body ++ \")\"",
+            "  | Expr.lit literal => \"lit:\" ++ literalKey literal",
+            "  | Expr.mdata _ body => exprKey body",
+            "  | Expr.proj structName index body =>",
+            "      \"(proj \" ++ structName.toString ++ \" \" ++ toString index ++ \" \" ++ exprKey body ++ \")\"",
+            "",
+            "def emit_kernel_normal : Elab.Command.CommandElabM Unit := do",
+            "  let stx ← parseTermOrThrow canonicalSource",
+            "  Elab.Command.runTermElabM fun _ => do",
+            "    let expr ← Elab.Term.elabType stx.raw",
+            "    let expr ← instantiateMVars expr",
+            "    let normal ← Meta.reduceAll expr",
+            "    IO.println <| \"LEMMA_KERNEL_NORMAL_FORM \" ++ exprKey normal",
             "",
             f"theorem prop_gate : ({candidate.type_expr}) := by",
             "  sorry",
@@ -257,6 +335,10 @@ def _prop_gate_source(candidate: TaskCandidate) -> str:
             "end LemmaProceduralGate",
         ]
     )
+
+
+def _json_string(value: str) -> str:
+    return json.dumps(value, ensure_ascii=False)
 
 
 def _dummy_submission(candidate: TaskCandidate) -> str:

@@ -298,6 +298,237 @@ def mine_cmd(
         click.echo(text)
 
 
+@main.group("miner", hidden=True)
+def miner_cmd() -> None:
+    """Advanced miner protocol tools."""
+
+
+@miner_cmd.group("bucket")
+def miner_bucket_cmd() -> None:
+    """Build and publish commitment-anchored miner buckets."""
+
+
+def _read_submission_packages(paths: tuple[Path, ...]):
+    from lemma.submissions import LemmaSubmission
+
+    submissions: list[LemmaSubmission] = []
+    for path in paths:
+        text = path.read_text(encoding="utf-8")
+        if path.suffix == ".jsonl":
+            for no, line in enumerate(text.splitlines(), start=1):
+                if line.strip():
+                    try:
+                        submissions.append(LemmaSubmission.model_validate_json(line))
+                    except ValueError as e:
+                        raise click.ClickException(f"{path}:{no}: invalid submission: {e}") from e
+            continue
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError as e:
+            raise click.ClickException(f"{path}: invalid JSON: {e}") from e
+        rows = payload if isinstance(payload, list) else [payload]
+        for row in rows:
+            try:
+                submissions.append(LemmaSubmission.model_validate(row))
+            except ValueError as e:
+                raise click.ClickException(f"{path}: invalid submission: {e}") from e
+    return tuple(submissions)
+
+
+def _s3_object_uri(s3_uri: str, key: str) -> str:
+    return s3_uri.rstrip("/") + "/" + key.lstrip("/")
+
+
+def _bucket_url_from_s3_uri(s3_uri: str, endpoint_url: str) -> str:
+    from urllib.parse import urlparse
+
+    parsed = urlparse(s3_uri)
+    if parsed.scheme != "s3" or not parsed.netloc:
+        raise click.ClickException("--s3-uri must look like s3://bucket/optional-prefix")
+    prefix = parsed.path.strip("/")
+    base = endpoint_url.rstrip("/") + "/" + parsed.netloc
+    return base + (f"/{prefix}" if prefix else "")
+
+
+def _aws_command(value: str | None) -> list[str]:
+    import shlex
+    import shutil
+
+    if value:
+        return shlex.split(value)
+    if aws := shutil.which("aws"):
+        return [aws]
+    if uvx := shutil.which("uvx"):
+        return [uvx, "--from", "awscli", "aws"]
+    raise click.ClickException("missing aws CLI; install awscli or uv, or pass --aws-command")
+
+
+def _run_external_command(command: list[str], *, dry_run: bool, capture_output: bool = False) -> bytes:
+    import shlex
+    import subprocess
+
+    click.echo("$ " + shlex.join(command), err=True)
+    if dry_run:
+        return b""
+    completed = subprocess.run(command, check=True, capture_output=capture_output)  # noqa: S603
+    return completed.stdout if capture_output else b""
+
+
+@miner_bucket_cmd.command("publish")
+@click.option(
+    "--submission",
+    "submission_paths",
+    multiple=True,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    required=True,
+    help="Submission JSON or JSONL file to include if its task is in the active window.",
+)
+@click.option("--tempo", type=int, default=None, help="Tempo to publish; defaults to the current active tempo.")
+@click.option("--drand-round", type=int, required=True, help="Drand round that opens the bucket.")
+@click.option("--miner-hotkey", required=True, help="Miner hotkey SS58 address used for the chain commitment.")
+@click.option("--output-dir", type=click.Path(file_okay=False, path_type=Path), required=True)
+@click.option("--bucket-url", default="", help="Public bucket URL validators poll.")
+@click.option("--s3-uri", default="", help="Optional Hippius/AWS S3 destination, e.g. s3://bucket/miner-a.")
+@click.option("--endpoint-url", default="https://s3.hippius.com", show_default=True)
+@click.option("--aws-command", default=None, help='AWS CLI command, default: "aws" or "uvx --from awscli aws".')
+@click.option("--verify-upload", is_flag=True, help="Read uploaded objects back and compare ciphertext hashes.")
+@click.option("--submit-commitment", is_flag=True, help="Submit the Merkle-root commitment with the configured wallet.")
+@click.option("--readback-commitment", is_flag=True, help="Read back the chain commitment after publishing.")
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Write local bucket files and print external commands without running them.",
+)
+def miner_bucket_publish_cmd(
+    submission_paths: tuple[Path, ...],
+    tempo: int | None,
+    drand_round: int,
+    miner_hotkey: str,
+    output_dir: Path,
+    bucket_url: str,
+    s3_uri: str,
+    endpoint_url: str,
+    aws_command: str | None,
+    verify_upload: bool,
+    submit_commitment: bool,
+    readback_commitment: bool,
+    dry_run: bool,
+) -> None:
+    """Prepare and optionally upload a timelocked miner bucket."""
+    from lemma.chain.commitments import read_storage_commitment, submit_storage_commitment
+    from lemma.chain.miner_buckets import prepare_miner_bucket_publication, write_miner_bucket_publication
+    from lemma.validator import active_tasks_for_validation, current_active_tempo, task_registry_for_validation
+
+    settings = LemmaSettings()
+    active_tempo = current_active_tempo(settings) if tempo is None else tempo
+    registry = task_registry_for_validation(settings, tempo=active_tempo)
+    active_tasks = active_tasks_for_validation(registry, settings, tempo=active_tempo)
+    public_bucket_url = bucket_url or (_bucket_url_from_s3_uri(s3_uri, endpoint_url) if s3_uri else "")
+    publication = prepare_miner_bucket_publication(
+        submissions=_read_submission_packages(submission_paths),
+        active_tasks=active_tasks,
+        tempo=active_tempo,
+        miner_hotkey=miner_hotkey,
+        drand_round=drand_round,
+        bucket_url=public_bucket_url,
+    )
+    write_miner_bucket_publication(publication, output_dir)
+
+    uploaded = False
+    if s3_uri:
+        aws = _aws_command(aws_command)
+        for blob in publication.blobs:
+            _run_external_command(
+                [
+                    *aws,
+                    "s3",
+                    "cp",
+                    str(output_dir / blob.key),
+                    _s3_object_uri(s3_uri, blob.key),
+                    "--endpoint-url",
+                    endpoint_url,
+                    "--only-show-errors",
+                ],
+                dry_run=dry_run,
+            )
+        uploaded = not dry_run
+        if verify_upload:
+            from lemma.chain.commitments import ciphertext_sha256
+
+            for blob in publication.blobs:
+                body = _run_external_command(
+                    [
+                        *aws,
+                        "s3",
+                        "cp",
+                        _s3_object_uri(s3_uri, blob.key),
+                        "-",
+                        "--endpoint-url",
+                        endpoint_url,
+                        "--only-show-errors",
+                    ],
+                    dry_run=dry_run,
+                    capture_output=True,
+                )
+                if not dry_run and ciphertext_sha256(body) != blob.ciphertext_sha256:
+                    raise click.ClickException(f"uploaded object hash mismatch: {blob.key}")
+
+    commitment_submission: dict[str, object] | None = None
+    readback_payload = ""
+    readback_matches: bool | None = None
+    readback_hotkey = miner_hotkey
+    if submit_commitment:
+        if dry_run:
+            click.echo(f"# would submit commitment: {publication.commitment_payload}", err=True)
+        else:
+            submitted = submit_storage_commitment(settings, publication.commitment_payload)
+            readback_hotkey = submitted.hotkey
+            commitment_submission = {
+                "block_hash": submitted.block_hash,
+                "block_number": submitted.block_number,
+                "extrinsic_fee_rao": submitted.extrinsic_fee_rao,
+                "extrinsic_function": submitted.extrinsic_function,
+                "extrinsic_hash": submitted.extrinsic_hash,
+                "message": submitted.message,
+                "success": submitted.success,
+            }
+            if not submitted.success:
+                raise click.ClickException(submitted.message or "commitment submission failed")
+    if (readback_commitment or submit_commitment) and not dry_run:
+        readback_payload = read_storage_commitment(settings, hotkey=readback_hotkey)
+        readback_matches = readback_payload == publication.commitment_payload
+
+    click.echo(
+        json.dumps(
+            {
+                "bucket_url": publication.bucket_url,
+                "commitment_payload": publication.commitment_payload,
+                "commitment_readback_matches": readback_matches,
+                "commitment_submission": commitment_submission,
+                "drand_round": publication.drand_round,
+                "dry_run": dry_run,
+                "merkle_root": publication.merkle_root,
+                "objects": [
+                    {
+                        "ciphertext_sha256": blob.ciphertext_sha256,
+                        "key": blob.key,
+                        "slot_index": blob.slot_index,
+                        "task_id": blob.task_id,
+                    }
+                    for blob in publication.blobs
+                ],
+                "output_dir": str(output_dir),
+                "readback_payload": readback_payload,
+                "s3_uri": s3_uri,
+                "tempo": publication.tempo,
+                "uploaded": uploaded,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+
+
 @main.group("tasks", cls=LemmaGroup, hidden=True)
 def tasks_cmd() -> None:
     """List, pull, and show Lean theorem tasks."""
@@ -554,6 +785,7 @@ def tasks_generate_procedural_depth2_cmd(
     from lemma.supply.gates import AssumedProceduralGateRunner, LeanProceduralGateRunner
     from lemma.supply.import_graph import empty_import_graph, read_import_graph
     from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
+    from lemma.supply.mutation import LeanAstMutationEngine
     from lemma.supply.novelty import empty_novelty_cache, read_novelty_cache
     from lemma.supply.procedural import corpus_sources_from_dir, generate_depth2_candidates, source_pool_hash
     from lemma.supply.triviality_budget import triviality_budget_receipt_for_settings
@@ -582,6 +814,7 @@ def tasks_generate_procedural_depth2_cmd(
         citation_alpha=citation_alpha,
         citation_weight_cap=citation_weight_cap,
         citation_window_tempos=citation_window_tempos,
+        mutation_engine=None if assume_gates else LeanAstMutationEngine(settings),
         gate_runner=AssumedProceduralGateRunner(novelty_cache=novelty_cache, import_graph=import_graph)
         if assume_gates
         else LeanProceduralGateRunner(
@@ -673,6 +906,7 @@ def tasks_rebuild_procedural_registry_cmd(
     from lemma.supply.gates import LeanProceduralGateRunner
     from lemma.supply.import_graph import empty_import_graph, read_import_graph
     from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
+    from lemma.supply.mutation import LeanAstMutationEngine
     from lemma.supply.novelty import empty_novelty_cache, read_novelty_cache
     from lemma.supply.procedural import (
         build_procedural_registry_tasks,
@@ -707,6 +941,7 @@ def tasks_rebuild_procedural_registry_cmd(
         citation_alpha=citation_alpha,
         citation_weight_cap=citation_weight_cap,
         citation_window_tempos=citation_window_tempos,
+        mutation_engine=LeanAstMutationEngine(settings),
         gate_runner=LeanProceduralGateRunner(
             settings,
             triviality_budget_receipt=triviality_budget,

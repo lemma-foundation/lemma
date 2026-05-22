@@ -38,12 +38,13 @@ uv run lemma tasks rebuild-procedural-registry \
 
 The procedural builder rejects paid candidates that do not carry procedural
 depth-2 metadata, chain/drand anchoring, clean license state, deterministic
-public import-graph slot-weight receipt metadata, Lean-printed `kernel_canonical_hash`,
+public import-graph slot-weight estimate metadata, Lean-elaborated kernel-normal `kernel_canonical_hash`,
 deterministic public novelty-cache metadata,
 deterministic `T(t)` retarget metadata, and a Lean-backed generation receipt. The receipt
 must come from the `lean` gate runner, which runs typecheck, Prop, kernel-canonical novelty, the
 pinned triviality stack at the public burn-rate-retargeted budget, and
-import/dependency slot-weight calculation before paid activation.
+pre-proof dependency estimation before paid activation. Accepted proof verification records the actual
+Lean kernel dependencies, and rewarded slot weights are recomputed from that recorded dependency set.
 
 The mixed builder remains available for local smoke and curriculum work. It is not the paid production path.
 
@@ -93,7 +94,7 @@ Run the operator preflight before accepting submissions:
 uv run lemma operator preflight
 ```
 
-The command fails if the procedural source pool is not pinned in production mode, generated rows do not carry the chain-pinned operator bundle plus drand-keyed mutation params, the active window cannot fill `K`, output directories cannot be prepared, or the Lean verifier backend is not configured.
+The command fails if the procedural source pool is not pinned in production mode, generated rows do not carry the chain-pinned Lean AST/elaborator mutation bundle plus drand-keyed mutation params, the active window cannot fill `K`, output directories cannot be prepared, or the Lean verifier backend is not configured.
 It emits a versioned JSON report with `schema_version`, `ok`, `registry_sha256`, `active_K`, `frontier_depth`, and `checks`.
 
 For reproducible support/debugging, write a diagnostics file before accepting submissions:
@@ -117,9 +118,23 @@ uv run lemma validate \
 
 For a development file inbox, use `--submission-spool submission-spool` instead. The spool accepts top-level `.json` and `.jsonl` submission files and moves consumed files to `processed/` after a successful validator pass. For a mainnet-shaped bucket reveal fixture, use `--bucket-reveals-jsonl bucket-reveals.jsonl`; the validator checks the miner Merkle root before scoring. Add `--verify-chain-commitments` to read miner commitments from chain, and add `--verify-drand-reveals` to decrypt ciphertexts and require the decrypted proof to match the reveal; production mode enables both checks for bucket reveals.
 
+Miners can publish those bucket objects with:
+
+```bash
+uv run lemma miner bucket publish \
+  --submission submission.json \
+  --tempo <tempo> \
+  --drand-round <round> \
+  --miner-hotkey <hotkey> \
+  --output-dir validator-data/miner-bucket \
+  --s3-uri s3://<public-bucket>/<miner-prefix> \
+  --verify-upload \
+  --submit-commitment
+```
+
 For live bucket polling, pass `--miner-buckets-json miner-buckets.json --bucket-drand-round <round> --bucket-drand-signature <signature>`. The JSON object maps miner hotkey to public bucket URL; the validator reads the miners' chain Merkle commitments, fetches canonical `tempo_<t>/slot_<i>.bin` objects, decrypts after drand reveal, and feeds the resulting rows through the same bucket reveal checks.
 
-The validator rejects submissions outside the active window, task-version mismatches, target-hash mismatches, duplicate winning proofs, and policy failures. Rank-0 accepted proofs earn their deterministic active slot share; unsolved-slot value becomes `unearned_share` and is burned by default. Each pass appends one public-safe row to `validator-runs.jsonl` with the registry hash, active K, frontier depth, verified count, accepted unique count, corpus row count, unearned share, unearned policy, canonical active/accepted digests, and `weights_set`. Smoke passes should use `--no-set-weights` and omit `--set-commitment`; live weight writes require both `LEMMA_ENABLE_SET_WEIGHTS=1` and `--set-weights`, and live tempo commitments require both `LEMMA_ENABLE_SET_COMMITMENT=1` and `--set-commitment`. On commit-reveal subnets, the writer waits until the final 10 blocks of the tempo before submitting weights. Each attempted live write appends a public-safe receipt with the resolved UID vector or tempo commitment payload, network, netuid, success flag, sanitized client message, and extrinsic hash when available.
+The validator rejects submissions outside the active window, task-version mismatches, target-hash mismatches, duplicate winning proofs, and policy failures. Rank-0 accepted proofs earn their deterministic active slot share; unsolved-slot value becomes `unearned_share` and is burned by default. Each pass appends one public-safe row to `validator-runs.jsonl` with the registry hash, active K, frontier depth, verified count, accepted unique count, corpus row count, unearned share, unearned policy, canonical active/accepted digests, and `weights_set`. Smoke passes should use `--no-set-weights` and omit `--set-commitment`; live weight writes require both `LEMMA_ENABLE_SET_WEIGHTS=1` and `--set-weights`, and live tempo commitments require `LEMMA_CANONICAL_PUBLISH_IPFS_API_URL`, `LEMMA_ENABLE_SET_COMMITMENT=1`, and `--set-commitment`. On commit-reveal subnets, the writer waits until the final 10 blocks of the tempo before submitting weights. Each attempted live write appends a public-safe receipt with the resolved UID vector or tempo commitment payload, network, netuid, success flag, sanitized client message, and extrinsic hash when available.
 In production, set `LEMMA_REQUIRE_SUBMISSION_SIGNATURES=1`, `LEMMA_REQUIRE_COMMIT_REVEAL=1`, and `LEMMA_REQUIRE_STRONG_PROOF_IDENTITY=1`. Live miner authentication comes from the miner's chain commitment to the bucket Merkle root. Weak script identity can still be written as corpus metadata, but it does not receive paid reward.
 
 After the validator pass, capture diagnostics again:

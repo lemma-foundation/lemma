@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from lemma.chain.commitments import (
     compact_storage_commitment_payload,
+    compact_tempo_cid_commitment_payload,
     compact_tempo_commitment_payload,
     latest_storage_commitment_file,
     load_storage_commitment,
@@ -103,6 +104,31 @@ def test_storage_commitment_payload_prefers_active_pool_tempo_payload(tmp_path: 
         accepted_merkle_root="a" * 64,
     )
     data["active_pool_directory_sha256"] = active
+    data["tempo_commitment_payload"] = expected
+    data["commitment_payload"] = expected
+    path.write_text(json.dumps(data) + "\n", encoding="utf-8")
+
+    assert storage_commitment_payload(path) == expected
+
+
+def test_storage_commitment_payload_prefers_cid_bound_tempo_payload(tmp_path: Path) -> None:
+    path = _commitment(tmp_path, 7)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    active = "c" * 64
+    active_cid = "bafyactive"
+    accepted_cid = "bafyaccepted"
+    expected = compact_tempo_cid_commitment_payload(
+        netuid="sn467",
+        tempo=7,
+        active_pool_directory_cid=active_cid,
+        active_pool_directory_sha256=active,
+        accepted_directory_cid=accepted_cid,
+        accepted_directory_sha256="b" * 64,
+        accepted_merkle_root="a" * 64,
+    )
+    data["active_pool_directory_cid"] = active_cid
+    data["active_pool_directory_sha256"] = active
+    data["tempo_directory_cid"] = accepted_cid
     data["tempo_commitment_payload"] = expected
     data["commitment_payload"] = expected
     path.write_text(json.dumps(data) + "\n", encoding="utf-8")

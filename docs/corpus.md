@@ -11,12 +11,14 @@ The public smoke corpus is published at [lemma-foundation/lemma-corpus](https://
 The current public storage shape is:
 
 - Content-addressed canonical artifacts under `canonical/<netuid>/`.
-- Hippius S3/Arion as the current byte resolver until Hippius IPFS pinning is available in the public toolchain.
+- IPFS CIDs for live chain commitments when `LEMMA_CANONICAL_PUBLISH_IPFS_API_URL` is configured.
+- Hippius S3/Arion as the byte mirror and fallback resolver.
 - GitHub immutable releases as the public mirror.
 - Hugging Face dataset snapshots as the ML-consumer mirror.
 - `MANIFEST.sha256` and `canonical/<netuid>/storage-index.json` as the hash checklist for each timestamped snapshot.
 
 Keep Hippius writes append-only in practice: publish a new `snapshots/<timestamp>/` prefix and do not sync with `--delete`.
+For live validator tempos, set `LEMMA_CANONICAL_PUBLISH_IPFS_API_URL=http://<ipfs-node>:5001` so each pass publishes the active-pool and accepted-entry directories to IPFS, verifies readback by CID, and writes a CID-bound tempo commitment. Set `LEMMA_CANONICAL_PUBLISH_S3_URI=s3://<bucket>/<canonical-prefix>` to also mirror the bytes to Hippius S3.
 
 The publisher builds one deterministic directory per accepted epoch:
 
@@ -27,7 +29,7 @@ canonical/sn467/tempos/tempo-000001/
 canonical/sn467/commitments/tempo-000001.json
 ```
 
-`manifest.json` records per-entry SHA256 hashes and the accepted-entry Merkle root. `commitments/tempo-*.json` records the payload shape that should later be committed on chain. Today the resolver label defaults to `hippius-s3-arion`; the directory shape is CID-ready, so the resolver can move to Hippius IPFS without changing the corpus entry bytes.
+`manifest.json` records per-entry SHA256 hashes and the accepted-entry Merkle root. `commitments/tempo-*.json` records the payload shape committed on chain. When IPFS publishing is configured, that payload binds the active-pool CID, accepted-entry CID, their directory hashes, and the accepted Merkle root. The snapshot publisher still defaults to the `hippius-s3-arion` resolver for the public mirror.
 
 From the Lemma repo, publish a prepared `lemma-corpus` checkout with:
 
@@ -143,7 +145,7 @@ frontier_depth
 ema_solve_rate
 ```
 
-`row_id` is the SHA256 of `target_sha256`, `proof_sha256`, `solver_hotkey`, and `validator_hotkey`. `proof_sha256` is the script hash. `proof_term_hash` is filled only when the Lean proof-term extractor provides it. A Lean-derived `structural_fingerprint` can also supply strong identity. If neither strong identity is available, `proof_identity_source` is `normalized_script_sha256` or `script_sha256`, and `proof_identity_strength` is `weak`.
+`row_id` is the SHA256 of `target_sha256`, `proof_sha256`, `solver_hotkey`, and `validator_hotkey`. `proof_sha256` is the script hash. `proof_term_hash` is filled only when Lean emits the kernel proof-expression identity. A Lean-derived `structural_fingerprint` can still be stored as replay metadata, but it is not strong paid identity. If no proof-term hash is available, `proof_identity_source` is below strong identity and cannot earn production rewards.
 
 `dependencies` and `graph` make each row part of the mathematical corpus graph. The initial graph links task, proof, proof identity, source, verifier, solver, and validator nodes. Future mechanisms should extend this graph rather than creating disconnected state.
 

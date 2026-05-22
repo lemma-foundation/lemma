@@ -40,6 +40,16 @@ def encode_ciphertext(ciphertext: bytes) -> str:
     return "base64:" + base64.b64encode(ciphertext).decode("ascii")
 
 
+def encrypt_timelocked_payload(payload: bytes, reveal_round: int) -> bytes:
+    """Encrypt bytes so they can be opened at one Drand round."""
+    import bittensor_drand
+
+    encrypted, actual_round = bittensor_drand.encrypt_at_round(payload, reveal_round)
+    if int(actual_round) != reveal_round:
+        raise ValueError(f"drand encrypt returned round {actual_round}, expected {reveal_round}")
+    return bytes(encrypted)
+
+
 def decrypt_timelocked_payload(ciphertext: str, signature_hex: str | None = None) -> bytes:
     """Decrypt a bittensor-drand ciphertext after its reveal round."""
     import bittensor_drand

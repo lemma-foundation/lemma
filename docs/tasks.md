@@ -94,18 +94,24 @@ uv run lemma tasks rebuild-procedural-registry \
 ```
 
 The procedural generator derives rows from the source pool and epoch seed; it is
-not a static playlist. Each mutation step records the chain-pinned operator
-bundle version, the selected operator, its drand-keyed params, and the
-input/output statement hashes. Generated rows also carry a source-pool receipt
-covering the source-pool hash, source count, stream counts, citation-weighted
-fraction, per-entry cap, and citation window. The procedural builder rejects paid rows unless
-they carry procedural depth-2 provenance, chain/drand anchoring, source-pool and
-operator-bundle hashes, clean license state, a recomputable public import-graph
-`slot_weight` receipt, a recomputable public novelty-cache receipt, a recomputable `T(t)` triviality-budget receipt, and a Lean-backed gate receipt. Production receipts must come from the
-`lean` gate runner: Lean typecheck, kernel Prop gate, canonical novelty from
-Lean-printed declaration fingerprints, the pinned triviality stack retargeted from public burn history, and deterministic import/dependency slot-weight
-calculation must all run during generation, and any candidate solved by the
-stack is excluded from paid supply.
+not a static playlist. Each mutation step runs through the chain-pinned Lean
+AST/elaborator mutation engine, then records the selected operator, its
+drand-keyed params, and the input/output statement hashes. Generated rows also
+carry a source-pool receipt covering the source-pool hash, source count, stream
+counts, citation-weighted fraction, per-entry cap, and citation window. The
+procedural builder rejects paid rows unless they carry procedural depth-2
+provenance, chain/drand anchoring, source-pool and operator-bundle hashes, clean
+license state, a pre-proof public import-graph `slot_weight` estimate, a
+recomputable public novelty-cache receipt, a recomputable `T(t)`
+triviality-budget receipt, and a Lean-backed gate receipt. Production receipts
+must come from the `lean` gate runner: Lean typecheck, kernel Prop gate,
+canonical novelty from the Lean-elaborated kernel-normal statement form, the pinned
+triviality stack retargeted from public burn history, and deterministic
+pre-proof dependency estimate must all run during generation, and
+any candidate solved by the stack is excluded from paid supply.
+Rewarded accepted entries record the actual Lean kernel dependencies from proof
+verification and compute their paid slot weight from that recorded dependency
+set.
 
 The mixed builder remains useful for local smoke and curriculum tuning. It is not the paid production supply path.
 
@@ -148,7 +154,7 @@ Every active task must have:
 - `queue_position`, `queue_depth`, and optional `frontier_depth`;
 - schema validation;
 - policy, topic metadata, and triviality-gate labels.
-- for paid production rows, procedural depth-2 provenance with drand-keyed operator params, public novelty-cache receipts, and recomputable public import-graph slot-weight receipt metadata.
+- for paid production rows, procedural depth-2 provenance with drand-keyed operator params, public novelty-cache receipts, and pre-proof public import-graph slot-weight estimate metadata. Accepted proof rows carry verifier-recorded kernel dependency slot-weight metadata.
 
 Tasks solved by the pinned triviality tactic stack are excluded from paid activation. They may still enter the corpus as shallow `trivial_curriculum` data. Held-out benchmark tasks stay separate from training and reward streams.
 

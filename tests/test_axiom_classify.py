@@ -3,7 +3,9 @@
 from lemma.lean.cheats import (
     axiom_scan_ok,
     declaration_fingerprints_from_lean_output,
+    kernel_dependencies_from_lean_output,
     lean_driver_failed,
+    proof_term_hash_from_lean_output,
     structural_fingerprint_from_lean_output,
 )
 
@@ -32,3 +34,15 @@ def test_structural_fingerprint_hashes_printed_declarations() -> None:
 
     assert structural_fingerprint_from_lean_output(text)
     assert declaration_fingerprints_from_lean_output(text)["Submission.target"]
+
+
+def test_kernel_dependencies_parse_lean_emitted_json() -> None:
+    text = 'LEMMA_KERNEL_DEPENDENCIES Submission.target ["Nat.add","True","True.intro"]'
+
+    assert kernel_dependencies_from_lean_output(text) == ("Nat.add", "True", "True.intro")
+
+
+def test_proof_term_hash_uses_lean_emitted_expr_key() -> None:
+    text = "LEMMA_PROOF_TERM Submission.target (app const:True.intro:[] const:True:[])"
+
+    assert proof_term_hash_from_lean_output(text)

@@ -15,10 +15,14 @@ from lemma.chain.miner_buckets import (
     MinerBucketReveal,
     RevealedBucketBlob,
     poll_bucket_reveals,
+    prepare_miner_bucket_publication,
     submissions_from_bucket_reveals,
+    upload_miner_bucket_publication,
+    write_miner_bucket_publication,
 )
 from lemma.common.config import LemmaSettings
 from lemma.lean.sandbox import VerifyResult
+from lemma.submissions import build_submission
 from lemma.task_supply import make_task
 from lemma.tasks import TaskRegistry
 from lemma.validator import active_tasks_for_validation, validate_once
@@ -94,6 +98,37 @@ def test_ciphertext_encoding_is_explicit() -> None:
     assert ciphertext_bytes(encoded) == b"\x00encrypted"
     assert ciphertext_bytes("0x00ff") == b"\x00\xff"
     assert ciphertext_bytes("plain-dev-fixture") == b"plain-dev-fixture"
+
+
+def test_miner_bucket_publication_writes_uploadable_slot_objects(tmp_path: Path) -> None:
+    task = _task()
+    registry = TaskRegistry(schema_version=1, tasks=(task,), sha256="0" * 64)
+    active_tasks = active_tasks_for_validation(registry, _settings(tmp_path), tempo=7)
+    proof = _proof("  trivial")
+    submission = build_submission(task, solver_hotkey="hk-a", proof_script=proof)
+    ciphertext = b"sealed:" + proof.encode("utf-8")
+    uploaded: dict[str, bytes] = {}
+
+    publication = prepare_miner_bucket_publication(
+        submissions=(submission,),
+        active_tasks=active_tasks,
+        tempo=7,
+        miner_hotkey="hk-a",
+        drand_round=77,
+        bucket_url="https://bucket.example/miner",
+        encrypt_timelocked=lambda payload, round: b"sealed:" + payload,
+    )
+    write_miner_bucket_publication(publication, tmp_path / "bucket")
+    upload_miner_bucket_publication(publication, lambda key, body: uploaded.setdefault(key, body))
+
+    assert publication.commitment_payload == miner_bucket_commitment_payload(
+        tempo=7,
+        drand_round=77,
+        merkle_root=miner_submission_merkle_root(((0, ciphertext_sha256(ciphertext)),)),
+    )
+    assert (tmp_path / "bucket" / "tempo_7" / "slot_0.bin").read_bytes() == ciphertext
+    assert uploaded == {"tempo_7/slot_0.bin": ciphertext}
+    assert proof not in (tmp_path / "bucket" / "manifest.json").read_text(encoding="utf-8")
 
 
 def test_bucket_reveal_validates_merkle_root_before_validator_scoring(tmp_path: Path) -> None:

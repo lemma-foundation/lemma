@@ -14,12 +14,11 @@ from typing import Any
 from lemma.license import license_state_for, paid_license_allowed
 from lemma.protocol_invariants import procedural_gate_receipt_sha256, production_supply_rejection_reason
 from lemma.supply.gates import GATE_VERSION, AssumedProceduralGateRunner, ProceduralGateRunner, ProceduralGateVerdict
+from lemma.supply.mutation import PreviewMutationEngine, ProceduralMutationEngine
 from lemma.supply.novelty import statement_hash
 from lemma.supply.operator_bundle import (
     OPERATOR_BUNDLE_VERSION,
     OPERATOR_NAMES,
-    SMALL_VALUES_BY_TYPE,
-    TYPE_SUBSTITUTIONS,
     procedural_operator_bundle_hash,
 )
 from lemma.supply.source_pool import source_pool_receipt, source_pool_receipt_sha256
@@ -41,7 +40,6 @@ class ProceduralRegistryBuild:
 
 
 _SAFE_IDENT = re.compile(r"[^A-Za-z0-9_]+")
-_LEAN_IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_']*$")
 
 
 def candidates_from_jsonl(path: Path) -> tuple[TaskCandidate, ...]:
@@ -217,6 +215,7 @@ def generate_depth2_candidates(
     citation_weight_cap: float = 64.0,
     citation_window_tempos: int = 2000,
     gate_runner: ProceduralGateRunner | None = None,
+    mutation_engine: ProceduralMutationEngine | None = None,
 ) -> tuple[TaskCandidate, ...]:
     """Generate fresh procedural candidates from public source rows.
 
@@ -247,6 +246,7 @@ def generate_depth2_candidates(
         citation_weight_cap=citation_weight_cap,
     )
     runner = gate_runner or AssumedProceduralGateRunner()
+    mutator = mutation_engine or PreviewMutationEngine()
     out: list[TaskCandidate] = []
     seen: set[str] = set()
     cursor = 0
@@ -260,6 +260,7 @@ def generate_depth2_candidates(
             generation_seed=generation_seed,
             epoch_fields=epoch_fields,
             operator_chain=chain,
+            mutation_engine=mutator,
             source_pool_hash_value=pool_hash,
             source_pool_receipt_value=pool_receipt,
             operator_bundle_hash=operator_hash,
@@ -323,6 +324,7 @@ def _candidate_from_source(
     generation_seed: str,
     epoch_fields: dict[str, Any],
     operator_chain: tuple[str, str],
+    mutation_engine: ProceduralMutationEngine,
     source_pool_hash_value: str,
     source_pool_receipt_value: dict[str, object],
     operator_bundle_hash: str,
@@ -334,7 +336,8 @@ def _candidate_from_source(
     input_hash = _hash_text(type_expr)
     for step, operator in enumerate(operator_chain):
         peer = _peer_source(source_pool, source_id=source.id, seed=generation_seed, sequence=sequence, step=step)
-        mutation = _apply_operator(
+        mutation = mutation_engine.apply(
+            source,
             type_expr,
             operator,
             step=step,
@@ -442,56 +445,6 @@ def _with_gate_receipt(candidate: TaskCandidate, verdict: ProceduralGateVerdict)
     return candidate.model_copy(update={"metadata": metadata})
 
 
-@dataclass(frozen=True)
-class _Mutation:
-    type_expr: str
-    params: dict[str, object]
-
-
-def _apply_operator(
-    type_expr: str,
-    operator: str,
-    *,
-    step: int,
-    param_seed: str,
-    peer: TaskCandidate,
-) -> _Mutation:
-    expr = type_expr.strip()
-    if operator == "generalize":
-        binder = f"lemma_p{step}_{param_seed[:6]}"
-        return _Mutation(
-            f"∀ {binder} : Prop, {binder} → ({expr})",
-            {"target": "fresh_prop_hypothesis", "binder": binder, "binder_type": "Prop"},
-        )
-    if operator == "specialize":
-        return _specialize(expr, param_seed=param_seed)
-    if operator == "conjoin":
-        return _Mutation(
-            f"({peer.type_expr.strip()}) → ({expr})",
-            {
-                "mode": "peer_premise",
-                "peer_source_id": peer.id,
-                "peer_theorem_name": peer.theorem_name,
-                "peer_target_sha256": _hash_text(peer.statement),
-            },
-        )
-    if operator == "substitute-type":
-        return _substitute_type(expr, param_seed=param_seed)
-    if operator == "strengthen":
-        return _Mutation(
-            f"({expr}) ∧ ({peer.type_expr.strip()})",
-            {
-                "rule": "conjoin_peer_conclusion",
-                "peer_source_id": peer.id,
-                "peer_theorem_name": peer.theorem_name,
-                "peer_target_sha256": _hash_text(peer.statement),
-            },
-        )
-    if operator == "weaken":
-        return _weaken(expr)
-    raise ValueError(f"unknown procedural operator: {operator}")
-
-
 def _operator_chain(seed: str, sequence: int) -> tuple[str, str]:
     return (
         OPERATOR_NAMES[_hash_int(f"{seed}:{sequence}:0") % len(OPERATOR_NAMES)],
@@ -509,102 +462,6 @@ def _peer_source(
 ) -> TaskCandidate:
     peers = tuple(source for source in sources if source.id != source_id) or sources
     return peers[_hash_int(f"{seed}:{sequence}:{step}:peer") % len(peers)]
-
-
-def _specialize(expr: str, *, param_seed: str) -> _Mutation:
-    binder = _split_forall(expr)
-    if binder is None:
-        return _Mutation(f"True → ({expr})", {"fallback": "true_premise"})
-    name, binder_type, body = binder
-    value = _small_value(binder_type, param_seed)
-    if value is None:
-        return _Mutation(f"True → ({expr})", {"fallback": "unsupported_binder_type", "binder_type": binder_type})
-    typed_value = value if binder_type == "Prop" else f"({value} : {binder_type})"
-    return _Mutation(
-        _replace_ident(body, name, typed_value),
-        {"binder": name, "binder_type": binder_type, "value": value},
-    )
-
-
-def _substitute_type(expr: str, *, param_seed: str) -> _Mutation:
-    offset = _hash_int(param_seed) % len(TYPE_SUBSTITUTIONS)
-    ordered = TYPE_SUBSTITUTIONS[offset:] + TYPE_SUBSTITUTIONS[:offset]
-    for source_type, replacement_type in ordered:
-        output = _replace_type_name(expr, source_type, replacement_type)
-        if output != expr:
-            return _Mutation(output, {"from": source_type, "to": replacement_type})
-    return _Mutation(f"True → ({expr})", {"fallback": "no_supported_type_occurrence"})
-
-
-def _weaken(expr: str) -> _Mutation:
-    implication = _split_top_level_arrow(expr)
-    if implication is not None:
-        premise, conclusion = implication
-        return _Mutation(
-            f"True → ({conclusion})",
-            {"rule": "replace_first_premise_with_true", "premise_sha256": _hash_text(premise)},
-        )
-    return _Mutation(f"({expr}) ∨ False", {"rule": "false_disjunct"})
-
-
-def _split_forall(expr: str) -> tuple[str, str, str] | None:
-    stripped = expr.strip()
-    if not stripped.startswith("∀ "):
-        return None
-    comma = _top_level_index(stripped, ",")
-    if comma is None:
-        return None
-    binder = stripped[2:comma].strip()
-    body = stripped[comma + 1 :].strip()
-    if ":" not in binder:
-        return None
-    name, binder_type = (part.strip() for part in binder.split(":", 1))
-    if not _LEAN_IDENT.fullmatch(name) or not binder_type:
-        return None
-    return name, binder_type, body
-
-
-def _split_top_level_arrow(expr: str) -> tuple[str, str] | None:
-    stripped = expr.strip()
-    arrow = _top_level_index(stripped, "→")
-    if arrow is None:
-        arrow = _top_level_index(stripped, "->")
-        width = 2
-    else:
-        width = 1
-    if arrow is None:
-        return None
-    return stripped[:arrow].strip(), stripped[arrow + width :].strip()
-
-
-def _top_level_index(value: str, marker: str) -> int | None:
-    depth = 0
-    i = 0
-    while i < len(value):
-        char = value[i]
-        if char in "([{":
-            depth += 1
-        elif char in ")]}" and depth > 0:
-            depth -= 1
-        elif depth == 0 and value.startswith(marker, i):
-            return i
-        i += 1
-    return None
-
-
-def _small_value(binder_type: str, seed: str) -> str | None:
-    values = SMALL_VALUES_BY_TYPE.get(binder_type.strip())
-    if not values:
-        return None
-    return values[_hash_int(seed) % len(values)]
-
-
-def _replace_ident(expr: str, name: str, replacement: str) -> str:
-    return re.sub(rf"(?<![A-Za-z0-9_'.]){re.escape(name)}(?![A-Za-z0-9_'.])", replacement, expr)
-
-
-def _replace_type_name(expr: str, source_type: str, replacement_type: str) -> str:
-    return re.sub(rf"(?<![A-Za-z0-9_'.]){re.escape(source_type)}(?![A-Za-z0-9_'.])", replacement_type, expr)
 
 
 def _ordered_sources(

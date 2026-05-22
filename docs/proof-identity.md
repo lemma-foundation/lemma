@@ -6,12 +6,12 @@ Identity levels:
 
 - `script_sha256`: weak script hash.
 - `normalized_script_sha256`: weak normalized-script fallback.
-- `proof_term_hash`: strong Lean-derived identity.
+- `proof_term_hash`: strong Lean-derived identity from the kernel proof expression.
 - `normalized_proof_term_hash`: strong canonical Lean identity.
-- `structural_fingerprint`: strong theorem/dependency/proof fingerprint.
+- `structural_fingerprint`: medium Lean print receipt retained for diagnostics and replay.
 
 Weak identities can be stored and exported. They are not full production-reward identities. Production reward requires `proof_identity_strength: strong`.
 
-The verifier path must not label a normalized script hash as a proof-term hash. The current strong fallback is a Lean-derived `structural_fingerprint` built from named Lean declaration fingerprints after the submitted proof verifies. Corpus rows keep the named declaration-fingerprint receipt in metadata when Lean emits one. If neither a proof-term hash nor a structural fingerprint is available, rows are marked with `proof_identity_source: normalized_script_sha256` and `proof_identity_strength: weak`.
+The verifier path must not label a normalized script hash as a proof-term hash. Strong paid identity comes from the Lean-emitted kernel proof expression hash after the submitted proof verifies. Corpus rows keep named declaration-fingerprint receipts in metadata when Lean emits them, but those print receipts are not strong paid identity. If no Lean proof-term hash is available, rows are marked below strong identity and cannot earn production rewards.
 
 Production rewards require strong identity. Weak script identity can remain in corpus metadata for replay and review, but it is not paid mainnet work.

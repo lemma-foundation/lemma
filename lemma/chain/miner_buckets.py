@@ -1,10 +1,10 @@
-"""Miner bucket reveal artifacts for commitment-anchored validation."""
+"""Miner bucket publish/reveal artifacts for commitment-anchored validation."""
 
 from __future__ import annotations
 
 import json
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from urllib.parse import urljoin
 
@@ -17,14 +17,21 @@ from lemma.chain.commitments import (
     miner_submission_merkle_root,
     parse_miner_bucket_commitment_payload,
 )
-from lemma.chain.drand import ciphertext_bytes, decrypt_timelocked_payload, encode_ciphertext
-from lemma.submissions import LemmaSubmission, proof_sha256
+from lemma.chain.drand import (
+    ciphertext_bytes,
+    decrypt_timelocked_payload,
+    encode_ciphertext,
+    encrypt_timelocked_payload,
+)
+from lemma.submissions import LemmaSubmission, proof_sha256, validate_submission_for_task
 from lemma.tasks import LemmaTask
 
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
 ChainAuthenticatedKey = tuple[str, str, str]
 DecryptTimelockedPayload = Callable[[str, str | None], bytes]
+EncryptTimelockedPayload = Callable[[bytes, int], bytes]
 GetBucketObject = Callable[[str], bytes | None]
+PutBucketObject = Callable[[str, bytes], None]
 RejectionLog = Callable[[str], None]
 
 
@@ -34,6 +41,45 @@ class RevealedBucketBlob(BaseModel):
     slot_index: int = Field(ge=0)
     ciphertext: str = Field(min_length=1)
     proof_script: str = Field(min_length=1)
+
+
+class PublishedBucketBlob(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    slot_index: int = Field(ge=0)
+    task_id: str = Field(min_length=1)
+    key: str = Field(min_length=1)
+    ciphertext: str = Field(min_length=1)
+    ciphertext_sha256: str
+
+    @field_validator("ciphertext_sha256")
+    @classmethod
+    def _ciphertext_sha256_hex(cls, value: str) -> str:
+        lowered = value.lower()
+        if not _HEX64.fullmatch(lowered):
+            raise ValueError("ciphertext_sha256 must be a 64-char lowercase hex digest")
+        return lowered
+
+
+class MinerBucketPublication(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: int = 1
+    tempo: int = Field(ge=0)
+    miner_hotkey: str = Field(min_length=1)
+    drand_round: int = Field(ge=0)
+    bucket_url: str = ""
+    merkle_root: str
+    commitment_payload: str
+    blobs: tuple[PublishedBucketBlob, ...]
+
+    @field_validator("merkle_root")
+    @classmethod
+    def _merkle_root_hex(cls, value: str) -> str:
+        lowered = value.lower()
+        if not _HEX64.fullmatch(lowered):
+            raise ValueError("merkle_root must be a 64-char lowercase hex digest")
+        return lowered
 
 
 class MinerBucketReveal(BaseModel):
@@ -57,6 +103,80 @@ class MinerBucketReveal(BaseModel):
         if not _HEX64.fullmatch(lowered):
             raise ValueError("merkle_root must be a 64-char lowercase hex digest")
         return lowered
+
+
+def prepare_miner_bucket_publication(
+    *,
+    submissions: Sequence[LemmaSubmission],
+    active_tasks: Sequence[LemmaTask],
+    tempo: int,
+    miner_hotkey: str,
+    drand_round: int,
+    bucket_url: str = "",
+    encrypt_timelocked: EncryptTimelockedPayload = encrypt_timelocked_payload,
+) -> MinerBucketPublication:
+    """Build timelocked bucket objects plus the chain commitment payload."""
+    by_task_id: dict[str, LemmaSubmission] = {}
+    for submission in submissions:
+        if submission.task_id in by_task_id:
+            raise ValueError(f"{submission.task_id}: duplicate submission for bucket")
+        by_task_id[submission.task_id] = submission
+    blobs: list[PublishedBucketBlob] = []
+    pairs: list[tuple[int, str]] = []
+    for slot_index, task in enumerate(active_tasks):
+        matched = by_task_id.get(task.id)
+        if matched is None:
+            continue
+        validate_submission_for_task(matched, task)
+        if matched.solver_hotkey != miner_hotkey:
+            raise ValueError(f"{matched.task_id}: submission hotkey does not match miner_hotkey")
+        ciphertext_raw = encrypt_timelocked(matched.proof_script.encode("utf-8"), drand_round)
+        digest = ciphertext_sha256(ciphertext_raw)
+        key = miner_bucket_key(tempo, slot_index)
+        blobs.append(
+            PublishedBucketBlob(
+                slot_index=slot_index,
+                task_id=task.id,
+                key=key,
+                ciphertext=encode_ciphertext(ciphertext_raw),
+                ciphertext_sha256=digest,
+            )
+        )
+        pairs.append((slot_index, digest))
+    if not blobs:
+        raise ValueError("no submissions matched active bucket slots")
+    merkle_root = miner_submission_merkle_root(pairs)
+    return MinerBucketPublication(
+        tempo=tempo,
+        miner_hotkey=miner_hotkey,
+        drand_round=drand_round,
+        bucket_url=bucket_url,
+        merkle_root=merkle_root,
+        commitment_payload=miner_bucket_commitment_payload(
+            tempo=tempo,
+            drand_round=drand_round,
+            merkle_root=merkle_root,
+        ),
+        blobs=tuple(blobs),
+    )
+
+
+def write_miner_bucket_publication(publication: MinerBucketPublication, output_dir: Path) -> None:
+    """Write uploadable bucket objects and a public-safe manifest."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for blob in publication.blobs:
+        target = output_dir / blob.key
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(ciphertext_bytes(blob.ciphertext))
+    (output_dir / "manifest.json").write_text(
+        publication.model_dump_json(indent=2, exclude={"blobs": {"__all__": {"ciphertext"}}}) + "\n",
+        encoding="utf-8",
+    )
+
+
+def upload_miner_bucket_publication(publication: MinerBucketPublication, put_object: PutBucketObject) -> None:
+    for blob in publication.blobs:
+        put_object(blob.key, ciphertext_bytes(blob.ciphertext))
 
 
 def read_bucket_reveals_jsonl(path: Path) -> tuple[MinerBucketReveal, ...]:

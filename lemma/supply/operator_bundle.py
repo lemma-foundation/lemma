@@ -5,8 +5,9 @@ from __future__ import annotations
 import hashlib
 import json
 
-OPERATOR_BUNDLE_VERSION = "lemma-procedural-depth2-v2"
+OPERATOR_BUNDLE_VERSION = "lemma-procedural-depth2-v3"
 OPERATOR_NAMES = ("generalize", "specialize", "conjoin", "substitute-type", "strengthen", "weaken")
+MUTATION_ENGINE = "lean_ast_elaborator"
 TYPE_SUBSTITUTIONS = (
     ("Nat", "Int"),
     ("Int", "Rat"),
@@ -25,6 +26,7 @@ SMALL_VALUES_BY_TYPE = {
 def procedural_operator_bundle_hash() -> str:
     payload = {
         "version": OPERATOR_BUNDLE_VERSION,
+        "mutation_engine": MUTATION_ENGINE,
         "operators": OPERATOR_NAMES,
         "chain_depth": 2,
         "type_substitutions": TYPE_SUBSTITUTIONS,

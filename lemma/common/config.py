@@ -167,6 +167,19 @@ class LemmaSettings(BaseSettings):
     corpus_index_url: str = Field(default="", validation_alias="LEMMA_CORPUS_INDEX_URL")
     corpus_output_dir: Path = Field(default=Path("corpus"), validation_alias="LEMMA_CORPUS_OUTPUT_DIR")
     canonical_output_dir: Path | None = Field(default=None, validation_alias="LEMMA_CANONICAL_OUTPUT_DIR")
+    canonical_publish_s3_uri: str = Field(default="", validation_alias="LEMMA_CANONICAL_PUBLISH_S3_URI")
+    canonical_publish_ipfs_api_url: str = Field(default="", validation_alias="LEMMA_CANONICAL_PUBLISH_IPFS_API_URL")
+    canonical_publish_ipfs_timeout_s: float = Field(
+        default=60.0,
+        gt=0.0,
+        validation_alias="LEMMA_CANONICAL_PUBLISH_IPFS_TIMEOUT_S",
+    )
+    canonical_publish_endpoint_url: str = Field(
+        default="https://s3.hippius.com",
+        validation_alias="LEMMA_CANONICAL_PUBLISH_ENDPOINT_URL",
+    )
+    canonical_publish_aws_command: str = Field(default="", validation_alias="LEMMA_CANONICAL_PUBLISH_AWS_COMMAND")
+    canonical_publish_verify: bool = Field(default=True, validation_alias="LEMMA_CANONICAL_PUBLISH_VERIFY")
     operator_data_dir: Path = Field(default=Path("validator-data"), validation_alias="LEMMA_OPERATOR_DATA_DIR")
     submission_spool_dir: Path | None = Field(default=None, validation_alias="LEMMA_SUBMISSION_SPOOL_DIR")
     active_task_count: int = Field(default=20, ge=1, validation_alias="LEMMA_ACTIVE_K")

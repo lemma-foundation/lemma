@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 
 ALLOWED_AXIOMS = frozenset({"propext", "Quot.sound", "Classical.choice"})
+_KERNEL_DEPENDENCIES = "LEMMA_KERNEL_DEPENDENCIES "
+_PROOF_TERM = "LEMMA_PROOF_TERM "
 
 
 def parse_axioms_from_lean_output(text: str) -> set[str] | None:
@@ -90,6 +93,39 @@ def declaration_fingerprints_from_lean_output(lean_output: str) -> dict[str, str
         if payload:
             out[name] = hashlib.sha256(_normalize_declaration(payload).encode("utf-8")).hexdigest()
     return out
+
+
+def kernel_dependencies_from_lean_output(lean_output: str) -> tuple[str, ...]:
+    """Return Lean environment constants recorded for checked declarations."""
+    deps: set[str] = set()
+    for line in lean_output.splitlines():
+        text = line.strip()
+        if not text.startswith(_KERNEL_DEPENDENCIES):
+            continue
+        _, _, raw_payload = text.removeprefix(_KERNEL_DEPENDENCIES).partition(" ")
+        try:
+            payload = json.loads(raw_payload)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(payload, list):
+            continue
+        deps.update(str(item).strip() for item in payload if str(item).strip())
+    return tuple(sorted(deps))
+
+
+def proof_term_hash_from_lean_output(lean_output: str) -> str | None:
+    """Hash Lean-emitted proof expression keys for checked declarations."""
+    payloads: list[str] = []
+    for line in lean_output.splitlines():
+        text = line.strip()
+        if not text.startswith(_PROOF_TERM):
+            continue
+        name, _, payload = text.removeprefix(_PROOF_TERM).partition(" ")
+        if name.strip() and payload.strip():
+            payloads.append(f"{name.strip()}:{payload.strip()}")
+    if not payloads:
+        return None
+    return hashlib.sha256("\n".join(sorted(payloads)).encode("utf-8")).hexdigest()
 
 
 def structural_fingerprint_from_lean_output(lean_output: str) -> str | None:

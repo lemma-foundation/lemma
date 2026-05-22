@@ -2,7 +2,7 @@
 
 Lemma rewards verified work through normal Bittensor miner and validator emissions.
 
-Each epoch has `K` paid theorem slots. A miner earns one credit for the rank-0 unique accepted Lean proof for a slot. On the bucket/commitment path, rank-0 means earliest miner Merkle-root commit block; equal commit blocks are tie-broken by Lean proof identity. Payment is weighted by the slot's deterministic depth/load-bearing weight. Unsolved slots remain unearned by default.
+Each epoch has `K` paid theorem slots. A miner earns one credit for the rank-0 unique accepted Lean proof for a slot. On the bucket/commitment path, rank-0 means earliest miner Merkle-root commit block; equal commit blocks are tie-broken by Lean proof identity. Payment is weighted by the accepted proof's verifier-recorded Lean kernel dependencies. Unsolved slots remain unearned by default.
 
 The reward is attached to verified work, not prose, claimed effort, or model identity.
 
@@ -32,7 +32,7 @@ The previous-weight fallback rule is removed from scoring.
 
 - A proof must pass the pinned verifier environment.
 - A proof is task-bound by `task_id`, `task_version`, and `target_sha256`.
-- A proof is unique by Lean `proof_term_hash` or Lean-derived `structural_fingerprint` when available, with a clearly labelled weak script fallback for non-production rows.
+- A proof is unique by Lean `proof_term_hash` for paid production rewards. Lean structural fingerprints remain replay diagnostics; weak script fallbacks are non-production only.
 - In production mode, full reward requires `proof_identity_strength: strong`.
 - Each task pays at most one miner per validator epoch; committed reveals rank by commit block before local receipt time.
 - Slot weights are deterministic registry values, not subjective validator scores.

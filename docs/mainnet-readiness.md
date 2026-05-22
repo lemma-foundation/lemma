@@ -16,9 +16,9 @@ The local production-like smoke is covered by `tests/test_operator_registry_flow
 
 - procedural depth-2 supply can build a production-shaped registry cache;
 - validators rebuild the active task set from a pinned public source pool plus chain/drand epoch randomness;
-- production preflight passes only with procedural supply mode, source-pool SHA pinning, public import-graph slot-weight receipts, procedural depth-2 supply, chain/drand epoch randomness, live miner authentication, commit/reveal fields, strong proof identity, and disabled Lean networking;
+- production preflight passes only with procedural supply mode, source-pool SHA pinning, pre-proof public import-graph slot estimates, procedural depth-2 supply, chain/drand epoch randomness, live miner authentication, commit/reveal fields, strong proof identity, and disabled Lean networking;
 - a signed revealed submission can be verified, scored, written to corpus, and exported without setting weights;
-- the rewarded corpus row carries strong structural proof identity.
+- the rewarded corpus row carries strong Lean proof-term identity.
 
 ## SN467 Gate
 
@@ -69,7 +69,7 @@ uv run lemma tasks rebuild-procedural-registry \
   --output tasks/mainnet.registry.json
 ```
 
-Cut scale, not shape: reduce `K`, source samples, and enabled operator families if needed, but keep the chain-pinned operator bundle, depth-2 generation, drand-keyed mutation params, public novelty-cache receipts, Lean-backed kernel-canonical novelty/typecheck/Prop/triviality gates, public import-graph slot-weight receipts, burn-rate-retargeted `T(t)`, miner hotkey authentication, and strong proof identity. The registry file is a cache; validators rebuild from pinned source rows plus chain/drand. Tempo remains 72 minutes / 360 blocks until subnet tempo customization exists.
+Cut scale, not shape: reduce `K`, source samples, and enabled operator families if needed, but keep the chain-pinned Lean AST/elaborator mutation bundle, depth-2 generation, drand-keyed mutation params, public novelty-cache receipts, Lean-backed kernel-canonical novelty/typecheck/Prop/triviality gates, verifier-recorded kernel dependency slot weights, burn-rate-retargeted `T(t)`, miner hotkey authentication, and strong proof identity. The registry file is a cache; validators rebuild from pinned source rows plus chain/drand. Tempo remains 72 minutes / 360 blocks until subnet tempo customization exists.
 
 On the launch host, production preflight must be green before accepting submissions:
 

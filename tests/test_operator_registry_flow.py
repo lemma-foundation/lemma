@@ -22,12 +22,23 @@ from lemma.submissions import build_submission
 from lemma.supply.gates import ProceduralGateVerdict
 from lemma.supply.import_graph import ImportGraphRow, read_import_graph
 from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
+from lemma.supply.mutation import PreviewMutationEngine
 from lemma.supply.novelty import novelty_cache_from_hashes
 from lemma.supply.procedural import procedural_operator_bundle_hash, source_pool_hash
 from lemma.supply.slot_weight import slot_weight_receipt_for_candidate
 from lemma.supply.triviality_budget import TrivialityRetargetConfig, triviality_budget_receipt
 from lemma.tasks import load_task_registry
 from lemma.validator import active_epoch_seed, active_tasks_for_validation, task_registry_for_validation
+
+
+class _PreviewMutationEngineForProduction:
+    def __init__(self, settings: LemmaSettings) -> None:
+        _ = settings
+        self.preview = PreviewMutationEngine()
+
+    def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001
+        result = self.preview.apply(source, type_expr, operator, step=step, param_seed=param_seed, peer=peer)
+        return result.__class__(result.type_expr, {**result.params, "engine": "lean_ast_elaborator"})
 
 
 def _proof_for(theorem_name: str) -> str:
@@ -341,6 +352,7 @@ def test_production_like_procedural_submission_smoke(monkeypatch: pytest.MonkeyP
         lambda settings, *, tempo: active_randomness,
     )
     monkeypatch.setattr("lemma.supply.gates.LeanProceduralGateRunner.__call__", _fake_lean_gate)
+    monkeypatch.setattr("lemma.supply.mutation.LeanAstMutationEngine", _PreviewMutationEngineForProduction)
     source_hash = source_pool_hash(mathlib_candidates_from_jsonl(snapshot_path))
     base_settings = LemmaSettings(
         _env_file=None,
@@ -488,7 +500,7 @@ def test_production_like_procedural_submission_smoke(monkeypatch: pytest.MonkeyP
     assert before.exit_code == 0, before.output
 
     def fake_verify(*args: object, **kwargs: object) -> VerifyResult:
-        return VerifyResult(passed=True, reason="ok", structural_fingerprint="structural-mainnet-readiness")
+        return VerifyResult(passed=True, reason="ok", proof_term_hash="term-mainnet-readiness")
 
     monkeypatch.setattr("lemma.verifiers.lean.run_lean_verify", fake_verify)
 
@@ -523,8 +535,8 @@ def test_production_like_procedural_submission_smoke(monkeypatch: pytest.MonkeyP
     assert corpus_validate.exit_code == 0, corpus_validate.output
     corpus_row = json.loads(corpus_jsonl.read_text(encoding="utf-8").splitlines()[0])
     assert corpus_row["rewarded"] is True
-    assert corpus_row["proof_identity"] == "structural-mainnet-readiness"
-    assert corpus_row["proof_identity_source"] == "structural_fingerprint"
+    assert corpus_row["proof_identity"] == "term-mainnet-readiness"
+    assert corpus_row["proof_identity_source"] == "proof_term_hash"
     assert corpus_row["proof_identity_strength"] == "strong"
     assert corpus_row["full_reward_eligible"] is True
 

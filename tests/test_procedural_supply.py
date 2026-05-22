@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -12,6 +13,7 @@ from lemma.submissions import build_submission
 from lemma.supply.gates import AssumedProceduralGateRunner, LeanProceduralGateRunner, ProceduralGateVerdict
 from lemma.supply.import_graph import ImportGraphRow, read_import_graph
 from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
+from lemma.supply.mutation import LeanAstMutationEngine, PreviewMutationEngine
 from lemma.supply.novelty import novelty_cache_from_hashes, read_novelty_cache, statement_hash
 from lemma.supply.operator_bundle import OPERATOR_BUNDLE_VERSION, OPERATOR_NAMES
 from lemma.supply.procedural import (
@@ -23,8 +25,19 @@ from lemma.supply.procedural import (
 )
 from lemma.supply.slot_weight import slot_weight_receipt_for_candidate
 from lemma.supply.triviality_budget import TrivialityRetargetConfig, triviality_budget_receipt
+from lemma.supply.types import fixture_candidate
 from lemma.task_supply import make_task
 from lemma.validator import active_epoch_seed, active_tasks_for_validation, task_registry_for_validation
+
+
+class _PreviewMutationEngineForProduction:
+    def __init__(self, settings: LemmaSettings) -> None:
+        _ = settings
+        self.preview = PreviewMutationEngine()
+
+    def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001
+        result = self.preview.apply(source, type_expr, operator, step=step, param_seed=param_seed, peer=peer)
+        return result.__class__(result.type_expr, {**result.params, "engine": "lean_ast_elaborator"})
 
 
 def _write_snapshot(path: Path) -> None:
@@ -97,6 +110,50 @@ def _fake_lean_gate(self, candidate, *, seen_canonical_hashes) -> ProceduralGate
     )
 
 
+def test_lean_ast_mutation_engine_uses_lean_eval_output(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured = {}
+
+    def fake_run_lean_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001
+        captured["settings"] = settings
+        captured["timeout"] = verify_timeout_s
+        captured["problem"] = problem
+        captured["proof_script"] = proof_script
+        captured["submission_policy"] = submission_policy
+        return VerifyResult(
+            passed=True,
+            reason="ok",
+            stdout_tail=(
+                'LEMMA_AST_MUTATION {"params":{"binder":"p","binder_type":"Prop"},'
+                '"type_expr":"∀ p : Prop, p → True"}'
+            ),
+        )
+
+    monkeypatch.setattr("lemma.supply.mutation.run_lean_verify", fake_run_lean_verify)
+    source = fixture_candidate(
+        slug="source_true",
+        source_stream="mathlib_snapshot",
+        source_name="snapshot",
+        theorem_name="source_true",
+        type_expr="True",
+        queue_depth=0,
+    )
+
+    result = LeanAstMutationEngine(LemmaSettings(_env_file=None, lean_use_docker=False)).apply(
+        source,
+        "True",
+        "generalize",
+        step=0,
+        param_seed="a" * 64,
+        peer=source,
+    )
+
+    assert result.type_expr == "∀ p : Prop, p → True"
+    assert result.params["engine"] == "lean_ast_elaborator"
+    assert "replaceIdent" in captured["problem"].extra["challenge_full"]
+    assert captured["problem"].extra["lean_eval_commands"] == ("#eval! LemmaProceduralMutator.emit",)
+    assert "theorem lemma_ast_mutation_dummy : True" in captured["proof_script"]
+
+
 def test_depth2_generation_is_epoch_seeded_not_static(tmp_path: Path) -> None:
     snapshot = tmp_path / "snapshot.jsonl"
     novelty_cache = tmp_path / "novelty.jsonl"
@@ -157,6 +214,7 @@ def test_procedural_registry_rejects_assumed_gate_receipts(tmp_path: Path) -> No
         epoch_randomness=json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
         count=1,
         tempo=3,
+        mutation_engine=_PreviewMutationEngineForProduction(LemmaSettings(_env_file=None)),
     )
 
     build = build_procedural_registry_tasks(candidates, seed="epoch-a")
@@ -181,10 +239,16 @@ def test_lean_gate_runner_records_generation_time_gates(monkeypatch: pytest.Monk
         if problem.id.endswith(".gate"):
             assert problem.extra["lean_build_target"] == "Challenge"
             gate_source = str(problem.extra["challenge_full"])
-            calls.append("typecheck" if "def typecheck_gate" in gate_source else "prop")
+            is_typecheck = "def typecheck_gate" in gate_source
+            if not is_typecheck:
+                assert problem.extra["lean_eval_commands"] == ("#eval! LemmaProceduralGate.emit_kernel_normal",)
+            calls.append("typecheck" if is_typecheck else "prop")
             return VerifyResult(
                 passed=True,
                 reason="ok",
+                stdout_tail=""
+                if is_typecheck
+                else "LEMMA_KERNEL_NORMAL_FORM (forall default const:True:[] const:True:[])",
                 declaration_fingerprints={str(problem.extra["lean_fingerprint_names"][0]): "8" * 64},
             )
         calls.append("triviality")
@@ -198,8 +262,9 @@ def test_lean_gate_runner_records_generation_time_gates(monkeypatch: pytest.Monk
     assert verdict.accepted is True
     assert verdict.metadata["gate_runner"] == "lean"
     assert verdict.metadata["novelty_cache_version"] == "lemma-novelty-cache-v1"
-    assert verdict.metadata["kernel_canonical_hash"] == "8" * 64
-    assert verdict.metadata["canonical_hash"] == "8" * 64
+    kernel_hash = hashlib.sha256(b"(forall default const:True:[] const:True:[])").hexdigest()
+    assert verdict.metadata["kernel_canonical_hash"] == kernel_hash
+    assert verdict.metadata["canonical_hash"] == kernel_hash
     assert verdict.metadata["triviality_budget_version"] == "lemma-triviality-retarget-v1"
     assert verdict.metadata["triviality_reason"] == "baseline_failed"
     assert calls[:2] == ["typecheck", "prop"]
@@ -264,7 +329,7 @@ def test_procedural_slot_weight_receipt_uses_dependency_metadata(tmp_path: Path)
     )[0]
     inputs = candidate.metadata["slot_weight_inputs"]
 
-    assert candidate.metadata["slot_weight_version"] == "lemma-slot-weight-v2"
+    assert candidate.metadata["slot_weight_version"] == "lemma-slot-weight-v3"
     assert inputs["direct_dependency_count"] == 11
     assert inputs["dependency_depth"] == 5
     assert inputs["import_breadth"] == 2
@@ -288,7 +353,7 @@ def test_procedural_slot_weight_receipt_uses_public_import_graph(tmp_path: Path)
     )[0]
     inputs = candidate.metadata["slot_weight_inputs"]
 
-    assert candidate.metadata["slot_weight_version"] == "lemma-slot-weight-v2"
+    assert candidate.metadata["slot_weight_version"] == "lemma-slot-weight-v3"
     assert inputs["import_graph_resolved"] is True
     assert inputs["import_graph_sha256"] == import_graph.sha256
     assert inputs["missing_import_count"] == 0
@@ -321,6 +386,7 @@ def test_procedural_supply_mode_rebuilds_active_registry_from_public_inputs(
     )
     monkeypatch.setattr("lemma.validator.resolve_active_epoch_randomness", lambda settings, *, tempo: randomness)
     monkeypatch.setattr("lemma.supply.gates.LeanProceduralGateRunner.__call__", _fake_lean_gate)
+    monkeypatch.setattr("lemma.supply.mutation.LeanAstMutationEngine", _PreviewMutationEngineForProduction)
     settings = LemmaSettings(
         _env_file=None,
         task_supply_mode="procedural",
@@ -380,7 +446,7 @@ def test_procedural_source_pool_includes_prior_accepted_corpus(
             solver_hotkey="hk",
             proof_script="import Mathlib\n\ntheorem prior_true : True := by\n  trivial\n",
         ),
-        VerifyResult(passed=True, reason="ok", structural_fingerprint="prior-structural"),
+        VerifyResult(passed=True, reason="ok", proof_term_hash="prior-term"),
         validator_hotkey="vhk",
         rewarded=True,
         tempo=1,
@@ -393,6 +459,7 @@ def test_procedural_source_pool_includes_prior_accepted_corpus(
         lambda settings, *, tempo: json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
     )
     monkeypatch.setattr("lemma.supply.gates.LeanProceduralGateRunner.__call__", _fake_lean_gate)
+    monkeypatch.setattr("lemma.supply.mutation.LeanAstMutationEngine", _PreviewMutationEngineForProduction)
     settings = LemmaSettings(
         _env_file=None,
         task_supply_mode="procedural",
@@ -442,7 +509,7 @@ def test_procedural_source_pool_ignores_non_rewarded_corpus_rows(tmp_path: Path)
     rewarded = build_corpus_row(
         task,
         submission,
-        VerifyResult(passed=True, reason="ok", structural_fingerprint="prior-structural"),
+        VerifyResult(passed=True, reason="ok", proof_term_hash="prior-term"),
         validator_hotkey="vhk",
         rewarded=True,
         tempo=1,
@@ -450,7 +517,7 @@ def test_procedural_source_pool_ignores_non_rewarded_corpus_rows(tmp_path: Path)
     alternate = build_corpus_row(
         task,
         submission.model_copy(update={"solver_hotkey": "hk-late"}),
-        VerifyResult(passed=True, reason="ok", structural_fingerprint="alternate-structural"),
+        VerifyResult(passed=True, reason="ok", proof_term_hash="alternate-term"),
         validator_hotkey="vhk",
         rewarded=False,
         tempo=1,
@@ -483,7 +550,7 @@ def test_procedural_source_pool_reads_canonical_accepted_entry_directories(tmp_p
             solver_hotkey="hk",
             proof_script="import Mathlib\n\ntheorem canonical_true : True := by\n  trivial\n",
         ),
-        VerifyResult(passed=True, reason="ok", structural_fingerprint="canonical-structural"),
+        VerifyResult(passed=True, reason="ok", proof_term_hash="canonical-term"),
         validator_hotkey="vhk",
         rewarded=True,
         tempo=1,
@@ -515,7 +582,7 @@ def test_procedural_source_pool_weights_lemma_rows_by_recent_citations(tmp_path:
     base_row = build_corpus_row(
         base_task,
         base_submission,
-        VerifyResult(passed=True, reason="ok", structural_fingerprint="base-structural"),
+        VerifyResult(passed=True, reason="ok", proof_term_hash="base-term"),
         validator_hotkey="vhk",
         rewarded=True,
         tempo=1,
@@ -542,7 +609,7 @@ def test_procedural_source_pool_weights_lemma_rows_by_recent_citations(tmp_path:
             solver_hotkey="hk-b",
             proof_script="import Mathlib\n\ntheorem citing_true : True := by\n  trivial\n",
         ),
-        VerifyResult(passed=True, reason="ok", structural_fingerprint="citing-structural"),
+        VerifyResult(passed=True, reason="ok", proof_term_hash="citing-term"),
         validator_hotkey="vhk",
         rewarded=True,
         tempo=2,

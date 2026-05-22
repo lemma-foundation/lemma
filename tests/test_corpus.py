@@ -110,6 +110,22 @@ def test_corpus_replay_calls_verifier(monkeypatch: pytest.MonkeyPatch, tmp_path:
     assert calls == [("lemma.test.true", proof)]
 
 
+def test_corpus_row_records_kernel_dependencies_from_verification() -> None:
+    task = _task()
+    submission = build_submission(task, solver_hotkey="hk1", proof_script=_proof())
+
+    row = build_corpus_row(
+        task,
+        submission,
+        VerifyResult(passed=True, reason="ok", kernel_dependencies=("True", "True.intro")),
+        validator_hotkey="vhk1",
+        rewarded=True,
+    )
+
+    assert row.dependencies.mathlib_theorems_used == ("True", "True.intro")
+    assert row.dependencies.direct_dependency_count == 2
+
+
 def test_corpus_index_and_metadata_sanitize_private_paths(tmp_path: Path) -> None:
     private_path = "/" + "Users/example/private"
     private_login = "ro" + "ot@example.test"

@@ -54,14 +54,22 @@ def _source_key(source_ref: SourceRef) -> str:
     )
 
 
-def build_dependencies(task: LemmaTask) -> RowDependencies:
+def build_dependencies(task: LemmaTask, *, kernel_dependencies: tuple[str, ...] = ()) -> RowDependencies:
     imports = tuple(task.imports)
-    direct_count = len(imports)
-    depth = int(task.metadata.get("dependency_depth") or task.queue_depth or 0)
-    payload = "\n".join([*imports, *(str(row) for row in task.metadata.get("lemma_rows_used", ()) or ())])
+    kernel = tuple(dict.fromkeys(str(dep).strip() for dep in kernel_dependencies if str(dep).strip()))
+    lemma_rows = tuple(str(row) for row in task.metadata.get("lemma_rows_used", ()) or ())
+    if kernel:
+        direct_count = len(kernel)
+        depth = max((len(name.split(".")) for name in kernel), default=0)
+        payload = "\n".join(kernel)
+    else:
+        direct_count = len(imports)
+        depth = int(task.metadata.get("dependency_depth") or task.queue_depth or 0)
+        payload = "\n".join([*imports, *lemma_rows])
     return RowDependencies(
         mathlib_imports=imports,
-        lemma_rows_used=tuple(str(row) for row in task.metadata.get("lemma_rows_used", ()) or ()),
+        mathlib_theorems_used=kernel,
+        lemma_rows_used=lemma_rows,
         direct_dependency_count=direct_count,
         dependency_depth=depth,
         transitive_dependency_hash=hashlib.sha256(payload.encode("utf-8")).hexdigest(),

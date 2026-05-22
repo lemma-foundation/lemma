@@ -218,7 +218,7 @@ def build_corpus_row(
     if source == "script_sha256":
         source = identity.source
     eligibility = task_reward_eligibility(task)
-    dependencies = build_dependencies(task)
+    dependencies = build_dependencies(task, kernel_dependencies=result.kernel_dependencies)
     license_state = license_state_for(task.source_license, str(task.metadata.get("license_state") or ""))
     quality = build_row_quality(
         triviality_checked=task.triviality_status != "unknown" or bool(task.metadata.get("triviality_checked")),

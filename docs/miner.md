@@ -35,7 +35,21 @@ The configured prover command receives one JSON task on stdin and returns JSON w
 
 Competitive miners can replace the CLI entirely. The contract is the task registry plus a valid task-bound proof submission; how a miner gets there is open. Agents, custom Lean worker pools, model-training loops, remote schedulers, direct protocol clients, or non-Python implementations are all fine if the validator accepts the output.
 
-Mainnet-shaped runs write timelocked blobs to the miner bucket and anchor rank with a Merkle-root chain commitment.
+Mainnet-shaped runs write timelocked blobs to the miner bucket and anchor rank with a Merkle-root chain commitment. The advanced helper packages local submissions into the exact public bucket keys validators poll:
+
+```bash
+uv run lemma miner bucket publish \
+  --submission submission.json \
+  --tempo <tempo> \
+  --drand-round <round> \
+  --miner-hotkey <hotkey-ss58> \
+  --output-dir validator-data/miner-bucket \
+  --s3-uri s3://<public-bucket>/<miner-prefix> \
+  --verify-upload \
+  --submit-commitment
+```
+
+The command writes only ciphertext blobs under `tempo_<t>/slot_<i>.bin`, checks the uploaded bytes when `--verify-upload` is set, and prints the `lemma-bucket:<tempo>:<round>:<merkle-root>` commitment payload. Keep proof plaintext local until the Drand reveal.
 
 ## Hosted Provers
 

@@ -25,7 +25,7 @@ uv run lemma validate --once --no-set-weights
 
 The operator smoke fixture lives in [examples/operator-smoke](../examples/operator-smoke/README.md).
 It also exercises the [Mathlib extraction contract](mathlib-extraction.md) used by the registry builder.
-The production-like smoke in `tests/test_operator_registry_flow.py` additionally covers public-input procedural rebuilds, procedural depth-2 gates, signed revealed submissions, strong structural proof identity, production preflight, diagnostics, scoring, and corpus validation.
+The production-like smoke in `tests/test_operator_registry_flow.py` additionally covers public-input procedural rebuilds, procedural depth-2 gates, signed revealed submissions, strong Lean proof-term identity, production preflight, diagnostics, scoring, and corpus validation.
 Lower-level task, operator, and corpus commands are hidden from public help but remain covered by pytest during this transition.
 
 Docker-backed Lean checks require the sandbox image:

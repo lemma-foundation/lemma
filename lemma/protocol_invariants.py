@@ -11,7 +11,12 @@ from lemma.common.config import LemmaSettings
 from lemma.supply.gates import GATE_VERSION
 from lemma.supply.import_graph import IMPORT_GRAPH_VERSION, ImportGraph, read_import_graph
 from lemma.supply.novelty import NOVELTY_CACHE_VERSION
-from lemma.supply.operator_bundle import OPERATOR_BUNDLE_VERSION, OPERATOR_NAMES, procedural_operator_bundle_hash
+from lemma.supply.operator_bundle import (
+    MUTATION_ENGINE,
+    OPERATOR_BUNDLE_VERSION,
+    OPERATOR_NAMES,
+    procedural_operator_bundle_hash,
+)
 from lemma.supply.slot_weight import SLOT_WEIGHT_VERSION, slot_weight_receipt_for_task
 from lemma.supply.source_pool import SOURCE_POOL_RECEIPT_VERSION, SOURCE_SAMPLING_VERSION, source_pool_receipt_sha256
 from lemma.supply.triviality_budget import TRIVIALITY_BUDGET_VERSION
@@ -46,8 +51,11 @@ def production_supply_rejection_reason(task: LemmaTask) -> str:
             return "mutation_chain"
         if step.get("operator") not in OPERATOR_NAMES:
             return "mutation_chain"
-        if not isinstance(step.get("params"), dict):
+        params = step.get("params")
+        if not isinstance(params, dict):
             return "mutation_params"
+        if params.get("engine") != MUTATION_ENGINE:
+            return "mutation_engine"
         for key in ("input_hash", "output_hash"):
             if not isinstance(step.get(key), str) or not _HEX64.fullmatch(str(step[key])):
                 return "mutation_chain"
@@ -205,6 +213,17 @@ def _slot_weight_rejection_reason(task: LemmaTask, *, import_graph: ImportGraph 
     inputs = metadata.get("slot_weight_inputs")
     if not isinstance(inputs, dict):
         return "slot_weight_inputs"
+    if inputs.get("kernel_dependencies_recorded") is True:
+        if not _has_positive_int(inputs, "kernel_dependency_count"):
+            return "slot_weight_kernel_dependencies"
+        if not _has_hex64(inputs, "transitive_dependency_hash"):
+            return "slot_weight_kernel_dependency_hash"
+        expected = slot_weight_receipt_for_task(task)
+        if metadata.get("slot_weight_basis_points") != expected.basis_points:
+            return "slot_weight_basis_points"
+        if metadata.get("slot_weight_inputs") != expected.inputs:
+            return "slot_weight_inputs"
+        return ""
     if inputs.get("import_graph_resolved") is not True:
         return "slot_weight_import_graph"
     if inputs.get("import_graph_version") != IMPORT_GRAPH_VERSION:

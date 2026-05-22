@@ -47,6 +47,7 @@ class LeanVerifierAdapter(VerifierAdapter):
                 "proof_term_hash": result.proof_term_hash,
                 "structural_fingerprint": result.structural_fingerprint,
                 "declaration_fingerprints": result.declaration_fingerprints,
+                "kernel_dependencies": result.kernel_dependencies,
                 "legacy_reason": result.reason,
             },
         )
@@ -83,6 +84,12 @@ def verify_result_from_adapter_result(result: VerificationResult) -> VerifyResul
         if isinstance(raw_declarations, dict)
         else {}
     )
+    raw_dependencies = result.metrics.get("kernel_dependencies")
+    kernel_dependencies = (
+        tuple(str(item) for item in raw_dependencies if str(item).strip())
+        if isinstance(raw_dependencies, (list, tuple))
+        else ()
+    )
     return VerifyResult(
         passed=result.accepted,
         reason=_legacy_reason(result),
@@ -92,6 +99,7 @@ def verify_result_from_adapter_result(result: VerificationResult) -> VerifyResul
         proof_term_hash=str(result.metrics.get("proof_term_hash") or ""),
         structural_fingerprint=str(result.metrics.get("structural_fingerprint") or ""),
         declaration_fingerprints=declaration_fingerprints,
+        kernel_dependencies=kernel_dependencies,
     )
 
 

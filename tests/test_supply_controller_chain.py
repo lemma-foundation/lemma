@@ -141,13 +141,18 @@ def test_procedural_registry_requires_depth_two_metadata() -> None:
         "mutation_chain": [
             {
                 "operator": "generalize",
-                "params": {"target": "fresh_prop_hypothesis", "binder": "p", "binder_type": "Prop"},
+                "params": {
+                    "target": "fresh_prop_hypothesis",
+                    "binder": "p",
+                    "binder_type": "Prop",
+                    "engine": "lean_ast_elaborator",
+                },
                 "input_hash": "1" * 64,
                 "output_hash": "2" * 64,
             },
             {
                 "operator": "specialize",
-                "params": {"binder": "p", "binder_type": "Prop", "value": "True"},
+                "params": {"binder": "p", "binder_type": "Prop", "value": "True", "engine": "lean_ast_elaborator"},
                 "input_hash": "2" * 64,
                 "output_hash": "3" * 64,
             },
@@ -221,7 +226,7 @@ def test_procedural_registry_requires_depth_two_metadata() -> None:
 
     assert [task.id for task in build.tasks] == [good.id]
     assert build.tasks[0].source_stream == "procedural"
-    assert build.tasks[0].metadata["slot_weight_version"] == "lemma-slot-weight-v2"
+    assert build.tasks[0].metadata["slot_weight_version"] == "lemma-slot-weight-v3"
     assert build.rejected[0].reason == "mutation_depth"
 
 

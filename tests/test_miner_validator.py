@@ -230,6 +230,32 @@ def test_validator_scores_and_writes_alternate_corpus_rows(tmp_path: Path) -> No
     assert (tmp_path / "operator" / "canonical" / "sn0" / "tempos" / tempo_dir / "manifest.json").exists()
 
 
+def test_validator_scores_from_recorded_kernel_dependencies(tmp_path: Path) -> None:
+    task = _task("lemma.test.active", queue_depth=0)
+    submission = build_submission(task, solver_hotkey="hk", proof_script=_proof())
+    registry = TaskRegistry(
+        schema_version=1,
+        tasks=(task, _task("lemma.test.unsolved", queue_depth=0)),
+        sha256="0" * 64,
+    )
+
+    result = validate_once(
+        _settings(tmp_path),
+        [submission],
+        registry=registry,
+        verify_submission=lambda task, submission: VerifyResult(  # noqa: ARG005
+            passed=True,
+            reason="ok",
+            kernel_dependencies=("True", "True.intro"),
+        ),
+        no_set_weights=True,
+    )
+
+    assert result.score.scores["hk"] == pytest.approx(1.43 / 2.43)
+    assert result.corpus_rows[0].dependencies.mathlib_theorems_used == ("True", "True.intro")
+    assert result.corpus_rows[0].metadata["slot_weight_inputs"]["kernel_dependencies_recorded"] is True
+
+
 def test_validator_no_epoch_uses_next_numbered_local_file(tmp_path: Path) -> None:
     task = _task()
     submission = build_submission(task, solver_hotkey="hk-a", proof_script=_proof())
@@ -484,6 +510,23 @@ def test_validator_can_submit_tempo_commitment(tmp_path: Path) -> None:
     receipt = json.loads((tmp_path / "operator" / "commitment-submissions.jsonl").read_text(encoding="utf-8"))
     assert receipt["success"] is True
     assert receipt["payload"] == result.summary.tempo_commitment_payload
+
+
+def test_production_commitment_requires_cid_publish() -> None:
+    from lemma.validator import _require_cid_publish_for_production_commitment
+
+    settings = LemmaSettings(
+        _env_file=None,
+        protocol_mode="production",
+        enable_set_commitment=True,
+    )
+
+    with pytest.raises(RuntimeError, match="LEMMA_CANONICAL_PUBLISH_IPFS_API_URL"):
+        _require_cid_publish_for_production_commitment(settings)
+
+    _require_cid_publish_for_production_commitment(
+        settings.model_copy(update={"canonical_publish_ipfs_api_url": "http://ipfs.local:5001"})
+    )
 
 
 def test_validator_logs_failed_weight_submission_before_raising(tmp_path: Path) -> None:

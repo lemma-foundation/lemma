@@ -24,7 +24,7 @@ from lemma.scoring import ScoreResult, UnearnedPolicy, VerificationRecord, score
 from lemma.store import append_jsonl
 from lemma.submissions import LemmaSubmission, validate_submission_for_task
 from lemma.supply.queue import initial_active_pool
-from lemma.supply.slot_weight import slot_weight_receipt_for_task
+from lemma.supply.slot_weight import slot_weight_receipt_for_kernel_dependencies, slot_weight_receipt_for_task
 from lemma.task_activation import task_reward_eligibility, task_slot_weight
 from lemma.tasks import LemmaTask, TaskRegistry, fetch_task_registry, task_registry_from_tasks
 from lemma.verifiers.lean import verify_result_from_adapter_result
@@ -57,6 +57,8 @@ class ValidatorRunSummary(BaseModel):
     accepted_directory_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     tempo_commitment_payload: str = ""
     chain_commitment_set: bool = False
+    canonical_publish_uri: str = ""
+    canonical_publish_count: int = Field(default=0, ge=0)
     frontier_depth: int = Field(ge=0)
     verified_count: int = Field(ge=0)
     accepted_unique_count: int = Field(ge=0)
@@ -184,6 +186,7 @@ def _procedural_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> Ta
     from lemma.supply.gates import LeanProceduralGateRunner
     from lemma.supply.import_graph import empty_import_graph, read_import_graph
     from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
+    from lemma.supply.mutation import LeanAstMutationEngine
     from lemma.supply.novelty import empty_novelty_cache, read_novelty_cache
     from lemma.supply.procedural import (
         build_procedural_registry_tasks,
@@ -245,6 +248,7 @@ def _procedural_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> Ta
         citation_alpha=settings.procedural_citation_alpha,
         citation_weight_cap=settings.procedural_citation_weight_cap,
         citation_window_tempos=settings.procedural_citation_window_tempos,
+        mutation_engine=LeanAstMutationEngine(settings) if settings.protocol_mode == "production" else None,
         gate_runner=(
             LeanProceduralGateRunner(
                 settings,
@@ -488,7 +492,7 @@ def _write_public_tempo_artifacts(
 
     output_root = _canonical_output_root(settings)
     netuid = _netuid_label(settings)
-    resolver = "hippius-ipfs"
+    resolver = "hippius-s3-arion"
     active_pool = build_active_pool_storage(active_tasks, output_root, netuid=netuid, tempo=tempo, resolver=resolver)
     accepted = build_epoch_storage_from_rows(
         rows,
@@ -501,6 +505,132 @@ def _write_public_tempo_artifacts(
     return {**active_pool, **accepted}
 
 
+def _write_cid_bound_commitment(
+    artifacts: dict[str, object],
+    *,
+    active_pool_cid: str,
+    accepted_cid: str,
+) -> str:
+    from lemma.chain.commitments import compact_tempo_cid_commitment_payload
+    from lemma.corpus.storage import canonical_json_bytes
+
+    commitment_path = artifacts.get("commitment")
+    if not isinstance(commitment_path, Path):
+        raise RuntimeError("missing tempo commitment path")
+    payload = json.loads(commitment_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"{commitment_path}: expected JSON object")
+    tempo_payload = compact_tempo_cid_commitment_payload(
+        netuid=payload["netuid"],
+        tempo=payload["tempo"],
+        active_pool_directory_cid=active_pool_cid,
+        active_pool_directory_sha256=str(payload["active_pool_directory_sha256"]),
+        accepted_directory_cid=accepted_cid,
+        accepted_directory_sha256=str(payload["tempo_directory_sha256"]),
+        accepted_merkle_root=str(payload["accepted_merkle_root"]),
+    )
+    payload["active_pool_directory_cid"] = active_pool_cid
+    payload["tempo_directory_cid"] = accepted_cid
+    payload["tempo_commitment_payload"] = tempo_payload
+    payload["commitment_payload"] = tempo_payload
+    commitment_path.write_bytes(canonical_json_bytes(payload))
+    artifacts["active_pool_directory_cid"] = active_pool_cid
+    artifacts["tempo_directory_cid"] = accepted_cid
+    artifacts["tempo_commitment_payload"] = tempo_payload
+    return tempo_payload
+
+
+def _publish_public_tempo_artifacts(
+    settings: LemmaSettings,
+    artifacts: dict[str, object],
+) -> tuple[dict[str, str], ...]:
+    if not settings.canonical_publish_s3_uri.strip() and not settings.canonical_publish_ipfs_api_url.strip():
+        return ()
+    from lemma.corpus.publish import add_directory_to_ipfs, aws_command, publish_paths_to_s3
+
+    output_root = _canonical_output_root(settings)
+    rows: list[dict[str, str]] = []
+    active_pool_directory = artifacts.get("active_pool_directory")
+    accepted_directory = artifacts.get("directory")
+    if settings.canonical_publish_ipfs_api_url.strip():
+        if not isinstance(active_pool_directory, Path) or not isinstance(accepted_directory, Path):
+            raise RuntimeError("missing canonical directories for IPFS publish")
+        active_ipfs = add_directory_to_ipfs(
+            active_pool_directory,
+            api_url=settings.canonical_publish_ipfs_api_url,
+            verify=settings.canonical_publish_verify,
+            timeout_s=settings.canonical_publish_ipfs_timeout_s,
+        )
+        accepted_ipfs = add_directory_to_ipfs(
+            accepted_directory,
+            api_url=settings.canonical_publish_ipfs_api_url,
+            verify=settings.canonical_publish_verify,
+            timeout_s=settings.canonical_publish_ipfs_timeout_s,
+        )
+        _write_cid_bound_commitment(
+            artifacts,
+            active_pool_cid=active_ipfs.cid,
+            accepted_cid=accepted_ipfs.cid,
+        )
+        rows.extend(
+            [
+                {
+                    "kind": "ipfs_directory",
+                    "local_path": str(Path(active_ipfs.path).relative_to(output_root)),
+                    "cid": active_ipfs.cid,
+                    "file_count": str(active_ipfs.file_count),
+                },
+                {
+                    "kind": "ipfs_directory",
+                    "local_path": str(Path(accepted_ipfs.path).relative_to(output_root)),
+                    "cid": accepted_ipfs.cid,
+                    "file_count": str(accepted_ipfs.file_count),
+                },
+            ]
+        )
+    if not settings.canonical_publish_s3_uri.strip():
+        append_jsonl(settings.operator_data_dir / "canonical-publish.jsonl", rows)
+        return tuple(rows)
+
+    paths = tuple(
+        path
+        for path in (
+            active_pool_directory,
+            accepted_directory,
+            artifacts.get("commitment"),
+        )
+        if isinstance(path, Path)
+    )
+    published = publish_paths_to_s3(
+        paths,
+        root=output_root,
+        s3_uri=settings.canonical_publish_s3_uri,
+        endpoint_url=settings.canonical_publish_endpoint_url,
+        aws=aws_command(settings.canonical_publish_aws_command),
+        verify=settings.canonical_publish_verify,
+    )
+    rows.extend(
+        {
+            "kind": "s3_object",
+            "local_path": item.local_path,
+            "s3_uri": item.s3_uri,
+            "sha256": item.sha256,
+        }
+        for item in published
+    )
+    append_jsonl(settings.operator_data_dir / "canonical-publish.jsonl", rows)
+    return tuple(rows)
+
+
+def _require_cid_publish_for_production_commitment(settings: LemmaSettings) -> None:
+    if (
+        settings.protocol_mode == "production"
+        and settings.enable_set_commitment
+        and not settings.canonical_publish_ipfs_api_url.strip()
+    ):
+        raise RuntimeError("production tempo chain commitments require LEMMA_CANONICAL_PUBLISH_IPFS_API_URL")
+
+
 def _active_slot_weights(settings: LemmaSettings, active_tasks: Sequence[LemmaTask]) -> dict[str, float]:
     if settings.protocol_mode != "production" or settings.procedural_import_graph_jsonl is None:
         return {task.id: task_slot_weight(task) for task in active_tasks}
@@ -508,6 +638,54 @@ def _active_slot_weights(settings: LemmaSettings, active_tasks: Sequence[LemmaTa
 
     import_graph = read_import_graph(settings.procedural_import_graph_jsonl)
     return {task.id: slot_weight_receipt_for_task(task, import_graph=import_graph).weight for task in active_tasks}
+
+
+def _verified_slot_weights(
+    settings: LemmaSettings,
+    active_tasks: Sequence[LemmaTask],
+    records: Sequence[VerificationRecord],
+    accepted: dict[tuple[str, str, str], tuple[LemmaTask, LemmaSubmission, VerifyResult]],
+    *,
+    require_strong_identity: bool,
+) -> dict[str, float]:
+    weights = _active_slot_weights(settings, active_tasks)
+    active_ids = {task.id for task in active_tasks}
+    task_by_id = {task.id: task for task in active_tasks}
+    for task_id in active_ids:
+        task_records = sorted(
+            (record for record in records if record.task_id == task_id and record.passed),
+            key=_record_rank_key,
+        )
+        for record in task_records:
+            if not record.reward_eligible:
+                continue
+            if require_strong_identity and record.proof_identity_strength != "strong":
+                continue
+            accepted_entry = accepted.get((record.task_id, record.solver_hotkey, record.proof_sha256))
+            if accepted_entry is None:
+                continue
+            result = accepted_entry[2]
+            if result.kernel_dependencies:
+                weights[task_id] = slot_weight_receipt_for_kernel_dependencies(
+                    task_by_id[task_id],
+                    kernel_dependencies=result.kernel_dependencies,
+                ).weight
+            break
+    return weights
+
+
+def _task_with_verified_slot_weight(task: LemmaTask, result: VerifyResult) -> LemmaTask:
+    if not result.kernel_dependencies:
+        return task
+    receipt = slot_weight_receipt_for_kernel_dependencies(task, kernel_dependencies=result.kernel_dependencies)
+    return task.model_copy(update={"metadata": {**task.metadata, **receipt.metadata()}})
+
+
+def _record_rank_key(record: VerificationRecord) -> tuple[object, ...]:
+    if record.commit_block is not None:
+        tie_break = record.proof_identity or record.proof_term_hash or record.proof_sha256
+        return (0, record.commit_block, tie_break, record.solver_hotkey, record.received_at)
+    return (1, record.received_at)
 
 
 def validate_once(
@@ -644,7 +822,13 @@ def validate_once(
         unearned_policy=settings.unearned_allocation_policy,
         unearned_uid=settings.unearned_uid,
         require_strong_identity_for_reward=require_strong_identity,
-        slot_weights=_active_slot_weights(settings, active_tasks),
+        slot_weights=_verified_slot_weights(
+            settings,
+            active_tasks,
+            records,
+            accepted,
+            require_strong_identity=require_strong_identity,
+        ),
     )
     if score.score_events:
         append_jsonl(settings.operator_data_dir / "score-events.jsonl", score.score_events)
@@ -652,6 +836,7 @@ def validate_once(
     for scored in score.valid_unique_proofs:
         key = (scored.record.task_id, scored.record.solver_hotkey, scored.record.proof_sha256)
         task, submission, result = accepted[key]
+        task = _task_with_verified_slot_weight(task, result)
         rows.append(
             build_corpus_row(
                 task,
@@ -684,6 +869,8 @@ def validate_once(
         rows=rows,
         tempo=active_tempo,
     )
+    _require_cid_publish_for_production_commitment(settings)
+    published_artifacts = _publish_public_tempo_artifacts(settings, public_artifacts)
 
     weights_set = False
     weight_submission: ChainWeightSubmission | None = None
@@ -747,6 +934,8 @@ def validate_once(
         accepted_directory_sha256=str(public_artifacts.get("tempo_directory_sha256") or "") or None,
         tempo_commitment_payload=tempo_commitment_payload,
         chain_commitment_set=commitment_set,
+        canonical_publish_uri=settings.canonical_publish_s3_uri,
+        canonical_publish_count=len(published_artifacts),
         frontier_depth=settings.frontier_depth,
         verified_count=len(records),
         accepted_unique_count=len(score.valid_unique_proofs),

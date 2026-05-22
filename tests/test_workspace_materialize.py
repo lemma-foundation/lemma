@@ -81,5 +81,27 @@ def test_materialize_adds_extra_challenge_fingerprint_names(tmp_path: Path) -> N
 
     axiom_check = (dest / "AxiomCheck.lean").read_text(encoding="utf-8")
     assert "import Challenge" in axiom_check
+    assert "LEMMA_KERNEL_DEPENDENCIES" in axiom_check
+    assert "LEMMA_PROOF_TERM" in axiom_check
     assert "#print LemmaProceduralGate.prop_gate" in axiom_check
     assert "#print axioms LemmaProceduralGate.prop_gate" not in axiom_check
+
+
+def test_materialize_adds_extra_eval_commands(tmp_path: Path) -> None:
+    p = _minimal_problem()
+    p = Problem(
+        **{
+            **p.__dict__,
+            "extra": {
+                "lean_eval_commands": ("#eval IO.println \"mutation-ready\"",),
+            },
+        }
+    )
+    dest = tmp_path / "work"
+
+    materialize_workspace(dest, p, p.submission_stub())
+
+    axiom_check = (dest / "AxiomCheck.lean").read_text(encoding="utf-8")
+    assert "import Challenge" in axiom_check
+    assert "#eval IO.println \"mutation-ready\"" in axiom_check
+    assert axiom_check.index("#eval IO.println") < axiom_check.index("#print axioms")

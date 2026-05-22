@@ -127,11 +127,16 @@ name = "Submission"
 
 def _axiom_check_source(problem: Problem, submission_lean: str, policy: str) -> str:
     fingerprint_names = _extra_fingerprint_names(problem)
+    eval_commands = _extra_eval_commands(problem)
+    submission_names = submission_axiom_check_names(problem, submission_lean, policy=policy)
     lines = ["import Submission"]
-    if fingerprint_names:
+    if fingerprint_names or eval_commands:
         lines.append("import Challenge")
     lines.append("")
-    for name in submission_axiom_check_names(problem, submission_lean, policy=policy):
+    if submission_names:
+        lines.extend(_dependency_audit_source(submission_names))
+    lines.extend(eval_commands)
+    for name in submission_names:
         _append_declaration_fingerprint(lines, f"Submission.{name}", include_axioms=True)
     for name in fingerprint_names:
         _append_declaration_fingerprint(lines, name, include_axioms=False)
@@ -150,6 +155,95 @@ def _extra_fingerprint_names(problem: Problem) -> tuple[str, ...]:
         if name and name not in out:
             out.append(name)
     return tuple(out)
+
+
+def _extra_eval_commands(problem: Problem) -> list[str]:
+    raw = problem.extra.get("lean_eval_commands") or ()
+    if isinstance(raw, str):
+        raw = (raw,)
+    if not isinstance(raw, (list, tuple)):
+        return []
+    out: list[str] = []
+    for item in raw:
+        command = str(item).strip()
+        if command:
+            out.append(command)
+    if out:
+        out.append("")
+    return out
+
+
+def _dependency_audit_source(names: list[str]) -> list[str]:
+    lines = [
+        "namespace LemmaDependencyAudit",
+        "",
+        "open Lean",
+        "",
+        "def dependencyNamesFor (name : Name) : CoreM (Array Name) := do",
+        "  let env ← getEnv",
+        "  let info ← match env.find? name with",
+        "  | some info => pure info",
+        "  | none => throwError s!\"unknown declaration {name}\"",
+        "  let typeNames := info.type.getUsedConstants",
+        "  let valueNames := match info with",
+        "  | ConstantInfo.thmInfo data => data.value.getUsedConstants",
+        "  | ConstantInfo.defnInfo data => data.value.getUsedConstants",
+        "  | ConstantInfo.opaqueInfo data => data.value.getUsedConstants",
+        "  | _ => #[]",
+        "  pure <| (typeNames ++ valueNames).qsort (fun left right => left.toString < right.toString)",
+        "",
+        "def binderInfoKey : BinderInfo → String",
+        "  | BinderInfo.default => \"default\"",
+        "  | BinderInfo.implicit => \"implicit\"",
+        "  | BinderInfo.strictImplicit => \"strictImplicit\"",
+        "  | BinderInfo.instImplicit => \"instImplicit\"",
+        "",
+        "def literalKey : Literal → String",
+        "  | Literal.natVal n => \"nat:\" ++ toString n",
+        "  | Literal.strVal value => \"str:\" ++ reprStr value",
+        "",
+        "partial def exprKey : Expr → String",
+        "  | Expr.bvar i => \"bvar:\" ++ toString i",
+        "  | Expr.fvar id => \"fvar:\" ++ toString id.name",
+        "  | Expr.mvar id => \"mvar:\" ++ toString id.name",
+        "  | Expr.sort level => \"sort:\" ++ toString level",
+        "  | Expr.const name levels => \"const:\" ++ name.toString ++ \":\" ++ toString levels",
+        "  | Expr.app fn arg => \"(app \" ++ exprKey fn ++ \" \" ++ exprKey arg ++ \")\"",
+        "  | Expr.lam _ domain body info =>",
+        "      \"(lam \" ++ binderInfoKey info ++ \" \" ++ exprKey domain ++ \" \" ++ exprKey body ++ \")\"",
+        "  | Expr.forallE _ domain body info =>",
+        "      \"(forall \" ++ binderInfoKey info ++ \" \" ++ exprKey domain ++ \" \" ++ exprKey body ++ \")\"",
+        "  | Expr.letE _ type value body _ =>",
+        "      \"(let \" ++ exprKey type ++ \" \" ++ exprKey value ++ \" \" ++ exprKey body ++ \")\"",
+        "  | Expr.lit literal => \"lit:\" ++ literalKey literal",
+        "  | Expr.mdata _ body => exprKey body",
+        "  | Expr.proj structName index body =>",
+        "      \"(proj \" ++ structName.toString ++ \" \" ++ toString index ++ \" \" ++ exprKey body ++ \")\"",
+        "",
+        "def proofExprFor (name : Name) : CoreM Expr := do",
+        "  let env ← getEnv",
+        "  let info ← match env.find? name with",
+        "  | some info => pure info",
+        "  | none => throwError s!\"unknown declaration {name}\"",
+        "  match info with",
+        "  | ConstantInfo.thmInfo data => pure data.value",
+        "  | ConstantInfo.defnInfo data => pure data.value",
+        "  | ConstantInfo.opaqueInfo data => pure data.value",
+        "  | _ => throwError s!\"declaration {name} has no proof term\"",
+        "",
+        "def emit (name : Name) : CoreM Unit := do",
+        "  let deps ← dependencyNamesFor name",
+        "  let payload := Json.arr (deps.map fun dep => Json.str dep.toString)",
+        "  IO.println <| \"LEMMA_KERNEL_DEPENDENCIES \" ++ name.toString ++ \" \" ++ payload.compress",
+        "  let proof ← proofExprFor name",
+        "  IO.println <| \"LEMMA_PROOF_TERM \" ++ name.toString ++ \" \" ++ exprKey proof",
+        "",
+        "end LemmaDependencyAudit",
+        "",
+    ]
+    lines.extend(f"#eval! LemmaDependencyAudit.emit `Submission.{name}" for name in names)
+    lines.append("")
+    return lines
 
 
 def _append_declaration_fingerprint(lines: list[str], name: str, *, include_axioms: bool) -> None:

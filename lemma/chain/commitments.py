@@ -25,6 +25,7 @@ _TEMPO_FILE = re.compile(r"tempo-(\d+)\.json$")
 _STORAGE_PREFIX = "lemma-storage-v1"
 _ACTIVE_POOL_PREFIX = "lemma-active-pool-v1"
 _TEMPO_PREFIX = "lemma-tempo-v1"
+_TEMPO_CID_PREFIX = "lemma-tempo-cid-v1"
 _MINER_BUCKET_PREFIX = "lemma-bucket"
 
 
@@ -218,6 +219,52 @@ def compact_tempo_commitment_payload(
     return f"{_TEMPO_PREFIX}:{netuid}:{tempo}:{hashlib.sha256(preimage.encode('utf-8')).hexdigest()}"
 
 
+def tempo_cid_commitment_preimage(
+    *,
+    netuid: object,
+    tempo: object,
+    active_pool_directory_cid: str,
+    active_pool_directory_sha256: str,
+    accepted_directory_cid: str,
+    accepted_directory_sha256: str,
+    accepted_merkle_root: str,
+) -> str:
+    return (
+        f"{_TEMPO_CID_PREFIX}:{netuid}:{tempo}:{active_pool_directory_cid}:"
+        f"{active_pool_directory_sha256}:{accepted_directory_cid}:"
+        f"{accepted_directory_sha256}:{accepted_merkle_root}"
+    )
+
+
+def compact_tempo_cid_commitment_payload(
+    *,
+    netuid: object,
+    tempo: object,
+    active_pool_directory_cid: str,
+    active_pool_directory_sha256: str,
+    accepted_directory_cid: str,
+    accepted_directory_sha256: str,
+    accepted_merkle_root: str,
+) -> str:
+    preimage = tempo_cid_commitment_preimage(
+        netuid=netuid,
+        tempo=tempo,
+        active_pool_directory_cid=_cid(active_pool_directory_cid),
+        active_pool_directory_sha256=active_pool_directory_sha256,
+        accepted_directory_cid=_cid(accepted_directory_cid),
+        accepted_directory_sha256=accepted_directory_sha256,
+        accepted_merkle_root=accepted_merkle_root,
+    )
+    return f"{_TEMPO_CID_PREFIX}:{netuid}:{tempo}:{hashlib.sha256(preimage.encode('utf-8')).hexdigest()}"
+
+
+def _cid(value: object) -> str:
+    cid = str(value).strip()
+    if not cid or any(char.isspace() for char in cid):
+        raise ValueError("CID must be non-empty and contain no whitespace")
+    return cid
+
+
 def load_storage_commitment(path: Path) -> dict[str, object]:
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
@@ -255,16 +302,30 @@ def load_storage_commitment(path: Path) -> dict[str, object]:
     )
     accepted_payloads = {legacy_payload, compact_payload}
     active_pool_directory_sha256 = str(data.get("active_pool_directory_sha256") or "")
+    active_pool_directory_cid = str(data.get("active_pool_directory_cid") or "")
+    accepted_directory_cid = str(data.get("tempo_directory_cid") or "")
     tempo_payload = str(data.get("tempo_commitment_payload") or "")
     if active_pool_directory_sha256:
         if not _HEX64.fullmatch(active_pool_directory_sha256):
             raise ValueError(f"{path}: active_pool_directory_sha256 must be a 64-char lowercase hex digest")
-        expected_tempo_payload = compact_tempo_commitment_payload(
-            netuid=data["netuid"],
-            tempo=data["tempo"],
-            active_pool_directory_sha256=active_pool_directory_sha256,
-            accepted_directory_sha256=tempo_directory_sha256,
-            accepted_merkle_root=accepted_merkle_root,
+        expected_tempo_payload = (
+            compact_tempo_cid_commitment_payload(
+                netuid=data["netuid"],
+                tempo=data["tempo"],
+                active_pool_directory_cid=active_pool_directory_cid,
+                active_pool_directory_sha256=active_pool_directory_sha256,
+                accepted_directory_cid=accepted_directory_cid,
+                accepted_directory_sha256=tempo_directory_sha256,
+                accepted_merkle_root=accepted_merkle_root,
+            )
+            if active_pool_directory_cid and accepted_directory_cid
+            else compact_tempo_commitment_payload(
+                netuid=data["netuid"],
+                tempo=data["tempo"],
+                active_pool_directory_sha256=active_pool_directory_sha256,
+                accepted_directory_sha256=tempo_directory_sha256,
+                accepted_merkle_root=accepted_merkle_root,
+            )
         )
         if tempo_payload and tempo_payload != expected_tempo_payload:
             raise ValueError(f"{path}: tempo_commitment_payload mismatch")
@@ -278,6 +339,18 @@ def storage_commitment_payload(path: Path) -> str:
     data = load_storage_commitment(path)
     active_pool_directory_sha256 = str(data.get("active_pool_directory_sha256") or "")
     if active_pool_directory_sha256:
+        active_pool_directory_cid = str(data.get("active_pool_directory_cid") or "")
+        accepted_directory_cid = str(data.get("tempo_directory_cid") or "")
+        if active_pool_directory_cid and accepted_directory_cid:
+            return compact_tempo_cid_commitment_payload(
+                netuid=data["netuid"],
+                tempo=data["tempo"],
+                active_pool_directory_cid=active_pool_directory_cid,
+                active_pool_directory_sha256=active_pool_directory_sha256,
+                accepted_directory_cid=accepted_directory_cid,
+                accepted_directory_sha256=str(data["tempo_directory_sha256"]),
+                accepted_merkle_root=str(data["accepted_merkle_root"]),
+            )
         return compact_tempo_commitment_payload(
             netuid=data["netuid"],
             tempo=data["tempo"],

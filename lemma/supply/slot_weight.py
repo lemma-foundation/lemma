@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -11,7 +12,7 @@ from lemma.supply.import_graph import IMPORT_GRAPH_VERSION, ImportGraph
 from lemma.supply.types import TaskCandidate
 from lemma.tasks import LemmaTask
 
-SLOT_WEIGHT_VERSION = "lemma-slot-weight-v2"
+SLOT_WEIGHT_VERSION = "lemma-slot-weight-v3"
 
 
 @dataclass(frozen=True)
@@ -53,6 +54,31 @@ def slot_weight_receipt_for_task(task: LemmaTask, *, import_graph: ImportGraph |
     )
 
 
+def slot_weight_receipt_for_kernel_dependencies(
+    task: LemmaTask,
+    *,
+    kernel_dependencies: Sequence[str],
+) -> SlotWeightReceipt:
+    dependencies = tuple(dict.fromkeys(str(dep).strip() for dep in kernel_dependencies if str(dep).strip()))
+    if not dependencies:
+        return slot_weight_receipt_for_task(task)
+    inputs: dict[str, object] = {
+        "kernel_dependencies_recorded": True,
+        "import_graph_resolved": False,
+        "import_breadth": 0,
+        "import_depth": 0,
+        "direct_dependency_count": len(dependencies),
+        "transitive_dependency_count": len(dependencies),
+        "dependency_depth": max((len(name.split(".")) for name in dependencies), default=0),
+        "mutation_depth": _nonnegative_int(task.metadata.get("mutation_depth"), default=0),
+        "lemma_rows_used_count": len(_lemma_rows_used(task.source_stream, task.metadata)),
+        "citation_weight": _bounded_float(task.metadata.get("citation_weight"), default=1.0, cap=100.0),
+        "transitive_dependency_hash": _hash_names(dependencies),
+        "kernel_dependency_count": len(dependencies),
+    }
+    return _receipt_from_inputs(inputs)
+
+
 def _slot_weight_receipt(
     *,
     source_stream: str,
@@ -62,6 +88,8 @@ def _slot_weight_receipt(
     import_graph: ImportGraph | None,
 ) -> SlotWeightReceipt:
     stored = _stored_graph_inputs(metadata)
+    if stored is not None and stored.get("kernel_dependencies_recorded") is True:
+        return _receipt_from_inputs(stored)
     if import_graph is None and stored is not None:
         return _receipt_from_inputs(stored)
 
@@ -141,6 +169,7 @@ def _receipt_from_inputs(inputs: Mapping[str, Any]) -> SlotWeightReceipt:
 
 def _canonical_inputs(inputs: Mapping[str, Any]) -> dict[str, object]:
     out: dict[str, object] = {
+        "kernel_dependencies_recorded": inputs.get("kernel_dependencies_recorded") is True,
         "import_graph_resolved": inputs.get("import_graph_resolved") is True,
         "import_breadth": _nonnegative_int(inputs.get("import_breadth"), default=0),
         "import_depth": _nonnegative_int(inputs.get("import_depth"), default=0),
@@ -152,6 +181,8 @@ def _canonical_inputs(inputs: Mapping[str, Any]) -> dict[str, object]:
         "citation_weight": _bounded_float(inputs.get("citation_weight"), default=1.0, cap=100.0),
         "transitive_dependency_hash": str(inputs.get("transitive_dependency_hash") or ""),
     }
+    if out["kernel_dependencies_recorded"]:
+        out["kernel_dependency_count"] = _nonnegative_int(inputs.get("kernel_dependency_count"), default=0)
     if out["import_graph_resolved"]:
         out.update(
             {
@@ -166,9 +197,11 @@ def _canonical_inputs(inputs: Mapping[str, Any]) -> dict[str, object]:
 
 def _stored_graph_inputs(metadata: Mapping[str, Any]) -> Mapping[str, Any] | None:
     inputs = metadata.get("slot_weight_inputs")
-    if not isinstance(inputs, Mapping) or inputs.get("import_graph_resolved") is not True:
+    if not isinstance(inputs, Mapping):
         return None
-    return inputs
+    if inputs.get("kernel_dependencies_recorded") is True or inputs.get("import_graph_resolved") is True:
+        return inputs
+    return None
 
 
 def _module_depth(module: str) -> int:
@@ -210,3 +243,7 @@ def _lemma_rows_used(source_stream: str, metadata: Mapping[str, Any]) -> tuple[s
     if source_stream == "lemma_substrate" and substrate_row and substrate_row not in out:
         out = (*out, substrate_row)
     return out
+
+
+def _hash_names(names: Sequence[str]) -> str:
+    return hashlib.sha256("\n".join(names).encode("utf-8")).hexdigest()
