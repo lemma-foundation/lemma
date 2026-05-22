@@ -13,10 +13,11 @@ from lemma.submissions import build_submission
 from lemma.supply.gates import AssumedProceduralGateRunner, LeanProceduralGateRunner, ProceduralGateVerdict
 from lemma.supply.import_graph import ImportGraphRow, extract_import_graph_rows, read_import_graph
 from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
-from lemma.supply.mutation import LeanAstMutationEngine, PreviewMutationEngine
+from lemma.supply.mutation import LeanAstMutationEngine, MutationResult, PreviewMutationEngine
 from lemma.supply.novelty import novelty_cache_from_hashes, read_novelty_cache, statement_hash
 from lemma.supply.operator_bundle import OPERATOR_BUNDLE_VERSION, OPERATOR_NAMES
 from lemma.supply.procedural import (
+    _candidate_from_source,
     build_procedural_registry_tasks,
     corpus_sources_from_dir,
     generate_depth2_candidates,
@@ -287,6 +288,57 @@ def test_depth2_generation_attempt_limit_scales_with_requested_count() -> None:
         )
 
     assert gate.calls == 50
+
+
+def test_procedural_candidate_keeps_peer_imports() -> None:
+    class PeerMutationEngine:
+        def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001, ARG002
+            return MutationResult(
+                f"({peer.type_expr}) → ({type_expr})",
+                {"peer_source_id": peer.id},
+            )
+
+    source = fixture_candidate(
+        slug="source",
+        source_stream="mathlib_snapshot",
+        source_name="snapshot",
+        theorem_name="source",
+        type_expr="True",
+        queue_depth=0,
+    ).model_copy(update={"imports": ("Mathlib.Algebra.Ring.Basic",)})
+    peer = fixture_candidate(
+        slug="peer",
+        source_stream="mathlib_snapshot",
+        source_name="snapshot",
+        theorem_name="peer",
+        type_expr="Nat",
+        queue_depth=0,
+    ).model_copy(update={"imports": ("Mathlib.Data.Nat.Basic",)})
+
+    candidate = _candidate_from_source(
+        source,
+        source_pool=(source, peer),
+        generation_seed="epoch-a",
+        epoch_fields={},
+        operator_chain=("conjoin", "weaken"),
+        mutation_engine=PeerMutationEngine(),
+        source_pool_hash_value="a" * 64,
+        source_pool_receipt_value={
+            "version": "test",
+            "source_count": 2,
+            "source_stream_counts": {"mathlib_snapshot": 2},
+            "sampling_version": "test",
+            "citation_alpha_basis_points": 5000,
+            "citation_weight_cap_micros": 64_000_000,
+            "citation_window_tempos": 2000,
+        },
+        operator_bundle_hash="b" * 64,
+        tempo=3,
+        sequence=0,
+    )
+
+    assert candidate.imports == ("Mathlib.Algebra.Ring.Basic", "Mathlib.Data.Nat.Basic")
+    assert candidate.submission_stub.startswith("import Mathlib.Algebra.Ring.Basic\nimport Mathlib.Data.Nat.Basic\n")
 
 
 def test_procedural_registry_rejects_assumed_gate_receipts(tmp_path: Path) -> None:

@@ -336,10 +336,12 @@ def _candidate_from_source(
     sequence: int,
 ) -> TaskCandidate:
     type_expr = source.type_expr.strip()
+    imports = source.imports
     mutation_chain: list[dict[str, object]] = []
     input_hash = _hash_text(type_expr)
     for step, operator in enumerate(operator_chain):
         peer = _peer_source(source_pool, source_id=source.id, seed=generation_seed, sequence=sequence, step=step)
+        imports = _combined_imports(imports, peer.imports)
         mutation = mutation_engine.apply(
             source,
             type_expr,
@@ -419,11 +421,11 @@ def _candidate_from_source(
         source_stream="procedural",
         source_ref=source_ref,
         source_license=source.source_license,
-        imports=source.imports,
+        imports=imports,
         theorem_name=theorem_name,
         type_expr=type_expr,
         statement=f"theorem {theorem_name} : {type_expr} := by\n  sorry",
-        submission_stub=_lean_stub(theorem_name, type_expr, source.imports),
+        submission_stub=_lean_stub(theorem_name, type_expr, imports),
         lean_toolchain=source.lean_toolchain,
         mathlib_rev=source.mathlib_rev,
         policy=source.policy,
@@ -466,6 +468,14 @@ def _peer_source(
 ) -> TaskCandidate:
     peers = tuple(source for source in sources if source.id != source_id) or sources
     return peers[_hash_int(f"{seed}:{sequence}:{step}:peer") % len(peers)]
+
+
+def _combined_imports(left: tuple[str, ...], right: tuple[str, ...]) -> tuple[str, ...]:
+    out: list[str] = []
+    for item in (*left, *right):
+        if item not in out:
+            out.append(item)
+    return tuple(out)
 
 
 def _ordered_sources(
