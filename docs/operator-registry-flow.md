@@ -38,9 +38,10 @@ uv run lemma tasks rebuild-procedural-registry \
 
 The procedural builder rejects paid candidates that do not carry procedural
 depth-2 metadata, chain/drand anchoring, clean license state, deterministic
-public import-graph slot-weight receipt metadata, deterministic public novelty-cache metadata,
+public import-graph slot-weight receipt metadata, Lean-printed `kernel_canonical_hash`,
+deterministic public novelty-cache metadata,
 deterministic `T(t)` retarget metadata, and a Lean-backed generation receipt. The receipt
-must come from the `lean` gate runner, which runs typecheck, Prop, novelty, the
+must come from the `lean` gate runner, which runs typecheck, Prop, kernel-canonical novelty, the
 pinned triviality stack at the public burn-rate-retargeted budget, and
 import/dependency slot-weight calculation before paid activation.
 

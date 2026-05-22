@@ -85,6 +85,8 @@ def _fake_lean_gate(self, candidate, *, seen_canonical_hashes) -> ProceduralGate
             "gate_runner": "lean",
             "typecheck_reason": "ok",
             "prop_gate_reason": "ok",
+            "kernel_canonical_hash": canonical_hash,
+            "kernel_canonical_name": "LemmaProceduralGate.prop_gate",
             "triviality_stack": ["pytest"],
             "triviality_reason": "baseline_failed",
             "baseline_solver": None,
@@ -177,9 +179,14 @@ def test_lean_gate_runner_records_generation_time_gates(monkeypatch: pytest.Monk
 
     def fake_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001, ARG001
         if problem.id.endswith(".gate"):
+            assert problem.extra["lean_build_target"] == "Challenge"
             gate_source = str(problem.extra["challenge_full"])
             calls.append("typecheck" if "def typecheck_gate" in gate_source else "prop")
-            return VerifyResult(passed=True, reason="ok")
+            return VerifyResult(
+                passed=True,
+                reason="ok",
+                declaration_fingerprints={str(problem.extra["lean_fingerprint_names"][0]): "8" * 64},
+            )
         calls.append("triviality")
         return VerifyResult(passed=False, reason="compile_error")
 
@@ -191,6 +198,8 @@ def test_lean_gate_runner_records_generation_time_gates(monkeypatch: pytest.Monk
     assert verdict.accepted is True
     assert verdict.metadata["gate_runner"] == "lean"
     assert verdict.metadata["novelty_cache_version"] == "lemma-novelty-cache-v1"
+    assert verdict.metadata["kernel_canonical_hash"] == "8" * 64
+    assert verdict.metadata["canonical_hash"] == "8" * 64
     assert verdict.metadata["triviality_budget_version"] == "lemma-triviality-retarget-v1"
     assert verdict.metadata["triviality_reason"] == "baseline_failed"
     assert calls[:2] == ["typecheck", "prop"]

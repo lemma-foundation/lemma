@@ -80,7 +80,7 @@ as the problem authority. They rebuild the same rows locally from the pinned
 source snapshot, prior accepted-entry substrate mirror, chain state, drand, the
 public novelty cache, and the public import graph. Paid rows must include a
 source-pool receipt and a Lean-backed generation receipt: typecheck, Prop,
-novelty-cache, public import-graph slot-weight, and triviality-stack gates run
+kernel-canonical novelty, public import-graph slot-weight, and triviality-stack gates run
 before the candidate can enter the active paid pool.
 
 Corpus deltas are written under `LEMMA_CORPUS_OUTPUT_DIR`. Canonical active-pool and accepted-entry directories are written under `LEMMA_CANONICAL_OUTPUT_DIR` when set, otherwise under `LEMMA_OPERATOR_DATA_DIR/canonical`. Local receipts are written under `LEMMA_OPERATOR_DATA_DIR`. If `LEMMA_SUBMISSION_SPOOL_DIR` is set, validators consume pending `.json` or `.jsonl` submission files from that directory and move them to `processed/` after a successful pass. These paths should remain ignored unless an operator intentionally publishes sanitized artifacts.

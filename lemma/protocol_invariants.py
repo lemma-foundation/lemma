@@ -79,6 +79,10 @@ def production_supply_rejection_reason(task: LemmaTask) -> str:
         return "typecheck"
     if metadata.get("prop_gate_passed") is not True:
         return "prop_gate"
+    if not _has_hex64(metadata, "kernel_canonical_hash"):
+        return "kernel_canonical_hash"
+    if metadata.get("kernel_canonical_hash") != metadata.get("canonical_hash"):
+        return "kernel_canonical_hash"
     if metadata.get("triviality_checked") is not True:
         return "triviality"
     if _positive_float(metadata.get("triviality_budget_s")) is None:
@@ -118,6 +122,8 @@ def procedural_gate_receipt_sha256(task: LemmaTask) -> str:
         "task_id": task.id,
         "target_sha256": task.target_sha256,
         "canonical_hash": metadata.get("canonical_hash"),
+        "kernel_canonical_hash": metadata.get("kernel_canonical_hash"),
+        "kernel_canonical_name": metadata.get("kernel_canonical_name"),
         "statement_hash": metadata.get("statement_hash"),
         "gate_runner": metadata.get("gate_runner"),
         "typechecked": metadata.get("typechecked"),

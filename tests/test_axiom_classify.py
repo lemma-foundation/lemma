@@ -1,6 +1,11 @@
 """Verify classify Lean failures vs real axiom policy violations."""
 
-from lemma.lean.cheats import axiom_scan_ok, lean_driver_failed, structural_fingerprint_from_lean_output
+from lemma.lean.cheats import (
+    axiom_scan_ok,
+    declaration_fingerprints_from_lean_output,
+    lean_driver_failed,
+    structural_fingerprint_from_lean_output,
+)
 
 
 def test_build_failed_triggers_driver_failed_heuristic() -> None:
@@ -26,3 +31,4 @@ def test_structural_fingerprint_hashes_printed_declarations() -> None:
     )
 
     assert structural_fingerprint_from_lean_output(text)
+    assert declaration_fingerprints_from_lean_output(text)["Submission.target"]

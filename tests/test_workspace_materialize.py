@@ -52,3 +52,34 @@ def test_materialize_preserve_lake_keeps_dot_lake(tmp_path: Path) -> None:
     materialize_workspace(dest, p, "namespace Submission\n", preserve_lake=True)
     assert (dest / ".lake" / "warm_marker").read_text() == "ok"
     assert (dest / "Submission.lean").read_text().startswith("namespace Submission")
+
+
+def test_materialize_records_requested_lean_build_target(tmp_path: Path) -> None:
+    p = _minimal_problem()
+    p = Problem(**{**p.__dict__, "extra": {"lean_build_target": "Challenge"}})
+    dest = tmp_path / "work"
+
+    materialize_workspace(dest, p, p.submission_stub())
+
+    assert (dest / ".lemma_build_target").read_text(encoding="utf-8").strip() == "Challenge"
+
+
+def test_materialize_adds_extra_challenge_fingerprint_names(tmp_path: Path) -> None:
+    p = _minimal_problem()
+    p = Problem(
+        **{
+            **p.__dict__,
+            "extra": {
+                "lean_build_target": "Challenge",
+                "lean_fingerprint_names": ("LemmaProceduralGate.prop_gate",),
+            },
+        }
+    )
+    dest = tmp_path / "work"
+
+    materialize_workspace(dest, p, p.submission_stub())
+
+    axiom_check = (dest / "AxiomCheck.lean").read_text(encoding="utf-8")
+    assert "import Challenge" in axiom_check
+    assert "#print LemmaProceduralGate.prop_gate" in axiom_check
+    assert "#print axioms LemmaProceduralGate.prop_gate" not in axiom_check

@@ -24,6 +24,7 @@ from lemma.scoring import ScoreResult, UnearnedPolicy, VerificationRecord, score
 from lemma.store import append_jsonl
 from lemma.submissions import LemmaSubmission, validate_submission_for_task
 from lemma.supply.queue import initial_active_pool
+from lemma.supply.slot_weight import slot_weight_receipt_for_task
 from lemma.task_activation import task_reward_eligibility, task_slot_weight
 from lemma.tasks import LemmaTask, TaskRegistry, fetch_task_registry, task_registry_from_tasks
 from lemma.verifiers.lean import verify_result_from_adapter_result
@@ -500,6 +501,15 @@ def _write_public_tempo_artifacts(
     return {**active_pool, **accepted}
 
 
+def _active_slot_weights(settings: LemmaSettings, active_tasks: Sequence[LemmaTask]) -> dict[str, float]:
+    if settings.protocol_mode != "production" or settings.procedural_import_graph_jsonl is None:
+        return {task.id: task_slot_weight(task) for task in active_tasks}
+    from lemma.supply.import_graph import read_import_graph
+
+    import_graph = read_import_graph(settings.procedural_import_graph_jsonl)
+    return {task.id: slot_weight_receipt_for_task(task, import_graph=import_graph).weight for task in active_tasks}
+
+
 def validate_once(
     settings: LemmaSettings,
     submissions: Iterable[LemmaSubmission],
@@ -634,7 +644,7 @@ def validate_once(
         unearned_policy=settings.unearned_allocation_policy,
         unearned_uid=settings.unearned_uid,
         require_strong_identity_for_reward=require_strong_identity,
-        slot_weights={task.id: task_slot_weight(task) for task in active_tasks},
+        slot_weights=_active_slot_weights(settings, active_tasks),
     )
     if score.score_events:
         append_jsonl(settings.operator_data_dir / "score-events.jsonl", score.score_events)

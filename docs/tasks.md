@@ -102,8 +102,8 @@ fraction, per-entry cap, and citation window. The procedural builder rejects pai
 they carry procedural depth-2 provenance, chain/drand anchoring, source-pool and
 operator-bundle hashes, clean license state, a recomputable public import-graph
 `slot_weight` receipt, a recomputable public novelty-cache receipt, a recomputable `T(t)` triviality-budget receipt, and a Lean-backed gate receipt. Production receipts must come from the
-`lean` gate runner: Lean typecheck, kernel Prop gate, canonical novelty, the
-pinned triviality stack retargeted from public burn history, and deterministic import/dependency slot-weight
+`lean` gate runner: Lean typecheck, kernel Prop gate, canonical novelty from
+Lean-printed declaration fingerprints, the pinned triviality stack retargeted from public burn history, and deterministic import/dependency slot-weight
 calculation must all run during generation, and any candidate solved by the
 stack is excluded from paid supply.
 

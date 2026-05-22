@@ -18,7 +18,7 @@ from lemma.protocol_invariants import (
 from lemma.scoring import VerificationRecord, score_epoch
 from lemma.submissions import build_submission, sign_submission
 from lemma.supply.gates import GATE_VERSION
-from lemma.supply.import_graph import ImportGraphRow, import_graph_from_rows
+from lemma.supply.import_graph import ImportGraphRow, import_graph_from_rows, write_import_graph_jsonl
 from lemma.supply.novelty import novelty_cache_from_hashes
 from lemma.supply.operator_bundle import OPERATOR_BUNDLE_VERSION, procedural_operator_bundle_hash
 from lemma.supply.slot_weight import slot_weight_receipt_for_task
@@ -33,7 +33,7 @@ from lemma.tasks import (
     load_task_registry,
     registry_signing_payload,
 )
-from lemma.validator import active_epoch_seed, active_tasks_for_validation, validate_once
+from lemma.validator import _active_slot_weights, active_epoch_seed, active_tasks_for_validation, validate_once
 
 
 def _task(source_license: str = "CC-BY-4.0"):
@@ -102,6 +102,8 @@ def _procedural_metadata(
         "operator_bundle_version": OPERATOR_BUNDLE_VERSION,
         "operator_bundle_hash": procedural_operator_bundle_hash(),
         "canonical_hash": "6" * 64,
+        "kernel_canonical_hash": "6" * 64,
+        "kernel_canonical_name": "LemmaProceduralGate.prop_gate",
         "statement_hash": "7" * 64,
         "typechecked": True,
         "prop_gate_passed": True,
@@ -126,6 +128,16 @@ def _import_graph():
             ImportGraphRow(module="Mathlib", imports=("Mathlib.Init",)),
             ImportGraphRow(module="Mathlib.Init", imports=()),
         )
+    )
+
+
+def _write_import_graph(path) -> None:  # noqa: ANN001
+    write_import_graph_jsonl(
+        (
+            ImportGraphRow(module="Mathlib", imports=("Mathlib.Init",)),
+            ImportGraphRow(module="Mathlib.Init", imports=()),
+        ),
+        path,
     )
 
 
@@ -448,6 +460,27 @@ def test_production_mode_rejects_tampered_slot_weight_receipt() -> None:
     assert production_supply_rejection_reason(tampered) == "slot_weight_basis_points"
 
 
+def test_production_validator_recomputes_slot_weights_from_public_import_graph(tmp_path) -> None:  # noqa: ANN001
+    import_graph_path = tmp_path / "import-graph.jsonl"
+    _write_import_graph(import_graph_path)
+    settings = _production_settings(procedural_import_graph_jsonl=import_graph_path)
+    task = _production_task()
+    tampered = task.model_copy(
+        update={
+            "metadata": {
+                **task.metadata,
+                "slot_weight": 999.0,
+                "slot_weight_basis_points": 999_000,
+            }
+        }
+    )
+
+    weights = _active_slot_weights(settings, (tampered,))
+
+    assert weights[tampered.id] == slot_weight_receipt_for_task(tampered, import_graph=_import_graph()).weight
+    assert weights[tampered.id] != 999.0
+
+
 def test_production_mode_rejects_missing_triviality_retarget_receipt() -> None:
     task = _production_task()
     metadata = dict(task.metadata)
@@ -474,6 +507,15 @@ def test_production_mode_rejects_missing_novelty_cache_receipt() -> None:
     tampered = task.model_copy(update={"metadata": metadata})
 
     assert production_supply_rejection_reason(tampered) == "novelty_cache_sha256"
+
+
+def test_production_mode_requires_kernel_canonical_hash() -> None:
+    task = _production_task()
+    metadata = dict(task.metadata)
+    metadata.pop("kernel_canonical_hash")
+    tampered = task.model_copy(update={"metadata": metadata})
+
+    assert production_supply_rejection_reason(tampered) == "kernel_canonical_hash"
 
 
 def test_production_mode_requires_epoch_randomness_active_seed() -> None:

@@ -268,7 +268,7 @@ def generate_depth2_candidates(
         )
         verdict = runner(candidate, seen_canonical_hashes=seen)
         candidate = _with_gate_receipt(candidate, verdict)
-        canonical_hash = str(candidate.metadata["statement_hash"])
+        canonical_hash = str(candidate.metadata["canonical_hash"])
         if verdict.accepted:
             seen.add(canonical_hash)
             out.append(candidate)

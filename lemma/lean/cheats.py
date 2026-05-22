@@ -64,24 +64,42 @@ def axiom_scan_ok(lean_output: str) -> tuple[bool, set[str] | None]:
     return True, found
 
 
-def structural_fingerprint_from_lean_output(lean_output: str) -> str | None:
-    """Hash Lean-printed declaration output emitted by `AxiomCheck.lean`."""
-    blocks: list[str] = []
+def declaration_fingerprints_from_lean_output(lean_output: str) -> dict[str, str]:
+    """Return hashes of Lean-printed declarations emitted by `AxiomCheck.lean`."""
+    blocks: dict[str, list[str]] = {}
     active: list[str] | None = None
+    active_name = ""
     for line in lean_output.splitlines():
         text = line.strip()
         if text.startswith("LEMMA_DECL_FINGERPRINT_START "):
+            active_name = text.removeprefix("LEMMA_DECL_FINGERPRINT_START ").strip()
             active = []
             continue
         if text.startswith("LEMMA_DECL_FINGERPRINT_END "):
-            if active is not None:
-                blocks.append("\n".join(active).strip())
+            end_name = text.removeprefix("LEMMA_DECL_FINGERPRINT_END ").strip()
+            if active is not None and active_name and active_name == end_name:
+                blocks[active_name] = active
             active = None
+            active_name = ""
             continue
         if active is not None:
             active.append(line.rstrip())
-    payload = "\n\x1e\n".join(block for block in blocks if block)
+    out: dict[str, str] = {}
+    for name, block in sorted(blocks.items()):
+        payload = "\n".join(block).strip()
+        if payload:
+            out[name] = hashlib.sha256(_normalize_declaration(payload).encode("utf-8")).hexdigest()
+    return out
+
+
+def structural_fingerprint_from_lean_output(lean_output: str) -> str | None:
+    """Hash Lean-printed declaration output emitted by `AxiomCheck.lean`."""
+    fingerprints = declaration_fingerprints_from_lean_output(lean_output)
+    payload = "\n\x1e\n".join(f"{name}:{value}" for name, value in sorted(fingerprints.items()))
     if not payload:
         return None
-    normalized = re.sub(r"\s+", " ", payload.strip())
-    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _normalize_declaration(value: str) -> str:
+    return re.sub(r"\s+", " ", value.strip())

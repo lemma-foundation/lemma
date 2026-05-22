@@ -33,7 +33,7 @@ Optional fields:
 - `topic` / `subtopic`: deterministic topic labels from the Mathlib source path.
 - `difficulty_score`: deterministic classifier score used to assign `queue_depth`.
 - `citation_weight`: pinned dependency in-degree or capped sampling weight for procedural source selection.
-- `direct_dependency_count`, `dependency_depth`, `transitive_dependency_hash`: source-pool hints for local analysis; paid production slot-weight receipts are recomputed from `public-import-graph.jsonl`.
+- `direct_dependency_count`, `dependency_depth`, `transitive_dependency_hash`: source-pool hints for local analysis; paid production slot-weight receipts are recomputed by validators from `public-import-graph.jsonl`.
 - `baseline_solved`: whether an operator baseline tactic stack solved the task before paid activation.
 
 Build the public import graph from the same pinned checkout:

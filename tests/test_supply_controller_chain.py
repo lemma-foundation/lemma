@@ -167,6 +167,8 @@ def test_procedural_registry_requires_depth_two_metadata() -> None:
         "operator_bundle_version": OPERATOR_BUNDLE_VERSION,
         "operator_bundle_hash": procedural_operator_bundle_hash(),
         "canonical_hash": "6" * 64,
+        "kernel_canonical_hash": "6" * 64,
+        "kernel_canonical_name": "LemmaProceduralGate.prop_gate",
         "statement_hash": "7" * 64,
         "typechecked": True,
         "prop_gate_passed": True,

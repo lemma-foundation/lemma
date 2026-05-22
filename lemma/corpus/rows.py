@@ -183,6 +183,8 @@ def _result_parts(
         {
             "build_seconds": result.build_seconds,
             "proof_term_hash": result.proof_term_hash,
+            "structural_fingerprint": result.structural_fingerprint,
+            "declaration_fingerprints": result.declaration_fingerprints,
             "legacy_reason": result.reason,
         },
     )

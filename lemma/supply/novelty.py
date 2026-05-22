@@ -64,7 +64,7 @@ def statement_hash(type_expr: str) -> str:
 
 
 def _row_statement_hash(row: dict[str, Any]) -> str | None:
-    for key in ("statement_hash", "canonical_statement_hash"):
+    for key in ("statement_hash", "canonical_statement_hash", "canonical_hash", "kernel_canonical_hash"):
         value = _normalize_hash(row.get(key))
         if value:
             return value

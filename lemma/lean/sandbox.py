@@ -14,10 +14,11 @@ from pathlib import Path
 from typing import Any, Literal
 
 from loguru import logger
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from lemma.lean.cheats import (
     axiom_scan_ok,
+    declaration_fingerprints_from_lean_output,
     lake_build_environment_failed,
     lean_driver_failed,
     structural_fingerprint_from_lean_output,
@@ -62,11 +63,15 @@ def _merge_lean_process_env(base: dict[str, str]) -> dict[str, str]:
     return out
 
 
-def _lake_build_argv() -> list[str]:
-    """Verify needs ``Submission`` (+ Mathlib deps). Full ``lake build`` is optional (CI / debugging)."""
+def _lake_build_argv(work: Path) -> list[str]:
+    """Build the workspace target needed for this verification pass."""
     if _env_truthy("LEMMA_LEAN_VERIFY_FULL_BUILD"):
         return ["lake", "build"]
-    return ["lake", "build", "Submission"]
+    target_path = work / ".lemma_build_target"
+    target = target_path.read_text(encoding="utf-8").strip() if target_path.exists() else "Submission"
+    if target not in {"Challenge", "Solution", "Submission"}:
+        return ["lake", "build", "Submission"]
+    return ["lake", "build", target]
 
 
 def _docker_network_allows_remote_cache(network_mode: str) -> bool:
@@ -133,6 +138,7 @@ class VerifyResult(BaseModel):
     build_seconds: float = 0.0
     proof_term_hash: str | None = None
     structural_fingerprint: str | None = None
+    declaration_fingerprints: dict[str, str] = Field(default_factory=dict)
 
 
 class LeanSandbox:
@@ -343,7 +349,7 @@ class LeanSandbox:
         self._maybe_lake_cache_get(work, env)
         try:
             r = subprocess.run(
-                _lake_build_argv(),
+                _lake_build_argv(work),
                 cwd=work,
                 capture_output=True,
                 text=True,
@@ -411,6 +417,7 @@ class LeanSandbox:
             stdout_tail=out[-2000:],
             build_seconds=elapsed,
             structural_fingerprint=structural_fingerprint_from_lean_output(out),
+            declaration_fingerprints=declaration_fingerprints_from_lean_output(out),
         )
 
     def _docker_worker_host_root(self) -> Path | None:
@@ -443,7 +450,7 @@ class LeanSandbox:
                 lines.append("lake exe cache get")
             else:
                 logger.debug("docker verify: skipping lake exe cache get (warm packages/mathlib)")
-        lines.append(shlex.join(_lake_build_argv()))
+        lines.append(shlex.join(_lake_build_argv(work)))
         lines.append("lake env lean AxiomCheck.lean")
         return "\n".join(lines) + "\n"
 
@@ -527,6 +534,7 @@ class LeanSandbox:
             stdout_tail=text[-2000:],
             build_seconds=elapsed,
             structural_fingerprint=structural_fingerprint_from_lean_output(text),
+            declaration_fingerprints=declaration_fingerprints_from_lean_output(text),
         )
 
     def _verify_docker_cli_exec(

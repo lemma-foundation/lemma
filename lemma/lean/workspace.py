@@ -61,6 +61,7 @@ def materialize_workspace(
     overwritten in place so Lake can incrementally rebuild ``Submission`` only.
     """
     policy = submission_policy_for_problem(problem, submission_policy)
+    build_target = _lean_build_target(problem)
     if preserve_lake and dest.exists() and (dest / ".lake").is_dir():
         (dest / "Challenge.lean").write_text(problem.challenge_source(), encoding="utf-8")
         (dest / "Solution.lean").write_text(problem.solution_source(), encoding="utf-8")
@@ -68,6 +69,7 @@ def materialize_workspace(
         (dest / "lean-toolchain").write_text(problem.lean_toolchain.strip() + "\n", encoding="utf-8")
         lake = _lakefile_toml(problem)
         (dest / "lakefile.toml").write_text(lake, encoding="utf-8")
+        (dest / ".lemma_build_target").write_text(build_target + "\n", encoding="utf-8")
         (dest / "AxiomCheck.lean").write_text(_axiom_check_source(problem, submission_lean, policy), encoding="utf-8")
         return
 
@@ -82,11 +84,19 @@ def materialize_workspace(
     (dest / "lean-toolchain").write_text(problem.lean_toolchain.strip() + "\n", encoding="utf-8")
 
     (dest / "lakefile.toml").write_text(_lakefile_toml(problem), encoding="utf-8")
+    (dest / ".lemma_build_target").write_text(build_target + "\n", encoding="utf-8")
 
     # Check axioms on the submitted theorem in ``Submission`` (not ``Solution``): the
     # Solution module only bridges Challenge ↔ Submission and may not expose names
     # the way ``lake env lean`` expects for every workspace layout.
     (dest / "AxiomCheck.lean").write_text(_axiom_check_source(problem, submission_lean, policy), encoding="utf-8")
+
+
+def _lean_build_target(problem: Problem) -> str:
+    raw = str(problem.extra.get("lean_build_target") or "Submission").strip()
+    if raw not in {"Challenge", "Solution", "Submission"}:
+        raise ValueError(f"unsupported Lean build target: {raw}")
+    return raw
 
 
 def _lakefile_toml(problem: Problem) -> str:
@@ -116,10 +126,35 @@ name = "Submission"
 
 
 def _axiom_check_source(problem: Problem, submission_lean: str, policy: str) -> str:
-    lines = ["import Submission", ""]
+    fingerprint_names = _extra_fingerprint_names(problem)
+    lines = ["import Submission"]
+    if fingerprint_names:
+        lines.append("import Challenge")
+    lines.append("")
     for name in submission_axiom_check_names(problem, submission_lean, policy=policy):
-        lines.append(f"#print axioms Submission.{name}")
-        lines.append(f'#eval IO.println "LEMMA_DECL_FINGERPRINT_START Submission.{name}"')
-        lines.append(f"#print Submission.{name}")
-        lines.append(f'#eval IO.println "LEMMA_DECL_FINGERPRINT_END Submission.{name}"')
+        _append_declaration_fingerprint(lines, f"Submission.{name}", include_axioms=True)
+    for name in fingerprint_names:
+        _append_declaration_fingerprint(lines, name, include_axioms=False)
     return "\n".join(lines) + "\n"
+
+
+def _extra_fingerprint_names(problem: Problem) -> tuple[str, ...]:
+    raw = problem.extra.get("lean_fingerprint_names") or ()
+    if isinstance(raw, str):
+        raw = (raw,)
+    if not isinstance(raw, (list, tuple)):
+        return ()
+    out: list[str] = []
+    for item in raw:
+        name = str(item).strip()
+        if name and name not in out:
+            out.append(name)
+    return tuple(out)
+
+
+def _append_declaration_fingerprint(lines: list[str], name: str, *, include_axioms: bool) -> None:
+    if include_axioms:
+        lines.append(f"#print axioms {name}")
+    lines.append(f'#eval IO.println "LEMMA_DECL_FINGERPRINT_START {name}"')
+    lines.append(f"#print {name}")
+    lines.append(f'#eval IO.println "LEMMA_DECL_FINGERPRINT_END {name}"')

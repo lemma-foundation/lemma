@@ -46,6 +46,7 @@ class LeanVerifierAdapter(VerifierAdapter):
                 "proof_sha256": lean_submission.proof_sha256,
                 "proof_term_hash": result.proof_term_hash,
                 "structural_fingerprint": result.structural_fingerprint,
+                "declaration_fingerprints": result.declaration_fingerprints,
                 "legacy_reason": result.reason,
             },
         )
@@ -76,6 +77,12 @@ class LeanVerifierAdapter(VerifierAdapter):
 
 def verify_result_from_adapter_result(result: VerificationResult) -> VerifyResult:
     """Bridge the domain-neutral adapter result back to the current Lean score path."""
+    raw_declarations = result.metrics.get("declaration_fingerprints")
+    declaration_fingerprints = (
+        {str(key): str(value) for key, value in raw_declarations.items() if str(key).strip() and str(value).strip()}
+        if isinstance(raw_declarations, dict)
+        else {}
+    )
     return VerifyResult(
         passed=result.accepted,
         reason=_legacy_reason(result),
@@ -84,6 +91,7 @@ def verify_result_from_adapter_result(result: VerificationResult) -> VerifyResul
         build_seconds=float(result.metrics.get("build_seconds") or 0.0),
         proof_term_hash=str(result.metrics.get("proof_term_hash") or ""),
         structural_fingerprint=str(result.metrics.get("structural_fingerprint") or ""),
+        declaration_fingerprints=declaration_fingerprints,
     )
 
 

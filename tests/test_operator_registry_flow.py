@@ -74,6 +74,8 @@ def _fake_lean_gate(self, candidate, *, seen_canonical_hashes) -> ProceduralGate
             "gate_runner": "lean",
             "typecheck_reason": "ok",
             "prop_gate_reason": "ok",
+            "kernel_canonical_hash": canonical_hash,
+            "kernel_canonical_name": "LemmaProceduralGate.prop_gate",
             "triviality_stack": ["pytest"],
             "triviality_reason": "baseline_failed",
             "baseline_solver": None,

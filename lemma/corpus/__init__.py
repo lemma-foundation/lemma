@@ -230,6 +230,9 @@ def build_corpus_row(
         proof_identity_strength=identity.strength,
         model_lift_release=task.metadata.get("model_lift_release"),
     )
+    row_metadata = {"title": task.title, **_public_metadata(task.metadata)}
+    if result.declaration_fingerprints:
+        row_metadata["declaration_fingerprints"] = dict(sorted(result.declaration_fingerprints.items()))
     return CorpusRow(
         task_id=task.id,
         task_version=task.task_version,
@@ -286,7 +289,7 @@ def build_corpus_row(
             reason=None if result.passed else result.reason,
             elapsed_ms=int(result.build_seconds * 1000) if result.build_seconds else None,
         ),
-        metadata={"title": task.title, **_public_metadata(task.metadata)},
+        metadata=row_metadata,
     )
 
 

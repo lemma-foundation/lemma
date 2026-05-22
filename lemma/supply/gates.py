@@ -20,6 +20,8 @@ from lemma.supply.triviality_budget import (
 from lemma.supply.types import TaskCandidate
 
 GATE_VERSION = "lemma-procedural-gates-v3"
+_TYPECHECK_GATE_DECL = "LemmaProceduralGate.typecheck_gate"
+_PROP_GATE_DECL = "LemmaProceduralGate.prop_gate"
 TRIVIALITY_STACK = (
     ("trivial", "  trivial"),
     ("simp", "  simp"),
@@ -126,9 +128,22 @@ class LeanProceduralGateRunner:
         *,
         seen_canonical_hashes: Iterable[str],
     ) -> ProceduralGateVerdict:
-        novelty = _novelty_status(candidate, seen_canonical_hashes, self.novelty_cache)
-        typecheck = self._compile_gate(candidate, _typecheck_gate_source(candidate))
-        prop = self._compile_gate(candidate, _prop_gate_source(candidate)) if typecheck.passed else typecheck
+        typecheck = self._compile_gate(
+            candidate,
+            _typecheck_gate_source(candidate),
+            fingerprint_name=_TYPECHECK_GATE_DECL,
+        )
+        prop = (
+            self._compile_gate(candidate, _prop_gate_source(candidate), fingerprint_name=_PROP_GATE_DECL)
+            if typecheck.passed
+            else typecheck
+        )
+        kernel_hash = _declaration_fingerprint(prop, _PROP_GATE_DECL) if prop.passed else ""
+        novelty = (
+            _novelty_status(candidate, seen_canonical_hashes, self.novelty_cache, canonical_hash=kernel_hash)
+            if kernel_hash
+            else "missing_kernel_fingerprint"
+        )
         triviality_checked, baseline_solved, baseline_solver, baseline_reason = self._run_triviality_stack(candidate)
         slot_weight = slot_weight_receipt_for_candidate(candidate, import_graph=self.import_graph)
         return ProceduralGateVerdict(
@@ -142,6 +157,9 @@ class LeanProceduralGateRunner:
                 "gate_runner": "lean",
                 "typecheck_reason": typecheck.reason,
                 "prop_gate_reason": prop.reason,
+                "kernel_canonical_hash": kernel_hash,
+                "kernel_canonical_name": _PROP_GATE_DECL,
+                "canonical_hash": kernel_hash or candidate.metadata.get("canonical_hash"),
                 "triviality_stack": [name for name, _body in TRIVIALITY_STACK],
                 "triviality_reason": baseline_reason,
                 "baseline_solver": baseline_solver,
@@ -151,8 +169,8 @@ class LeanProceduralGateRunner:
             },
         )
 
-    def _compile_gate(self, candidate: TaskCandidate, gate_source: str) -> VerifyResult:
-        problem = _gate_problem(candidate, gate_source)
+    def _compile_gate(self, candidate: TaskCandidate, gate_source: str, *, fingerprint_name: str) -> VerifyResult:
+        problem = _gate_problem(candidate, gate_source, fingerprint_name=fingerprint_name)
         return run_lean_verify(
             self.settings,
             verify_timeout_s=self.gate_timeout_s,
@@ -177,16 +195,22 @@ class LeanProceduralGateRunner:
         return True, False, None, "baseline_failed"
 
 
-def _novelty_status(candidate: TaskCandidate, seen_hashes: Iterable[str], novelty_cache: NoveltyCache) -> str:
+def _novelty_status(
+    candidate: TaskCandidate,
+    seen_hashes: Iterable[str],
+    novelty_cache: NoveltyCache,
+    *,
+    canonical_hash: str | None = None,
+) -> str:
     statement_hash = str(candidate.metadata.get("statement_hash") or "")
-    canonical_hash = str(candidate.metadata.get("canonical_hash") or "")
+    canonical = str(canonical_hash or candidate.metadata.get("canonical_hash") or "")
     seen = set(seen_hashes)
-    if statement_hash in seen or canonical_hash in seen:
+    if statement_hash in seen or canonical in seen:
         return "duplicate"
-    return "duplicate" if novelty_cache.contains(statement_hash) else "passed"
+    return "duplicate" if novelty_cache.contains(statement_hash) or novelty_cache.contains(canonical) else "passed"
 
 
-def _gate_problem(candidate: TaskCandidate, gate_source: str) -> Problem:
+def _gate_problem(candidate: TaskCandidate, gate_source: str, *, fingerprint_name: str) -> Problem:
     return Problem(
         id=f"{candidate.id}.gate",
         theorem_name="lemma_gate_dummy",
@@ -197,9 +221,16 @@ def _gate_problem(candidate: TaskCandidate, gate_source: str) -> Problem:
         imports=candidate.imports,
         extra={
             "challenge_full": gate_source,
+            "lean_build_target": "Challenge",
+            "lean_fingerprint_names": (fingerprint_name,),
             "submission_policy": "strict_envelope",
         },
     )
+
+
+def _declaration_fingerprint(result: VerifyResult, name: str) -> str:
+    value = result.declaration_fingerprints.get(name, "")
+    return value if len(value) == 64 else ""
 
 
 def _typecheck_gate_source(candidate: TaskCandidate) -> str:
