@@ -11,7 +11,12 @@ from lemma.chain.commitments import (
     miner_submission_merkle_root,
 )
 from lemma.chain.drand import ciphertext_bytes, encode_ciphertext
-from lemma.chain.miner_buckets import MinerBucketReveal, RevealedBucketBlob, submissions_from_bucket_reveals
+from lemma.chain.miner_buckets import (
+    MinerBucketReveal,
+    RevealedBucketBlob,
+    poll_bucket_reveals,
+    submissions_from_bucket_reveals,
+)
 from lemma.common.config import LemmaSettings
 from lemma.lean.sandbox import VerifyResult
 from lemma.task_supply import make_task
@@ -193,6 +198,36 @@ def test_bucket_reveal_can_verify_drand_decrypted_payload(tmp_path: Path) -> Non
     )
 
     assert submissions[0].proof_script == proof
+
+
+def test_poll_bucket_reveals_builds_rows_from_public_bucket_and_chain_root(tmp_path: Path) -> None:
+    task = _task()
+    registry = TaskRegistry(schema_version=1, tasks=(task,), sha256="0" * 64)
+    active_tasks = active_tasks_for_validation(registry, _settings(tmp_path), tempo=7)
+    ciphertext = b"encrypted-proof"
+    ciphertext_encoded = encode_ciphertext(ciphertext)
+    merkle_root = miner_submission_merkle_root(((0, ciphertext_sha256(ciphertext)),))
+    proof = _proof("  trivial")
+    seen_urls: list[str] = []
+
+    reveals = poll_bucket_reveals(
+        miner_bucket_urls={"hk-a": "https://bucket.example/miner"},
+        chain_commitments={
+            "hk-a": miner_bucket_commitment_payload(tempo=7, drand_round=77, merkle_root=merkle_root)
+        },
+        commit_blocks={"hk-a": 123},
+        active_tasks=active_tasks,
+        tempo=7,
+        drand_round=77,
+        drand_signature="0xsig",
+        get_object=lambda url: seen_urls.append(url) or ciphertext,
+        decrypt_timelocked=lambda _ciphertext, _signature: proof.encode("utf-8"),
+    )
+
+    assert seen_urls == ["https://bucket.example/miner/tempo_7/slot_0.bin"]
+    assert reveals[0].commit_block == 123
+    assert reveals[0].blobs[0].ciphertext == ciphertext_encoded
+    assert reveals[0].blobs[0].proof_script == proof
 
 
 def test_bucket_reveal_drand_verification_fails_closed(tmp_path: Path) -> None:

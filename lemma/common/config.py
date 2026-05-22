@@ -166,6 +166,7 @@ class LemmaSettings(BaseSettings):
     )
     corpus_index_url: str = Field(default="", validation_alias="LEMMA_CORPUS_INDEX_URL")
     corpus_output_dir: Path = Field(default=Path("corpus"), validation_alias="LEMMA_CORPUS_OUTPUT_DIR")
+    canonical_output_dir: Path | None = Field(default=None, validation_alias="LEMMA_CANONICAL_OUTPUT_DIR")
     operator_data_dir: Path = Field(default=Path("validator-data"), validation_alias="LEMMA_OPERATOR_DATA_DIR")
     submission_spool_dir: Path | None = Field(default=None, validation_alias="LEMMA_SUBMISSION_SPOOL_DIR")
     active_task_count: int = Field(default=20, ge=1, validation_alias="LEMMA_ACTIVE_K")
@@ -208,6 +209,7 @@ class LemmaSettings(BaseSettings):
     netuid: int = Field(default=0, ge=0, validation_alias="BT_NETUID")
     bt_network: str = Field(default="", validation_alias="BT_NETWORK")
     enable_set_weights: bool = Field(default=False, validation_alias="LEMMA_ENABLE_SET_WEIGHTS")
+    enable_set_commitment: bool = Field(default=False, validation_alias="LEMMA_ENABLE_SET_COMMITMENT")
     unearned_allocation_policy: Literal["burn", "recycle", "hold"] = Field(
         default="burn",
         validation_alias="LEMMA_UNEARNED_ALLOCATION_POLICY",

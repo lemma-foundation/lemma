@@ -53,6 +53,7 @@ LEMMA_PROCEDURAL_GATE_TIMEOUT_S=120
 LEMMA_PROCEDURAL_TRIVIALITY_BUDGET_S=120
 LEMMA_PROCEDURAL_NOVELTY_CACHE_JSONL=public-entry-cache.jsonl
 LEMMA_PROCEDURAL_IMPORT_GRAPH_JSONL=public-import-graph.jsonl
+LEMMA_CANONICAL_OUTPUT_DIR=canonical
 LEAN_SANDBOX_NETWORK=none
 ```
 
@@ -82,9 +83,9 @@ source-pool receipt and a Lean-backed generation receipt: typecheck, Prop,
 novelty-cache, public import-graph slot-weight, and triviality-stack gates run
 before the candidate can enter the active paid pool.
 
-Corpus deltas are written under `LEMMA_CORPUS_OUTPUT_DIR`. Local receipts are written under `LEMMA_OPERATOR_DATA_DIR`. If `LEMMA_SUBMISSION_SPOOL_DIR` is set, validators consume pending `.json` or `.jsonl` submission files from that directory and move them to `processed/` after a successful pass. These paths should remain ignored unless an operator intentionally publishes sanitized artifacts.
-The file spool remains a local/operator-smoke path. The production adapter is `--bucket-reveals-jsonl`: each reveal row carries miner hotkey, tempo, drand round, drand signature, commit block, committed Merkle root, and revealed bucket blobs. Binary ciphertexts should be encoded as `base64:<payload>` or `0x<hex>`. The validator recomputes the Merkle root, confirms the miner's on-chain bucket commitment in production, decrypts bucket ciphertexts in production, requires the decrypted proof to match the reveal, and ranks winners by commit block.
-Live chain writes require both `LEMMA_ENABLE_SET_WEIGHTS=1` and `--set-weights`; keep production smoke and corpus-only passes on `--no-set-weights`. On commit-reveal subnets, the chain writer waits until the final 10 blocks of the tempo before submitting. Each attempted live write appends a public-safe `weight-submissions.jsonl` receipt with the resolved UID vector, client result, and extrinsic hash when available.
+Corpus deltas are written under `LEMMA_CORPUS_OUTPUT_DIR`. Canonical active-pool and accepted-entry directories are written under `LEMMA_CANONICAL_OUTPUT_DIR` when set, otherwise under `LEMMA_OPERATOR_DATA_DIR/canonical`. Local receipts are written under `LEMMA_OPERATOR_DATA_DIR`. If `LEMMA_SUBMISSION_SPOOL_DIR` is set, validators consume pending `.json` or `.jsonl` submission files from that directory and move them to `processed/` after a successful pass. These paths should remain ignored unless an operator intentionally publishes sanitized artifacts.
+The file spool remains a local/operator-smoke path. The production adapter is `--bucket-reveals-jsonl`: each reveal row carries miner hotkey, tempo, drand round, drand signature, commit block, committed Merkle root, and revealed bucket blobs. Binary ciphertexts should be encoded as `base64:<payload>` or `0x<hex>`. The validator recomputes the Merkle root over decoded ciphertext bytes, confirms the miner's on-chain bucket commitment in production, decrypts bucket ciphertexts in production, requires the decrypted proof to match the reveal, and ranks winners by commit block. A live validator can instead pass `--miner-buckets-json miner-buckets.json --bucket-drand-round <round> --bucket-drand-signature <signature>` to poll public bucket objects directly before converting them into the same reveal path.
+Live weight writes require both `LEMMA_ENABLE_SET_WEIGHTS=1` and `--set-weights`; live tempo artifact commitments require both `LEMMA_ENABLE_SET_COMMITMENT=1` and `--set-commitment`. Keep production smoke and corpus-only passes on `--no-set-weights` without `--set-commitment`. On commit-reveal subnets, the chain writer waits until the final 10 blocks of the tempo before submitting weights. Each attempted live write appends a public-safe receipt with the resolved UID vector or tempo commitment payload, client result, and extrinsic hash when available.
 
 For the full registry-to-validator-to-export sequence, see [Operator Registry Flow](operator-registry-flow.md).
 

@@ -68,7 +68,16 @@ def corpus_sources_from_dir(
     if not corpus_dir.is_dir():
         return ()
     rows: list[CorpusRow] = []
-    for path in sorted(corpus_dir.glob("epoch-*.jsonl")):
+    seen_row_ids: set[str] = set()
+    for path in _corpus_row_paths(corpus_dir):
+        if path.suffix == ".json":
+            try:
+                row = CorpusRow.model_validate(json.loads(path.read_text(encoding="utf-8")))
+            except (json.JSONDecodeError, ValueError) as e:
+                raise ValueError(f"{path}: invalid corpus row source: {e}") from e
+            if _prior_row_usable(row, before_tempo=before_tempo, seen_row_ids=seen_row_ids):
+                rows.append(row)
+            continue
         for no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
             if not line.strip():
                 continue
@@ -76,10 +85,7 @@ def corpus_sources_from_dir(
                 row = CorpusRow.model_validate(json.loads(line))
             except (json.JSONDecodeError, ValueError) as e:
                 raise ValueError(f"{path}:{no}: invalid corpus row source: {e}") from e
-            if before_tempo is not None:
-                if row.tempo is None or row.tempo >= before_tempo:
-                    continue
-            if _usable_substrate_row(row):
+            if _prior_row_usable(row, before_tempo=before_tempo, seen_row_ids=seen_row_ids):
                 rows.append(row)
     citation_counts = _substrate_citation_counts(
         rows,
@@ -126,6 +132,28 @@ def corpus_sources_from_dir(
             )
         )
     return tuple(sources)
+
+
+def _corpus_row_paths(corpus_dir: Path) -> tuple[Path, ...]:
+    raw_epoch_files = sorted(corpus_dir.glob("epoch-*.jsonl"))
+    canonical_entries = sorted(corpus_dir.glob("**/tempos/tempo-*/entries/*.json"))
+    return tuple([*raw_epoch_files, *canonical_entries])
+
+
+def _prior_row_usable(
+    row: Any,
+    *,
+    before_tempo: int | None,
+    seen_row_ids: set[str],
+) -> bool:
+    if before_tempo is not None and (row.tempo is None or row.tempo >= before_tempo):
+        return False
+    if row.row_id in seen_row_ids:
+        return False
+    if not _usable_substrate_row(row):
+        return False
+    seen_row_ids.add(row.row_id)
+    return True
 
 
 def _substrate_citation_counts(

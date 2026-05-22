@@ -12,6 +12,7 @@ from typing import Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from lemma.chain.commitments import ChainCommitmentSubmission
 from lemma.chain.epoch_randomness import resolve_chain_drand_epoch_randomness
 from lemma.chain.weights import ChainWeightSubmission
 from lemma.common.config import LemmaSettings
@@ -30,6 +31,7 @@ from lemma.verifiers.registry import get_verifier
 
 VerifySubmission = Callable[[LemmaTask, LemmaSubmission], VerifyResult]
 SubmitWeights = Callable[[LemmaSettings, dict[str, float]], ChainWeightSubmission]
+SubmitCommitment = Callable[[LemmaSettings, str], ChainCommitmentSubmission]
 ChainAuthenticatedKey = tuple[str, str, str]
 
 
@@ -48,6 +50,12 @@ class ValidatorRunSummary(BaseModel):
     active_epoch_randomness_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     active_selection_seed_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     active_task_ids: tuple[str, ...] = ()
+    active_pool_directory_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    active_pool_merkle_root: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    accepted_merkle_root: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    accepted_directory_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    tempo_commitment_payload: str = ""
+    chain_commitment_set: bool = False
     frontier_depth: int = Field(ge=0)
     verified_count: int = Field(ge=0)
     accepted_unique_count: int = Field(ge=0)
@@ -68,6 +76,7 @@ class ValidatorRunResult:
     corpus_rows: tuple[CorpusRow, ...]
     weights_set: bool
     weight_submission: ChainWeightSubmission | None
+    commitment_submission: ChainCommitmentSubmission | None
     summary: ValidatorRunSummary
 
 
@@ -310,6 +319,38 @@ def _weight_receipt(
     return receipt
 
 
+def _commitment_receipt(
+    *,
+    submitted_at: str,
+    settings: LemmaSettings,
+    registry_sha256: str,
+    submission: ChainCommitmentSubmission,
+) -> dict[str, object]:
+    receipt: dict[str, object] = {
+        "schema_version": 1,
+        "submitted_at": submitted_at,
+        "registry_sha256": registry_sha256,
+        "netuid": settings.netuid,
+        "bt_network": settings.bt_network or "default",
+        "success": submission.success,
+        "payload": submission.payload,
+        "hotkey": submission.hotkey,
+    }
+    if submission.extrinsic_function:
+        receipt["extrinsic_function"] = submission.extrinsic_function
+    if submission.extrinsic_hash:
+        receipt["extrinsic_hash"] = submission.extrinsic_hash
+    if submission.block_hash:
+        receipt["block_hash"] = submission.block_hash
+    if submission.block_number is not None:
+        receipt["block_number"] = submission.block_number
+    if submission.extrinsic_fee_rao is not None:
+        receipt["extrinsic_fee_rao"] = submission.extrinsic_fee_rao
+    if submission.message:
+        receipt["message"] = submission.message
+    return receipt
+
+
 def _default_verify(settings: LemmaSettings) -> VerifySubmission:
     def verify(task: LemmaTask, submission: LemmaSubmission) -> VerifyResult:
         verifier = get_verifier(task.domain_id, settings=settings)
@@ -427,6 +468,38 @@ def _next_local_epoch_file(corpus_dir: Path) -> Path:
     return corpus_dir / f"epoch-{next_epoch:06d}.jsonl"
 
 
+def _netuid_label(settings: LemmaSettings) -> str:
+    return f"sn{settings.netuid}"
+
+
+def _canonical_output_root(settings: LemmaSettings) -> Path:
+    return settings.canonical_output_dir or (settings.operator_data_dir / "canonical")
+
+
+def _write_public_tempo_artifacts(
+    settings: LemmaSettings,
+    *,
+    active_tasks: Sequence[LemmaTask],
+    rows: Sequence[CorpusRow],
+    tempo: int,
+) -> dict[str, object]:
+    from lemma.corpus.storage import build_active_pool_storage, build_epoch_storage_from_rows
+
+    output_root = _canonical_output_root(settings)
+    netuid = _netuid_label(settings)
+    resolver = "hippius-ipfs"
+    active_pool = build_active_pool_storage(active_tasks, output_root, netuid=netuid, tempo=tempo, resolver=resolver)
+    accepted = build_epoch_storage_from_rows(
+        rows,
+        output_root,
+        netuid=netuid,
+        tempo=tempo,
+        resolver=resolver,
+        active_pool=active_pool,
+    )
+    return {**active_pool, **accepted}
+
+
 def validate_once(
     settings: LemmaSettings,
     submissions: Iterable[LemmaSubmission],
@@ -440,6 +513,7 @@ def validate_once(
     require_signatures: bool = False,
     require_commit_reveal: bool = False,
     submit_weights: SubmitWeights | None = None,
+    submit_commitment: SubmitCommitment | None = None,
     chain_authenticated_keys: frozenset[ChainAuthenticatedKey] = frozenset(),
 ) -> ValidatorRunResult:
     """Verify submissions, score unique proofs, and write local corpus artifacts."""
@@ -576,7 +650,7 @@ def validate_once(
                 validator_hotkey=validator,
                 rewarded=scored.rewarded,
                 epoch=epoch,
-                tempo=tempo,
+                tempo=active_tempo,
                 proof_term_hash=scored.record.proof_term_hash,
                 structural_fingerprint=result.structural_fingerprint,
                 proof_identity_source=scored.record.proof_identity_source,
@@ -593,6 +667,13 @@ def validate_once(
         )
         write_jsonl(rows, output_path)
         write_corpus_index(settings.corpus_output_dir, settings.corpus_output_dir / "corpus-index.json")
+
+    public_artifacts = _write_public_tempo_artifacts(
+        settings,
+        active_tasks=active_tasks,
+        rows=rows,
+        tempo=active_tempo,
+    )
 
     weights_set = False
     weight_submission: ChainWeightSubmission | None = None
@@ -616,6 +697,29 @@ def validate_once(
             message = weight_submission.message or "unknown set_weights failure"
             raise RuntimeError(f"set_weights failed: {message}")
         weights_set = True
+    commitment_set = False
+    commitment_submission: ChainCommitmentSubmission | None = None
+    tempo_commitment_payload = str(public_artifacts.get("tempo_commitment_payload") or "")
+    if settings.enable_set_commitment:
+        from lemma.chain.commitments import submit_storage_commitment
+
+        writer_commitment = submit_commitment or submit_storage_commitment
+        commitment_submission = writer_commitment(settings, tempo_commitment_payload)
+        append_jsonl(
+            settings.operator_data_dir / "commitment-submissions.jsonl",
+            [
+                _commitment_receipt(
+                    submitted_at=_now(),
+                    settings=settings,
+                    registry_sha256=registry.sha256,
+                    submission=commitment_submission,
+                )
+            ],
+        )
+        if not commitment_submission.success:
+            message = commitment_submission.message or "unknown set_commitment failure"
+            raise RuntimeError(f"set_commitment failed: {message}")
+        commitment_set = True
     summary = ValidatorRunSummary(
         schema_version=1,
         run_at=_now(),
@@ -627,6 +731,12 @@ def validate_once(
         active_epoch_randomness_sha256=active_epoch_randomness_sha256(settings, tempo=active_tempo),
         active_selection_seed_sha256=active_selection_seed_sha256(registry, settings, tempo=active_tempo),
         active_task_ids=tuple(task.id for task in active_tasks),
+        active_pool_directory_sha256=str(public_artifacts.get("active_pool_directory_sha256") or "") or None,
+        active_pool_merkle_root=str(public_artifacts.get("active_pool_merkle_root") or "") or None,
+        accepted_merkle_root=str(public_artifacts.get("accepted_merkle_root") or "") or None,
+        accepted_directory_sha256=str(public_artifacts.get("tempo_directory_sha256") or "") or None,
+        tempo_commitment_payload=tempo_commitment_payload,
+        chain_commitment_set=commitment_set,
         frontier_depth=settings.frontier_depth,
         verified_count=len(records),
         accepted_unique_count=len(score.valid_unique_proofs),
@@ -646,6 +756,7 @@ def validate_once(
         corpus_rows=tuple(rows),
         weights_set=weights_set,
         weight_submission=weight_submission,
+        commitment_submission=commitment_submission,
         summary=summary,
     )
 

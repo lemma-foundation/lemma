@@ -5,10 +5,17 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any
 
-from lemma.chain.commitments import compact_storage_commitment_payload
+from lemma.chain.commitments import (
+    compact_active_pool_commitment_payload,
+    compact_storage_commitment_payload,
+    compact_tempo_commitment_payload,
+)
+from lemma.corpus import CorpusRow
+from lemma.tasks import LemmaTask
 
 EPOCH_RE = re.compile(r"epoch-(\d+)\.jsonl$")
 
@@ -50,6 +57,10 @@ def _entry_name(row: dict[str, Any], fallback: int) -> str:
     return f"slot-{slot:06d}-{row_id[:12]}.json"
 
 
+def _task_slot_name(slot_index: int, task: LemmaTask) -> str:
+    return f"slot-{slot_index:06d}-{task.id.replace('/', '_')[:64]}.json"
+
+
 def directory_digest(directory: Path) -> str:
     files = sorted(path for path in directory.rglob("*") if path.is_file())
     digest = hashlib.sha256()
@@ -63,20 +74,87 @@ def directory_digest(directory: Path) -> str:
     return digest.hexdigest()
 
 
-def build_epoch_storage(epoch_file: Path, output_root: Path, *, netuid: str, resolver: str) -> dict[str, object]:
-    tempo = epoch_number(epoch_file)
+def build_active_pool_storage(
+    active_tasks: Sequence[LemmaTask],
+    output_root: Path,
+    *,
+    netuid: str,
+    tempo: int,
+    resolver: str,
+) -> dict[str, object]:
+    active_dir = output_root / netuid / "active-pools" / f"tempo-{tempo:06d}"
+    slots_dir = active_dir / "slots"
+    slots_dir.mkdir(parents=True, exist_ok=True)
+
+    slots: list[dict[str, object]] = []
+    leaf_hashes: list[str] = []
+    for slot_index, task in enumerate(active_tasks):
+        payload = task.model_dump(mode="json", exclude_none=True)
+        slot_bytes = canonical_json_bytes(payload)
+        slot_sha256 = sha256_hex(slot_bytes)
+        slot_name = _task_slot_name(slot_index, task)
+        (slots_dir / slot_name).write_bytes(slot_bytes)
+        leaf_hashes.append(slot_sha256)
+        slots.append(
+            {
+                "file": f"slots/{slot_name}",
+                "slot_index": slot_index,
+                "slot_sha256": slot_sha256,
+                "target_sha256": task.target_sha256,
+                "task_id": task.id,
+                "task_version": task.task_version,
+            }
+        )
+
+    active_pool_merkle_root = merkle_root(leaf_hashes)
+    manifest = {
+        "schema_version": 1,
+        "active_pool_merkle_root": active_pool_merkle_root,
+        "kind": "active_pool",
+        "netuid": netuid,
+        "resolver": resolver,
+        "slot_count": len(slots),
+        "slots": slots,
+        "tempo": tempo,
+    }
+    manifest_path = active_dir / "manifest.json"
+    manifest_path.write_bytes(canonical_json_bytes(manifest))
+    active_pool_directory_sha256 = directory_digest(active_dir)
+    commitment_payload = compact_active_pool_commitment_payload(
+        netuid=netuid,
+        tempo=tempo,
+        active_pool_directory_sha256=active_pool_directory_sha256,
+    )
+    return {
+        "active_pool_directory": active_dir,
+        "active_pool_directory_cid": None,
+        "active_pool_directory_sha256": active_pool_directory_sha256,
+        "active_pool_merkle_root": active_pool_merkle_root,
+        "active_pool_commitment_payload": commitment_payload,
+        "slot_count": len(slots),
+        "tempo": tempo,
+    }
+
+
+def build_epoch_storage_from_rows(
+    rows: Iterable[CorpusRow | dict[str, Any]],
+    output_root: Path,
+    *,
+    netuid: str,
+    tempo: int,
+    resolver: str,
+    active_pool: dict[str, object] | None = None,
+) -> dict[str, object]:
     tempo_dir = output_root / netuid / "tempos" / f"tempo-{tempo:06d}"
     entries_dir = tempo_dir / "entries"
     entries_dir.mkdir(parents=True, exist_ok=True)
 
     entries: list[dict[str, object]] = []
     leaf_hashes: list[str] = []
-    for line_number, line in enumerate(epoch_file.read_text(encoding="utf-8").splitlines(), start=1):
-        if not line.strip():
-            continue
-        row = json.loads(line)
+    for line_number, raw_row in enumerate(rows, start=1):
+        row = raw_row.model_dump(mode="json", exclude_none=True) if isinstance(raw_row, CorpusRow) else raw_row
         if not isinstance(row, dict):
-            raise ValueError(f"{epoch_file}:{line_number}: expected JSON object")
+            raise ValueError(f"accepted row {line_number}: expected JSON object")
         entry_bytes = canonical_json_bytes(row)
         entry_sha256 = sha256_hex(entry_bytes)
         entry_name = _entry_name(row, line_number - 1)
@@ -104,26 +182,42 @@ def build_epoch_storage(epoch_file: Path, output_root: Path, *, netuid: str, res
         "entry_count": len(entries),
         "netuid": netuid,
         "resolver": resolver,
-        "source_epoch_file": f"corpus/{netuid}/{epoch_file.name}",
         "tempo": tempo,
     }
     manifest_path = tempo_dir / "manifest.json"
     manifest_path.write_bytes(canonical_json_bytes(manifest))
     tempo_directory_sha256 = directory_digest(tempo_dir)
+    active_pool_directory_sha256 = str((active_pool or {}).get("active_pool_directory_sha256") or "")
+    active_pool_directory_cid = (active_pool or {}).get("active_pool_directory_cid")
     commitment_path = output_root / netuid / "commitments" / f"tempo-{tempo:06d}.json"
     commitment_path.parent.mkdir(parents=True, exist_ok=True)
+    accepted_payload = compact_storage_commitment_payload(
+        netuid=netuid,
+        tempo=tempo,
+        tempo_directory_sha256=tempo_directory_sha256,
+        accepted_merkle_root=accepted_merkle_root,
+    )
+    tempo_payload = (
+        compact_tempo_commitment_payload(
+            netuid=netuid,
+            tempo=tempo,
+            active_pool_directory_sha256=active_pool_directory_sha256,
+            accepted_directory_sha256=tempo_directory_sha256,
+            accepted_merkle_root=accepted_merkle_root,
+        )
+        if active_pool_directory_sha256
+        else accepted_payload
+    )
     commitment = {
         "schema_version": 1,
         "accepted_merkle_root": accepted_merkle_root,
-        "commitment_payload": compact_storage_commitment_payload(
-            netuid=netuid,
-            tempo=tempo,
-            tempo_directory_sha256=tempo_directory_sha256,
-            accepted_merkle_root=accepted_merkle_root,
-        ),
+        "active_pool_directory_cid": active_pool_directory_cid,
+        "active_pool_directory_sha256": active_pool_directory_sha256 or None,
+        "commitment_payload": tempo_payload,
         "netuid": netuid,
         "resolver": resolver,
         "tempo": tempo,
+        "tempo_commitment_payload": tempo_payload,
         "tempo_directory_cid": None,
         "tempo_directory_sha256": tempo_directory_sha256,
     }
@@ -134,7 +228,45 @@ def build_epoch_storage(epoch_file: Path, output_root: Path, *, netuid: str, res
         "directory": tempo_dir,
         "entry_count": len(entries),
         "tempo": tempo,
+        "tempo_commitment_payload": tempo_payload,
         "tempo_directory_sha256": tempo_directory_sha256,
+    }
+
+
+def build_epoch_storage(epoch_file: Path, output_root: Path, *, netuid: str, resolver: str) -> dict[str, object]:
+    tempo = epoch_number(epoch_file)
+    rows: list[dict[str, Any]] = []
+    for line_number, line in enumerate(epoch_file.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        if not isinstance(row, dict):
+            raise ValueError(f"{epoch_file}:{line_number}: expected JSON object")
+        rows.append(row)
+    result = build_epoch_storage_from_rows(rows, output_root, netuid=netuid, tempo=tempo, resolver=resolver)
+    directory = result["directory"]
+    commitment_path = result["commitment"]
+    if not isinstance(directory, Path) or not isinstance(commitment_path, Path):
+        raise TypeError("storage builder returned invalid paths")
+    manifest_path = directory / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["source_epoch_file"] = f"corpus/{netuid}/{epoch_file.name}"
+    manifest_path.write_bytes(canonical_json_bytes(manifest))
+    tempo_directory_sha256 = directory_digest(directory)
+    commitment = json.loads(commitment_path.read_text(encoding="utf-8"))
+    commitment["tempo_directory_sha256"] = tempo_directory_sha256
+    commitment["commitment_payload"] = compact_storage_commitment_payload(
+        netuid=netuid,
+        tempo=tempo,
+        tempo_directory_sha256=tempo_directory_sha256,
+        accepted_merkle_root=str(commitment["accepted_merkle_root"]),
+    )
+    commitment["tempo_commitment_payload"] = commitment["commitment_payload"]
+    commitment_path.write_bytes(canonical_json_bytes(commitment))
+    return {
+        **result,
+        "tempo_directory_sha256": tempo_directory_sha256,
+        "tempo_commitment_payload": commitment["commitment_payload"],
     }
 
 

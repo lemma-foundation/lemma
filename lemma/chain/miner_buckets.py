@@ -6,6 +6,7 @@ import json
 import re
 from collections.abc import Callable, Mapping
 from pathlib import Path
+from urllib.parse import urljoin
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -14,14 +15,16 @@ from lemma.chain.commitments import (
     miner_bucket_commitment_payload,
     miner_bucket_key,
     miner_submission_merkle_root,
+    parse_miner_bucket_commitment_payload,
 )
-from lemma.chain.drand import decrypt_timelocked_payload
+from lemma.chain.drand import ciphertext_bytes, decrypt_timelocked_payload, encode_ciphertext
 from lemma.submissions import LemmaSubmission, proof_sha256
 from lemma.tasks import LemmaTask
 
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
 ChainAuthenticatedKey = tuple[str, str, str]
 DecryptTimelockedPayload = Callable[[str, str | None], bytes]
+GetBucketObject = Callable[[str], bytes | None]
 RejectionLog = Callable[[str], None]
 
 
@@ -65,6 +68,57 @@ def read_bucket_reveals_jsonl(path: Path) -> tuple[MinerBucketReveal, ...]:
             reveals.append(MinerBucketReveal.model_validate(json.loads(line)))
         except (json.JSONDecodeError, ValueError) as e:
             raise ValueError(f"{path}:{no}: invalid miner bucket reveal: {e}") from e
+    return tuple(reveals)
+
+
+def poll_bucket_reveals(
+    *,
+    miner_bucket_urls: Mapping[str, str],
+    chain_commitments: Mapping[str, str],
+    commit_blocks: Mapping[str, int] | None = None,
+    active_tasks: tuple[LemmaTask, ...],
+    tempo: int,
+    drand_round: int,
+    drand_signature: str,
+    get_object: GetBucketObject | None = None,
+    decrypt_timelocked: DecryptTimelockedPayload = decrypt_timelocked_payload,
+) -> tuple[MinerBucketReveal, ...]:
+    """Build post-reveal rows by polling public miner buckets for active slot blobs."""
+    getter = get_object or _http_get_object
+    reveals: list[MinerBucketReveal] = []
+    block_by_miner = commit_blocks or {}
+    for miner_hotkey, bucket_url in sorted(miner_bucket_urls.items()):
+        commitment = chain_commitments.get(miner_hotkey, "")
+        try:
+            committed_tempo, committed_round, merkle_root = parse_miner_bucket_commitment_payload(commitment)
+        except ValueError:
+            continue
+        if committed_tempo != tempo or committed_round != drand_round:
+            continue
+        blobs: list[RevealedBucketBlob] = []
+        for slot_index in range(len(active_tasks)):
+            key = miner_bucket_key(tempo, slot_index)
+            ciphertext_raw = getter(_bucket_object_url(bucket_url, key))
+            if ciphertext_raw is None:
+                continue
+            ciphertext = encode_ciphertext(ciphertext_raw)
+            proof_script = decrypt_timelocked(ciphertext, drand_signature).decode("utf-8")
+            blobs.append(RevealedBucketBlob(slot_index=slot_index, ciphertext=ciphertext, proof_script=proof_script))
+        if not blobs:
+            continue
+        reveal = MinerBucketReveal(
+            tempo=tempo,
+            miner_hotkey=miner_hotkey,
+            drand_round=drand_round,
+            drand_signature=drand_signature,
+            commit_block=max(0, int(block_by_miner.get(miner_hotkey, 0))),
+            commit_extrinsic_hash=commitment,
+            merkle_root=merkle_root,
+            bucket_url=bucket_url,
+            blobs=tuple(blobs),
+        )
+        if miner_submission_merkle_root(_claimed_pairs(reveal)) == merkle_root:
+            reveals.append(reveal)
     return tuple(reveals)
 
 
@@ -145,7 +199,7 @@ def _submissions_from_bucket_reveal(
             metadata={
                 "bucket_key": miner_bucket_key(reveal.tempo, blob.slot_index),
                 "bucket_url": reveal.bucket_url,
-                "ciphertext_sha256": ciphertext_sha256(blob.ciphertext.encode("utf-8")),
+                "ciphertext_sha256": ciphertext_sha256(ciphertext_bytes(blob.ciphertext)),
                 "commit_merkle_root": reveal.merkle_root,
                 "slot_index": blob.slot_index,
                 "tempo": reveal.tempo,
@@ -183,5 +237,20 @@ def _claimed_pairs(reveal: MinerBucketReveal) -> tuple[tuple[int, str], ...]:
         if blob.slot_index in seen:
             raise ValueError(f"{reveal.miner_hotkey}: duplicate slot index {blob.slot_index}")
         seen.add(blob.slot_index)
-        pairs.append((blob.slot_index, ciphertext_sha256(blob.ciphertext.encode("utf-8"))))
+        pairs.append((blob.slot_index, ciphertext_sha256(ciphertext_bytes(blob.ciphertext))))
     return tuple(sorted(pairs))
+
+
+def _bucket_object_url(bucket_url: str, key: str) -> str:
+    base = bucket_url.rstrip("/") + "/"
+    return urljoin(base, key)
+
+
+def _http_get_object(url: str) -> bytes | None:
+    import httpx
+
+    response = httpx.get(url, timeout=20.0, follow_redirects=True)
+    if response.status_code == 404:
+        return None
+    response.raise_for_status()
+    return response.content

@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 from bittensor_wallet import Keypair
+from lemma.chain.commitments import ChainCommitmentSubmission
 from lemma.chain.weights import ChainWeightSubmission
 from lemma.common.config import LemmaSettings
 from lemma.lean.sandbox import VerifyResult
@@ -220,6 +221,13 @@ def test_validator_scores_and_writes_alternate_corpus_rows(tmp_path: Path) -> No
     assert run_summary.unearned_share == 0.0
     assert run_summary.unearned_policy == "burn"
     assert run_summary.weights_set is False
+    assert run_summary.active_pool_directory_sha256
+    assert run_summary.accepted_merkle_root
+    assert run_summary.accepted_directory_sha256
+    assert run_summary.tempo_commitment_payload.startswith("lemma-tempo-v1:")
+    tempo_dir = f"tempo-{run_summary.active_tempo:06d}"
+    assert (tmp_path / "operator" / "canonical" / "sn0" / "active-pools" / tempo_dir / "manifest.json").exists()
+    assert (tmp_path / "operator" / "canonical" / "sn0" / "tempos" / tempo_dir / "manifest.json").exists()
 
 
 def test_validator_no_epoch_uses_next_numbered_local_file(tmp_path: Path) -> None:
@@ -441,6 +449,41 @@ def test_validator_submits_weights_only_when_enabled(tmp_path: Path) -> None:
     )
     assert run_summary.chain_weight_uids == (3,)
     assert run_summary.chain_weight_values == (1.0,)
+
+
+def test_validator_can_submit_tempo_commitment(tmp_path: Path) -> None:
+    submission = build_submission(_task(), solver_hotkey="hk-a", proof_script=_proof())
+    calls: list[str] = []
+
+    def fake_submit_commitment(_settings_arg: LemmaSettings, payload: str) -> ChainCommitmentSubmission:
+        calls.append(payload)
+        return ChainCommitmentSubmission(
+            success=True,
+            payload=payload,
+            hotkey="vhk",
+            message="included",
+            extrinsic_function="set_commitment",
+            extrinsic_hash="0xabc",
+            block_hash="0xdef",
+            block_number=42,
+            extrinsic_fee_rao=123,
+        )
+
+    result = validate_once(
+        _settings(tmp_path).model_copy(update={"enable_set_commitment": True}),
+        [submission],
+        registry=_registry(),
+        verify_submission=lambda task, submission: VerifyResult(passed=True, reason="ok"),
+        no_set_weights=True,
+        submit_commitment=fake_submit_commitment,
+    )
+
+    assert calls == [result.summary.tempo_commitment_payload]
+    assert result.summary.chain_commitment_set is True
+    assert result.commitment_submission is not None
+    receipt = json.loads((tmp_path / "operator" / "commitment-submissions.jsonl").read_text(encoding="utf-8"))
+    assert receipt["success"] is True
+    assert receipt["payload"] == result.summary.tempo_commitment_payload
 
 
 def test_validator_logs_failed_weight_submission_before_raising(tmp_path: Path) -> None:

@@ -453,6 +453,39 @@ def test_procedural_source_pool_ignores_non_rewarded_corpus_rows(tmp_path: Path)
     assert [source.metadata["substrate_row_id"] for source in sources] == [rewarded.row_id]
 
 
+def test_procedural_source_pool_reads_canonical_accepted_entry_directories(tmp_path: Path) -> None:
+    from lemma.corpus.storage import build_epoch_storage_from_rows
+
+    canonical_root = tmp_path / "canonical"
+    task = make_task(
+        task_id="lemma.accepted.canonical",
+        title="Canonical accepted",
+        theorem_name="canonical_true",
+        type_expr="True",
+        source_stream="procedural",
+        source_name="tempo-1",
+        source_license="Apache-2.0",
+        metadata={"activation_status": "paid", "triviality_checked": True, "baseline_solved": False},
+    )
+    row = build_corpus_row(
+        task,
+        build_submission(
+            task,
+            solver_hotkey="hk",
+            proof_script="import Mathlib\n\ntheorem canonical_true : True := by\n  trivial\n",
+        ),
+        VerifyResult(passed=True, reason="ok", structural_fingerprint="canonical-structural"),
+        validator_hotkey="vhk",
+        rewarded=True,
+        tempo=1,
+    )
+    build_epoch_storage_from_rows([row], canonical_root, netuid="sn467", tempo=1, resolver="hippius-ipfs")
+
+    sources = corpus_sources_from_dir(canonical_root, before_tempo=3)
+
+    assert [source.metadata["substrate_row_id"] for source in sources] == [row.row_id]
+
+
 def test_procedural_source_pool_weights_lemma_rows_by_recent_citations(tmp_path: Path) -> None:
     corpus_dir = tmp_path / "corpus"
     base_task = make_task(

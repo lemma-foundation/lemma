@@ -79,6 +79,30 @@ def _read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def _read_str_mapping(path: Path) -> dict[str, str]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise click.ClickException(f"{path}: expected JSON object")
+    out: dict[str, str] = {}
+    for key, value in payload.items():
+        if not isinstance(key, str) or not isinstance(value, str):
+            raise click.ClickException(f"{path}: expected string keys and values")
+        out[key] = value
+    return out
+
+
+def _read_int_mapping(path: Path) -> dict[str, int]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise click.ClickException(f"{path}: expected JSON object")
+    out: dict[str, int] = {}
+    for key, value in payload.items():
+        if not isinstance(key, str) or isinstance(value, bool) or not isinstance(value, int):
+            raise click.ClickException(f"{path}: expected string keys and integer values")
+        out[key] = value
+    return out
+
+
 def _load_registry():
     from lemma.tasks import TaskError, fetch_task_registry
 
@@ -1225,10 +1249,15 @@ def operator_registry_inspect_cmd() -> None:
 @main.command("validate")
 @click.option("--once", is_flag=True, help="Run one validator scoring iteration.")
 @click.option("--set-weights", is_flag=True, help="Submit computed weights to Bittensor.")
+@click.option("--set-commitment", is_flag=True, help="Submit the tempo active/accepted artifact commitment.")
 @click.option("--no-set-weights", is_flag=True, help="Compute weights without submitting them.")
 @click.option("--submissions-jsonl", type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None)
 @click.option("--submission-spool", type=click.Path(file_okay=False, path_type=Path), default=None)
 @click.option("--bucket-reveals-jsonl", type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None)
+@click.option("--miner-buckets-json", type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None)
+@click.option("--bucket-drand-round", type=int, default=None)
+@click.option("--bucket-drand-signature", default="")
+@click.option("--bucket-commit-blocks-json", type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None)
 @click.option("--verify-chain-commitments", is_flag=True, help="Read chain commitments for bucket reveals.")
 @click.option("--verify-drand-reveals", is_flag=True, help="Decrypt bucket ciphertexts and match revealed proofs.")
 @click.option("--validator-hotkey", default=None, help="Override validator attribution.")
@@ -1237,10 +1266,15 @@ def operator_registry_inspect_cmd() -> None:
 def validate_cmd(
     once: bool,
     set_weights: bool,
+    set_commitment: bool,
     no_set_weights: bool,
     submissions_jsonl: Path | None,
     submission_spool: Path | None,
     bucket_reveals_jsonl: Path | None,
+    miner_buckets_json: Path | None,
+    bucket_drand_round: int | None,
+    bucket_drand_signature: str,
+    bucket_commit_blocks_json: Path | None,
     verify_chain_commitments: bool,
     verify_drand_reveals: bool,
     validator_hotkey: str | None,
@@ -1268,6 +1302,10 @@ def validate_cmd(
         raise click.ClickException("choose either --set-weights or --no-set-weights")
     if set_weights and not settings.enable_set_weights:
         raise click.ClickException("set LEMMA_ENABLE_SET_WEIGHTS=1 before using --set-weights")
+    if set_commitment and not settings.enable_set_commitment:
+        raise click.ClickException("set LEMMA_ENABLE_SET_COMMITMENT=1 before using --set-commitment")
+    if not set_commitment:
+        settings = settings.model_copy(update={"enable_set_commitment": False})
     spool_dir = submission_spool or settings.submission_spool_dir
     if settings.protocol_mode == "production" and (submissions_jsonl is not None or spool_dir is not None):
         raise click.ClickException(
@@ -1282,6 +1320,40 @@ def validate_cmd(
     if spool_dir is not None:
         spool_submissions, spool_paths = read_submission_spool(spool_dir)
         submissions.extend(spool_submissions)
+    if miner_buckets_json is not None:
+        if bucket_drand_round is None:
+            raise click.ClickException("--miner-buckets-json requires --bucket-drand-round")
+        if not bucket_drand_signature.strip():
+            raise click.ClickException("--miner-buckets-json requires --bucket-drand-signature")
+        from lemma.chain.commitments import read_all_commitments
+        from lemma.chain.miner_buckets import poll_bucket_reveals, submissions_from_bucket_reveals
+        from lemma.validator import current_active_tempo, task_registry_for_validation
+
+        active_tempo = current_active_tempo(settings)
+        registry = task_registry_for_validation(settings, tempo=active_tempo)
+        chain_commitments = read_all_commitments(settings)
+        miner_bucket_urls = _read_str_mapping(miner_buckets_json)
+        commit_blocks = _read_int_mapping(bucket_commit_blocks_json) if bucket_commit_blocks_json is not None else {}
+        reveals = poll_bucket_reveals(
+            miner_bucket_urls=miner_bucket_urls,
+            chain_commitments=chain_commitments,
+            commit_blocks=commit_blocks,
+            active_tasks=active_tasks_for_validation(registry, settings, tempo=active_tempo),
+            tempo=active_tempo,
+            drand_round=bucket_drand_round,
+            drand_signature=bucket_drand_signature,
+        )
+        bucket_reveal_count += len(reveals)
+        bucket_submissions, bucket_authenticated = submissions_from_bucket_reveals(
+            reveals,
+            active_tasks_for_validation(registry, settings, tempo=active_tempo),
+            verify_drand=False,
+            chain_commitments=chain_commitments,
+            strict=False,
+            rejection_log=bucket_rejections.append,
+        )
+        chain_authenticated_keys = frozenset({*chain_authenticated_keys, *bucket_authenticated})
+        submissions.extend(bucket_submissions)
     if bucket_reveals_jsonl is not None:
         from lemma.chain.commitments import read_all_commitments
         from lemma.chain.miner_buckets import read_bucket_reveals_jsonl, submissions_from_bucket_reveals
@@ -1290,22 +1362,29 @@ def validate_cmd(
         active_tempo = current_active_tempo(settings)
         registry = task_registry_for_validation(settings, tempo=active_tempo)
         reveals = read_bucket_reveals_jsonl(bucket_reveals_jsonl)
-        bucket_reveal_count = len(reveals)
-        chain_commitments = (
+        bucket_reveal_count += len(reveals)
+        bucket_chain_commitments = (
             read_all_commitments(settings)
             if verify_chain_commitments or settings.protocol_mode == "production"
             else None
         )
-        bucket_submissions, chain_authenticated_keys = submissions_from_bucket_reveals(
+        bucket_submissions, bucket_authenticated = submissions_from_bucket_reveals(
             reveals,
             active_tasks_for_validation(registry, settings, tempo=active_tempo),
             verify_drand=verify_drand_reveals or settings.protocol_mode == "production",
-            chain_commitments=chain_commitments,
+            chain_commitments=bucket_chain_commitments,
             strict=False,
             rejection_log=bucket_rejections.append,
         )
+        chain_authenticated_keys = frozenset({*chain_authenticated_keys, *bucket_authenticated})
         submissions.extend(bucket_submissions)
-    if not once and submissions_jsonl is None and spool_dir is None and bucket_reveals_jsonl is None:
+    if (
+        not once
+        and submissions_jsonl is None
+        and spool_dir is None
+        and bucket_reveals_jsonl is None
+        and miner_buckets_json is None
+    ):
         click.echo(stylize("No live miner intake configured; running a local dry validator iteration.", dim=True))
     result = validate_once(
         settings,
@@ -1332,6 +1411,8 @@ def validate_cmd(
         "unearned_policy": result.summary.unearned_policy,
         "unearned_share": result.summary.unearned_share,
         "weights_set": result.weights_set,
+        "chain_commitment_set": result.summary.chain_commitment_set,
+        "tempo_commitment_payload": result.summary.tempo_commitment_payload,
     }
     if result.weight_submission:
         output["chain_weight_uids"] = list(result.weight_submission.uids)
