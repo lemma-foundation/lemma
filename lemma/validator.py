@@ -173,6 +173,7 @@ def task_registry_for_validation(settings: LemmaSettings, *, tempo: int) -> Task
 def _procedural_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> TaskRegistry:
     from lemma.supply.gates import LeanProceduralGateRunner
     from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
+    from lemma.supply.novelty import empty_novelty_cache, read_novelty_cache
     from lemma.supply.procedural import (
         build_procedural_registry_tasks,
         corpus_sources_from_dir,
@@ -183,6 +184,8 @@ def _procedural_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> Ta
 
     if settings.procedural_source_jsonl is None:
         raise RuntimeError("procedural supply requires LEMMA_PROCEDURAL_SOURCE_JSONL")
+    if settings.protocol_mode == "production" and settings.procedural_novelty_cache_jsonl is None:
+        raise RuntimeError("production procedural supply requires LEMMA_PROCEDURAL_NOVELTY_CACHE_JSONL")
     source_limit = settings.procedural_source_limit or None
     sources = mathlib_candidates_from_jsonl(settings.procedural_source_jsonl, limit=source_limit)
     if settings.procedural_prior_corpus_dir is not None:
@@ -201,6 +204,11 @@ def _procedural_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> Ta
     generation_seed = active_epoch_seed(settings, tempo=tempo, epoch_randomness=epoch_randomness)
     count = settings.procedural_candidate_count or settings.active_task_count
     triviality_budget = triviality_budget_receipt_for_settings(settings, tempo=tempo)
+    novelty_cache = (
+        read_novelty_cache(settings.procedural_novelty_cache_jsonl)
+        if settings.procedural_novelty_cache_jsonl is not None
+        else empty_novelty_cache()
+    )
     candidates = generate_depth2_candidates(
         sources,
         generation_seed=generation_seed,
@@ -210,7 +218,11 @@ def _procedural_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> Ta
         citation_alpha=settings.procedural_citation_alpha,
         citation_weight_cap=settings.procedural_citation_weight_cap,
         gate_runner=(
-            LeanProceduralGateRunner(settings, triviality_budget_receipt=triviality_budget)
+            LeanProceduralGateRunner(
+                settings,
+                triviality_budget_receipt=triviality_budget,
+                novelty_cache=novelty_cache,
+            )
             if settings.protocol_mode == "production"
             else None
         ),

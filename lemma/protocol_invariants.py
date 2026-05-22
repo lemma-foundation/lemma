@@ -9,6 +9,7 @@ from typing import Any
 
 from lemma.common.config import LemmaSettings
 from lemma.supply.gates import GATE_VERSION
+from lemma.supply.novelty import NOVELTY_CACHE_VERSION
 from lemma.supply.operator_bundle import OPERATOR_BUNDLE_VERSION, OPERATOR_NAMES, procedural_operator_bundle_hash
 from lemma.supply.slot_weight import SLOT_WEIGHT_VERSION, slot_weight_receipt_for_task
 from lemma.supply.triviality_budget import TRIVIALITY_BUDGET_VERSION
@@ -62,7 +63,7 @@ def production_supply_rejection_reason(task: LemmaTask) -> str:
         return "anchor_block"
     if not _has_int(metadata, "tempo"):
         return "tempo"
-    for key in ("source_pool_hash", "canonical_hash"):
+    for key in ("source_pool_hash", "canonical_hash", "statement_hash"):
         if not _has_hex64(metadata, key):
             return key
     if metadata.get("gate_version") != GATE_VERSION:
@@ -90,6 +91,12 @@ def production_supply_rejection_reason(task: LemmaTask) -> str:
         return "baseline_solved"
     if metadata.get("novelty_status") != "passed":
         return "novelty_status"
+    if metadata.get("novelty_cache_version") != NOVELTY_CACHE_VERSION:
+        return "novelty_cache_version"
+    if not _has_hex64(metadata, "novelty_cache_sha256"):
+        return "novelty_cache_sha256"
+    if not _has_positive_int(metadata, "novelty_cache_entries"):
+        return "novelty_cache_entries"
     slot_weight_reason = _slot_weight_rejection_reason(task)
     if slot_weight_reason:
         return slot_weight_reason
@@ -106,6 +113,7 @@ def procedural_gate_receipt_sha256(task: LemmaTask) -> str:
         "task_id": task.id,
         "target_sha256": task.target_sha256,
         "canonical_hash": metadata.get("canonical_hash"),
+        "statement_hash": metadata.get("statement_hash"),
         "gate_runner": metadata.get("gate_runner"),
         "typechecked": metadata.get("typechecked"),
         "typecheck_reason": metadata.get("typecheck_reason"),
@@ -121,6 +129,9 @@ def procedural_gate_receipt_sha256(task: LemmaTask) -> str:
         "baseline_solved": metadata.get("baseline_solved"),
         "baseline_solver": metadata.get("baseline_solver"),
         "novelty_status": metadata.get("novelty_status"),
+        "novelty_cache_version": metadata.get("novelty_cache_version"),
+        "novelty_cache_entries": metadata.get("novelty_cache_entries"),
+        "novelty_cache_sha256": metadata.get("novelty_cache_sha256"),
         "slot_weight": metadata.get("slot_weight"),
         "slot_weight_version": metadata.get("slot_weight_version"),
         "slot_weight_basis_points": metadata.get("slot_weight_basis_points"),
@@ -149,6 +160,10 @@ def _has_text(metadata: dict[str, Any], key: str) -> bool:
 
 def _has_int(metadata: dict[str, Any], key: str) -> bool:
     return isinstance(metadata.get(key), int) and metadata[key] >= 0
+
+
+def _has_positive_int(metadata: dict[str, Any], key: str) -> bool:
+    return isinstance(metadata.get(key), int) and metadata[key] > 0
 
 
 def _has_hex64(metadata: dict[str, Any], key: str) -> bool:

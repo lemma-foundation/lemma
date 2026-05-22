@@ -495,6 +495,12 @@ def tasks_build_mixed_registry_cmd(
     default=None,
     help="Public settlement JSONL used to retarget the triviality budget T(t).",
 )
+@click.option(
+    "--novelty-cache-jsonl",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Public statement-hash JSONL used by the procedural novelty gate.",
+)
 @click.option("--assume-gates", is_flag=True, help="Dev-only: skip Lean gate execution.")
 def tasks_generate_procedural_depth2_cmd(
     snapshot_path: Path,
@@ -508,11 +514,13 @@ def tasks_generate_procedural_depth2_cmd(
     citation_alpha: float,
     citation_weight_cap: float,
     triviality_retarget_jsonl: Path | None,
+    novelty_cache_jsonl: Path | None,
     assume_gates: bool,
 ) -> None:
     """Generate depth-2 procedural task candidates from public epoch inputs."""
     from lemma.supply.gates import LeanProceduralGateRunner
     from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
+    from lemma.supply.novelty import empty_novelty_cache, read_novelty_cache
     from lemma.supply.procedural import corpus_sources_from_dir, generate_depth2_candidates, source_pool_hash
     from lemma.supply.triviality_budget import triviality_budget_receipt_for_settings
 
@@ -523,6 +531,9 @@ def tasks_generate_procedural_depth2_cmd(
     sources = mathlib_candidates_from_jsonl(snapshot_path, limit=source_limit)
     if prior_corpus_dir is not None:
         sources = sources + corpus_sources_from_dir(prior_corpus_dir, before_tempo=tempo)
+    novelty_cache = (
+        read_novelty_cache(novelty_cache_jsonl) if novelty_cache_jsonl is not None else empty_novelty_cache()
+    )
     candidates = generate_depth2_candidates(
         sources,
         generation_seed=generation_seed,
@@ -533,7 +544,11 @@ def tasks_generate_procedural_depth2_cmd(
         citation_weight_cap=citation_weight_cap,
         gate_runner=None
         if assume_gates
-        else LeanProceduralGateRunner(settings, triviality_budget_receipt=triviality_budget),
+        else LeanProceduralGateRunner(
+            settings,
+            triviality_budget_receipt=triviality_budget,
+            novelty_cache=novelty_cache,
+        ),
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text("".join(candidate.model_dump_json() + "\n" for candidate in candidates), encoding="utf-8")
@@ -546,6 +561,8 @@ def tasks_generate_procedural_depth2_cmd(
                 "triviality_retarget_sha256": hashlib.sha256(
                     json.dumps(triviality_budget.inputs, sort_keys=True, separators=(",", ":")).encode()
                 ).hexdigest(),
+                "novelty_cache_sha256": novelty_cache.sha256,
+                "novelty_cache_entries": len(novelty_cache.statement_hashes),
                 "candidates": len(candidates),
             },
             indent=2,
@@ -578,6 +595,12 @@ def tasks_generate_procedural_depth2_cmd(
     default=None,
     help="Public settlement JSONL used to retarget the triviality budget T(t).",
 )
+@click.option(
+    "--novelty-cache-jsonl",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Public statement-hash JSONL used by the procedural novelty gate.",
+)
 def tasks_rebuild_procedural_registry_cmd(
     snapshot_path: Path,
     output_path: Path,
@@ -591,10 +614,12 @@ def tasks_rebuild_procedural_registry_cmd(
     citation_alpha: float,
     citation_weight_cap: float,
     triviality_retarget_jsonl: Path | None,
+    novelty_cache_jsonl: Path | None,
 ) -> None:
     """Rebuild the production procedural registry from public inputs."""
     from lemma.supply.gates import LeanProceduralGateRunner
     from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
+    from lemma.supply.novelty import empty_novelty_cache, read_novelty_cache
     from lemma.supply.procedural import (
         build_procedural_registry_tasks,
         corpus_sources_from_dir,
@@ -611,6 +636,9 @@ def tasks_rebuild_procedural_registry_cmd(
     sources = mathlib_candidates_from_jsonl(snapshot_path, limit=source_limit)
     if prior_corpus_dir is not None:
         sources = sources + corpus_sources_from_dir(prior_corpus_dir, before_tempo=tempo)
+    novelty_cache = (
+        read_novelty_cache(novelty_cache_jsonl) if novelty_cache_jsonl is not None else empty_novelty_cache()
+    )
     candidates = generate_depth2_candidates(
         sources,
         generation_seed=generation_seed,
@@ -619,7 +647,11 @@ def tasks_rebuild_procedural_registry_cmd(
         tempo=tempo,
         citation_alpha=citation_alpha,
         citation_weight_cap=citation_weight_cap,
-        gate_runner=LeanProceduralGateRunner(settings, triviality_budget_receipt=triviality_budget),
+        gate_runner=LeanProceduralGateRunner(
+            settings,
+            triviality_budget_receipt=triviality_budget,
+            novelty_cache=novelty_cache,
+        ),
     )
     build = build_procedural_registry_tasks(candidates, seed=generation_seed, frontier_depth=frontier_depth)
     if build.rejected:
@@ -636,6 +668,8 @@ def tasks_rebuild_procedural_registry_cmd(
                 "triviality_retarget_sha256": hashlib.sha256(
                     json.dumps(triviality_budget.inputs, sort_keys=True, separators=(",", ":")).encode()
                 ).hexdigest(),
+                "novelty_cache_sha256": novelty_cache.sha256,
+                "novelty_cache_entries": len(novelty_cache.statement_hashes),
                 "tasks": len(build.tasks),
             },
             indent=2,

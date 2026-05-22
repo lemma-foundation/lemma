@@ -18,6 +18,7 @@ from lemma.supply.controller import (
 )
 from lemma.supply.gates import GATE_VERSION
 from lemma.supply.mixed import build_mixed_registry_tasks
+from lemma.supply.novelty import novelty_cache_from_hashes
 from lemma.supply.operator_bundle import OPERATOR_BUNDLE_VERSION, procedural_operator_bundle_hash
 from lemma.supply.procedural import build_procedural_registry_tasks
 from lemma.supply.queue import advance_active_pool, initial_active_pool
@@ -113,6 +114,7 @@ def test_procedural_registry_requires_depth_two_metadata() -> None:
         tempo=0,
         config=TrivialityRetargetConfig(genesis_budget_s=5, max_budget_s=5),
     )
+    novelty_cache = novelty_cache_from_hashes(("0" * 64,))
     metadata: dict[str, object] = {
         "activation_status": "paid",
         "supply_mode": "procedural",
@@ -139,6 +141,7 @@ def test_procedural_registry_requires_depth_two_metadata() -> None:
         "operator_bundle_version": OPERATOR_BUNDLE_VERSION,
         "operator_bundle_hash": procedural_operator_bundle_hash(),
         "canonical_hash": "6" * 64,
+        "statement_hash": "7" * 64,
         "typechecked": True,
         "prop_gate_passed": True,
         "triviality_checked": True,
@@ -152,6 +155,7 @@ def test_procedural_registry_requires_depth_two_metadata() -> None:
         "triviality_stack": ["pytest"],
         "triviality_reason": "baseline_failed",
         "baseline_solver": None,
+        **novelty_cache.metadata(),
         **triviality_budget.metadata(),
     }
     good = mathlib_snapshot.fixture_candidates()[0].model_copy(

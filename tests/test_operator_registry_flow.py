@@ -21,6 +21,7 @@ from lemma.operator import OperatorDiagnosticsReport, OperatorPreflightReport, O
 from lemma.submissions import build_submission
 from lemma.supply.gates import ProceduralGateVerdict
 from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
+from lemma.supply.novelty import novelty_cache_from_hashes
 from lemma.supply.procedural import procedural_operator_bundle_hash, source_pool_hash
 from lemma.supply.slot_weight import slot_weight_receipt_for_candidate
 from lemma.supply.triviality_budget import TrivialityRetargetConfig, triviality_budget_receipt
@@ -47,6 +48,7 @@ def _proof_for(theorem_name: str) -> str:
 def _fake_lean_gate(self, candidate, *, seen_canonical_hashes) -> ProceduralGateVerdict:  # noqa: ANN001, ARG001
     canonical_hash = str(candidate.metadata.get("canonical_hash") or "")
     slot_weight = slot_weight_receipt_for_candidate(candidate)
+    novelty_cache = novelty_cache_from_hashes(("0" * 64,))
     triviality_budget = triviality_budget_receipt(
         (),
         tempo=int(candidate.metadata["tempo"]),
@@ -66,6 +68,7 @@ def _fake_lean_gate(self, candidate, *, seen_canonical_hashes) -> ProceduralGate
             "triviality_stack": ["pytest"],
             "triviality_reason": "baseline_failed",
             "baseline_solver": None,
+            **novelty_cache.metadata(),
             **triviality_budget.metadata(),
             **slot_weight.metadata(),
         },
@@ -305,6 +308,8 @@ def test_operator_registry_flow_smoke(monkeypatch: pytest.MonkeyPatch, tmp_path:
 def test_production_like_procedural_submission_smoke(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     runner = CliRunner()
     snapshot_path = Path("examples/operator-smoke/snapshot.jsonl")
+    novelty_cache_path = tmp_path / "novelty-cache.jsonl"
+    novelty_cache_path.write_text(json.dumps({"statement_hash": "0" * 64}, sort_keys=True) + "\n", encoding="utf-8")
     registry_path = tmp_path / "tasks" / "mainnet.procedural.registry.json"
     active_randomness = json.dumps(
         {
@@ -327,6 +332,7 @@ def test_production_like_procedural_submission_smoke(monkeypatch: pytest.MonkeyP
         protocol_mode="production",
         task_supply_mode="procedural",
         procedural_source_jsonl=snapshot_path,
+        procedural_novelty_cache_jsonl=novelty_cache_path,
         procedural_source_sha256_expected=source_hash,
         procedural_operator_bundle_sha256_expected=procedural_operator_bundle_hash(),
         procedural_candidate_count=1,
@@ -366,6 +372,8 @@ def test_production_like_procedural_submission_smoke(monkeypatch: pytest.MonkeyP
             "1",
             "--frontier-depth",
             "0",
+            "--novelty-cache-jsonl",
+            str(novelty_cache_path),
         ],
         env={"LEMMA_PREFER_PROCESS_ENV": "1"},
     )
@@ -418,6 +426,7 @@ def test_production_like_procedural_submission_smoke(monkeypatch: pytest.MonkeyP
         "LEMMA_PROTOCOL_MODE": "production",
         "LEMMA_TASK_SUPPLY_MODE": "procedural",
         "LEMMA_PROCEDURAL_SOURCE_JSONL": str(snapshot_path),
+        "LEMMA_PROCEDURAL_NOVELTY_CACHE_JSONL": str(novelty_cache_path),
         "LEMMA_PROCEDURAL_SOURCE_SHA256_EXPECTED": source_hash,
         "LEMMA_PROCEDURAL_OPERATOR_BUNDLE_SHA256_EXPECTED": procedural_operator_bundle_hash(),
         "LEMMA_PROCEDURAL_CANDIDATE_COUNT": "1",

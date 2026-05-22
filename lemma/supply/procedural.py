@@ -14,6 +14,7 @@ from typing import Any
 from lemma.license import license_state_for
 from lemma.protocol_invariants import procedural_gate_receipt_sha256, production_supply_rejection_reason
 from lemma.supply.gates import GATE_VERSION, AssumedProceduralGateRunner, ProceduralGateRunner, ProceduralGateVerdict
+from lemma.supply.novelty import statement_hash
 from lemma.supply.operator_bundle import (
     OPERATOR_BUNDLE_VERSION,
     OPERATOR_NAMES,
@@ -186,7 +187,7 @@ def generate_depth2_candidates(
         )
         verdict = runner(candidate, seen_canonical_hashes=seen)
         candidate = _with_gate_receipt(candidate, verdict)
-        canonical_hash = str(candidate.metadata["canonical_hash"])
+        canonical_hash = str(candidate.metadata["statement_hash"])
         if verdict.accepted:
             seen.add(canonical_hash)
             out.append(candidate)
@@ -278,6 +279,7 @@ def _candidate_from_source(
             "generation_seed": generation_seed,
         }
     )
+    mutated_statement_hash = statement_hash(type_expr)
     theorem_name = _theorem_name(source.theorem_name, canonical_hash)
     source_ref = SourceRef(
         kind="procedural",
@@ -298,6 +300,7 @@ def _candidate_from_source(
         "operator_bundle_version": OPERATOR_BUNDLE_VERSION,
         "operator_bundle_hash": operator_bundle_hash,
         "canonical_hash": canonical_hash,
+        "statement_hash": mutated_statement_hash,
         "license_state": license_state_for(source.source_license, str(source.metadata.get("license_state") or "")),
         "source_task_id": source.id,
         "source_theorem_name": source.theorem_name,

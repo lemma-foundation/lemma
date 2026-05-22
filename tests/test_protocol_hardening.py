@@ -18,6 +18,7 @@ from lemma.protocol_invariants import (
 from lemma.scoring import VerificationRecord, score_epoch
 from lemma.submissions import build_submission, sign_submission
 from lemma.supply.gates import GATE_VERSION
+from lemma.supply.novelty import novelty_cache_from_hashes
 from lemma.supply.operator_bundle import OPERATOR_BUNDLE_VERSION, procedural_operator_bundle_hash
 from lemma.supply.slot_weight import slot_weight_receipt_for_task
 from lemma.supply.triviality_budget import TrivialityRetargetConfig, triviality_budget_receipt
@@ -58,6 +59,7 @@ def _procedural_metadata(
         tempo=tempo,
         config=TrivialityRetargetConfig(genesis_budget_s=5, max_budget_s=5),
     )
+    novelty_cache = novelty_cache_from_hashes(("0" * 64,))
     return {
         "supply_mode": "procedural",
         "tempo": tempo,
@@ -83,6 +85,7 @@ def _procedural_metadata(
         "operator_bundle_version": OPERATOR_BUNDLE_VERSION,
         "operator_bundle_hash": procedural_operator_bundle_hash(),
         "canonical_hash": "6" * 64,
+        "statement_hash": "7" * 64,
         "typechecked": True,
         "prop_gate_passed": True,
         "novelty_status": "passed",
@@ -95,6 +98,7 @@ def _procedural_metadata(
         "triviality_stack": ["pytest"],
         "triviality_reason": "baseline_failed",
         "baseline_solver": None,
+        **novelty_cache.metadata(),
         **triviality_budget.metadata(),
     }
 
@@ -428,6 +432,15 @@ def test_production_mode_rejects_unpinned_operator_params() -> None:
     tampered = task.model_copy(update={"metadata": {**metadata, "mutation_chain": chain}})
 
     assert production_supply_rejection_reason(tampered) == "mutation_params"
+
+
+def test_production_mode_rejects_missing_novelty_cache_receipt() -> None:
+    task = _production_task()
+    metadata = dict(task.metadata)
+    metadata.pop("novelty_cache_sha256")
+    tampered = task.model_copy(update={"metadata": metadata})
+
+    assert production_supply_rejection_reason(tampered) == "novelty_cache_sha256"
 
 
 def test_production_mode_requires_epoch_randomness_active_seed() -> None:

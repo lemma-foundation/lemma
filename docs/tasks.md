@@ -84,6 +84,7 @@ uv run lemma tasks rebuild-procedural-registry \
   --tempo "$TEMPO" \
   --count "$K" \
   --triviality-retarget-jsonl public-settlements.jsonl \
+  --novelty-cache-jsonl public-entry-cache.jsonl \
   --output tasks/mainnet.registry.json
 ```
 
@@ -93,7 +94,7 @@ bundle version, the selected operator, its drand-keyed params, and the
 input/output statement hashes. The procedural builder rejects paid rows unless
 they carry procedural depth-2 provenance, chain/drand anchoring, source-pool and
 operator-bundle hashes, clean license state, a recomputable `slot_weight`
-receipt, a recomputable `T(t)` triviality-budget receipt, and a Lean-backed gate receipt. Production receipts must come from the
+receipt, a recomputable public novelty-cache receipt, a recomputable `T(t)` triviality-budget receipt, and a Lean-backed gate receipt. Production receipts must come from the
 `lean` gate runner: Lean typecheck, kernel Prop gate, canonical novelty, the
 pinned triviality stack retargeted from public burn history, and deterministic import/dependency slot-weight
 calculation must all run during generation, and any candidate solved by the
@@ -113,6 +114,7 @@ LEMMA_PROCEDURAL_CITATION_WEIGHT_CAP=100
 LEMMA_PROCEDURAL_GATE_TIMEOUT_S=120
 LEMMA_PROCEDURAL_TRIVIALITY_BUDGET_S=120
 LEMMA_PROCEDURAL_TRIVIALITY_RETARGET_JSONL=public-settlements.jsonl
+LEMMA_PROCEDURAL_NOVELTY_CACHE_JSONL=public-entry-cache.jsonl
 LEMMA_ACTIVE_SEED_MODE=epoch_randomness
 LEMMA_ACTIVE_EPOCH_RANDOMNESS_SOURCE=chain_drand
 ```
@@ -137,7 +139,7 @@ Every active task must have:
 - `queue_position`, `queue_depth`, and optional `frontier_depth`;
 - schema validation;
 - policy, topic metadata, and triviality-gate labels.
-- for paid production rows, procedural depth-2 provenance with drand-keyed operator params and recomputable slot-weight receipt metadata.
+- for paid production rows, procedural depth-2 provenance with drand-keyed operator params, public novelty-cache receipts, and recomputable slot-weight receipt metadata.
 
 Tasks solved by the pinned triviality tactic stack are excluded from paid activation. They may still enter the corpus as shallow `trivial_curriculum` data. Held-out benchmark tasks stay separate from training and reward streams.
 

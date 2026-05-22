@@ -156,6 +156,7 @@ def test_operator_registry_flow_covers_registry_validation_and_export() -> None:
         "uv run lemma tasks build-mathlib-snapshot",
         "LEMMA_TASK_SUPPLY_MODE=procedural",
         "LEMMA_PROCEDURAL_SOURCE_SHA256_EXPECTED=<source-pool-sha256>",
+        "LEMMA_PROCEDURAL_NOVELTY_CACHE_JSONL=public-entry-cache.jsonl",
         "LEMMA_ACTIVE_K=10",
         "uv run lemma validate",
         "operator-diagnostics-before.json",
