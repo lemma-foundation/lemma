@@ -29,7 +29,7 @@ Verification runs in a pinned Lean/mathlib environment. Docker verification disa
 
 ## Source Pinning
 
-Production validators trust the pinned public procedural source pool and public novelty cache, not a private registry publisher. Registry files can be published as distribution caches, but production validators must rebuild the active task set from `LEMMA_PROCEDURAL_SOURCE_JSONL`, `LEMMA_PROCEDURAL_SOURCE_SHA256_EXPECTED`, `LEMMA_PROCEDURAL_NOVELTY_CACHE_JSONL`, and chain/drand epoch randomness.
+Production validators trust the pinned public procedural source pool, public novelty cache, and public import graph, not a private registry publisher. Registry files can be published as distribution caches, but production validators must rebuild the active task set from `LEMMA_PROCEDURAL_SOURCE_JSONL`, `LEMMA_PROCEDURAL_SOURCE_SHA256_EXPECTED`, `LEMMA_PROCEDURAL_NOVELTY_CACHE_JSONL`, `LEMMA_PROCEDURAL_IMPORT_GRAPH_JSONL`, and chain/drand epoch randomness.
 
 ## Scoring Defenses
 

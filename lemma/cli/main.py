@@ -501,6 +501,12 @@ def tasks_build_mixed_registry_cmd(
     default=None,
     help="Public statement-hash JSONL used by the procedural novelty gate.",
 )
+@click.option(
+    "--import-graph-jsonl",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Public Lean import graph JSONL used by procedural slot-weight receipts.",
+)
 @click.option("--assume-gates", is_flag=True, help="Dev-only: skip Lean gate execution.")
 def tasks_generate_procedural_depth2_cmd(
     snapshot_path: Path,
@@ -515,10 +521,12 @@ def tasks_generate_procedural_depth2_cmd(
     citation_weight_cap: float,
     triviality_retarget_jsonl: Path | None,
     novelty_cache_jsonl: Path | None,
+    import_graph_jsonl: Path | None,
     assume_gates: bool,
 ) -> None:
     """Generate depth-2 procedural task candidates from public epoch inputs."""
-    from lemma.supply.gates import LeanProceduralGateRunner
+    from lemma.supply.gates import AssumedProceduralGateRunner, LeanProceduralGateRunner
+    from lemma.supply.import_graph import empty_import_graph, read_import_graph
     from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
     from lemma.supply.novelty import empty_novelty_cache, read_novelty_cache
     from lemma.supply.procedural import corpus_sources_from_dir, generate_depth2_candidates, source_pool_hash
@@ -534,6 +542,7 @@ def tasks_generate_procedural_depth2_cmd(
     novelty_cache = (
         read_novelty_cache(novelty_cache_jsonl) if novelty_cache_jsonl is not None else empty_novelty_cache()
     )
+    import_graph = read_import_graph(import_graph_jsonl) if import_graph_jsonl is not None else empty_import_graph()
     candidates = generate_depth2_candidates(
         sources,
         generation_seed=generation_seed,
@@ -542,12 +551,13 @@ def tasks_generate_procedural_depth2_cmd(
         tempo=tempo,
         citation_alpha=citation_alpha,
         citation_weight_cap=citation_weight_cap,
-        gate_runner=None
+        gate_runner=AssumedProceduralGateRunner(novelty_cache=novelty_cache, import_graph=import_graph)
         if assume_gates
         else LeanProceduralGateRunner(
             settings,
             triviality_budget_receipt=triviality_budget,
             novelty_cache=novelty_cache,
+            import_graph=import_graph,
         ),
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -563,6 +573,8 @@ def tasks_generate_procedural_depth2_cmd(
                 ).hexdigest(),
                 "novelty_cache_sha256": novelty_cache.sha256,
                 "novelty_cache_entries": len(novelty_cache.statement_hashes),
+                "import_graph_sha256": import_graph.sha256,
+                "import_graph_entries": import_graph.entry_count,
                 "candidates": len(candidates),
             },
             indent=2,
@@ -601,6 +613,12 @@ def tasks_generate_procedural_depth2_cmd(
     default=None,
     help="Public statement-hash JSONL used by the procedural novelty gate.",
 )
+@click.option(
+    "--import-graph-jsonl",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Public Lean import graph JSONL used by procedural slot-weight receipts.",
+)
 def tasks_rebuild_procedural_registry_cmd(
     snapshot_path: Path,
     output_path: Path,
@@ -615,9 +633,11 @@ def tasks_rebuild_procedural_registry_cmd(
     citation_weight_cap: float,
     triviality_retarget_jsonl: Path | None,
     novelty_cache_jsonl: Path | None,
+    import_graph_jsonl: Path | None,
 ) -> None:
     """Rebuild the production procedural registry from public inputs."""
     from lemma.supply.gates import LeanProceduralGateRunner
+    from lemma.supply.import_graph import empty_import_graph, read_import_graph
     from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
     from lemma.supply.novelty import empty_novelty_cache, read_novelty_cache
     from lemma.supply.procedural import (
@@ -639,6 +659,7 @@ def tasks_rebuild_procedural_registry_cmd(
     novelty_cache = (
         read_novelty_cache(novelty_cache_jsonl) if novelty_cache_jsonl is not None else empty_novelty_cache()
     )
+    import_graph = read_import_graph(import_graph_jsonl) if import_graph_jsonl is not None else empty_import_graph()
     candidates = generate_depth2_candidates(
         sources,
         generation_seed=generation_seed,
@@ -651,6 +672,7 @@ def tasks_rebuild_procedural_registry_cmd(
             settings,
             triviality_budget_receipt=triviality_budget,
             novelty_cache=novelty_cache,
+            import_graph=import_graph,
         ),
     )
     build = build_procedural_registry_tasks(candidates, seed=generation_seed, frontier_depth=frontier_depth)
@@ -670,6 +692,8 @@ def tasks_rebuild_procedural_registry_cmd(
                 ).hexdigest(),
                 "novelty_cache_sha256": novelty_cache.sha256,
                 "novelty_cache_entries": len(novelty_cache.statement_hashes),
+                "import_graph_sha256": import_graph.sha256,
+                "import_graph_entries": import_graph.entry_count,
                 "tasks": len(build.tasks),
             },
             indent=2,
@@ -786,6 +810,39 @@ def tasks_extract_mathlib_snapshot_cmd(
                 "output": str(output_path),
                 "queue_depth_counts": dict(sorted(Counter(str(row.queue_depth) for row in rows).items())),
                 "rows": len(rows),
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+
+
+@tasks_cmd.command("extract-import-graph")
+@click.option(
+    "--mathlib-root",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    required=True,
+    help="Pinned Mathlib checkout root.",
+)
+@click.option("--output", "output_path", type=click.Path(dir_okay=False, path_type=Path), required=True)
+@click.option("--include", "includes", multiple=True, help="Repo-relative glob, e.g. Mathlib/Data/Nat/*.lean.")
+def tasks_extract_import_graph_cmd(
+    mathlib_root: Path,
+    output_path: Path,
+    includes: tuple[str, ...],
+) -> None:
+    """Extract a public Lean module import graph from a pinned Mathlib checkout."""
+    from lemma.supply.import_graph import extract_import_graph_rows, import_graph_from_rows, write_import_graph_jsonl
+
+    rows = extract_import_graph_rows(mathlib_root, includes or ("Mathlib/**/*.lean",))
+    write_import_graph_jsonl(rows, output_path)
+    graph = import_graph_from_rows(rows)
+    click.echo(
+        json.dumps(
+            {
+                "output": str(output_path),
+                "import_graph_sha256": graph.sha256,
+                "import_graph_entries": graph.entry_count,
             },
             indent=2,
             sort_keys=True,

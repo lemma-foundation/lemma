@@ -31,12 +31,13 @@ uv run lemma tasks rebuild-procedural-registry \
   --citation-weight-cap 100 \
   --triviality-retarget-jsonl public-settlements.jsonl \
   --novelty-cache-jsonl public-entry-cache.jsonl \
+  --import-graph-jsonl public-import-graph.jsonl \
   --output tasks/mainnet.registry.json
 ```
 
 The procedural builder rejects paid candidates that do not carry procedural
 depth-2 metadata, chain/drand anchoring, clean license state, deterministic
-slot-weight receipt metadata, deterministic public novelty-cache metadata,
+public import-graph slot-weight receipt metadata, deterministic public novelty-cache metadata,
 deterministic `T(t)` retarget metadata, and a Lean-backed generation receipt. The receipt
 must come from the `lean` gate runner, which runs typecheck, Prop, novelty, the
 pinned triviality stack at the public burn-rate-retargeted budget, and
@@ -62,6 +63,7 @@ LEMMA_PROCEDURAL_CITATION_ALPHA=0.25
 LEMMA_PROCEDURAL_CITATION_WEIGHT_CAP=100
 LEMMA_PROCEDURAL_TRIVIALITY_RETARGET_JSONL=public-settlements.jsonl
 LEMMA_PROCEDURAL_NOVELTY_CACHE_JSONL=public-entry-cache.jsonl
+LEMMA_PROCEDURAL_IMPORT_GRAPH_JSONL=public-import-graph.jsonl
 LEMMA_ACTIVE_K=10
 LEMMA_FRONTIER_DEPTH=0
 LEMMA_ACTIVE_QUEUE_SEED=lemma-active-queue

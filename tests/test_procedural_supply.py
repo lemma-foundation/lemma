@@ -10,6 +10,7 @@ from lemma.lean.sandbox import VerifyResult
 from lemma.protocol_invariants import enforce_production_invariants
 from lemma.submissions import build_submission
 from lemma.supply.gates import AssumedProceduralGateRunner, LeanProceduralGateRunner, ProceduralGateVerdict
+from lemma.supply.import_graph import ImportGraphRow, read_import_graph
 from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
 from lemma.supply.novelty import novelty_cache_from_hashes, read_novelty_cache, statement_hash
 from lemma.supply.operator_bundle import OPERATOR_BUNDLE_VERSION, OPERATOR_NAMES
@@ -54,9 +55,19 @@ def _write_novelty_cache(path: Path) -> None:
     path.write_text(json.dumps({"statement_hash": "0" * 64}, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def _fake_lean_gate(self, candidate, *, seen_canonical_hashes) -> ProceduralGateVerdict:  # noqa: ANN001, ARG001
+def _write_import_graph(path: Path) -> None:
+    rows = (
+        ImportGraphRow(module="Mathlib", imports=("Mathlib.Init", "Mathlib.Data.Nat.Basic")),
+        ImportGraphRow(module="Mathlib.Init", imports=()),
+        ImportGraphRow(module="Mathlib.Data.Nat.Basic", imports=("Mathlib.Init",)),
+        ImportGraphRow(module="Mathlib.Algebra.Group.Basic", imports=("Mathlib.Init",)),
+    )
+    path.write_text("".join(row.model_dump_json() + "\n" for row in rows), encoding="utf-8")
+
+
+def _fake_lean_gate(self, candidate, *, seen_canonical_hashes) -> ProceduralGateVerdict:  # noqa: ANN001
     canonical_hash = str(candidate.metadata.get("canonical_hash") or "")
-    slot_weight = slot_weight_receipt_for_candidate(candidate)
+    slot_weight = slot_weight_receipt_for_candidate(candidate, import_graph=self.import_graph)
     novelty_cache = novelty_cache_from_hashes(("0" * 64,))
     triviality_budget = triviality_budget_receipt(
         (),
@@ -237,11 +248,36 @@ def test_procedural_slot_weight_receipt_uses_dependency_metadata(tmp_path: Path)
     )[0]
     inputs = candidate.metadata["slot_weight_inputs"]
 
-    assert candidate.metadata["slot_weight_version"] == "lemma-slot-weight-v1"
+    assert candidate.metadata["slot_weight_version"] == "lemma-slot-weight-v2"
     assert inputs["direct_dependency_count"] == 11
     assert inputs["dependency_depth"] == 5
     assert inputs["import_breadth"] == 2
     assert candidate.metadata["slot_weight_basis_points"] > 1000
+
+
+def test_procedural_slot_weight_receipt_uses_public_import_graph(tmp_path: Path) -> None:
+    snapshot = tmp_path / "snapshot.jsonl"
+    import_graph_path = tmp_path / "import-graph.jsonl"
+    _write_snapshot(snapshot)
+    _write_import_graph(import_graph_path)
+    import_graph = read_import_graph(import_graph_path)
+
+    candidate = generate_depth2_candidates(
+        mathlib_candidates_from_jsonl(snapshot),
+        generation_seed="epoch-a",
+        epoch_randomness=json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
+        count=1,
+        tempo=3,
+        gate_runner=AssumedProceduralGateRunner(import_graph=import_graph),
+    )[0]
+    inputs = candidate.metadata["slot_weight_inputs"]
+
+    assert candidate.metadata["slot_weight_version"] == "lemma-slot-weight-v2"
+    assert inputs["import_graph_resolved"] is True
+    assert inputs["import_graph_sha256"] == import_graph.sha256
+    assert inputs["missing_import_count"] == 0
+    assert inputs["direct_dependency_count"] == 2
+    assert inputs["transitive_dependency_count"] == 2
 
 
 def test_procedural_supply_mode_rebuilds_active_registry_from_public_inputs(
@@ -249,8 +285,10 @@ def test_procedural_supply_mode_rebuilds_active_registry_from_public_inputs(
 ) -> None:
     snapshot = tmp_path / "snapshot.jsonl"
     novelty_cache = tmp_path / "novelty.jsonl"
+    import_graph = tmp_path / "import-graph.jsonl"
     _write_snapshot(snapshot)
     _write_novelty_cache(novelty_cache)
+    _write_import_graph(import_graph)
     sources = mathlib_candidates_from_jsonl(snapshot)
     source_hash = source_pool_hash(sources)
     randomness = json.dumps(
@@ -270,6 +308,7 @@ def test_procedural_supply_mode_rebuilds_active_registry_from_public_inputs(
         task_supply_mode="procedural",
         procedural_source_jsonl=snapshot,
         procedural_novelty_cache_jsonl=novelty_cache,
+        procedural_import_graph_jsonl=import_graph,
         procedural_source_sha256_expected=source_hash,
         procedural_operator_bundle_sha256_expected=procedural_operator_bundle_hash(),
         procedural_candidate_count=2,
@@ -300,8 +339,10 @@ def test_procedural_source_pool_includes_prior_accepted_corpus(
 ) -> None:
     snapshot = tmp_path / "snapshot.jsonl"
     novelty_cache = tmp_path / "novelty.jsonl"
+    import_graph = tmp_path / "import-graph.jsonl"
     _write_snapshot(snapshot)
     _write_novelty_cache(novelty_cache)
+    _write_import_graph(import_graph)
     corpus_dir = tmp_path / "corpus"
     task = make_task(
         task_id="lemma.accepted.prior",
@@ -337,6 +378,7 @@ def test_procedural_source_pool_includes_prior_accepted_corpus(
         task_supply_mode="procedural",
         procedural_source_jsonl=snapshot,
         procedural_novelty_cache_jsonl=novelty_cache,
+        procedural_import_graph_jsonl=import_graph,
         procedural_prior_corpus_dir=corpus_dir,
         procedural_source_sha256_expected=source_hash,
         procedural_candidate_count=2,

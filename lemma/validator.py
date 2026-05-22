@@ -172,6 +172,7 @@ def task_registry_for_validation(settings: LemmaSettings, *, tempo: int) -> Task
 
 def _procedural_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> TaskRegistry:
     from lemma.supply.gates import LeanProceduralGateRunner
+    from lemma.supply.import_graph import empty_import_graph, read_import_graph
     from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
     from lemma.supply.novelty import empty_novelty_cache, read_novelty_cache
     from lemma.supply.procedural import (
@@ -186,6 +187,8 @@ def _procedural_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> Ta
         raise RuntimeError("procedural supply requires LEMMA_PROCEDURAL_SOURCE_JSONL")
     if settings.protocol_mode == "production" and settings.procedural_novelty_cache_jsonl is None:
         raise RuntimeError("production procedural supply requires LEMMA_PROCEDURAL_NOVELTY_CACHE_JSONL")
+    if settings.protocol_mode == "production" and settings.procedural_import_graph_jsonl is None:
+        raise RuntimeError("production procedural supply requires LEMMA_PROCEDURAL_IMPORT_GRAPH_JSONL")
     source_limit = settings.procedural_source_limit or None
     sources = mathlib_candidates_from_jsonl(settings.procedural_source_jsonl, limit=source_limit)
     if settings.procedural_prior_corpus_dir is not None:
@@ -209,6 +212,11 @@ def _procedural_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> Ta
         if settings.procedural_novelty_cache_jsonl is not None
         else empty_novelty_cache()
     )
+    import_graph = (
+        read_import_graph(settings.procedural_import_graph_jsonl)
+        if settings.procedural_import_graph_jsonl is not None
+        else empty_import_graph()
+    )
     candidates = generate_depth2_candidates(
         sources,
         generation_seed=generation_seed,
@@ -222,6 +230,7 @@ def _procedural_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> Ta
                 settings,
                 triviality_budget_receipt=triviality_budget,
                 novelty_cache=novelty_cache,
+                import_graph=import_graph,
             )
             if settings.protocol_mode == "production"
             else None

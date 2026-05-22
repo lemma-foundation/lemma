@@ -33,8 +33,16 @@ Optional fields:
 - `topic` / `subtopic`: deterministic topic labels from the Mathlib source path.
 - `difficulty_score`: deterministic classifier score used to assign `queue_depth`.
 - `citation_weight`: pinned dependency in-degree or capped sampling weight for procedural source selection.
-- `direct_dependency_count`, `dependency_depth`, `transitive_dependency_hash`: pinned dependency-graph fields used by deterministic paid-slot weight receipts.
+- `direct_dependency_count`, `dependency_depth`, `transitive_dependency_hash`: source-pool hints for local analysis; paid production slot-weight receipts are recomputed from `public-import-graph.jsonl`.
 - `baseline_solved`: whether an operator baseline tactic stack solved the task before paid activation.
+
+Build the public import graph from the same pinned checkout:
+
+```bash
+uv run lemma tasks extract-import-graph \
+  --mathlib-root /path/to/mathlib \
+  --output public-import-graph.jsonl
+```
 
 The public importer currently accepts only ASCII dotted theorem and import names. That keeps task ids, generated Lean files, and corpus replay stable while the production extractor is still a separate audited tool.
 

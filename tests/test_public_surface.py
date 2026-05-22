@@ -157,6 +157,7 @@ def test_operator_registry_flow_covers_registry_validation_and_export() -> None:
         "LEMMA_TASK_SUPPLY_MODE=procedural",
         "LEMMA_PROCEDURAL_SOURCE_SHA256_EXPECTED=<source-pool-sha256>",
         "LEMMA_PROCEDURAL_NOVELTY_CACHE_JSONL=public-entry-cache.jsonl",
+        "LEMMA_PROCEDURAL_IMPORT_GRAPH_JSONL=public-import-graph.jsonl",
         "LEMMA_ACTIVE_K=10",
         "uv run lemma validate",
         "operator-diagnostics-before.json",
@@ -187,6 +188,7 @@ def test_mainnet_readiness_doc_covers_launch_gates() -> None:
         "success=true",
         "LEMMA_PROTOCOL_MODE=production",
         "LEMMA_REQUIRE_STRONG_PROOF_IDENTITY=1",
+        "LEMMA_PROCEDURAL_IMPORT_GRAPH_JSONL=public-import-graph.jsonl",
         "LEAN_SANDBOX_NETWORK=none",
         "Do not commit or publish local notes",
     ]

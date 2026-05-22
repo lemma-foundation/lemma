@@ -20,6 +20,7 @@ from lemma.lean.sandbox import VerifyResult
 from lemma.operator import OperatorDiagnosticsReport, OperatorPreflightReport, OperatorRegistryInspectReport
 from lemma.submissions import build_submission
 from lemma.supply.gates import ProceduralGateVerdict
+from lemma.supply.import_graph import ImportGraphRow, read_import_graph
 from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
 from lemma.supply.novelty import novelty_cache_from_hashes
 from lemma.supply.procedural import procedural_operator_bundle_hash, source_pool_hash
@@ -45,9 +46,17 @@ def _proof_for(theorem_name: str) -> str:
     )
 
 
-def _fake_lean_gate(self, candidate, *, seen_canonical_hashes) -> ProceduralGateVerdict:  # noqa: ANN001, ARG001
+def _write_import_graph(path: Path) -> None:
+    rows = (
+        ImportGraphRow(module="Mathlib", imports=("Mathlib.Init",)),
+        ImportGraphRow(module="Mathlib.Init", imports=()),
+    )
+    path.write_text("".join(row.model_dump_json() + "\n" for row in rows), encoding="utf-8")
+
+
+def _fake_lean_gate(self, candidate, *, seen_canonical_hashes) -> ProceduralGateVerdict:  # noqa: ANN001
     canonical_hash = str(candidate.metadata.get("canonical_hash") or "")
-    slot_weight = slot_weight_receipt_for_candidate(candidate)
+    slot_weight = slot_weight_receipt_for_candidate(candidate, import_graph=self.import_graph)
     novelty_cache = novelty_cache_from_hashes(("0" * 64,))
     triviality_budget = triviality_budget_receipt(
         (),
@@ -309,7 +318,9 @@ def test_production_like_procedural_submission_smoke(monkeypatch: pytest.MonkeyP
     runner = CliRunner()
     snapshot_path = Path("examples/operator-smoke/snapshot.jsonl")
     novelty_cache_path = tmp_path / "novelty-cache.jsonl"
+    import_graph_path = tmp_path / "import-graph.jsonl"
     novelty_cache_path.write_text(json.dumps({"statement_hash": "0" * 64}, sort_keys=True) + "\n", encoding="utf-8")
+    _write_import_graph(import_graph_path)
     registry_path = tmp_path / "tasks" / "mainnet.procedural.registry.json"
     active_randomness = json.dumps(
         {
@@ -333,6 +344,7 @@ def test_production_like_procedural_submission_smoke(monkeypatch: pytest.MonkeyP
         task_supply_mode="procedural",
         procedural_source_jsonl=snapshot_path,
         procedural_novelty_cache_jsonl=novelty_cache_path,
+        procedural_import_graph_jsonl=import_graph_path,
         procedural_source_sha256_expected=source_hash,
         procedural_operator_bundle_sha256_expected=procedural_operator_bundle_hash(),
         procedural_candidate_count=1,
@@ -374,11 +386,14 @@ def test_production_like_procedural_submission_smoke(monkeypatch: pytest.MonkeyP
             "0",
             "--novelty-cache-jsonl",
             str(novelty_cache_path),
+            "--import-graph-jsonl",
+            str(import_graph_path),
         ],
         env={"LEMMA_PREFER_PROCESS_ENV": "1"},
     )
     assert build.exit_code == 0, build.output
     assert json.loads(build.output)["source_pool_sha256"] == source_hash
+    assert json.loads(build.output)["import_graph_sha256"] == read_import_graph(import_graph_path).sha256
 
     registry = task_registry_for_validation(base_settings, tempo=0)
     active_task = active_tasks_for_validation(registry, base_settings, tempo=0)[0]
@@ -427,6 +442,7 @@ def test_production_like_procedural_submission_smoke(monkeypatch: pytest.MonkeyP
         "LEMMA_TASK_SUPPLY_MODE": "procedural",
         "LEMMA_PROCEDURAL_SOURCE_JSONL": str(snapshot_path),
         "LEMMA_PROCEDURAL_NOVELTY_CACHE_JSONL": str(novelty_cache_path),
+        "LEMMA_PROCEDURAL_IMPORT_GRAPH_JSONL": str(import_graph_path),
         "LEMMA_PROCEDURAL_SOURCE_SHA256_EXPECTED": source_hash,
         "LEMMA_PROCEDURAL_OPERATOR_BUNDLE_SHA256_EXPECTED": procedural_operator_bundle_hash(),
         "LEMMA_PROCEDURAL_CANDIDATE_COUNT": "1",

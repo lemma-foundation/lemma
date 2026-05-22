@@ -51,6 +51,7 @@ LEMMA_ACTIVE_EPOCH_RANDOMNESS_SOURCE=chain_drand
 LEMMA_PROCEDURAL_GATE_TIMEOUT_S=120
 LEMMA_PROCEDURAL_TRIVIALITY_BUDGET_S=120
 LEMMA_PROCEDURAL_NOVELTY_CACHE_JSONL=public-entry-cache.jsonl
+LEMMA_PROCEDURAL_IMPORT_GRAPH_JSONL=public-import-graph.jsonl
 LEAN_SANDBOX_NETWORK=none
 ```
 
@@ -64,14 +65,15 @@ uv run lemma tasks rebuild-procedural-registry \
   --tempo "$TEMPO" \
   --count "$K" \
   --novelty-cache-jsonl public-entry-cache.jsonl \
+  --import-graph-jsonl public-import-graph.jsonl \
   --output tasks/mainnet.registry.json
 ```
 
 The cache can be mirrored publicly, but production validators do not trust it
 as the problem authority. They rebuild the same rows locally from the pinned
-source snapshot, chain state, drand, and the public novelty cache. Paid rows
+source snapshot, chain state, drand, the public novelty cache, and the public import graph. Paid rows
 must include a Lean-backed generation receipt: typecheck, Prop, novelty-cache,
-and triviality-stack gates run before the candidate can enter the active paid pool.
+public import-graph slot-weight, and triviality-stack gates run before the candidate can enter the active paid pool.
 
 Corpus deltas are written under `LEMMA_CORPUS_OUTPUT_DIR`. Local receipts are written under `LEMMA_OPERATOR_DATA_DIR`. If `LEMMA_SUBMISSION_SPOOL_DIR` is set, validators consume pending `.json` or `.jsonl` submission files from that directory and move them to `processed/` after a successful pass. These paths should remain ignored unless an operator intentionally publishes sanitized artifacts.
 The file spool remains a local/operator-smoke path. The production adapter is `--bucket-reveals-jsonl`: each reveal row carries miner hotkey, tempo, drand round, drand signature, commit block, committed Merkle root, and revealed bucket blobs. Binary ciphertexts should be encoded as `base64:<payload>` or `0x<hex>`. The validator recomputes the Merkle root, confirms the miner's on-chain bucket commitment in production, decrypts bucket ciphertexts in production, requires the decrypted proof to match the reveal, and ranks winners by commit block.

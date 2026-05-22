@@ -18,6 +18,7 @@ from lemma.protocol_invariants import (
 from lemma.scoring import VerificationRecord, score_epoch
 from lemma.submissions import build_submission, sign_submission
 from lemma.supply.gates import GATE_VERSION
+from lemma.supply.import_graph import ImportGraphRow, import_graph_from_rows
 from lemma.supply.novelty import novelty_cache_from_hashes
 from lemma.supply.operator_bundle import OPERATOR_BUNDLE_VERSION, procedural_operator_bundle_hash
 from lemma.supply.slot_weight import slot_weight_receipt_for_task
@@ -103,6 +104,15 @@ def _procedural_metadata(
     }
 
 
+def _import_graph():
+    return import_graph_from_rows(
+        (
+            ImportGraphRow(module="Mathlib", imports=("Mathlib.Init",)),
+            ImportGraphRow(module="Mathlib.Init", imports=()),
+        )
+    )
+
+
 def _production_task(*, mutation_depth: int = 2, generation_seed: str = "pytest-depth2", tempo: int = 0):
     metadata = {
         **_procedural_metadata(mutation_depth=mutation_depth, generation_seed=generation_seed, tempo=tempo),
@@ -115,7 +125,14 @@ def _production_task(*, mutation_depth: int = 2, generation_seed: str = "pytest-
             "metadata": metadata,
         }
     )
-    task = task.model_copy(update={"metadata": {**task.metadata, **slot_weight_receipt_for_task(task).metadata()}})
+    task = task.model_copy(
+        update={
+            "metadata": {
+                **task.metadata,
+                **slot_weight_receipt_for_task(task, import_graph=_import_graph()).metadata(),
+            }
+        }
+    )
     return task.model_copy(
         update={"metadata": {**task.metadata, "gate_receipt_sha256": procedural_gate_receipt_sha256(task)}}
     )

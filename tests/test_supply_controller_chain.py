@@ -17,6 +17,7 @@ from lemma.supply.controller import (
     retarget_curriculum,
 )
 from lemma.supply.gates import GATE_VERSION
+from lemma.supply.import_graph import ImportGraphRow, import_graph_from_rows
 from lemma.supply.mixed import build_mixed_registry_tasks
 from lemma.supply.novelty import novelty_cache_from_hashes
 from lemma.supply.operator_bundle import OPERATOR_BUNDLE_VERSION, procedural_operator_bundle_hash
@@ -37,6 +38,15 @@ def _fixture_tasks():
         + variants.fixture_candidates("lemma.fixture.hard")
     )
     return [candidate.to_task(queue_position=index) for index, candidate in enumerate(candidates)]
+
+
+def _import_graph():
+    return import_graph_from_rows(
+        (
+            ImportGraphRow(module="Mathlib", imports=("Mathlib.Init",)),
+            ImportGraphRow(module="Mathlib.Init", imports=()),
+        )
+    )
 
 
 def test_active_pool_is_deterministic_and_parks_expired_tasks() -> None:
@@ -170,7 +180,7 @@ def test_procedural_registry_requires_depth_two_metadata() -> None:
         update={
             "metadata": {
                 **good.metadata,
-                **slot_weight_receipt_for_candidate(good).metadata(),
+                **slot_weight_receipt_for_candidate(good, import_graph=_import_graph()).metadata(),
             }
         }
     )
@@ -193,7 +203,7 @@ def test_procedural_registry_requires_depth_two_metadata() -> None:
 
     assert [task.id for task in build.tasks] == [good.id]
     assert build.tasks[0].source_stream == "procedural"
-    assert build.tasks[0].metadata["slot_weight_version"] == "lemma-slot-weight-v1"
+    assert build.tasks[0].metadata["slot_weight_version"] == "lemma-slot-weight-v2"
     assert build.rejected[0].reason == "mutation_depth"
 
 

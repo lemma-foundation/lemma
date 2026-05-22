@@ -10,6 +10,7 @@ from lemma.common.config import LemmaSettings
 from lemma.lean.sandbox import VerifyReason, VerifyResult
 from lemma.lean.verify_runner import run_lean_verify
 from lemma.problems.base import Problem
+from lemma.supply.import_graph import ImportGraph, empty_import_graph
 from lemma.supply.novelty import NoveltyCache, empty_novelty_cache
 from lemma.supply.slot_weight import slot_weight_receipt_for_candidate
 from lemma.supply.triviality_budget import (
@@ -64,8 +65,14 @@ class ProceduralGateRunner(Protocol):
 class AssumedProceduralGateRunner:
     """Fast dev-only gate runner for non-production candidate previews."""
 
-    def __init__(self, *, novelty_cache: NoveltyCache | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        novelty_cache: NoveltyCache | None = None,
+        import_graph: ImportGraph | None = None,
+    ) -> None:
         self.novelty_cache = novelty_cache or empty_novelty_cache()
+        self.import_graph = import_graph or empty_import_graph()
 
     def __call__(
         self,
@@ -74,7 +81,7 @@ class AssumedProceduralGateRunner:
         seen_canonical_hashes: Iterable[str],
     ) -> ProceduralGateVerdict:
         novelty = _novelty_status(candidate, seen_canonical_hashes, self.novelty_cache)
-        slot_weight = slot_weight_receipt_for_candidate(candidate)
+        slot_weight = slot_weight_receipt_for_candidate(candidate, import_graph=self.import_graph)
         budget = static_triviality_budget_receipt(1)
         return ProceduralGateVerdict(
             typechecked=True,
@@ -102,6 +109,7 @@ class LeanProceduralGateRunner:
         *,
         triviality_budget_receipt: TrivialityBudgetReceipt | None = None,
         novelty_cache: NoveltyCache | None = None,
+        import_graph: ImportGraph | None = None,
     ) -> None:
         self.settings = settings
         self.gate_timeout_s = min(settings.lean_verify_timeout_s, settings.procedural_gate_timeout_s)
@@ -110,6 +118,7 @@ class LeanProceduralGateRunner:
         )
         self.triviality_budget_s = self.triviality_budget_receipt.budget_s
         self.novelty_cache = novelty_cache or empty_novelty_cache()
+        self.import_graph = import_graph or empty_import_graph()
 
     def __call__(
         self,
@@ -121,7 +130,7 @@ class LeanProceduralGateRunner:
         typecheck = self._compile_gate(candidate, _typecheck_gate_source(candidate))
         prop = self._compile_gate(candidate, _prop_gate_source(candidate)) if typecheck.passed else typecheck
         triviality_checked, baseline_solved, baseline_solver, baseline_reason = self._run_triviality_stack(candidate)
-        slot_weight = slot_weight_receipt_for_candidate(candidate)
+        slot_weight = slot_weight_receipt_for_candidate(candidate, import_graph=self.import_graph)
         return ProceduralGateVerdict(
             typechecked=typecheck.passed,
             prop_gate_passed=prop.passed,

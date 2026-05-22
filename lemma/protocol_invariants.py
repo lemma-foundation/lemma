@@ -9,6 +9,7 @@ from typing import Any
 
 from lemma.common.config import LemmaSettings
 from lemma.supply.gates import GATE_VERSION
+from lemma.supply.import_graph import IMPORT_GRAPH_VERSION, ImportGraph, read_import_graph
 from lemma.supply.novelty import NOVELTY_CACHE_VERSION
 from lemma.supply.operator_bundle import OPERATOR_BUNDLE_VERSION, OPERATOR_NAMES, procedural_operator_bundle_hash
 from lemma.supply.slot_weight import SLOT_WEIGHT_VERSION, slot_weight_receipt_for_task
@@ -145,10 +146,12 @@ def procedural_gate_receipt_sha256(task: LemmaTask) -> str:
     return hashlib.sha256(canonical).hexdigest()
 
 
-def production_supply_rejections(registry: TaskRegistry) -> tuple[str, ...]:
+def production_supply_rejections(registry: TaskRegistry, *, import_graph: ImportGraph | None = None) -> tuple[str, ...]:
     out: list[str] = []
     for task in registry.tasks:
         reason = production_supply_rejection_reason(task)
+        if not reason and import_graph is not None:
+            reason = _slot_weight_rejection_reason(task, import_graph=import_graph)
         if reason:
             out.append(f"{task.id}:{reason}")
     return tuple(out)
@@ -178,11 +181,24 @@ def _positive_float(value: Any) -> float | None:
     return number if number > 0 else None
 
 
-def _slot_weight_rejection_reason(task: LemmaTask) -> str:
+def _slot_weight_rejection_reason(task: LemmaTask, *, import_graph: ImportGraph | None = None) -> str:
     metadata = task.metadata
     if metadata.get("slot_weight_version") != SLOT_WEIGHT_VERSION:
         return "slot_weight_version"
-    expected = slot_weight_receipt_for_task(task)
+    inputs = metadata.get("slot_weight_inputs")
+    if not isinstance(inputs, dict):
+        return "slot_weight_inputs"
+    if inputs.get("import_graph_resolved") is not True:
+        return "slot_weight_import_graph"
+    if inputs.get("import_graph_version") != IMPORT_GRAPH_VERSION:
+        return "slot_weight_import_graph_version"
+    if not _has_hex64(inputs, "import_graph_sha256"):
+        return "slot_weight_import_graph_sha256"
+    if not _has_positive_int(inputs, "import_graph_entries"):
+        return "slot_weight_import_graph_entries"
+    if inputs.get("missing_import_count") != 0:
+        return "slot_weight_import_graph_missing"
+    expected = slot_weight_receipt_for_task(task, import_graph=import_graph)
     if metadata.get("slot_weight_basis_points") != expected.basis_points:
         return "slot_weight_basis_points"
     if metadata.get("slot_weight_inputs") != expected.inputs:
@@ -221,7 +237,10 @@ def enforce_production_invariants(settings: LemmaSettings, registry: TaskRegistr
         raise RuntimeError("production mode requires LEMMA_REQUIRE_COMMIT_REVEAL=1")
     if not settings.require_strong_proof_identity:
         raise RuntimeError("production mode requires LEMMA_REQUIRE_STRONG_PROOF_IDENTITY=1")
-    rejections = production_supply_rejections(registry)
+    import_graph = None
+    if settings.procedural_import_graph_jsonl is not None:
+        import_graph = read_import_graph(settings.procedural_import_graph_jsonl)
+    rejections = production_supply_rejections(registry, import_graph=import_graph)
     if rejections:
         detail = ", ".join(rejections[:5])
         raise RuntimeError(f"production mode requires paid procedural depth-2 supply: {detail}")

@@ -74,6 +74,10 @@ class LemmaSettings(BaseSettings):
         default=None,
         validation_alias="LEMMA_PROCEDURAL_NOVELTY_CACHE_JSONL",
     )
+    procedural_import_graph_jsonl: Path | None = Field(
+        default=None,
+        validation_alias="LEMMA_PROCEDURAL_IMPORT_GRAPH_JSONL",
+    )
     procedural_source_limit: int = Field(default=0, ge=0, validation_alias="LEMMA_PROCEDURAL_SOURCE_LIMIT")
     procedural_candidate_count: int = Field(default=0, ge=0, validation_alias="LEMMA_PROCEDURAL_CANDIDATE_COUNT")
     procedural_citation_alpha: float = Field(

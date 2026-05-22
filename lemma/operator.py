@@ -28,6 +28,7 @@ PreflightCheckName = Literal[
     "commit_reveal",
     "strong_proof_identity",
     "epoch_randomness",
+    "import_graph",
     "procedural_supply",
 ]
 
@@ -245,8 +246,15 @@ def _build_operator_state(
 
     if settings.protocol_mode == "production":
         from lemma.protocol_invariants import production_supply_rejections
+        from lemma.supply.import_graph import read_import_graph
 
-        rejections = production_supply_rejections(registry) if registry is not None else ()
+        import_graph = (
+            read_import_graph(settings.procedural_import_graph_jsonl)
+            if settings.procedural_import_graph_jsonl
+            else None
+        )
+
+        rejections = production_supply_rejections(registry, import_graph=import_graph) if registry is not None else ()
         procedural_ok = settings.task_supply_mode == "procedural" and not rejections
         checks.extend(
             [
@@ -280,6 +288,11 @@ def _build_operator_state(
                     settings.active_seed_mode == "epoch_randomness"
                     and settings.active_epoch_randomness_source == "chain_drand",
                     "production active selection must use chain/drand epoch randomness",
+                ),
+                _check(
+                    "import_graph",
+                    import_graph is not None and import_graph.entry_count > 0,
+                    "LEMMA_PROCEDURAL_IMPORT_GRAPH_JSONL must point to a public import graph",
                 ),
                 _check(
                     "procedural_supply",
