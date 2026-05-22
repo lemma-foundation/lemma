@@ -60,8 +60,9 @@ uv run lemma tasks rebuild-procedural-registry \
   --tempo "$TEMPO" \
   --count "$K" \
   --prior-corpus-dir corpus \
-  --citation-alpha 0.25 \
-  --citation-weight-cap 100 \
+  --citation-alpha 0.5 \
+  --citation-weight-cap 64 \
+  --citation-window-tempos 2000 \
   --triviality-retarget-jsonl public-settlements.jsonl \
   --novelty-cache-jsonl public-entry-cache.jsonl \
   --import-graph-jsonl public-import-graph.jsonl \
@@ -78,12 +79,13 @@ LEMMA_TASK_SUPPLY_MODE=procedural \
 LEMMA_PROCEDURAL_SOURCE_JSONL=snapshot.jsonl \
 LEMMA_PROCEDURAL_PRIOR_CORPUS_DIR=corpus \
 LEMMA_PROCEDURAL_SOURCE_SHA256_EXPECTED=<source-pool-sha256> \
-LEMMA_PROCEDURAL_CITATION_ALPHA=0.25 \
+LEMMA_PROCEDURAL_CITATION_ALPHA=0.5 \
+LEMMA_PROCEDURAL_CITATION_WINDOW_TEMPOS=2000 \
 LEMMA_PROCEDURAL_GATE_TIMEOUT_S=120 \
 LEMMA_PROCEDURAL_TRIVIALITY_BUDGET_S=120 \
 LEMMA_PROCEDURAL_NOVELTY_CACHE_JSONL=public-entry-cache.jsonl \
 LEMMA_PROCEDURAL_IMPORT_GRAPH_JSONL=public-import-graph.jsonl \
-LEMMA_PROCEDURAL_CITATION_WEIGHT_CAP=100 \
+LEMMA_PROCEDURAL_CITATION_WEIGHT_CAP=64 \
 LEMMA_REQUIRE_SUBMISSION_SIGNATURES=1 \
 LEMMA_REQUIRE_COMMIT_REVEAL=1 \
 LEMMA_REQUIRE_STRONG_PROOF_IDENTITY=1 \

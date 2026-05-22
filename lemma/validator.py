@@ -189,10 +189,19 @@ def _procedural_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> Ta
         raise RuntimeError("production procedural supply requires LEMMA_PROCEDURAL_NOVELTY_CACHE_JSONL")
     if settings.protocol_mode == "production" and settings.procedural_import_graph_jsonl is None:
         raise RuntimeError("production procedural supply requires LEMMA_PROCEDURAL_IMPORT_GRAPH_JSONL")
+    if settings.protocol_mode == "production":
+        if settings.procedural_prior_corpus_dir is None:
+            raise RuntimeError("production procedural supply requires LEMMA_PROCEDURAL_PRIOR_CORPUS_DIR")
+        if not settings.procedural_prior_corpus_dir.is_dir():
+            raise RuntimeError("LEMMA_PROCEDURAL_PRIOR_CORPUS_DIR must be a public substrate directory")
     source_limit = settings.procedural_source_limit or None
     sources = mathlib_candidates_from_jsonl(settings.procedural_source_jsonl, limit=source_limit)
     if settings.procedural_prior_corpus_dir is not None:
-        sources = sources + corpus_sources_from_dir(settings.procedural_prior_corpus_dir, before_tempo=tempo)
+        sources = sources + corpus_sources_from_dir(
+            settings.procedural_prior_corpus_dir,
+            before_tempo=tempo,
+            citation_window_tempos=settings.procedural_citation_window_tempos,
+        )
     actual_source_hash = source_pool_hash(sources)
     expected_source_hash = (settings.procedural_source_sha256_expected or "").strip().lower().removeprefix("sha256:")
     if expected_source_hash and actual_source_hash != expected_source_hash:
@@ -225,6 +234,7 @@ def _procedural_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> Ta
         tempo=tempo,
         citation_alpha=settings.procedural_citation_alpha,
         citation_weight_cap=settings.procedural_citation_weight_cap,
+        citation_window_tempos=settings.procedural_citation_window_tempos,
         gate_runner=(
             LeanProceduralGateRunner(
                 settings,

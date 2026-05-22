@@ -319,8 +319,10 @@ def test_production_like_procedural_submission_smoke(monkeypatch: pytest.MonkeyP
     snapshot_path = Path("examples/operator-smoke/snapshot.jsonl")
     novelty_cache_path = tmp_path / "novelty-cache.jsonl"
     import_graph_path = tmp_path / "import-graph.jsonl"
+    prior_corpus_dir = tmp_path / "prior-corpus"
     novelty_cache_path.write_text(json.dumps({"statement_hash": "0" * 64}, sort_keys=True) + "\n", encoding="utf-8")
     _write_import_graph(import_graph_path)
+    prior_corpus_dir.mkdir()
     registry_path = tmp_path / "tasks" / "mainnet.procedural.registry.json"
     active_randomness = json.dumps(
         {
@@ -345,6 +347,7 @@ def test_production_like_procedural_submission_smoke(monkeypatch: pytest.MonkeyP
         procedural_source_jsonl=snapshot_path,
         procedural_novelty_cache_jsonl=novelty_cache_path,
         procedural_import_graph_jsonl=import_graph_path,
+        procedural_prior_corpus_dir=prior_corpus_dir,
         procedural_source_sha256_expected=source_hash,
         procedural_operator_bundle_sha256_expected=procedural_operator_bundle_hash(),
         procedural_candidate_count=1,
@@ -388,6 +391,8 @@ def test_production_like_procedural_submission_smoke(monkeypatch: pytest.MonkeyP
             str(novelty_cache_path),
             "--import-graph-jsonl",
             str(import_graph_path),
+            "--prior-corpus-dir",
+            str(prior_corpus_dir),
         ],
         env={"LEMMA_PREFER_PROCESS_ENV": "1"},
     )
@@ -443,6 +448,7 @@ def test_production_like_procedural_submission_smoke(monkeypatch: pytest.MonkeyP
         "LEMMA_PROCEDURAL_SOURCE_JSONL": str(snapshot_path),
         "LEMMA_PROCEDURAL_NOVELTY_CACHE_JSONL": str(novelty_cache_path),
         "LEMMA_PROCEDURAL_IMPORT_GRAPH_JSONL": str(import_graph_path),
+        "LEMMA_PROCEDURAL_PRIOR_CORPUS_DIR": str(prior_corpus_dir),
         "LEMMA_PROCEDURAL_SOURCE_SHA256_EXPECTED": source_hash,
         "LEMMA_PROCEDURAL_OPERATOR_BUNDLE_SHA256_EXPECTED": procedural_operator_bundle_hash(),
         "LEMMA_PROCEDURAL_CANDIDATE_COUNT": "1",

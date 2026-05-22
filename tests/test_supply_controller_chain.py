@@ -24,6 +24,7 @@ from lemma.supply.operator_bundle import OPERATOR_BUNDLE_VERSION, procedural_ope
 from lemma.supply.procedural import build_procedural_registry_tasks
 from lemma.supply.queue import advance_active_pool, initial_active_pool
 from lemma.supply.slot_weight import slot_weight_receipt_for_candidate
+from lemma.supply.source_pool import source_pool_receipt, source_pool_receipt_sha256
 from lemma.supply.triviality_budget import BurnRateRecord, TrivialityRetargetConfig, triviality_budget_receipt
 from lemma.tasks import SourceRef
 
@@ -125,6 +126,13 @@ def test_procedural_registry_requires_depth_two_metadata() -> None:
         config=TrivialityRetargetConfig(genesis_budget_s=5, max_budget_s=5),
     )
     novelty_cache = novelty_cache_from_hashes(("0" * 64,))
+    source_pool = source_pool_receipt(
+        (mathlib_snapshot.fixture_candidates()[0],),
+        source_pool_sha256="4" * 64,
+        citation_alpha=0.5,
+        citation_weight_cap=64,
+        citation_window_tempos=2000,
+    )
     metadata: dict[str, object] = {
         "activation_status": "paid",
         "supply_mode": "procedural",
@@ -148,6 +156,14 @@ def test_procedural_registry_requires_depth_two_metadata() -> None:
         "drand_round": 10,
         "anchor_block": 360,
         "source_pool_hash": "4" * 64,
+        "source_pool_receipt_version": source_pool["version"],
+        "source_pool_receipt_sha256": source_pool_receipt_sha256(source_pool),
+        "source_pool_source_count": source_pool["source_count"],
+        "source_pool_stream_counts": source_pool["source_stream_counts"],
+        "source_sampling_version": source_pool["sampling_version"],
+        "citation_alpha_basis_points": source_pool["citation_alpha_basis_points"],
+        "citation_weight_cap_micros": source_pool["citation_weight_cap_micros"],
+        "citation_window_tempos": source_pool["citation_window_tempos"],
         "operator_bundle_version": OPERATOR_BUNDLE_VERSION,
         "operator_bundle_hash": procedural_operator_bundle_hash(),
         "canonical_hash": "6" * 64,

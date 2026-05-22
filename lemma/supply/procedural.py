@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from lemma.license import license_state_for
+from lemma.license import license_state_for, paid_license_allowed
 from lemma.protocol_invariants import procedural_gate_receipt_sha256, production_supply_rejection_reason
 from lemma.supply.gates import GATE_VERSION, AssumedProceduralGateRunner, ProceduralGateRunner, ProceduralGateVerdict
 from lemma.supply.novelty import statement_hash
@@ -22,6 +22,7 @@ from lemma.supply.operator_bundle import (
     TYPE_SUBSTITUTIONS,
     procedural_operator_bundle_hash,
 )
+from lemma.supply.source_pool import source_pool_receipt, source_pool_receipt_sha256
 from lemma.supply.types import TaskCandidate
 from lemma.task_supply import deterministic_queue
 from lemma.tasks import LemmaTask, SourceRef
@@ -55,13 +56,18 @@ def candidates_from_jsonl(path: Path) -> tuple[TaskCandidate, ...]:
     return tuple(out)
 
 
-def corpus_sources_from_dir(corpus_dir: Path, *, before_tempo: int | None = None) -> tuple[TaskCandidate, ...]:
+def corpus_sources_from_dir(
+    corpus_dir: Path,
+    *,
+    before_tempo: int | None = None,
+    citation_window_tempos: int = 2000,
+) -> tuple[TaskCandidate, ...]:
     """Load prior accepted corpus rows as mutation sources."""
     from lemma.corpus import CorpusRow
 
     if not corpus_dir.is_dir():
         return ()
-    sources: list[TaskCandidate] = []
+    rows: list[CorpusRow] = []
     for path in sorted(corpus_dir.glob("epoch-*.jsonl")):
         for no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
             if not line.strip():
@@ -70,45 +76,82 @@ def corpus_sources_from_dir(corpus_dir: Path, *, before_tempo: int | None = None
                 row = CorpusRow.model_validate(json.loads(line))
             except (json.JSONDecodeError, ValueError) as e:
                 raise ValueError(f"{path}:{no}: invalid corpus row source: {e}") from e
-            if before_tempo is not None and row.tempo is not None and row.tempo >= before_tempo:
-                continue
-            task = row.to_task()
-            sources.append(
-                TaskCandidate(
-                    id=f"lemma.substrate.{row.row_id[:16]}",
-                    title=f"Prior Lemma {row.theorem_name}",
-                    source_stream="lemma_substrate",
-                    source_ref=SourceRef(
-                        kind="lemma_substrate",
-                        name=row.row_id,
-                        commit=row.proof_identity,
-                        path=path.name,
-                    ),
-                    source_license=row.source_license,
-                    imports=task.imports,
-                    theorem_name=task.theorem_name,
-                    type_expr=task.type_expr,
-                    statement=task.statement,
-                    submission_stub=task.submission_stub,
-                    lean_toolchain=task.lean_toolchain,
-                    mathlib_rev=task.mathlib_rev,
-                    policy=task.policy,
-                    queue_depth=task.queue_depth,
-                    metadata={
-                        "citation_weight": row.dependencies.dependency_depth or 1,
-                        "direct_dependency_count": row.dependencies.direct_dependency_count,
-                        "dependency_depth": row.dependencies.dependency_depth,
-                        "transitive_dependency_hash": row.dependencies.transitive_dependency_hash,
-                        "lemma_rows_used": (row.row_id,),
-                        "license_state": license_state_for(
-                            row.source_license,
-                            str(row.metadata.get("license_state") or ""),
-                        ),
-                        "substrate_row_id": row.row_id,
-                    },
-                )
+            if before_tempo is not None:
+                if row.tempo is None or row.tempo >= before_tempo:
+                    continue
+            if _usable_substrate_row(row):
+                rows.append(row)
+    citation_counts = _substrate_citation_counts(
+        rows,
+        before_tempo=before_tempo,
+        citation_window_tempos=citation_window_tempos,
+    )
+    sources: list[TaskCandidate] = []
+    for row in rows:
+        task = row.to_task()
+        license_state = license_state_for(row.source_license, str(row.metadata.get("license_state") or ""))
+        sources.append(
+            TaskCandidate(
+                id=f"lemma.substrate.{row.row_id[:16]}",
+                title=f"Prior Lemma {row.theorem_name}",
+                source_stream="lemma_substrate",
+                source_ref=SourceRef(
+                    kind="lemma_substrate",
+                    name=row.row_id,
+                    commit=row.proof_identity,
+                    path=f"tempo-{row.tempo}/accepted/{row.row_id}.json",
+                ),
+                source_license=row.source_license,
+                imports=task.imports,
+                theorem_name=task.theorem_name,
+                type_expr=task.type_expr,
+                statement=task.statement,
+                submission_stub=task.submission_stub,
+                lean_toolchain=task.lean_toolchain,
+                mathlib_rev=task.mathlib_rev,
+                policy=task.policy,
+                queue_depth=task.queue_depth,
+                metadata={
+                    "citation_weight": citation_counts.get(row.row_id, 0),
+                    "citation_window_tempos": max(1, int(citation_window_tempos)),
+                    "direct_dependency_count": row.dependencies.direct_dependency_count,
+                    "dependency_depth": row.dependencies.dependency_depth,
+                    "transitive_dependency_hash": row.dependencies.transitive_dependency_hash,
+                    "lemma_rows_used": (row.row_id,),
+                    "license_state": license_state,
+                    "substrate_row_id": row.row_id,
+                    "substrate_tempo": row.tempo,
+                    "proof_identity_strength": row.proof_identity_strength,
+                },
             )
+        )
     return tuple(sources)
+
+
+def _substrate_citation_counts(
+    rows: list[Any],
+    *,
+    before_tempo: int | None,
+    citation_window_tempos: int,
+) -> dict[str, int]:
+    lower_bound = None if before_tempo is None else max(0, before_tempo - max(1, int(citation_window_tempos)))
+    counts: dict[str, int] = {}
+    for row in rows:
+        if lower_bound is not None and (row.tempo is None or row.tempo < lower_bound):
+            continue
+        for cited in row.dependencies.lemma_rows_used:
+            counts[str(cited)] = counts.get(str(cited), 0) + 1
+    return counts
+
+
+def _usable_substrate_row(row: Any) -> bool:
+    if not row.rewarded or not row.full_reward_eligible:
+        return False
+    if row.proof_identity_strength != "strong":
+        return False
+    if not row.verification.passed:
+        return False
+    return paid_license_allowed(license_state_for(row.source_license, str(row.metadata.get("license_state") or "")))
 
 
 def source_pool_hash(sources: tuple[TaskCandidate, ...]) -> str:
@@ -124,7 +167,8 @@ def source_pool_hash(sources: tuple[TaskCandidate, ...]) -> str:
             "lean_toolchain": source.lean_toolchain,
             "mathlib_rev": source.mathlib_rev,
             "queue_depth": source.queue_depth,
-            "citation_weight": _metadata_float(source.metadata.get("citation_weight")) or 1.0,
+            "citation_weight": _citation_weight_for_hash(source),
+            "citation_window_tempos": _metadata_int(source.metadata.get("citation_window_tempos")),
             "direct_dependency_count": _metadata_int(source.metadata.get("direct_dependency_count")),
             "dependency_depth": _metadata_int(source.metadata.get("dependency_depth")),
             "transitive_dependency_hash": str(source.metadata.get("transitive_dependency_hash") or ""),
@@ -141,8 +185,9 @@ def generate_depth2_candidates(
     epoch_randomness: str,
     count: int,
     tempo: int,
-    citation_alpha: float = 0.25,
-    citation_weight_cap: float = 100.0,
+    citation_alpha: float = 0.5,
+    citation_weight_cap: float = 64.0,
+    citation_window_tempos: int = 2000,
     gate_runner: ProceduralGateRunner | None = None,
 ) -> tuple[TaskCandidate, ...]:
     """Generate fresh procedural candidates from public source rows.
@@ -158,6 +203,13 @@ def generate_depth2_candidates(
         raise ValueError("source pool must not be empty")
 
     pool_hash = source_pool_hash(sources)
+    pool_receipt = source_pool_receipt(
+        sources,
+        source_pool_sha256=pool_hash,
+        citation_alpha=citation_alpha,
+        citation_weight_cap=citation_weight_cap,
+        citation_window_tempos=citation_window_tempos,
+    )
     operator_hash = procedural_operator_bundle_hash()
     epoch_fields = _epoch_fields(epoch_randomness)
     ordered = _ordered_sources(
@@ -181,6 +233,7 @@ def generate_depth2_candidates(
             epoch_fields=epoch_fields,
             operator_chain=chain,
             source_pool_hash_value=pool_hash,
+            source_pool_receipt_value=pool_receipt,
             operator_bundle_hash=operator_hash,
             tempo=tempo,
             sequence=cursor,
@@ -243,6 +296,7 @@ def _candidate_from_source(
     epoch_fields: dict[str, Any],
     operator_chain: tuple[str, str],
     source_pool_hash_value: str,
+    source_pool_receipt_value: dict[str, object],
     operator_bundle_hash: str,
     tempo: int,
     sequence: int,
@@ -297,6 +351,14 @@ def _candidate_from_source(
         "drand_round": _nonnegative_int(epoch_fields.get("drand_round")),
         "anchor_block": _nonnegative_int(epoch_fields.get("anchor_block")),
         "source_pool_hash": source_pool_hash_value,
+        "source_pool_receipt_version": source_pool_receipt_value["version"],
+        "source_pool_receipt_sha256": source_pool_receipt_sha256(source_pool_receipt_value),
+        "source_pool_source_count": source_pool_receipt_value["source_count"],
+        "source_pool_stream_counts": source_pool_receipt_value["source_stream_counts"],
+        "source_sampling_version": source_pool_receipt_value["sampling_version"],
+        "citation_alpha_basis_points": source_pool_receipt_value["citation_alpha_basis_points"],
+        "citation_weight_cap_micros": source_pool_receipt_value["citation_weight_cap_micros"],
+        "citation_window_tempos": source_pool_receipt_value["citation_window_tempos"],
         "operator_bundle_version": OPERATOR_BUNDLE_VERSION,
         "operator_bundle_hash": operator_bundle_hash,
         "canonical_hash": canonical_hash,
@@ -550,8 +612,16 @@ def _next_unused(candidates: Iterator[TaskCandidate], used: set[str]) -> TaskCan
 
 
 def _weighted_source_key(source: TaskCandidate, *, seed: str, cap: float) -> tuple[float, str]:
-    weight = min(cap, max(1.0, _metadata_float(source.metadata.get("citation_weight")) or 1.0))
+    raw_weight = _metadata_float(source.metadata.get("citation_weight"))
+    weight = min(cap, raw_weight if raw_weight is not None else 1.0)
+    if weight <= 0:
+        return math.inf, source.id
     return -math.log(_unit_interval(f"{seed}:weighted:{source.id}:{source.type_expr}")) / weight, source.id
+
+
+def _citation_weight_for_hash(source: TaskCandidate) -> float:
+    value = _metadata_float(source.metadata.get("citation_weight"))
+    return 1.0 if value is None else value
 
 
 def _unit_interval(value: str) -> float:

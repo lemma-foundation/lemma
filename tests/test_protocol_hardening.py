@@ -22,6 +22,7 @@ from lemma.supply.import_graph import ImportGraphRow, import_graph_from_rows
 from lemma.supply.novelty import novelty_cache_from_hashes
 from lemma.supply.operator_bundle import OPERATOR_BUNDLE_VERSION, procedural_operator_bundle_hash
 from lemma.supply.slot_weight import slot_weight_receipt_for_task
+from lemma.supply.source_pool import source_pool_receipt, source_pool_receipt_sha256
 from lemma.supply.triviality_budget import TrivialityRetargetConfig, triviality_budget_receipt
 from lemma.task_activation import task_reward_eligibility
 from lemma.task_supply import make_task
@@ -61,6 +62,13 @@ def _procedural_metadata(
         config=TrivialityRetargetConfig(genesis_budget_s=5, max_budget_s=5),
     )
     novelty_cache = novelty_cache_from_hashes(("0" * 64,))
+    source_pool = source_pool_receipt(
+        (_task().model_copy(update={"source_stream": "mathlib_snapshot"}),),
+        source_pool_sha256="4" * 64,
+        citation_alpha=0.5,
+        citation_weight_cap=64,
+        citation_window_tempos=2000,
+    )
     return {
         "supply_mode": "procedural",
         "tempo": tempo,
@@ -83,6 +91,14 @@ def _procedural_metadata(
         "drand_round": 12,
         "anchor_block": 360,
         "source_pool_hash": "4" * 64,
+        "source_pool_receipt_version": source_pool["version"],
+        "source_pool_receipt_sha256": source_pool_receipt_sha256(source_pool),
+        "source_pool_source_count": source_pool["source_count"],
+        "source_pool_stream_counts": source_pool["source_stream_counts"],
+        "source_sampling_version": source_pool["sampling_version"],
+        "citation_alpha_basis_points": source_pool["citation_alpha_basis_points"],
+        "citation_weight_cap_micros": source_pool["citation_weight_cap_micros"],
+        "citation_window_tempos": source_pool["citation_window_tempos"],
         "operator_bundle_version": OPERATOR_BUNDLE_VERSION,
         "operator_bundle_hash": procedural_operator_bundle_hash(),
         "canonical_hash": "6" * 64,

@@ -12,7 +12,7 @@ Launch interfaces distinguish production paid supply from development supply.
 
 Paid production supply is `procedural`: every paid task must be generated from the pinned source pool by a deterministic depth-2 mutation chain anchored to chain/drand state. Validators should be able to rebuild the same active pool from the same public inputs.
 
-The source pool is `Mathlib_pinned ∪ Lemma_substrate_<t>`. Mathlib rows come from `LEMMA_PROCEDURAL_SOURCE_JSONL`; prior accepted Lemma rows can be added with `LEMMA_PROCEDURAL_PRIOR_CORPUS_DIR`. Sampling is deterministic and mixes citation-weighted order with uniform order through `LEMMA_PROCEDURAL_CITATION_ALPHA` and `LEMMA_PROCEDURAL_CITATION_WEIGHT_CAP`.
+The source pool is `Mathlib_pinned ∪ Lemma_substrate_<t>`. Mathlib rows come from `LEMMA_PROCEDURAL_SOURCE_JSONL`; prior accepted Lemma rows come from `LEMMA_PROCEDURAL_PRIOR_CORPUS_DIR`. At genesis that substrate mirror can be empty, but production mode still requires it so validators do not silently fork into Mathlib-only sampling. Sampling is deterministic and mixes citation-weighted order with uniform order through `LEMMA_PROCEDURAL_CITATION_ALPHA`, `LEMMA_PROCEDURAL_CITATION_WEIGHT_CAP`, and `LEMMA_PROCEDURAL_CITATION_WINDOW_TEMPOS`.
 
 Paid production also uses epoch-derived active selection. Development may keep a static queue seed, but SN467 burn-in and mainnet both require `LEMMA_ACTIVE_SEED_MODE=epoch_randomness` and `LEMMA_ACTIVE_EPOCH_RANDOMNESS_SOURCE=chain_drand`. The internal epoch number is the chain tempo index; it can be displayed as 1-based in UI, but validators use the same 0-based integer from `block // tempo`.
 
@@ -83,6 +83,10 @@ uv run lemma tasks rebuild-procedural-registry \
   --epoch-randomness "$EPOCH_RANDOMNESS_JSON" \
   --tempo "$TEMPO" \
   --count "$K" \
+  --prior-corpus-dir corpus \
+  --citation-alpha 0.5 \
+  --citation-weight-cap 64 \
+  --citation-window-tempos 2000 \
   --triviality-retarget-jsonl public-settlements.jsonl \
   --novelty-cache-jsonl public-entry-cache.jsonl \
   --import-graph-jsonl public-import-graph.jsonl \
@@ -92,7 +96,9 @@ uv run lemma tasks rebuild-procedural-registry \
 The procedural generator derives rows from the source pool and epoch seed; it is
 not a static playlist. Each mutation step records the chain-pinned operator
 bundle version, the selected operator, its drand-keyed params, and the
-input/output statement hashes. The procedural builder rejects paid rows unless
+input/output statement hashes. Generated rows also carry a source-pool receipt
+covering the source-pool hash, source count, stream counts, citation-weighted
+fraction, per-entry cap, and citation window. The procedural builder rejects paid rows unless
 they carry procedural depth-2 provenance, chain/drand anchoring, source-pool and
 operator-bundle hashes, clean license state, a recomputable public import-graph
 `slot_weight` receipt, a recomputable public novelty-cache receipt, a recomputable `T(t)` triviality-budget receipt, and a Lean-backed gate receipt. Production receipts must come from the
@@ -110,8 +116,9 @@ LEMMA_TASK_SUPPLY_MODE=procedural
 LEMMA_PROCEDURAL_SOURCE_JSONL=snapshot.jsonl
 LEMMA_PROCEDURAL_PRIOR_CORPUS_DIR=corpus
 LEMMA_PROCEDURAL_SOURCE_SHA256_EXPECTED=<source-pool-sha256>
-LEMMA_PROCEDURAL_CITATION_ALPHA=0.25
-LEMMA_PROCEDURAL_CITATION_WEIGHT_CAP=100
+LEMMA_PROCEDURAL_CITATION_ALPHA=0.5
+LEMMA_PROCEDURAL_CITATION_WEIGHT_CAP=64
+LEMMA_PROCEDURAL_CITATION_WINDOW_TEMPOS=2000
 LEMMA_PROCEDURAL_GATE_TIMEOUT_S=120
 LEMMA_PROCEDURAL_TRIVIALITY_BUDGET_S=120
 LEMMA_PROCEDURAL_TRIVIALITY_RETARGET_JSONL=public-settlements.jsonl

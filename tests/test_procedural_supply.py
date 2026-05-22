@@ -137,6 +137,13 @@ def test_depth2_generation_is_epoch_seeded_not_static(tmp_path: Path) -> None:
         for step in candidate.metadata["mutation_chain"]
     )
     assert all(candidate.metadata["source_pool_hash"] == source_pool_hash(sources) for candidate in first)
+    assert all(
+        candidate.metadata["source_pool_receipt_version"] == "lemma-source-pool-receipt-v1" for candidate in first
+    )
+    assert all(candidate.metadata["source_sampling_version"] == "lemma-source-sampling-v1" for candidate in first)
+    assert all(candidate.metadata["source_pool_stream_counts"] == {"mathlib_snapshot": 2} for candidate in first)
+    assert all(candidate.metadata["citation_alpha_basis_points"] == 5000 for candidate in first)
+    assert all(candidate.metadata["citation_window_tempos"] == 2000 for candidate in first)
 
 
 def test_procedural_registry_rejects_assumed_gate_receipts(tmp_path: Path) -> None:
@@ -286,9 +293,11 @@ def test_procedural_supply_mode_rebuilds_active_registry_from_public_inputs(
     snapshot = tmp_path / "snapshot.jsonl"
     novelty_cache = tmp_path / "novelty.jsonl"
     import_graph = tmp_path / "import-graph.jsonl"
+    corpus_dir = tmp_path / "corpus"
     _write_snapshot(snapshot)
     _write_novelty_cache(novelty_cache)
     _write_import_graph(import_graph)
+    corpus_dir.mkdir()
     sources = mathlib_candidates_from_jsonl(snapshot)
     source_hash = source_pool_hash(sources)
     randomness = json.dumps(
@@ -309,6 +318,7 @@ def test_procedural_supply_mode_rebuilds_active_registry_from_public_inputs(
         procedural_source_jsonl=snapshot,
         procedural_novelty_cache_jsonl=novelty_cache,
         procedural_import_graph_jsonl=import_graph,
+        procedural_prior_corpus_dir=corpus_dir,
         procedural_source_sha256_expected=source_hash,
         procedural_operator_bundle_sha256_expected=procedural_operator_bundle_hash(),
         procedural_candidate_count=2,
@@ -352,6 +362,7 @@ def test_procedural_source_pool_includes_prior_accepted_corpus(
         source_stream="procedural",
         source_name="tempo-1",
         source_license="Apache-2.0",
+        metadata={"activation_status": "paid", "triviality_checked": True, "baseline_solved": False},
     )
     row = build_corpus_row(
         task,
@@ -396,3 +407,108 @@ def test_procedural_source_pool_includes_prior_accepted_corpus(
 
     assert any(source.source_stream == "lemma_substrate" for source in sources)
     assert {task.metadata["source_pool_hash"] for task in registry.tasks} == {source_hash}
+    assert {
+        tuple(sorted(task.metadata["source_pool_stream_counts"].items())) for task in registry.tasks
+    } == {(("lemma_substrate", 1), ("mathlib_snapshot", 2))}
+    assert {task.metadata["citation_window_tempos"] for task in registry.tasks} == {2000}
+
+
+def test_procedural_source_pool_ignores_non_rewarded_corpus_rows(tmp_path: Path) -> None:
+    corpus_dir = tmp_path / "corpus"
+    task = make_task(
+        task_id="lemma.accepted.prior",
+        title="Prior accepted",
+        theorem_name="prior_true",
+        type_expr="True",
+        source_stream="procedural",
+        source_name="tempo-1",
+        source_license="Apache-2.0",
+        metadata={"activation_status": "paid", "triviality_checked": True, "baseline_solved": False},
+    )
+    submission = build_submission(
+        task,
+        solver_hotkey="hk",
+        proof_script="import Mathlib\n\ntheorem prior_true : True := by\n  trivial\n",
+    )
+    rewarded = build_corpus_row(
+        task,
+        submission,
+        VerifyResult(passed=True, reason="ok", structural_fingerprint="prior-structural"),
+        validator_hotkey="vhk",
+        rewarded=True,
+        tempo=1,
+    )
+    alternate = build_corpus_row(
+        task,
+        submission.model_copy(update={"solver_hotkey": "hk-late"}),
+        VerifyResult(passed=True, reason="ok", structural_fingerprint="alternate-structural"),
+        validator_hotkey="vhk",
+        rewarded=False,
+        tempo=1,
+    )
+    write_jsonl([rewarded, alternate], corpus_dir / "epoch-000001.jsonl")
+
+    sources = corpus_sources_from_dir(corpus_dir, before_tempo=3)
+
+    assert [source.metadata["substrate_row_id"] for source in sources] == [rewarded.row_id]
+
+
+def test_procedural_source_pool_weights_lemma_rows_by_recent_citations(tmp_path: Path) -> None:
+    corpus_dir = tmp_path / "corpus"
+    base_task = make_task(
+        task_id="lemma.accepted.base",
+        title="Base accepted",
+        theorem_name="base_true",
+        type_expr="True",
+        source_stream="procedural",
+        source_name="tempo-1",
+        source_license="Apache-2.0",
+        metadata={"activation_status": "paid", "triviality_checked": True, "baseline_solved": False},
+    )
+    base_submission = build_submission(
+        base_task,
+        solver_hotkey="hk-a",
+        proof_script="import Mathlib\n\ntheorem base_true : True := by\n  trivial\n",
+    )
+    base_row = build_corpus_row(
+        base_task,
+        base_submission,
+        VerifyResult(passed=True, reason="ok", structural_fingerprint="base-structural"),
+        validator_hotkey="vhk",
+        rewarded=True,
+        tempo=1,
+    )
+    citing_task = make_task(
+        task_id="lemma.accepted.citing",
+        title="Citing accepted",
+        theorem_name="citing_true",
+        type_expr="True",
+        source_stream="procedural",
+        source_name="tempo-2",
+        source_license="Apache-2.0",
+        metadata={
+            "activation_status": "paid",
+            "triviality_checked": True,
+            "baseline_solved": False,
+            "lemma_rows_used": (base_row.row_id,),
+        },
+    )
+    citing_row = build_corpus_row(
+        citing_task,
+        build_submission(
+            citing_task,
+            solver_hotkey="hk-b",
+            proof_script="import Mathlib\n\ntheorem citing_true : True := by\n  trivial\n",
+        ),
+        VerifyResult(passed=True, reason="ok", structural_fingerprint="citing-structural"),
+        validator_hotkey="vhk",
+        rewarded=True,
+        tempo=2,
+    )
+    write_jsonl([base_row, citing_row], corpus_dir / "epoch-000001.jsonl")
+
+    sources = corpus_sources_from_dir(corpus_dir, before_tempo=3, citation_window_tempos=2000)
+    weights = {source.metadata["substrate_row_id"]: source.metadata["citation_weight"] for source in sources}
+
+    assert weights[base_row.row_id] == 1
+    assert weights[citing_row.row_id] == 0

@@ -13,6 +13,7 @@ from lemma.supply.import_graph import IMPORT_GRAPH_VERSION, ImportGraph, read_im
 from lemma.supply.novelty import NOVELTY_CACHE_VERSION
 from lemma.supply.operator_bundle import OPERATOR_BUNDLE_VERSION, OPERATOR_NAMES, procedural_operator_bundle_hash
 from lemma.supply.slot_weight import SLOT_WEIGHT_VERSION, slot_weight_receipt_for_task
+from lemma.supply.source_pool import SOURCE_POOL_RECEIPT_VERSION, SOURCE_SAMPLING_VERSION, source_pool_receipt_sha256
 from lemma.supply.triviality_budget import TRIVIALITY_BUDGET_VERSION
 from lemma.task_activation import activation_status_for, task_reward_eligibility
 from lemma.tasks import LemmaTask, TaskRegistry
@@ -67,6 +68,9 @@ def production_supply_rejection_reason(task: LemmaTask) -> str:
     for key in ("source_pool_hash", "canonical_hash", "statement_hash"):
         if not _has_hex64(metadata, key):
             return key
+    source_pool_reason = _source_pool_rejection_reason(task)
+    if source_pool_reason:
+        return source_pool_reason
     if metadata.get("gate_version") != GATE_VERSION:
         return "gate_version"
     if metadata.get("gate_runner") != "lean":
@@ -138,6 +142,13 @@ def procedural_gate_receipt_sha256(task: LemmaTask) -> str:
         "slot_weight_basis_points": metadata.get("slot_weight_basis_points"),
         "slot_weight_inputs": metadata.get("slot_weight_inputs"),
         "source_pool_hash": metadata.get("source_pool_hash"),
+        "source_pool_receipt_sha256": metadata.get("source_pool_receipt_sha256"),
+        "source_pool_source_count": metadata.get("source_pool_source_count"),
+        "source_pool_stream_counts": metadata.get("source_pool_stream_counts"),
+        "source_sampling_version": metadata.get("source_sampling_version"),
+        "citation_alpha_basis_points": metadata.get("citation_alpha_basis_points"),
+        "citation_weight_cap_micros": metadata.get("citation_weight_cap_micros"),
+        "citation_window_tempos": metadata.get("citation_window_tempos"),
         "operator_bundle_version": metadata.get("operator_bundle_version"),
         "operator_bundle_hash": metadata.get("operator_bundle_hash"),
         "mutation_chain": metadata.get("mutation_chain"),
@@ -207,6 +218,48 @@ def _slot_weight_rejection_reason(task: LemmaTask, *, import_graph: ImportGraph 
     if observed is None or abs(observed - expected.weight) > 1e-9:
         return "slot_weight"
     return ""
+
+
+def _source_pool_rejection_reason(task: LemmaTask) -> str:
+    metadata = task.metadata
+    if metadata.get("source_pool_receipt_version") != SOURCE_POOL_RECEIPT_VERSION:
+        return "source_pool_receipt_version"
+    if metadata.get("source_sampling_version") != SOURCE_SAMPLING_VERSION:
+        return "source_sampling_version"
+    if not _has_positive_int(metadata, "source_pool_source_count"):
+        return "source_pool_source_count"
+    stream_counts = metadata.get("source_pool_stream_counts")
+    if not isinstance(stream_counts, dict):
+        return "source_pool_stream_counts"
+    if sum(_count_value(value) for value in stream_counts.values()) != metadata.get("source_pool_source_count"):
+        return "source_pool_stream_counts"
+    if _count_value(stream_counts.get("mathlib_snapshot")) <= 0:
+        return "source_pool_stream_counts"
+    if not _has_int(metadata, "citation_alpha_basis_points"):
+        return "citation_alpha_basis_points"
+    if int(metadata["citation_alpha_basis_points"]) > 10_000:
+        return "citation_alpha_basis_points"
+    if not _has_positive_int(metadata, "citation_weight_cap_micros"):
+        return "citation_weight_cap_micros"
+    if not _has_positive_int(metadata, "citation_window_tempos"):
+        return "citation_window_tempos"
+    expected_receipt = {
+        "version": SOURCE_POOL_RECEIPT_VERSION,
+        "source_pool_sha256": metadata.get("source_pool_hash"),
+        "source_count": metadata.get("source_pool_source_count"),
+        "source_stream_counts": stream_counts,
+        "sampling_version": SOURCE_SAMPLING_VERSION,
+        "citation_alpha_basis_points": metadata.get("citation_alpha_basis_points"),
+        "citation_weight_cap_micros": metadata.get("citation_weight_cap_micros"),
+        "citation_window_tempos": metadata.get("citation_window_tempos"),
+    }
+    if metadata.get("source_pool_receipt_sha256") != source_pool_receipt_sha256(expected_receipt):
+        return "source_pool_receipt_sha256"
+    return ""
+
+
+def _count_value(value: object) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
 
 
 def enforce_production_invariants(settings: LemmaSettings, registry: TaskRegistry) -> None:

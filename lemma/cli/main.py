@@ -487,8 +487,9 @@ def tasks_build_mixed_registry_cmd(
 @click.option("--count", type=click.IntRange(min=1), default=20, show_default=True)
 @click.option("--source-limit", type=click.IntRange(min=1), default=None)
 @click.option("--prior-corpus-dir", type=click.Path(file_okay=False, path_type=Path), default=None)
-@click.option("--citation-alpha", type=click.FloatRange(min=0.0, max=1.0), default=0.25, show_default=True)
-@click.option("--citation-weight-cap", type=click.FloatRange(min=1.0), default=100.0, show_default=True)
+@click.option("--citation-alpha", type=click.FloatRange(min=0.0, max=1.0), default=0.5, show_default=True)
+@click.option("--citation-weight-cap", type=click.FloatRange(min=1.0), default=64.0, show_default=True)
+@click.option("--citation-window-tempos", type=click.IntRange(min=1), default=2000, show_default=True)
 @click.option(
     "--triviality-retarget-jsonl",
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
@@ -519,6 +520,7 @@ def tasks_generate_procedural_depth2_cmd(
     prior_corpus_dir: Path | None,
     citation_alpha: float,
     citation_weight_cap: float,
+    citation_window_tempos: int,
     triviality_retarget_jsonl: Path | None,
     novelty_cache_jsonl: Path | None,
     import_graph_jsonl: Path | None,
@@ -538,7 +540,11 @@ def tasks_generate_procedural_depth2_cmd(
     triviality_budget = triviality_budget_receipt_for_settings(settings, tempo=tempo)
     sources = mathlib_candidates_from_jsonl(snapshot_path, limit=source_limit)
     if prior_corpus_dir is not None:
-        sources = sources + corpus_sources_from_dir(prior_corpus_dir, before_tempo=tempo)
+        sources = sources + corpus_sources_from_dir(
+            prior_corpus_dir,
+            before_tempo=tempo,
+            citation_window_tempos=citation_window_tempos,
+        )
     novelty_cache = (
         read_novelty_cache(novelty_cache_jsonl) if novelty_cache_jsonl is not None else empty_novelty_cache()
     )
@@ -551,6 +557,7 @@ def tasks_generate_procedural_depth2_cmd(
         tempo=tempo,
         citation_alpha=citation_alpha,
         citation_weight_cap=citation_weight_cap,
+        citation_window_tempos=citation_window_tempos,
         gate_runner=AssumedProceduralGateRunner(novelty_cache=novelty_cache, import_graph=import_graph)
         if assume_gates
         else LeanProceduralGateRunner(
@@ -567,6 +574,7 @@ def tasks_generate_procedural_depth2_cmd(
             {
                 "output": str(output_path),
                 "source_pool_sha256": source_pool_hash(sources),
+                "source_pool_receipt_sha256": candidates[0].metadata["source_pool_receipt_sha256"],
                 "triviality_budget_s": triviality_budget.budget_s,
                 "triviality_retarget_sha256": hashlib.sha256(
                     json.dumps(triviality_budget.inputs, sort_keys=True, separators=(",", ":")).encode()
@@ -599,8 +607,9 @@ def tasks_generate_procedural_depth2_cmd(
 @click.option("--source-limit", type=click.IntRange(min=1), default=None)
 @click.option("--frontier-depth", type=click.IntRange(min=0), default=None)
 @click.option("--prior-corpus-dir", type=click.Path(file_okay=False, path_type=Path), default=None)
-@click.option("--citation-alpha", type=click.FloatRange(min=0.0, max=1.0), default=0.25, show_default=True)
-@click.option("--citation-weight-cap", type=click.FloatRange(min=1.0), default=100.0, show_default=True)
+@click.option("--citation-alpha", type=click.FloatRange(min=0.0, max=1.0), default=0.5, show_default=True)
+@click.option("--citation-weight-cap", type=click.FloatRange(min=1.0), default=64.0, show_default=True)
+@click.option("--citation-window-tempos", type=click.IntRange(min=1), default=2000, show_default=True)
 @click.option(
     "--triviality-retarget-jsonl",
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
@@ -631,6 +640,7 @@ def tasks_rebuild_procedural_registry_cmd(
     prior_corpus_dir: Path | None,
     citation_alpha: float,
     citation_weight_cap: float,
+    citation_window_tempos: int,
     triviality_retarget_jsonl: Path | None,
     novelty_cache_jsonl: Path | None,
     import_graph_jsonl: Path | None,
@@ -655,7 +665,11 @@ def tasks_rebuild_procedural_registry_cmd(
     triviality_budget = triviality_budget_receipt_for_settings(settings, tempo=tempo)
     sources = mathlib_candidates_from_jsonl(snapshot_path, limit=source_limit)
     if prior_corpus_dir is not None:
-        sources = sources + corpus_sources_from_dir(prior_corpus_dir, before_tempo=tempo)
+        sources = sources + corpus_sources_from_dir(
+            prior_corpus_dir,
+            before_tempo=tempo,
+            citation_window_tempos=citation_window_tempos,
+        )
     novelty_cache = (
         read_novelty_cache(novelty_cache_jsonl) if novelty_cache_jsonl is not None else empty_novelty_cache()
     )
@@ -668,6 +682,7 @@ def tasks_rebuild_procedural_registry_cmd(
         tempo=tempo,
         citation_alpha=citation_alpha,
         citation_weight_cap=citation_weight_cap,
+        citation_window_tempos=citation_window_tempos,
         gate_runner=LeanProceduralGateRunner(
             settings,
             triviality_budget_receipt=triviality_budget,
@@ -686,6 +701,7 @@ def tasks_rebuild_procedural_registry_cmd(
                 "output": str(output_path),
                 "registry_sha256": hashlib.sha256(output_path.read_bytes()).hexdigest(),
                 "source_pool_sha256": source_pool_hash(sources),
+                "source_pool_receipt_sha256": candidates[0].metadata["source_pool_receipt_sha256"],
                 "triviality_budget_s": triviality_budget.budget_s,
                 "triviality_retarget_sha256": hashlib.sha256(
                     json.dumps(triviality_budget.inputs, sort_keys=True, separators=(",", ":")).encode()

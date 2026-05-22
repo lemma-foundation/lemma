@@ -81,15 +81,20 @@ class LemmaSettings(BaseSettings):
     procedural_source_limit: int = Field(default=0, ge=0, validation_alias="LEMMA_PROCEDURAL_SOURCE_LIMIT")
     procedural_candidate_count: int = Field(default=0, ge=0, validation_alias="LEMMA_PROCEDURAL_CANDIDATE_COUNT")
     procedural_citation_alpha: float = Field(
-        default=0.25,
+        default=0.5,
         ge=0.0,
         le=1.0,
         validation_alias="LEMMA_PROCEDURAL_CITATION_ALPHA",
     )
     procedural_citation_weight_cap: float = Field(
-        default=100.0,
+        default=64.0,
         ge=1.0,
         validation_alias="LEMMA_PROCEDURAL_CITATION_WEIGHT_CAP",
+    )
+    procedural_citation_window_tempos: int = Field(
+        default=2000,
+        ge=1,
+        validation_alias="LEMMA_PROCEDURAL_CITATION_WINDOW_TEMPOS",
     )
     procedural_gate_timeout_s: int = Field(
         default=120,

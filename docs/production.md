@@ -9,7 +9,7 @@ Production Lemma is the Lean proof corpus loop:
 5. compute miner weights from deterministic active slot weights and burn unearned share by default;
 6. publish accepted corpus rows and a small corpus index.
 
-Production mode is stricter than local smoke mode. SN467 testnet burn-in must run this same production mode with `BT_NETWORK=test` and `BT_NETUID=467`; mainnet cutover should only change the chain target. Production mode fails closed unless procedural supply is rebuilt from a pinned public source pool and chain/drand epoch randomness, live miner submissions are hotkey-authenticated, commit/reveal fields are present, Lean verifier networking is disabled, and paid rewards require strong Lean-derived proof identity.
+Production mode is stricter than local smoke mode. SN467 testnet burn-in must run this same production mode with `BT_NETWORK=test` and `BT_NETUID=467`; mainnet cutover should only change the chain target. Production mode fails closed unless procedural supply is rebuilt from a pinned public source pool, an explicit prior-substrate mirror, and chain/drand epoch randomness, live miner submissions are hotkey-authenticated, commit/reveal fields are present, Lean verifier networking is disabled, and paid rewards require strong Lean-derived proof identity.
 The launch gate sequence is tracked in [Mainnet Readiness](mainnet-readiness.md).
 
 ## Operator Rules
@@ -40,8 +40,9 @@ LEMMA_TASK_SUPPLY_MODE=procedural
 LEMMA_PROCEDURAL_SOURCE_JSONL=snapshot.jsonl
 LEMMA_PROCEDURAL_PRIOR_CORPUS_DIR=corpus
 LEMMA_PROCEDURAL_SOURCE_SHA256_EXPECTED=<source-pool-sha256>
-LEMMA_PROCEDURAL_CITATION_ALPHA=0.25
-LEMMA_PROCEDURAL_CITATION_WEIGHT_CAP=100
+LEMMA_PROCEDURAL_CITATION_ALPHA=0.5
+LEMMA_PROCEDURAL_CITATION_WEIGHT_CAP=64
+LEMMA_PROCEDURAL_CITATION_WINDOW_TEMPOS=2000
 LEMMA_REQUIRE_SUBMISSION_SIGNATURES=1
 LEMMA_REQUIRE_COMMIT_REVEAL=1
 LEMMA_REQUIRE_STRONG_PROOF_IDENTITY=1
@@ -64,6 +65,10 @@ uv run lemma tasks rebuild-procedural-registry \
   --epoch-randomness "$EPOCH_RANDOMNESS_JSON" \
   --tempo "$TEMPO" \
   --count "$K" \
+  --prior-corpus-dir corpus \
+  --citation-alpha 0.5 \
+  --citation-weight-cap 64 \
+  --citation-window-tempos 2000 \
   --novelty-cache-jsonl public-entry-cache.jsonl \
   --import-graph-jsonl public-import-graph.jsonl \
   --output tasks/mainnet.registry.json
@@ -71,9 +76,11 @@ uv run lemma tasks rebuild-procedural-registry \
 
 The cache can be mirrored publicly, but production validators do not trust it
 as the problem authority. They rebuild the same rows locally from the pinned
-source snapshot, chain state, drand, the public novelty cache, and the public import graph. Paid rows
-must include a Lean-backed generation receipt: typecheck, Prop, novelty-cache,
-public import-graph slot-weight, and triviality-stack gates run before the candidate can enter the active paid pool.
+source snapshot, prior accepted-entry substrate mirror, chain state, drand, the
+public novelty cache, and the public import graph. Paid rows must include a
+source-pool receipt and a Lean-backed generation receipt: typecheck, Prop,
+novelty-cache, public import-graph slot-weight, and triviality-stack gates run
+before the candidate can enter the active paid pool.
 
 Corpus deltas are written under `LEMMA_CORPUS_OUTPUT_DIR`. Local receipts are written under `LEMMA_OPERATOR_DATA_DIR`. If `LEMMA_SUBMISSION_SPOOL_DIR` is set, validators consume pending `.json` or `.jsonl` submission files from that directory and move them to `processed/` after a successful pass. These paths should remain ignored unless an operator intentionally publishes sanitized artifacts.
 The file spool remains a local/operator-smoke path. The production adapter is `--bucket-reveals-jsonl`: each reveal row carries miner hotkey, tempo, drand round, drand signature, commit block, committed Merkle root, and revealed bucket blobs. Binary ciphertexts should be encoded as `base64:<payload>` or `0x<hex>`. The validator recomputes the Merkle root, confirms the miner's on-chain bucket commitment in production, decrypts bucket ciphertexts in production, requires the decrypted proof to match the reveal, and ranks winners by commit block.
