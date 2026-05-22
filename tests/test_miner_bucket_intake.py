@@ -158,7 +158,7 @@ def test_bucket_reveal_inbox_selects_latest_tempo_and_archives(tmp_path: Path) -
     assert (inbox / "stale" / "old.json").exists()
 
 
-def test_bucket_reveal_inbox_rejects_mixed_tempo_file(tmp_path: Path) -> None:
+def test_bucket_reveal_inbox_quarantines_mixed_tempo_file(tmp_path: Path) -> None:
     inbox = tmp_path / "bucket-reveals"
     inbox.mkdir()
     old = _reveal(miner="hk-old", commit_block=5, ciphertext="old-cipher", proof=_proof("  trivial")).model_copy(
@@ -170,12 +170,16 @@ def test_bucket_reveal_inbox_rejects_mixed_tempo_file(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    try:
-        latest_bucket_reveal_batch(inbox)
-    except ValueError as e:
-        assert "exactly one tempo" in str(e)
-    else:
-        raise AssertionError("mixed-tempo reveal files should fail closed")
+    batch = latest_bucket_reveal_batch(inbox)
+
+    assert batch.reveals == ()
+    assert [path.name for path in batch.rejected_paths] == ["mixed.jsonl"]
+    assert "exactly one tempo" in batch.rejections[0]
+
+    archive_bucket_reveal_batch(batch)
+
+    assert not (inbox / "mixed.jsonl").exists()
+    assert (inbox / "rejected" / "mixed.jsonl").exists()
 
 
 def test_bucket_reveal_validates_merkle_root_before_validator_scoring(tmp_path: Path) -> None:

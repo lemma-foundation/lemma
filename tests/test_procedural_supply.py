@@ -407,6 +407,76 @@ def test_lean_gate_runner_records_generation_time_gates(monkeypatch: pytest.Monk
     assert "triviality" in calls
 
 
+def test_lean_gate_runner_skips_triviality_when_compile_gate_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    snapshot = tmp_path / "snapshot.jsonl"
+    _write_snapshot(snapshot)
+    candidate = generate_depth2_candidates(
+        mathlib_candidates_from_jsonl(snapshot),
+        generation_seed="epoch-a",
+        epoch_randomness=json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
+        count=1,
+        tempo=3,
+    )[0]
+    calls: list[str] = []
+
+    def fake_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001, ARG001
+        if problem.id.endswith(".gate"):
+            calls.append("gate")
+            return VerifyResult(passed=False, reason="compile_error")
+        calls.append("triviality")
+        raise AssertionError("triviality should not run after a failed compile gate")
+
+    monkeypatch.setattr("lemma.supply.gates.run_lean_verify", fake_verify)
+    verdict = LeanProceduralGateRunner(
+        LemmaSettings(_env_file=None, lean_use_docker=False, procedural_gate_timeout_s=5)
+    )(candidate, seen_canonical_hashes=())
+
+    assert calls == ["gate"]
+    assert verdict.accepted is False
+    assert verdict.typechecked is False
+    assert verdict.prop_gate_passed is False
+    assert verdict.triviality_checked is False
+    assert verdict.baseline_solved is False
+    assert verdict.metadata["triviality_reason"] == "not_run"
+
+
+def test_lean_gate_runner_uses_prop_fingerprint_when_kernel_marker_is_missing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    snapshot = tmp_path / "snapshot.jsonl"
+    _write_snapshot(snapshot)
+    candidate = generate_depth2_candidates(
+        mathlib_candidates_from_jsonl(snapshot),
+        generation_seed="epoch-a",
+        epoch_randomness=json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
+        count=1,
+        tempo=3,
+    )[0]
+    fallback_hash = "9" * 64
+
+    def fake_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001, ARG001
+        if problem.id.endswith(".gate"):
+            return VerifyResult(
+                passed=True,
+                reason="ok",
+                stdout_tail="",
+                declaration_fingerprints={str(problem.extra["lean_fingerprint_names"][0]): fallback_hash},
+            )
+        return VerifyResult(passed=False, reason="compile_error")
+
+    monkeypatch.setattr("lemma.supply.gates.run_lean_verify", fake_verify)
+    verdict = LeanProceduralGateRunner(
+        LemmaSettings(_env_file=None, lean_use_docker=False, procedural_gate_timeout_s=5)
+    )(candidate, seen_canonical_hashes=(fallback_hash,))
+
+    assert verdict.accepted is False
+    assert verdict.novelty_status == "duplicate"
+    assert verdict.metadata["kernel_canonical_hash"] == fallback_hash
+    assert verdict.metadata["canonical_hash"] == fallback_hash
+
+
 def test_public_novelty_cache_marks_known_statement_duplicate(tmp_path: Path) -> None:
     snapshot = tmp_path / "snapshot.jsonl"
     _write_snapshot(snapshot)

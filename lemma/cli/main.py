@@ -1641,7 +1641,11 @@ def validate_cmd(
         from lemma.validator import task_registry_for_validation
 
         bucket_reveal_batch = latest_bucket_reveal_batch(bucket_reveals_dir)
+        bucket_rejections.extend(bucket_reveal_batch.rejections)
         if not bucket_reveal_batch.reveals:
+            from lemma.chain.miner_buckets import archive_bucket_reveal_batch
+
+            archive_bucket_reveal_batch(bucket_reveal_batch)
             click.echo(
                 json.dumps(
                     {
@@ -1651,7 +1655,7 @@ def validate_cmd(
                         "scores": {},
                         "submission_files_consumed": len(spool_paths),
                         "bucket_reveals_consumed": 0,
-                        "bucket_reveals_rejected": 0,
+                        "bucket_reveals_rejected": len(bucket_rejections),
                         "weights": {},
                         "corpus_rows": 0,
                         "unearned_policy": settings.unearned_allocation_policy,

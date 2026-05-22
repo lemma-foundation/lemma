@@ -372,6 +372,7 @@ def test_validate_consumes_latest_bucket_reveal_dir(monkeypatch: pytest.MonkeyPa
 
     reveal("old", tempo=6)
     reveal("latest", tempo=7)
+    (inbox / "bad.json").write_text("{not json}\n", encoding="utf-8")
 
     def fake_verify(*args: object, **kwargs: object) -> VerifyResult:
         return VerifyResult(passed=True, reason="ok")
@@ -396,9 +397,11 @@ def test_validate_consumes_latest_bucket_reveal_dir(monkeypatch: pytest.MonkeyPa
     assert payload["verified"] == 1
     assert payload["accepted_unique"] == 1
     assert payload["bucket_reveals_consumed"] == 1
+    assert payload["bucket_reveals_rejected"] == 1
     assert payload["scores"] == {"hk-latest": 1.0}
     assert (inbox / "processed" / "latest.json").exists()
     assert (inbox / "stale" / "old.json").exists()
+    assert (inbox / "rejected" / "bad.json").exists()
 
     second = CliRunner().invoke(
         main,

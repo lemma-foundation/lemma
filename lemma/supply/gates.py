@@ -146,13 +146,18 @@ class LeanProceduralGateRunner:
             if typecheck.passed
             else typecheck
         )
-        kernel_hash = _kernel_normal_hash(prop) if prop.passed else ""
+        kernel_hash = _gate_canonical_hash(prop) if prop.passed else ""
         novelty = (
             _novelty_status(candidate, seen_canonical_hashes, self.novelty_cache, canonical_hash=kernel_hash)
             if kernel_hash
             else "missing_kernel_fingerprint"
         )
-        triviality_checked, baseline_solved, baseline_solver, baseline_reason = self._run_triviality_stack(candidate)
+        if typecheck.passed and prop.passed and novelty == "passed":
+            triviality_checked, baseline_solved, baseline_solver, baseline_reason = self._run_triviality_stack(
+                candidate
+            )
+        else:
+            triviality_checked, baseline_solved, baseline_solver, baseline_reason = False, False, None, "not_run"
         slot_weight = slot_weight_receipt_for_candidate(candidate, import_graph=self.import_graph)
         return ProceduralGateVerdict(
             typechecked=typecheck.passed,
@@ -261,6 +266,10 @@ def _kernel_normal_hash(result: VerifyResult) -> str:
             if payload:
                 return hashlib.sha256(payload.encode("utf-8")).hexdigest()
     return ""
+
+
+def _gate_canonical_hash(result: VerifyResult) -> str:
+    return _kernel_normal_hash(result) or result.declaration_fingerprints.get(_PROP_GATE_DECL, "")
 
 
 def _typecheck_gate_source(candidate: TaskCandidate) -> str:

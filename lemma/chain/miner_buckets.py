@@ -43,6 +43,8 @@ class BucketRevealBatch:
     reveals: tuple[MinerBucketReveal, ...]
     paths: tuple[Path, ...]
     stale_paths: tuple[Path, ...]
+    rejected_paths: tuple[Path, ...] = ()
+    rejections: tuple[str, ...] = ()
 
 
 class RevealedBucketBlob(BaseModel):
@@ -218,21 +220,37 @@ def latest_bucket_reveal_batch(reveal_dir: Path) -> BucketRevealBatch:
     if not reveal_dir.is_dir():
         raise ValueError(f"{reveal_dir} is not a directory")
     by_path: list[tuple[Path, tuple[MinerBucketReveal, ...]]] = []
+    rejected_paths: list[Path] = []
+    rejections: list[str] = []
     for path in sorted(p for p in reveal_dir.iterdir() if p.is_file() and p.suffix in {".json", ".jsonl"}):
-        reveals = read_bucket_reveal_file(path)
+        try:
+            reveals = read_bucket_reveal_file(path)
+        except ValueError as e:
+            rejected_paths.append(path)
+            rejections.append(str(e))
+            continue
         if not reveals:
             continue
         tempos = {reveal.tempo for reveal in reveals}
         if len(tempos) != 1:
-            raise ValueError(f"{path}: bucket reveal file must contain exactly one tempo")
+            rejected_paths.append(path)
+            rejections.append(f"{path}: bucket reveal file must contain exactly one tempo")
+            continue
         by_path.append((path, reveals))
     if not by_path:
-        return BucketRevealBatch(None, (), (), ())
+        return BucketRevealBatch(None, (), (), (), tuple(rejected_paths), tuple(rejections))
     latest_tempo = max(reveals[0].tempo for _, reveals in by_path)
     selected_paths = tuple(path for path, reveals in by_path if reveals[0].tempo == latest_tempo)
     stale_paths = tuple(path for path, reveals in by_path if reveals[0].tempo != latest_tempo)
     selected = tuple(reveal for path, reveals in by_path if path in selected_paths for reveal in reveals)
-    return BucketRevealBatch(latest_tempo, selected, selected_paths, stale_paths)
+    return BucketRevealBatch(
+        latest_tempo,
+        selected,
+        selected_paths,
+        stale_paths,
+        tuple(rejected_paths),
+        tuple(rejections),
+    )
 
 
 def archive_bucket_reveal_batch(batch: BucketRevealBatch) -> None:
@@ -240,6 +258,8 @@ def archive_bucket_reveal_batch(batch: BucketRevealBatch) -> None:
         _move_bucket_reveal_file(path, "processed")
     for path in batch.stale_paths:
         _move_bucket_reveal_file(path, "stale")
+    for path in batch.rejected_paths:
+        _move_bucket_reveal_file(path, "rejected")
 
 
 def _move_bucket_reveal_file(path: Path, dirname: str) -> None:

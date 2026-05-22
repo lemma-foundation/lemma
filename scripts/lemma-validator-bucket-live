@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+export LEMMA_PREFER_PROCESS_ENV="${LEMMA_PREFER_PROCESS_ENV:-1}"
+
 cd "${LEMMA_APP_DIR:-/opt/lemma-sn467/app}"
 
 exec "${UV_BIN:-uv}" run lemma validate \
