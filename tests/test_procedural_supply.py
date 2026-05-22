@@ -11,6 +11,7 @@ from lemma.protocol_invariants import enforce_production_invariants
 from lemma.submissions import build_submission
 from lemma.supply.gates import LeanProceduralGateRunner, ProceduralGateVerdict
 from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
+from lemma.supply.operator_bundle import OPERATOR_BUNDLE_VERSION, OPERATOR_NAMES
 from lemma.supply.procedural import (
     build_procedural_registry_tasks,
     corpus_sources_from_dir,
@@ -109,6 +110,12 @@ def test_depth2_generation_is_epoch_seeded_not_static(tmp_path: Path) -> None:
     assert all(candidate.source_stream == "procedural" for candidate in first)
     assert all(candidate.metadata["mutation_depth"] == 2 for candidate in first)
     assert all(len(candidate.metadata["mutation_chain"]) == 2 for candidate in first)
+    assert all(candidate.metadata["operator_bundle_version"] == OPERATOR_BUNDLE_VERSION for candidate in first)
+    assert all(
+        step["operator"] in OPERATOR_NAMES and isinstance(step["params"], dict)
+        for candidate in first
+        for step in candidate.metadata["mutation_chain"]
+    )
     assert all(candidate.metadata["source_pool_hash"] == source_pool_hash(sources) for candidate in first)
 
 

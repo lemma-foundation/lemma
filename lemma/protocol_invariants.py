@@ -9,6 +9,7 @@ from typing import Any
 
 from lemma.common.config import LemmaSettings
 from lemma.supply.gates import GATE_VERSION
+from lemma.supply.operator_bundle import OPERATOR_BUNDLE_VERSION, OPERATOR_NAMES, procedural_operator_bundle_hash
 from lemma.supply.slot_weight import SLOT_WEIGHT_VERSION, slot_weight_receipt_for_task
 from lemma.supply.triviality_budget import TRIVIALITY_BUDGET_VERSION
 from lemma.task_activation import activation_status_for, task_reward_eligibility
@@ -38,8 +39,21 @@ def production_supply_rejection_reason(task: LemmaTask) -> str:
     if not isinstance(chain, list) or len(chain) != 2:
         return "mutation_chain"
     for step in chain:
-        if not isinstance(step, dict) or not str(step.get("operator") or "").strip():
+        if not isinstance(step, dict):
             return "mutation_chain"
+        if step.get("operator") not in OPERATOR_NAMES:
+            return "mutation_chain"
+        if not isinstance(step.get("params"), dict):
+            return "mutation_params"
+        for key in ("input_hash", "output_hash"):
+            if not isinstance(step.get(key), str) or not _HEX64.fullmatch(str(step[key])):
+                return "mutation_chain"
+    if metadata.get("operator_bundle_version") != OPERATOR_BUNDLE_VERSION:
+        return "operator_bundle_version"
+    if not _has_hex64(metadata, "operator_bundle_hash"):
+        return "operator_bundle_hash"
+    if metadata.get("operator_bundle_hash") != procedural_operator_bundle_hash():
+        return "operator_bundle_hash"
     if not _has_text(metadata, "generation_seed"):
         return "generation_seed"
     if not _has_int(metadata, "drand_round"):
@@ -48,7 +62,7 @@ def production_supply_rejection_reason(task: LemmaTask) -> str:
         return "anchor_block"
     if not _has_int(metadata, "tempo"):
         return "tempo"
-    for key in ("source_pool_hash", "operator_bundle_hash", "canonical_hash"):
+    for key in ("source_pool_hash", "canonical_hash"):
         if not _has_hex64(metadata, key):
             return key
     if metadata.get("gate_version") != GATE_VERSION:
@@ -85,7 +99,6 @@ def production_supply_rejection_reason(task: LemmaTask) -> str:
         return "gate_receipt_sha256"
     return ""
 
-
 def procedural_gate_receipt_sha256(task: LemmaTask) -> str:
     metadata = task.metadata
     payload = {
@@ -113,6 +126,7 @@ def procedural_gate_receipt_sha256(task: LemmaTask) -> str:
         "slot_weight_basis_points": metadata.get("slot_weight_basis_points"),
         "slot_weight_inputs": metadata.get("slot_weight_inputs"),
         "source_pool_hash": metadata.get("source_pool_hash"),
+        "operator_bundle_version": metadata.get("operator_bundle_version"),
         "operator_bundle_hash": metadata.get("operator_bundle_hash"),
         "mutation_chain": metadata.get("mutation_chain"),
     }

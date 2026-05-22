@@ -66,7 +66,7 @@ uv run lemma tasks rebuild-procedural-registry \
   --output tasks/mainnet.registry.json
 ```
 
-Cut scale, not shape: reduce `K`, source samples, and the operator bundle if needed, but keep depth-2 generation, Lean-backed novelty/typecheck/Prop/triviality gates, recomputable slot-weight receipts, burn-rate-retargeted `T(t)`, miner hotkey authentication, and strong proof identity. The registry file is a cache; validators rebuild from pinned source rows plus chain/drand. Tempo remains 72 minutes / 360 blocks until subnet tempo customization exists.
+Cut scale, not shape: reduce `K`, source samples, and enabled operator families if needed, but keep the chain-pinned operator bundle, depth-2 generation, drand-keyed mutation params, Lean-backed novelty/typecheck/Prop/triviality gates, recomputable slot-weight receipts, burn-rate-retargeted `T(t)`, miner hotkey authentication, and strong proof identity. The registry file is a cache; validators rebuild from pinned source rows plus chain/drand. Tempo remains 72 minutes / 360 blocks until subnet tempo customization exists.
 
 On the launch host, production preflight must be green before accepting submissions:
 

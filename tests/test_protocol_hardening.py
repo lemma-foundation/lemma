@@ -18,6 +18,7 @@ from lemma.protocol_invariants import (
 from lemma.scoring import VerificationRecord, score_epoch
 from lemma.submissions import build_submission, sign_submission
 from lemma.supply.gates import GATE_VERSION
+from lemma.supply.operator_bundle import OPERATOR_BUNDLE_VERSION, procedural_operator_bundle_hash
 from lemma.supply.slot_weight import slot_weight_receipt_for_task
 from lemma.supply.triviality_budget import TrivialityRetargetConfig, triviality_budget_receipt
 from lemma.task_activation import task_reward_eligibility
@@ -62,14 +63,25 @@ def _procedural_metadata(
         "tempo": tempo,
         "mutation_depth": mutation_depth,
         "mutation_chain": [
-            {"operator": "generalize", "input_hash": "1" * 64, "output_hash": "2" * 64},
-            {"operator": "specialize", "input_hash": "2" * 64, "output_hash": "3" * 64},
+            {
+                "operator": "generalize",
+                "params": {"target": "fresh_prop_hypothesis", "binder": "p", "binder_type": "Prop"},
+                "input_hash": "1" * 64,
+                "output_hash": "2" * 64,
+            },
+            {
+                "operator": "specialize",
+                "params": {"binder": "p", "binder_type": "Prop", "value": "True"},
+                "input_hash": "2" * 64,
+                "output_hash": "3" * 64,
+            },
         ][:mutation_depth],
         "generation_seed": generation_seed,
         "drand_round": 12,
         "anchor_block": 360,
         "source_pool_hash": "4" * 64,
-        "operator_bundle_hash": "5" * 64,
+        "operator_bundle_version": OPERATOR_BUNDLE_VERSION,
+        "operator_bundle_hash": procedural_operator_bundle_hash(),
         "canonical_hash": "6" * 64,
         "typechecked": True,
         "prop_gate_passed": True,
@@ -111,7 +123,7 @@ def _production_settings(**updates: object) -> LemmaSettings:
         "protocol_mode": "production",
         "task_supply_mode": "procedural",
         "procedural_source_sha256_expected": "4" * 64,
-        "procedural_operator_bundle_sha256_expected": "5" * 64,
+        "procedural_operator_bundle_sha256_expected": procedural_operator_bundle_hash(),
         "enabled_domains": ("lean",),
         "lean_sandbox_network": "none",
         "require_submission_signatures": True,
@@ -406,6 +418,16 @@ def test_production_mode_rejects_missing_triviality_retarget_receipt() -> None:
     tampered = task.model_copy(update={"metadata": metadata})
 
     assert production_supply_rejection_reason(tampered) == "triviality_budget_version"
+
+
+def test_production_mode_rejects_unpinned_operator_params() -> None:
+    task = _production_task()
+    metadata = dict(task.metadata)
+    chain = [dict(step) for step in metadata["mutation_chain"]]
+    chain[0].pop("params")
+    tampered = task.model_copy(update={"metadata": {**metadata, "mutation_chain": chain}})
+
+    assert production_supply_rejection_reason(tampered) == "mutation_params"
 
 
 def test_production_mode_requires_epoch_randomness_active_seed() -> None:

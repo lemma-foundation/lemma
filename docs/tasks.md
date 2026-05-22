@@ -88,8 +88,10 @@ uv run lemma tasks rebuild-procedural-registry \
 ```
 
 The procedural generator derives rows from the source pool and epoch seed; it is
-not a static playlist. The procedural builder rejects paid rows unless they
-carry procedural depth-2 provenance, chain/drand anchoring, source-pool and
+not a static playlist. Each mutation step records the chain-pinned operator
+bundle version, the selected operator, its drand-keyed params, and the
+input/output statement hashes. The procedural builder rejects paid rows unless
+they carry procedural depth-2 provenance, chain/drand anchoring, source-pool and
 operator-bundle hashes, clean license state, a recomputable `slot_weight`
 receipt, a recomputable `T(t)` triviality-budget receipt, and a Lean-backed gate receipt. Production receipts must come from the
 `lean` gate runner: Lean typecheck, kernel Prop gate, canonical novelty, the
@@ -135,7 +137,7 @@ Every active task must have:
 - `queue_position`, `queue_depth`, and optional `frontier_depth`;
 - schema validation;
 - policy, topic metadata, and triviality-gate labels.
-- for paid production rows, procedural depth-2 provenance and recomputable slot-weight receipt metadata.
+- for paid production rows, procedural depth-2 provenance with drand-keyed operator params and recomputable slot-weight receipt metadata.
 
 Tasks solved by the pinned triviality tactic stack are excluded from paid activation. They may still enter the corpus as shallow `trivial_curriculum` data. Held-out benchmark tasks stay separate from training and reward streams.
 

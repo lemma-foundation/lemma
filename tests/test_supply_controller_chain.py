@@ -18,6 +18,7 @@ from lemma.supply.controller import (
 )
 from lemma.supply.gates import GATE_VERSION
 from lemma.supply.mixed import build_mixed_registry_tasks
+from lemma.supply.operator_bundle import OPERATOR_BUNDLE_VERSION, procedural_operator_bundle_hash
 from lemma.supply.procedural import build_procedural_registry_tasks
 from lemma.supply.queue import advance_active_pool, initial_active_pool
 from lemma.supply.slot_weight import slot_weight_receipt_for_candidate
@@ -118,14 +119,25 @@ def test_procedural_registry_requires_depth_two_metadata() -> None:
         "tempo": 0,
         "mutation_depth": 2,
         "mutation_chain": [
-            {"operator": "generalize", "input_hash": "1" * 64, "output_hash": "2" * 64},
-            {"operator": "specialize", "input_hash": "2" * 64, "output_hash": "3" * 64},
+            {
+                "operator": "generalize",
+                "params": {"target": "fresh_prop_hypothesis", "binder": "p", "binder_type": "Prop"},
+                "input_hash": "1" * 64,
+                "output_hash": "2" * 64,
+            },
+            {
+                "operator": "specialize",
+                "params": {"binder": "p", "binder_type": "Prop", "value": "True"},
+                "input_hash": "2" * 64,
+                "output_hash": "3" * 64,
+            },
         ],
         "generation_seed": "tempo-0",
         "drand_round": 10,
         "anchor_block": 360,
         "source_pool_hash": "4" * 64,
-        "operator_bundle_hash": "5" * 64,
+        "operator_bundle_version": OPERATOR_BUNDLE_VERSION,
+        "operator_bundle_hash": procedural_operator_bundle_hash(),
         "canonical_hash": "6" * 64,
         "typechecked": True,
         "prop_gate_passed": True,
