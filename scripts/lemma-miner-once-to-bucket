@@ -13,6 +13,7 @@ chmod 700 "$state_dir"
 chmod 755 "$bucket_root"
 export HOME=/home/lemma
 export UV_CACHE_DIR=/home/lemma/.cache/uv
+export LEMMA_PREFER_PROCESS_ENV="${LEMMA_PREFER_PROCESS_ENV:-1}"
 export LEMMA_OPERATOR_DATA_DIR="$state_dir"
 export LEMMA_MINER_BUCKET_DIR="$bucket_root"
 export LEMMA_PROOF_DIR="$proof_dir"
@@ -79,11 +80,16 @@ period = max(1, int(os.environ.get("LEMMA_MINER_ROTATION_SECONDS", "1800")))
 task = active[(slot + int(datetime.now(UTC).timestamp() // period)) % len(active)]
 bucket_root = Path(os.environ["LEMMA_MINER_BUCKET_DIR"])
 bucket_dir = bucket_root / datetime.now(UTC).strftime("run-%Y%m%dT%H%M%SZ")
+configured_prover = settings.prover_command.strip()
+hosted_prover = settings.prover_base_url.strip() and settings.prover_model.strip()
+prover_command = configured_prover or None
+if prover_command is None and not hosted_prover:
+    prover_command = f"/usr/local/bin/lemma-proof-dir-prover {Path(os.environ['LEMMA_PROOF_DIR'])}"
 try:
     mined = mine_once(
         settings,
         task_id=task.id,
-        prover_command=f"/usr/local/bin/lemma-proof-dir-prover {Path(os.environ['LEMMA_PROOF_DIR'])}",
+        prover_command=prover_command,
         registry=registry,
         sign=True,
     )
