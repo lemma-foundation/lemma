@@ -250,11 +250,14 @@ def _elaborate_types(rows: list[MathlibSnapshotRow], lake_root: Path) -> list[Ma
         lines = "\n".join(part for part in (result.stderr, result.stdout) if part).strip().splitlines()
         detail = " | ".join(lines[-6:]) if lines else f"lean exited {result.returncode}"
         raise ValueError(f"could not elaborate Mathlib theorem types: {detail}")
-    return [
-        row.model_copy(update={"type_expr": _merge_elaborated_binders(row.type_expr, types[row.theorem_name])})
-        for row in rows
-        if row.theorem_name in types
-    ]
+    out: list[MathlibSnapshotRow] = []
+    for row in rows:
+        if row.theorem_name not in types:
+            continue
+        type_expr = _merge_elaborated_binders(row.type_expr, types[row.theorem_name])
+        if _supported_snapshot_type(type_expr):
+            out.append(row.model_copy(update={"type_expr": type_expr}))
+    return out
 
 
 def _parse_check_output(output: str, names: list[str]) -> dict[str, str]:
@@ -306,6 +309,13 @@ def _merge_elaborated_binders(source_type: str, elaborated_type: str) -> str:
     elaborated_binders, _ = _split_forall_type(elaborated_type)
     binders = elaborated_binders or source_binders
     return f"∀ {binders}, {source_target}" if binders else source_target
+
+
+def _supported_snapshot_type(type_expr: str) -> bool:
+    binders, _target = _split_forall_type(type_expr)
+    if "⦃" in binders or "⦄" in binders:
+        return False
+    return re.match(r"^[A-Za-z_][A-Za-z0-9_']*\s+[\{\[\(]", binders) is None
 
 
 def _split_forall_type(type_expr: str) -> tuple[str, str]:

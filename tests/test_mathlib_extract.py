@@ -11,6 +11,7 @@ from lemma.supply.mathlib_extract import (
     _erase_universe_levels,
     _merge_elaborated_binders,
     _parse_check_output,
+    _supported_snapshot_type,
     _type_from_check_line,
     extract_snapshot_rows,
 )
@@ -128,6 +129,12 @@ def test_elaborated_type_keeps_source_target_named_args() -> None:
     )
 
     assert merged == "∀ {R : Type _} [NonUnitalRing R], associator (R := R) = 0"
+
+
+def test_supported_snapshot_type_rejects_unparseable_elaborated_binders() -> None:
+    assert not _supported_snapshot_type("∀ Left {R : Type _}, True")
+    assert not _supported_snapshot_type("∀ {R : Type _} ⦃inst₁ inst₂, Distrib R⦄, True")
+    assert _supported_snapshot_type("∀ {R : Type _} [Semiring R] (x : R), x = x")
 
 
 def test_universe_level_erasure_keeps_task_type_self_contained() -> None:
