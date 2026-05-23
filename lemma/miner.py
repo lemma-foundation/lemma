@@ -138,12 +138,26 @@ def _leading_true_premise_count(type_expr: str) -> int:
 
 
 def _source_theorem_wrapper_intro_count(task: LemmaTask) -> int:
-    count = _fresh_prop_hypothesis_intro_count(task) + _leading_true_premise_count(task.type_expr)
+    fallback_wrappers = _source_theorem_true_fallback_count(task)
+    count = _fresh_prop_hypothesis_intro_count(task) + max(
+        0, _leading_true_premise_count(task.type_expr) - fallback_wrappers
+    )
     for step in task.metadata.get("mutation_chain", ()):
         if not isinstance(step, dict):
             continue
         params = step.get("params")
         if isinstance(params, dict) and params.get("mode") == "peer_premise":
+            count += 1
+    return count
+
+
+def _source_theorem_true_fallback_count(task: LemmaTask) -> int:
+    count = 0
+    for step in task.metadata.get("mutation_chain", ()):
+        if not isinstance(step, dict):
+            continue
+        params = step.get("params")
+        if isinstance(params, dict) and params.get("fallback") in {"true_premise", "no_supported_type_occurrence"}:
             count += 1
     return count
 

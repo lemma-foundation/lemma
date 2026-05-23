@@ -485,6 +485,51 @@ def test_mine_once_wraps_true_premise_before_strengthened_source_theorem(
     assert result.submission.metadata["prover"] == "source_theorem_wrapper"
 
 
+def test_mine_once_does_not_overintroduce_fallback_true_premises(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    task = make_task(
+        task_id="lemma.test.double_true_premise",
+        title="Double true premise task",
+        theorem_name="test_double_true_premise",
+        type_expr="True → (True → True)",
+        source_stream="human_curated",
+        source_name="pytest",
+        metadata={
+            "source_theorem_name": "known_true",
+            "mutation_chain": [
+                {"operator": "specialize", "params": {"fallback": "true_premise"}},
+                {"operator": "specialize", "params": {"fallback": "true_premise"}},
+            ],
+        },
+    )
+    registry = TaskRegistry(schema_version=1, tasks=(task,), sha256="0" * 64)
+
+    def fail_prover(*args: object, **kwargs: object) -> ProverResult:
+        raise AssertionError("hosted prover should not run when source theorem wrapper verifies")
+
+    class FakeVerifier:
+        def verify(self, task: object, submission: object) -> VerifyResult:
+            assert isinstance(submission, LemmaSubmission)
+            expected = "exact (fun _ => (fun _ => known_true))"
+            return VerifyResult(
+                passed=expected in submission.proof_script and "intro _" not in submission.proof_script,
+                reason="ok",
+            )
+
+    monkeypatch.setattr("lemma.miner.run_openai_compatible_prover", fail_prover)
+    monkeypatch.setattr("lemma.miner.get_verifier", lambda *args, **kwargs: FakeVerifier())
+    monkeypatch.setattr("lemma.miner.verify_result_from_adapter_result", lambda result: result)
+
+    result = mine_once(
+        _settings(tmp_path).model_copy(update={"prover_base_url": "https://example.test", "prover_model": "model"}),
+        registry=registry,
+    )
+
+    assert result.verification.passed is True
+    assert result.submission.metadata["prover"] == "source_theorem_wrapper"
+
+
 def test_mine_once_wraps_peer_premise_before_false_disjunction(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
