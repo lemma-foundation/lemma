@@ -33,6 +33,15 @@ def test_bucket_miner_prefers_verified_proof_dir_before_hosted_prover() -> None:
     assert "prover_command = proof_dir_prover if has_verified_proof else configured_prover or None" in miner
 
 
+def test_bucket_miner_publishes_once_per_chain_tempo() -> None:
+    miner = (ROOT / "scripts" / "lemma-miner-once-to-bucket").read_text(encoding="utf-8")
+
+    assert 'last_bucket_tempo = Path(os.environ["LEMMA_OPERATOR_DATA_DIR"]) / "last_bucket_tempo"' in miner
+    assert "last_bucket_tempo.read_text(encoding=\"utf-8\").strip() == str(tempo)" in miner
+    assert '"reason": f"already published tempo {tempo}"' in miner
+    assert 'printf \'%s\\n\' "$tempo" > "$state_dir/last_bucket_tempo"' in miner
+
+
 def test_validator_bucket_wrapper_requires_explicit_weight_write_flag() -> None:
     validator = (ROOT / "scripts" / "lemma-validator-bucket-live").read_text(encoding="utf-8")
 

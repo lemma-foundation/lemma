@@ -542,6 +542,44 @@ def test_production_like_procedural_submission_smoke(monkeypatch: pytest.MonkeyP
     assert corpus_row["proof_identity_strength"] == "strong"
     assert corpus_row["full_reward_eligible"] is True
 
+    peer_env = {
+        **env,
+        "LEMMA_CORPUS_OUTPUT_DIR": str(tmp_path / "corpus-peer"),
+        "LEMMA_OPERATOR_DATA_DIR": str(tmp_path / "operator-peer"),
+        "BT_WALLET_HOT": "validator-mainnet-readiness-peer",
+    }
+    peer_validate = runner.invoke(
+        main,
+        [
+            "validate",
+            "--once",
+            "--bucket-reveals-jsonl",
+            str(bucket_reveals_jsonl),
+            "--validator-hotkey",
+            "validator-mainnet-readiness-peer",
+            "--no-set-weights",
+        ],
+        env=peer_env,
+    )
+    assert peer_validate.exit_code == 0, peer_validate.output
+    peer_validation = json.loads(peer_validate.output)
+    assert peer_validation["accepted_unique"] == validation["accepted_unique"]
+    assert peer_validation["scores"] == validation["scores"]
+    assert peer_validation["weights"] == validation["weights"]
+    peer_row = json.loads((tmp_path / "corpus-peer" / "epoch-000001.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    for field in (
+        "task_id",
+        "target_sha256",
+        "proof_sha256",
+        "proof_identity",
+        "proof_identity_source",
+        "proof_identity_strength",
+        "active_K",
+        "frontier_depth",
+    ):
+        assert peer_row[field] == corpus_row[field]
+    assert peer_row["validator_hotkey"] == "validator-mainnet-readiness-peer"
+
 
 def test_operator_reports_use_curriculum_controlled_active_window(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path

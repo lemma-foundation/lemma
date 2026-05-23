@@ -60,6 +60,16 @@ def registry_for_tempo(settings: LemmaSettings, tempo: int):
 
 settings = LemmaSettings()
 tempo = current_active_tempo(settings)
+last_bucket_tempo = Path(os.environ["LEMMA_OPERATOR_DATA_DIR"]) / "last_bucket_tempo"
+once_per_tempo = os.environ.get("LEMMA_MINER_ONCE_PER_TEMPO", "1").strip().lower() not in {"0", "false", "no"}
+if once_per_tempo:
+    try:
+        already_published = last_bucket_tempo.read_text(encoding="utf-8").strip() == str(tempo)
+    except FileNotFoundError:
+        already_published = False
+    if already_published:
+        print(json.dumps({"idle": True, "reason": f"already published tempo {tempo}", "tempo": tempo}))
+        raise SystemExit(0)
 registry, registry_cache, registry_built = registry_for_tempo(settings, tempo)
 active = active_tasks_for_validation(registry, settings, tempo=tempo)
 if not active:
@@ -140,6 +150,7 @@ print(
     json.dumps(
         {
             "idle": False,
+            "tempo": tempo,
             "task_id": task.id,
             "reveal_path": str(reveal_path),
             "registry_cache": registry_cache,
@@ -158,6 +169,7 @@ if [[ "$idle" == "True" ]]; then
   exit 0
 fi
 reveal="$(printf '%s' "$result" | python3 -c 'import json,sys; print(json.load(sys.stdin)["reveal_path"])')"
+tempo="$(printf '%s' "$result" | python3 -c 'import json,sys; print(json.load(sys.stdin)["tempo"])')"
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 safe_instance="${instance//[^A-Za-z0-9_.-]/_}"
 remote_name="bucket-${safe_instance}-${stamp}-$$.json"
@@ -169,4 +181,8 @@ remote_name="bucket-${safe_instance}-${stamp}-$$.json"
   -o ConnectTimeout=10 \
   "${LEMMA_VALIDATOR_SPOOL_TARGET:?}" \
   "$remote_name" < "$reveal"
+case "${LEMMA_MINER_ONCE_PER_TEMPO:-1}" in
+  0|false|False|FALSE|no|No|NO) ;;
+  *) printf '%s\n' "$tempo" > "$state_dir/last_bucket_tempo" ;;
+esac
 echo "delivered ${remote_name} task=${task_id}"

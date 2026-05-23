@@ -34,6 +34,8 @@ Run the same artifact set locally first, then copy it into a clean validator/min
 
 Accept the gate only when `weight-submissions.jsonl` has resolved UIDs, `success=true`, an extrinsic hash, and the validator never reports `weights_set=true` without a confirmed successful response.
 
+Also run a second-validator parity pass from a clean operator data directory. Both validators must rebuild the same active task set from public inputs and accept the same bucket reveal with matching task, proof, score, and weight-shape outputs. Validator-local row IDs and validator hotkeys may differ.
+
 ## Burn-In Gates
 
 Closed burn-in is at least 72 continuous testnet hours with controlled miners. Public burn-in is at least 7 days with procedural depth-2 supply and active `K` filled.
@@ -47,6 +49,7 @@ For both burn-ins:
 - paid rewards require strong proof identity;
 - every accepted public corpus row replays from clean artifacts;
 - diagnostics expose registry hash, active `K`, frontier depth, verifier health, disk/cache pressure, accepted unique count, corpus rows, weight receipts, set-weight latency, and storage-root readback without private operator state.
+- miner and validator automation treats timers as wakeups only; active tempo must come from `block // subnet_tempo`, and a miner should publish at most one bucket reveal per chain tempo.
 
 ## Mainnet Cutover
 
@@ -69,7 +72,7 @@ uv run lemma tasks rebuild-procedural-registry \
   --output tasks/mainnet.registry.json
 ```
 
-Cut scale, not shape: reduce `K`, source samples, and enabled operator families if needed, but keep the chain-pinned Lean AST/elaborator mutation bundle, depth-2 generation, drand-keyed mutation params, public novelty-cache receipts, Lean-backed kernel-canonical novelty/typecheck/Prop/triviality gates, verifier-recorded kernel dependency slot weights, burn-rate-retargeted `T(t)`, miner hotkey authentication, and strong proof identity. The registry file is a cache; validators rebuild from pinned source rows plus chain/drand. Tempo remains 72 minutes / 360 blocks until subnet tempo customization exists.
+Cut scale, not shape: reduce `K`, source samples, and enabled operator families if needed, but keep the chain-pinned Lean AST/elaborator mutation bundle, depth-2 generation, drand-keyed mutation params, public novelty-cache receipts, Lean-backed kernel-canonical novelty/typecheck/Prop/triviality gates, verifier-recorded kernel dependency slot weights, burn-rate-retargeted `T(t)`, miner hotkey authentication, and strong proof identity. The registry file is a cache; validators rebuild from pinned source rows plus chain/drand. Tempo is the chain tempo: SN467 currently uses 360-block epochs. Wall-clock timers are only approximate wakeups.
 
 On the launch host, production preflight must be green before accepting submissions:
 
