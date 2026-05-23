@@ -23,6 +23,7 @@ from lemma.miner import (
 )
 from lemma.protocol import ProofResponse, TaskRequest
 from lemma.submissions import LemmaSubmission, build_submission, sign_submission
+from lemma.supply.controller import CurriculumTempoRecord, append_curriculum_record, read_curriculum_records
 from lemma.supply.mathlib_snapshot import candidates_from_jsonl
 from lemma.supply.types import registry_tasks_from_candidates
 from lemma.task_supply import make_task, write_registry
@@ -178,6 +179,85 @@ def test_mine_once_defaults_to_validator_active_window(monkeypatch: pytest.Monke
     result = mine_once(settings, registry=registry)
 
     assert result.task.id == active_task.id
+
+
+def test_curriculum_state_applies_after_recorded_tempo(tmp_path: Path) -> None:
+    state_path = tmp_path / "curriculum.jsonl"
+    append_curriculum_record(
+        state_path,
+        CurriculumTempoRecord(
+            tempo=4,
+            active_K=2,
+            frontier_depth=1,
+            ema_solve_rate=0.5,
+            solved_slots=1,
+            parked_task_ids=(),
+            action="hold",
+            variant_stream_requested=False,
+        ),
+    )
+    registry = TaskRegistry(
+        schema_version=1,
+        tasks=(
+            _task("lemma.test.first", queue_depth=0),
+            _task("lemma.test.second", queue_depth=1),
+        ),
+        sha256="0" * 64,
+    )
+    settings = _settings(tmp_path).model_copy(
+        update={
+            "active_task_count": 1,
+            "frontier_depth": 0,
+            "active_queue_seed": "curriculum-state",
+            "curriculum_retarget_enabled": True,
+            "curriculum_state_jsonl": state_path,
+        }
+    )
+
+    same_tempo = active_tasks_for_validation(registry, settings, tempo=4)
+    next_tempo = active_tasks_for_validation(registry, settings, tempo=5)
+
+    assert len(same_tempo) == 1
+    assert len(next_tempo) == 2
+    assert {task.frontier_depth for task in next_tempo} == {1}
+
+
+def test_validate_once_retargets_curriculum_state_after_tempo(tmp_path: Path) -> None:
+    state_path = tmp_path / "curriculum.jsonl"
+    first = _task("lemma.test.first")
+    second = _task("lemma.test.second")
+    registry = TaskRegistry(schema_version=1, tasks=(first, second), sha256="0" * 64)
+    settings = _settings(tmp_path).model_copy(
+        update={
+            "active_task_count": 2,
+            "active_queue_seed": "curriculum-retarget",
+            "curriculum_retarget_enabled": True,
+            "curriculum_state_jsonl": state_path,
+            "validator_capacity": 4,
+            "curriculum_beta": 0.0,
+            "curriculum_k_max": 4,
+        }
+    )
+
+    validate_once(
+        settings,
+        [build_submission(first, solver_hotkey="hk-a", proof_script=_proof())],
+        registry=registry,
+        verify_submission=lambda task, submission: VerifyResult(passed=True, reason="ok"),
+        tempo=9,
+        no_set_weights=True,
+    )
+
+    records = read_curriculum_records(state_path)
+    assert len(records) == 1
+    assert records[0].tempo == 9
+    assert records[0].solved_slots == 1
+    assert records[0].active_K == 3
+    assert records[0].frontier_depth == 0
+
+    validate_once(settings, [], registry=registry, tempo=9, no_set_weights=True)
+
+    assert len(read_curriculum_records(state_path)) == 1
 
 
 def test_validator_scores_and_writes_alternate_corpus_rows(tmp_path: Path) -> None:

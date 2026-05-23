@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sys
 
 import pytest
@@ -16,6 +17,7 @@ from lemma.corpus import build_corpus_row, write_jsonl
 from lemma.lean.sandbox import VerifyResult
 from lemma.operator import OperatorDiagnosticsReport, OperatorPreflightReport, OperatorRegistryInspectReport
 from lemma.submissions import build_submission, sign_submission
+from lemma.supply.controller import CurriculumTempoRecord, append_curriculum_record
 from lemma.task_supply import make_task, write_registry
 
 
@@ -202,6 +204,70 @@ def test_prebuild_active_procedural_registry_skips_existing_cache(
     payload = json.loads(result.output)
     assert payload["built"] is False
     assert payload["tasks"] == 1
+
+
+def test_prebuild_active_procedural_registry_refreshes_stale_curriculum_cache(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    old_task = make_task(
+        task_id="lemma.procedural.old",
+        title="Old",
+        theorem_name="old",
+        type_expr="True",
+        source_stream="procedural",
+        source_name="pytest",
+    )
+    new_task = make_task(
+        task_id="lemma.procedural.new",
+        title="New",
+        theorem_name="new",
+        type_expr="True",
+        source_stream="procedural",
+        source_name="pytest",
+    )
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    cache_path = cache_dir / "tempo-31.registry.json"
+    write_registry([old_task], cache_path)
+    os.utime(cache_path, (1, 1))
+    state_path = tmp_path / "curriculum.jsonl"
+    append_curriculum_record(
+        state_path,
+        CurriculumTempoRecord(
+            tempo=30,
+            active_K=1,
+            frontier_depth=0,
+            ema_solve_rate=0.5,
+            solved_slots=1,
+            parked_task_ids=(),
+            action="hold",
+            variant_stream_requested=False,
+        ),
+    )
+    os.utime(state_path, (2, 2))
+
+    def fake_registry(settings, *, tempo):  # noqa: ANN001
+        assert tempo == 31
+        return type("Registry", (), {"tasks": (new_task,)})()
+
+    monkeypatch.setattr("lemma.validator.task_registry_for_validation", fake_registry)
+
+    result = CliRunner().invoke(
+        main,
+        ["tasks", "prebuild-active-procedural-registry", "--tempo", "31"],
+        env={
+            "LEMMA_PREFER_PROCESS_ENV": "1",
+            "LEMMA_TASK_SUPPLY_MODE": "procedural",
+            "LEMMA_ACTIVE_REGISTRY_CACHE_DIR": str(cache_dir),
+            "LEMMA_CURRICULUM_RETARGET": "1",
+            "LEMMA_CURRICULUM_STATE_JSONL": str(state_path),
+        },
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["built"] is True
+    assert "lemma.procedural.new" in cache_path.read_text(encoding="utf-8")
 
 
 def test_prebuild_active_procedural_registry_requires_cache_dir(tmp_path) -> None:

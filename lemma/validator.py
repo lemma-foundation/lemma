@@ -172,6 +172,7 @@ def active_epoch_randomness_sha256(
 
 def task_registry_for_validation(settings: LemmaSettings, *, tempo: int) -> TaskRegistry:
     """Load the active task registry for the configured supply mode."""
+    settings = curriculum_controlled_settings(settings, tempo=tempo)
     if settings.protocol_mode == "production" and settings.task_supply_mode != "procedural":
         raise RuntimeError("production mode requires LEMMA_TASK_SUPPLY_MODE=procedural")
     if settings.task_supply_mode == "registry":
@@ -202,6 +203,20 @@ def cached_active_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> 
             raise RuntimeError(f"active registry file does not exist: {path}")
         return None
     return load_task_registry(path.read_bytes())
+
+
+def curriculum_controlled_settings(settings: LemmaSettings, *, tempo: int) -> LemmaSettings:
+    if not settings.curriculum_retarget_enabled or settings.curriculum_state_jsonl is None:
+        return settings
+    from lemma.supply.controller import read_curriculum_records
+
+    records = tuple(
+        record for record in read_curriculum_records(settings.curriculum_state_jsonl) if record.tempo < tempo
+    )
+    if not records:
+        return settings
+    latest = records[-1]
+    return settings.model_copy(update={"active_task_count": latest.active_K, "frontier_depth": latest.frontier_depth})
 
 
 def _procedural_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> TaskRegistry:
@@ -393,11 +408,12 @@ def active_tasks_for_validation(
     tempo: int | None = None,
 ) -> tuple[LemmaTask, ...]:
     """Select the deterministic active K-window from a registry."""
+    active_tempo = current_active_tempo(settings) if tempo is None else tempo
+    settings = curriculum_controlled_settings(settings, tempo=active_tempo)
     candidates = tuple(task for task in registry.tasks if task.queue_depth <= settings.frontier_depth)
     active_k = min(settings.active_task_count, len(candidates))
     if active_k == 0:
         return ()
-    active_tempo = current_active_tempo(settings) if tempo is None else tempo
     epoch_randomness = (
         resolve_active_epoch_randomness(settings, tempo=active_tempo)
         if settings.active_seed_mode == "epoch_randomness"
@@ -710,6 +726,56 @@ def _record_rank_key(record: VerificationRecord) -> tuple[object, ...]:
     return (1, record.received_at)
 
 
+def _retarget_curriculum_after_validation(settings: LemmaSettings, *, tempo: int, solved_slots: int) -> None:
+    if not settings.curriculum_retarget_enabled or settings.curriculum_state_jsonl is None:
+        return
+    if settings.curriculum_k_max < settings.curriculum_k_min:
+        raise RuntimeError("LEMMA_CURRICULUM_K_MAX must be >= LEMMA_CURRICULUM_K_MIN")
+
+    from lemma.supply.controller import (
+        CurriculumConfig,
+        CurriculumState,
+        CurriculumTempoRecord,
+        append_curriculum_record,
+        read_curriculum_records,
+        retarget_curriculum,
+    )
+
+    records = read_curriculum_records(settings.curriculum_state_jsonl)
+    if any(record.tempo == tempo for record in records):
+        return
+    prior_ema = records[-1].ema_solve_rate if records else 0.50
+    decision = retarget_curriculum(
+        CurriculumState(
+            active_K=settings.active_task_count,
+            frontier_depth=settings.frontier_depth,
+            ema_solve_rate=prior_ema,
+        ),
+        solved_slots=solved_slots,
+        validator_capacity=settings.validator_capacity or settings.active_task_count,
+        config=CurriculumConfig(
+            beta=settings.curriculum_beta,
+            low_band=settings.curriculum_low_band,
+            high_band=settings.curriculum_high_band,
+            k_min=settings.curriculum_k_min,
+            k_max=settings.curriculum_k_max,
+        ),
+    )
+    append_curriculum_record(
+        settings.curriculum_state_jsonl,
+        CurriculumTempoRecord(
+            tempo=tempo,
+            active_K=decision.state.active_K,
+            frontier_depth=decision.state.frontier_depth,
+            ema_solve_rate=decision.state.ema_solve_rate,
+            solved_slots=solved_slots,
+            parked_task_ids=(),
+            action=decision.action,
+            variant_stream_requested=decision.variant_stream_requested,
+        ),
+    )
+
+
 def validate_once(
     settings: LemmaSettings,
     submissions: Iterable[LemmaSubmission],
@@ -728,6 +794,7 @@ def validate_once(
 ) -> ValidatorRunResult:
     """Verify submissions, score unique proofs, and write local corpus artifacts."""
     active_tempo = current_active_tempo(settings) if tempo is None else tempo
+    settings = curriculum_controlled_settings(settings, tempo=active_tempo)
     registry = registry or task_registry_for_validation(settings, tempo=active_tempo)
     enforce_production_invariants(settings, registry)
     active_tasks = active_tasks_for_validation(registry, settings, tempo=active_tempo)
@@ -971,6 +1038,7 @@ def validate_once(
         chain_weight_values=weight_submission.weights if weight_submission else None,
     )
     append_jsonl(settings.operator_data_dir / "validator-runs.jsonl", [summary])
+    _retarget_curriculum_after_validation(settings, tempo=active_tempo, solved_slots=len(score.valid_unique_proofs))
     return ValidatorRunResult(
         verification_records=tuple(records),
         score=score,

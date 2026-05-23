@@ -82,6 +82,16 @@ LEMMA_OPERATOR_DATA_DIR=validator-data
 `LEMMA_ACTIVE_K` is validator throughput. `LEMMA_FRONTIER_DEPTH` and generated queue depth control difficulty. Payment uses deterministic active slot weights, not subjective validator scores.
 When `LEMMA_ACTIVE_REGISTRY_CACHE_DIR` is set, miners and validators load `tempo-<tempo>.registry.json` for the active tempo if it exists. `LEMMA_ACTIVE_REGISTRY_JSON` pins one exact registry file and fails closed if that file is missing.
 
+To let the validator retarget throughput and difficulty after each completed tempo, enable the curriculum state log:
+
+```bash
+LEMMA_CURRICULUM_RETARGET=1
+LEMMA_CURRICULUM_STATE_JSONL=validator-data/curriculum.jsonl
+LEMMA_VALIDATOR_CAPACITY=20
+```
+
+The retarget loop records one row per tempo. Later tempos load the latest prior row: validator capacity moves `K`, and solve rate moves `frontier_depth`.
+
 Prebuild the live tempo cache before miners run:
 
 ```bash

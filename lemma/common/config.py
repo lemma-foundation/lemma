@@ -201,6 +201,14 @@ class LemmaSettings(BaseSettings):
         default="wall_clock",
         validation_alias="LEMMA_ACTIVE_TEMPO_SOURCE",
     )
+    curriculum_retarget_enabled: bool = Field(default=False, validation_alias="LEMMA_CURRICULUM_RETARGET")
+    curriculum_state_jsonl: Path | None = Field(default=None, validation_alias="LEMMA_CURRICULUM_STATE_JSONL")
+    validator_capacity: int = Field(default=0, ge=0, validation_alias="LEMMA_VALIDATOR_CAPACITY")
+    curriculum_beta: float = Field(default=0.8, ge=0.0, lt=1.0, validation_alias="LEMMA_CURRICULUM_BETA")
+    curriculum_low_band: float = Field(default=0.40, ge=0.0, le=1.0, validation_alias="LEMMA_CURRICULUM_LOW_BAND")
+    curriculum_high_band: float = Field(default=0.70, ge=0.0, le=1.0, validation_alias="LEMMA_CURRICULUM_HIGH_BAND")
+    curriculum_k_min: int = Field(default=1, ge=1, validation_alias="LEMMA_CURRICULUM_K_MIN")
+    curriculum_k_max: int = Field(default=5000, ge=1, validation_alias="LEMMA_CURRICULUM_K_MAX")
     schema_version: str = Field(default="v2", validation_alias="LEMMA_SCHEMA_VERSION")
     enabled_domains: tuple[str, ...] = Field(default=("lean",), validation_alias="LEMMA_ENABLED_DOMAINS")
     experimental_domains: tuple[str, ...] = Field(default=(), validation_alias="LEMMA_EXPERIMENTAL_DOMAINS")
