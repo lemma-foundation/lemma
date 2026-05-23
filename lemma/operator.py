@@ -166,16 +166,23 @@ def _build_operator_state(
     settings: LemmaSettings,
 ) -> tuple[OperatorPreflightReport, tuple[str, ...], OperatorRegistryInspectReport | None]:
     from lemma.tasks import TaskError
-    from lemma.validator import active_tasks_for_validation, current_active_tempo, task_registry_for_validation
+    from lemma.validator import (
+        active_tasks_for_validation,
+        current_active_tempo,
+        curriculum_controlled_settings,
+        task_registry_for_validation,
+    )
 
     checks: list[OperatorPreflightCheck] = []
     active_task_ids: tuple[str, ...] = ()
     registry_inspect: OperatorRegistryInspectReport | None = None
     registry = None
+    active_window_settings = settings
 
     try:
         active_tempo = current_active_tempo(settings)
-        registry = task_registry_for_validation(settings, tempo=active_tempo)
+        active_window_settings = curriculum_controlled_settings(settings, tempo=active_tempo)
+        registry = task_registry_for_validation(active_window_settings, tempo=active_tempo)
         checks.append(_check("registry_load", True, f"{len(registry.tasks)} tasks"))
     except (RuntimeError, TaskError, OSError) as e:
         checks.append(_check("registry_load", False, str(e)))
@@ -208,19 +215,23 @@ def _build_operator_state(
             signature_ok = True
         checks.append(_check("registry_signature", signature_ok, registry.signature_status))
         try:
-            active_tasks = active_tasks_for_validation(registry, settings, tempo=active_tempo)
+            active_tasks = active_tasks_for_validation(registry, active_window_settings, tempo=active_tempo)
         except RuntimeError as e:
             checks.append(_check("active_window", False, str(e)))
         else:
             active_task_ids = tuple(task.id for task in active_tasks)
-            registry_inspect = _inspect_registry(registry, settings, active_task_count=len(active_tasks))
+            registry_inspect = _inspect_registry(
+                registry,
+                active_window_settings,
+                active_task_count=len(active_tasks),
+            )
             checks.append(
                 _check(
                     "active_window",
-                    len(active_tasks) == settings.active_task_count,
+                    len(active_tasks) == active_window_settings.active_task_count,
                     (
-                        f"{len(active_tasks)} active / K={settings.active_task_count} "
-                        f"at frontier_depth={settings.frontier_depth}"
+                        f"{len(active_tasks)} active / K={active_window_settings.active_task_count} "
+                        f"at frontier_depth={active_window_settings.frontier_depth}"
                     ),
                 )
             )
@@ -312,8 +323,8 @@ def _build_operator_state(
         schema_version=1,
         ok=all(check.ok for check in checks),
         registry_sha256=registry.sha256 if registry is not None else None,
-        active_K=settings.active_task_count,
-        frontier_depth=settings.frontier_depth,
+        active_K=active_window_settings.active_task_count,
+        frontier_depth=active_window_settings.frontier_depth,
         checks=tuple(checks),
     )
     return preflight, active_task_ids, registry_inspect
@@ -341,9 +352,15 @@ def build_operator_diagnostics(settings: LemmaSettings) -> OperatorDiagnosticsRe
 
 def build_operator_registry_inspect(settings: LemmaSettings) -> OperatorRegistryInspectReport:
     """Summarize registry supply depth using the validator's active-window logic."""
-    from lemma.validator import active_tasks_for_validation, current_active_tempo, task_registry_for_validation
+    from lemma.validator import (
+        active_tasks_for_validation,
+        current_active_tempo,
+        curriculum_controlled_settings,
+        task_registry_for_validation,
+    )
 
     active_tempo = current_active_tempo(settings)
-    registry = task_registry_for_validation(settings, tempo=active_tempo)
-    active_tasks = active_tasks_for_validation(registry, settings, tempo=active_tempo)
-    return _inspect_registry(registry, settings, active_task_count=len(active_tasks))
+    active_window_settings = curriculum_controlled_settings(settings, tempo=active_tempo)
+    registry = task_registry_for_validation(active_window_settings, tempo=active_tempo)
+    active_tasks = active_tasks_for_validation(registry, active_window_settings, tempo=active_tempo)
+    return _inspect_registry(registry, active_window_settings, active_task_count=len(active_tasks))

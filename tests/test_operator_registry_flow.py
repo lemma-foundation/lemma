@@ -19,6 +19,7 @@ from lemma.common.config import LemmaSettings
 from lemma.lean.sandbox import VerifyResult
 from lemma.operator import OperatorDiagnosticsReport, OperatorPreflightReport, OperatorRegistryInspectReport
 from lemma.submissions import build_submission
+from lemma.supply.controller import CurriculumTempoRecord, append_curriculum_record
 from lemma.supply.gates import ProceduralGateVerdict
 from lemma.supply.import_graph import ImportGraphRow, read_import_graph
 from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
@@ -540,6 +541,77 @@ def test_production_like_procedural_submission_smoke(monkeypatch: pytest.MonkeyP
     assert corpus_row["proof_identity_source"] == "proof_term_hash"
     assert corpus_row["proof_identity_strength"] == "strong"
     assert corpus_row["full_reward_eligible"] is True
+
+
+def test_operator_reports_use_curriculum_controlled_active_window(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runner = CliRunner()
+    fixture_dir = Path("examples/operator-smoke")
+    registry_path = tmp_path / "tasks" / "mathlib-snapshot.registry.json"
+    build = runner.invoke(
+        main,
+        [
+            "tasks",
+            "build-mathlib-snapshot",
+            "--input",
+            str(fixture_dir / "snapshot.jsonl"),
+            "--output",
+            str(registry_path),
+            "--seed",
+            "operator-smoke",
+            "--frontier-depth",
+            "2",
+        ],
+        env={"LEMMA_PREFER_PROCESS_ENV": "1"},
+    )
+    assert build.exit_code == 0, build.output
+    registry_sha256 = json.loads(build.output)["registry_sha256"]
+    state_path = tmp_path / "curriculum.jsonl"
+    append_curriculum_record(
+        state_path,
+        CurriculumTempoRecord(
+            tempo=4,
+            active_K=2,
+            frontier_depth=2,
+            ema_solve_rate=0.5,
+            solved_slots=1,
+            parked_task_ids=(),
+            action="hold",
+            variant_stream_requested=False,
+        ),
+    )
+    monkeypatch.setattr("lemma.validator.current_active_tempo", lambda settings: 5)
+    env = {
+        "LEMMA_PREFER_PROCESS_ENV": "1",
+        "LEMMA_TASK_REGISTRY_URL": str(registry_path),
+        "LEMMA_TASK_REGISTRY_SHA256_EXPECTED": registry_sha256,
+        "LEMMA_ACTIVE_K": "1",
+        "LEMMA_FRONTIER_DEPTH": "0",
+        "LEMMA_ACTIVE_QUEUE_SEED": "operator-smoke",
+        "LEMMA_CURRICULUM_RETARGET": "1",
+        "LEMMA_CURRICULUM_STATE_JSONL": str(state_path),
+        "LEMMA_CORPUS_OUTPUT_DIR": str(tmp_path / "corpus"),
+        "LEMMA_OPERATOR_DATA_DIR": str(tmp_path / "operator"),
+        "LEMMA_USE_DOCKER": "0",
+        "LEMMA_ALLOW_HOST_LEAN": "1",
+    }
+
+    inspect = runner.invoke(main, ["operator", "registry-inspect"], env=env)
+    assert inspect.exit_code == 0, inspect.output
+    inspect_payload = OperatorRegistryInspectReport.model_validate_json(inspect.output)
+    assert inspect_payload.active_K == 2
+    assert inspect_payload.frontier_depth == 2
+    assert inspect_payload.active_task_count == 2
+    assert inspect_payload.eligible_task_count == 11
+
+    preflight = runner.invoke(main, ["operator", "preflight"], env=env)
+    assert preflight.exit_code == 0, preflight.output
+    preflight_payload = OperatorPreflightReport.model_validate_json(preflight.output)
+    checks = {check.name: check for check in preflight_payload.checks}
+    assert preflight_payload.active_K == 2
+    assert preflight_payload.frontier_depth == 2
+    assert checks["active_window"].detail.startswith("2 active / K=2 at frontier_depth=2")
 
 
 def test_production_preflight_fails_closed_without_launch_flags(tmp_path: Path) -> None:
