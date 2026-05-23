@@ -232,8 +232,9 @@ def run_openai_compatible_prover(
                         "content": (
                             "Return only a JSON object with task_id and proof_script, no Markdown. "
                             "proof_script must be a complete Lean file matching submission_stub exactly: keep only the "
-                            "listed imports, the namespace, the exact theorem header, and the final end line, replacing "
-                            "only the sorry proof. Do not use sorry, admit, axioms, unsafe features, or extra imports. "
+                            "listed imports, the namespace, the exact theorem header, and the final end line, "
+                            "replacing only the sorry proof. Do not use sorry, admit, axioms, unsafe features, "
+                            "or extra imports. "
                             "If source_theorem_name is present and the target only wraps that theorem in extra binders "
                             "or trivial premises, introduce the wrappers and reuse source_theorem_name directly."
                         ),
