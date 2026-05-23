@@ -1038,6 +1038,8 @@ def tasks_prebuild_active_procedural_registry_cmd(tempo: int | None, force: bool
     settings = LemmaSettings()
     if settings.active_registry_json is not None:
         raise click.ClickException("active registry prebuild requires LEMMA_ACTIVE_REGISTRY_CACHE_DIR")
+    if tempo is None and settings.active_tempo_source != "chain":
+        raise click.ClickException("active registry prebuild requires --tempo unless LEMMA_ACTIVE_TEMPO_SOURCE=chain")
     active_tempo = current_active_tempo(settings) if tempo is None else tempo
     cache_path = active_registry_cache_path(settings, tempo=active_tempo)
     if cache_path is None:

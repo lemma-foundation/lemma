@@ -156,6 +156,7 @@ def test_prebuild_active_procedural_registry_writes_configured_cache(
             "LEMMA_PREFER_PROCESS_ENV": "1",
             "LEMMA_TASK_SUPPLY_MODE": "procedural",
             "LEMMA_ACTIVE_REGISTRY_CACHE_DIR": str(cache_dir),
+            "LEMMA_ACTIVE_TEMPO_SOURCE": "chain",
         },
     )
 
@@ -216,6 +217,22 @@ def test_prebuild_active_procedural_registry_requires_cache_dir(tmp_path) -> Non
 
     assert result.exit_code != 0
     assert "requires LEMMA_ACTIVE_REGISTRY_CACHE_DIR" in result.output
+
+
+def test_prebuild_active_procedural_registry_requires_explicit_or_chain_tempo(tmp_path) -> None:
+    result = CliRunner().invoke(
+        main,
+        ["tasks", "prebuild-active-procedural-registry"],
+        env={
+            "LEMMA_PREFER_PROCESS_ENV": "1",
+            "LEMMA_TASK_SUPPLY_MODE": "procedural",
+            "LEMMA_ACTIVE_REGISTRY_CACHE_DIR": str(tmp_path / "cache"),
+            "LEMMA_ACTIVE_TEMPO_SOURCE": "wall_clock",
+        },
+    )
+
+    assert result.exit_code != 0
+    assert "requires --tempo unless LEMMA_ACTIVE_TEMPO_SOURCE=chain" in result.output
 
 
 def test_root_help_exposes_only_barebones_public_commands() -> None:
