@@ -27,7 +27,7 @@ from lemma.supply.procedural import (
 from lemma.supply.slot_weight import slot_weight_receipt_for_candidate
 from lemma.supply.triviality_budget import TrivialityRetargetConfig, triviality_budget_receipt
 from lemma.supply.types import fixture_candidate
-from lemma.task_supply import make_task
+from lemma.task_supply import make_task, write_registry
 from lemma.validator import active_epoch_seed, active_tasks_for_validation, task_registry_for_validation
 
 
@@ -624,6 +624,62 @@ def test_procedural_supply_mode_rebuilds_active_registry_from_public_inputs(
     assert {task.metadata["generation_seed"] for task in active} == {active_epoch_seed(settings, tempo=3)}
     assert {task.metadata["anchor_block"] for task in active} == {720}
     assert {task.metadata["drand_round"] for task in active} == {11}
+
+
+def test_procedural_supply_mode_uses_explicit_active_registry_cache(tmp_path: Path) -> None:
+    task = make_task(
+        task_id="lemma.cached.active",
+        title="Cached active",
+        theorem_name="cached_active",
+        type_expr="True",
+        source_stream="human_curated",
+        source_name="pytest",
+    )
+    registry_path = tmp_path / "tempo-3.registry.json"
+    write_registry([task], registry_path)
+    settings = LemmaSettings(
+        _env_file=None,
+        task_supply_mode="procedural",
+        active_registry_json=registry_path,
+    )
+
+    registry = task_registry_for_validation(settings, tempo=3)
+
+    assert [task.id for task in registry.tasks] == ["lemma.cached.active"]
+
+
+def test_procedural_supply_mode_fails_closed_for_missing_explicit_active_registry(tmp_path: Path) -> None:
+    settings = LemmaSettings(
+        _env_file=None,
+        task_supply_mode="procedural",
+        active_registry_json=tmp_path / "missing.registry.json",
+    )
+
+    with pytest.raises(RuntimeError, match="active registry file does not exist"):
+        task_registry_for_validation(settings, tempo=3)
+
+
+def test_procedural_supply_mode_uses_tempo_active_registry_cache_dir(tmp_path: Path) -> None:
+    task = make_task(
+        task_id="lemma.cached.tempo",
+        title="Cached tempo",
+        theorem_name="cached_tempo",
+        type_expr="True",
+        source_stream="human_curated",
+        source_name="pytest",
+    )
+    cache_dir = tmp_path / "registries"
+    cache_dir.mkdir()
+    write_registry([task], cache_dir / "tempo-7.registry.json")
+    settings = LemmaSettings(
+        _env_file=None,
+        task_supply_mode="procedural",
+        active_registry_cache_dir=cache_dir,
+    )
+
+    registry = task_registry_for_validation(settings, tempo=7)
+
+    assert [task.id for task in registry.tasks] == ["lemma.cached.tempo"]
 
 
 def test_procedural_source_pool_includes_prior_accepted_corpus(

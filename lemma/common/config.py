@@ -57,6 +57,8 @@ class LemmaSettings(BaseSettings):
         default=None,
         validation_alias="LEMMA_TASK_REGISTRY_SHA256_EXPECTED",
     )
+    active_registry_json: Path | None = Field(default=None, validation_alias="LEMMA_ACTIVE_REGISTRY_JSON")
+    active_registry_cache_dir: Path | None = Field(default=None, validation_alias="LEMMA_ACTIVE_REGISTRY_CACHE_DIR")
     procedural_source_jsonl: Path | None = Field(default=None, validation_alias="LEMMA_PROCEDURAL_SOURCE_JSONL")
     procedural_prior_corpus_dir: Path | None = Field(
         default=None,

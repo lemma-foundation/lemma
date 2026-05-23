@@ -49,6 +49,7 @@ LEMMA_REQUIRE_STRONG_PROOF_IDENTITY=1
 LEMMA_ACTIVE_TEMPO_SOURCE=chain
 LEMMA_ACTIVE_SEED_MODE=epoch_randomness
 LEMMA_ACTIVE_EPOCH_RANDOMNESS_SOURCE=chain_drand
+LEMMA_ACTIVE_REGISTRY_CACHE_DIR=active-registries
 LEMMA_PROCEDURAL_GATE_TIMEOUT_S=120
 LEMMA_PROCEDURAL_TRIVIALITY_BUDGET_S=120
 LEMMA_PROCEDURAL_NOVELTY_CACHE_JSONL=public-entry-cache.jsonl
@@ -83,6 +84,16 @@ source-pool receipt and a Lean-backed generation receipt: typecheck, Prop,
 kernel-canonical novelty, pre-proof import-graph slot estimate, and triviality-stack gates run
 before the candidate can enter the active paid pool. Accepted proof verification records actual
 Lean kernel dependencies, and rewarded slot weights are recomputed from that recorded dependency set.
+
+For a live loop, pin the active tempo registry that miners and validators share:
+
+```bash
+uv run lemma tasks rebuild-active-procedural-registry \
+  --tempo "$TEMPO" \
+  --output "active-registries/tempo-${TEMPO}.registry.json"
+```
+
+`LEMMA_ACTIVE_REGISTRY_JSON` pins one exact active registry file and fails closed if the file is missing. `LEMMA_ACTIVE_REGISTRY_CACHE_DIR` loads `tempo-<tempo>.registry.json` when present, and otherwise lets the procedural path rebuild from the pinned public inputs. The rebuild command ignores those active-cache settings so it can refresh stale files.
 
 Corpus deltas are written under `LEMMA_CORPUS_OUTPUT_DIR`. Canonical active-pool and accepted-entry directories are written under `LEMMA_CANONICAL_OUTPUT_DIR` when set, otherwise under `LEMMA_OPERATOR_DATA_DIR/canonical`. Local receipts are written under `LEMMA_OPERATOR_DATA_DIR`. If `LEMMA_SUBMISSION_SPOOL_DIR` is set, validators consume pending `.json` or `.jsonl` submission files from that directory and move them to `processed/` after a successful pass. These paths should remain ignored unless an operator intentionally publishes sanitized artifacts.
 The file spool remains a local/operator-smoke path. The production adapters are `--bucket-reveals-dir` for a live reveal inbox and `--bucket-reveals-jsonl` for a fixture file. Each reveal row carries miner hotkey, tempo, drand round, drand signature, commit block, committed Merkle root, and revealed bucket blobs. One validation pass scores one tempo: directory intake picks the newest top-level reveal tempo, archives processed files under `processed/`, and moves older reveal files to `stale/`. Binary ciphertexts should be encoded as `base64:<payload>` or `0x<hex>`. The validator recomputes the Merkle root over decoded ciphertext bytes, confirms the miner's on-chain bucket commitment in production, decrypts bucket ciphertexts in production, requires the decrypted proof to match the reveal, and ranks winners by commit block. A live miner can publish ciphertexts with `uv run lemma miner bucket publish --submission submission.json --tempo <tempo> --drand-round <round> --miner-hotkey <hotkey> --output-dir validator-data/miner-bucket --s3-uri s3://<bucket>/<miner-prefix> --verify-upload --submit-commitment`. A live validator can then pass `--miner-buckets-json miner-buckets.json --bucket-drand-round <round> --bucket-drand-signature <signature>` to poll public bucket objects directly before converting them into the same reveal path.

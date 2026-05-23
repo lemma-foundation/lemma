@@ -68,6 +68,7 @@ LEMMA_PROCEDURAL_CITATION_WINDOW_TEMPOS=2000
 LEMMA_PROCEDURAL_TRIVIALITY_RETARGET_JSONL=public-settlements.jsonl
 LEMMA_PROCEDURAL_NOVELTY_CACHE_JSONL=public-entry-cache.jsonl
 LEMMA_PROCEDURAL_IMPORT_GRAPH_JSONL=public-import-graph.jsonl
+LEMMA_ACTIVE_REGISTRY_CACHE_DIR=active-registries
 LEMMA_ACTIVE_K=10
 LEMMA_FRONTIER_DEPTH=0
 LEMMA_ACTIVE_QUEUE_SEED=lemma-active-queue
@@ -79,6 +80,7 @@ LEMMA_OPERATOR_DATA_DIR=validator-data
 ```
 
 `LEMMA_ACTIVE_K` is validator throughput. `LEMMA_FRONTIER_DEPTH` and generated queue depth control difficulty. Payment uses deterministic active slot weights, not subjective validator scores.
+When `LEMMA_ACTIVE_REGISTRY_CACHE_DIR` is set, miners and validators load `tempo-<tempo>.registry.json` for the active tempo if it exists. `LEMMA_ACTIVE_REGISTRY_JSON` pins one exact registry file and fails closed if that file is missing.
 
 Inspect registry depth before accepting submissions:
 

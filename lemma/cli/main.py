@@ -1009,7 +1009,8 @@ def tasks_rebuild_active_procedural_registry_cmd(output_path: Path, tempo: int |
 
     settings = LemmaSettings()
     active_tempo = current_active_tempo(settings) if tempo is None else tempo
-    registry = task_registry_for_validation(settings, tempo=active_tempo)
+    rebuild_settings = settings.model_copy(update={"active_registry_json": None, "active_registry_cache_dir": None})
+    registry = task_registry_for_validation(rebuild_settings, tempo=active_tempo)
     write_registry(registry.tasks, output_path)
     click.echo(
         json.dumps(

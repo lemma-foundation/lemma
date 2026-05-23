@@ -87,6 +87,45 @@ def test_verify_uses_procedural_registry(monkeypatch: pytest.MonkeyPatch, tmp_pa
     assert calls == {"mode": "procedural", "tempo": 17, "task_id": "lemma.procedural.test"}
 
 
+def test_rebuild_active_procedural_registry_bypasses_active_cache(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    task = make_task(
+        task_id="lemma.procedural.rebuilt",
+        title="Rebuilt",
+        theorem_name="rebuilt",
+        type_expr="True",
+        source_stream="procedural",
+        source_name="pytest",
+    )
+    calls = {}
+
+    def fake_registry(settings, *, tempo):  # noqa: ANN001
+        calls["tempo"] = tempo
+        calls["active_registry_json"] = settings.active_registry_json
+        calls["active_registry_cache_dir"] = settings.active_registry_cache_dir
+        return type("Registry", (), {"tasks": (task,)})()
+
+    monkeypatch.setattr("lemma.validator.current_active_tempo", lambda settings: 19)
+    monkeypatch.setattr("lemma.validator.task_registry_for_validation", fake_registry)
+    output = tmp_path / "rebuilt.registry.json"
+
+    result = CliRunner().invoke(
+        main,
+        ["tasks", "rebuild-active-procedural-registry", "--output", str(output)],
+        env={
+            "LEMMA_PREFER_PROCESS_ENV": "1",
+            "LEMMA_TASK_SUPPLY_MODE": "procedural",
+            "LEMMA_ACTIVE_REGISTRY_JSON": str(tmp_path / "stale.registry.json"),
+            "LEMMA_ACTIVE_REGISTRY_CACHE_DIR": str(tmp_path / "cache"),
+        },
+    )
+
+    assert result.exit_code == 0, result.output
+    assert calls == {"tempo": 19, "active_registry_json": None, "active_registry_cache_dir": None}
+    assert "lemma.procedural.rebuilt" in output.read_text(encoding="utf-8")
+
+
 def test_root_help_exposes_only_barebones_public_commands() -> None:
     result = CliRunner().invoke(main, ["--help"])
 

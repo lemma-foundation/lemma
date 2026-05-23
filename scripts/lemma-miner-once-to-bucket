@@ -42,25 +42,15 @@ from lemma.common.config import LemmaSettings
 from lemma.miner import ProverError, mine_once
 from lemma.task_supply import write_registry
 from lemma.tasks import load_task_registry
-from lemma.validator import active_tasks_for_validation, current_active_tempo, task_registry_for_validation
-
-
-def registry_cache_path(tempo: int) -> Path | None:
-    explicit = os.environ.get("LEMMA_ACTIVE_REGISTRY_JSON", "").strip()
-    if explicit:
-        return Path(explicit)
-    root = os.environ.get("LEMMA_ACTIVE_REGISTRY_CACHE_DIR", "").strip()
-    if not root:
-        return None
-    return Path(root) / f"tempo-{tempo}.registry.json"
+from lemma.validator import active_registry_cache_path, active_tasks_for_validation, current_active_tempo, task_registry_for_validation
 
 
 def registry_for_tempo(settings: LemmaSettings, tempo: int):
-    cache_path = registry_cache_path(tempo)
+    cache_path = active_registry_cache_path(settings, tempo=tempo)
     if cache_path is not None and cache_path.is_file():
         return load_task_registry(cache_path.read_bytes()), str(cache_path), False
     registry = task_registry_for_validation(settings, tempo=tempo)
-    if cache_path is not None:
+    if cache_path is not None and settings.active_registry_json is None:
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         tmp = cache_path.with_name(cache_path.name + ".tmp")
         write_registry(registry.tasks, tmp)

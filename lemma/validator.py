@@ -26,7 +26,7 @@ from lemma.submissions import LemmaSubmission, validate_submission_for_task
 from lemma.supply.queue import initial_active_pool
 from lemma.supply.slot_weight import slot_weight_receipt_for_kernel_dependencies, slot_weight_receipt_for_task
 from lemma.task_activation import task_reward_eligibility, task_slot_weight
-from lemma.tasks import LemmaTask, TaskRegistry, fetch_task_registry, task_registry_from_tasks
+from lemma.tasks import LemmaTask, TaskRegistry, fetch_task_registry, load_task_registry, task_registry_from_tasks
 from lemma.verifiers.lean import verify_result_from_adapter_result
 from lemma.verifiers.registry import get_verifier
 
@@ -179,7 +179,29 @@ def task_registry_for_validation(settings: LemmaSettings, *, tempo: int) -> Task
             settings,
             verify_signature=settings.verify_registry_signatures,
         )
+    cached = cached_active_registry_for_tempo(settings, tempo=tempo)
+    if cached is not None:
+        return cached
     return _procedural_registry_for_tempo(settings, tempo=tempo)
+
+
+def active_registry_cache_path(settings: LemmaSettings, *, tempo: int) -> Path | None:
+    if settings.active_registry_json is not None:
+        return settings.active_registry_json
+    if settings.active_registry_cache_dir is None:
+        return None
+    return settings.active_registry_cache_dir / f"tempo-{tempo}.registry.json"
+
+
+def cached_active_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> TaskRegistry | None:
+    path = active_registry_cache_path(settings, tempo=tempo)
+    if path is None:
+        return None
+    if not path.is_file():
+        if settings.active_registry_json is not None:
+            raise RuntimeError(f"active registry file does not exist: {path}")
+        return None
+    return load_task_registry(path.read_bytes())
 
 
 def _procedural_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> TaskRegistry:
