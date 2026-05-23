@@ -626,6 +626,91 @@ def test_procedural_supply_mode_rebuilds_active_registry_from_public_inputs(
     assert {task.metadata["drand_round"] for task in active} == {11}
 
 
+def test_procedural_supply_filters_sources_to_frontier_depth(monkeypatch, tmp_path: Path) -> None:
+    snapshot = tmp_path / "snapshot.jsonl"
+    _write_snapshot(snapshot)
+    with snapshot.open("a", encoding="utf-8") as fh:
+        fh.write(
+            json.dumps(
+                {
+                    "theorem_name": "Hard.depth_one",
+                    "type_expr": "∀ n : Nat, n = n",
+                    "imports": ["Mathlib"],
+                    "mathlib_rev": "abc123",
+                    "source_path": "Mathlib/Hard.lean",
+                    "source_license": "Apache-2.0",
+                    "queue_depth": 1,
+                },
+                sort_keys=True,
+            )
+            + "\n"
+    )
+    full_source_hash = source_pool_hash(mathlib_candidates_from_jsonl(snapshot))
+    captured_depths = []
+    captured_max_queue_depth = None
+
+    class StopGeneration(Exception):
+        pass
+
+    def fake_generate_depth2_candidates(sources, **kwargs):  # noqa: ANN001, ANN202
+        nonlocal captured_max_queue_depth
+        captured_max_queue_depth = kwargs["max_queue_depth"]
+        captured_depths.extend(source.queue_depth for source in sources)
+        raise StopGeneration
+
+    monkeypatch.setattr("lemma.supply.procedural.generate_depth2_candidates", fake_generate_depth2_candidates)
+    settings = LemmaSettings(
+        _env_file=None,
+        task_supply_mode="procedural",
+        procedural_source_jsonl=snapshot,
+        procedural_source_sha256_expected=full_source_hash,
+        procedural_candidate_count=1,
+        active_task_count=1,
+        frontier_depth=0,
+    )
+
+    with pytest.raises(StopGeneration):
+        task_registry_for_validation(settings, tempo=3)
+
+    assert captured_max_queue_depth == 0
+    assert captured_depths == [0, 0, 1]
+
+
+def test_depth2_generation_filters_ordering_without_changing_source_hash(tmp_path: Path) -> None:
+    snapshot = tmp_path / "snapshot.jsonl"
+    _write_snapshot(snapshot)
+    with snapshot.open("a", encoding="utf-8") as fh:
+        fh.write(
+            json.dumps(
+                {
+                    "theorem_name": "Hard.depth_one",
+                    "type_expr": "∀ n : Nat, n = n",
+                    "imports": ["Mathlib"],
+                    "mathlib_rev": "abc123",
+                    "source_path": "Mathlib/Hard.lean",
+                    "source_license": "Apache-2.0",
+                    "queue_depth": 1,
+                },
+                sort_keys=True,
+            )
+            + "\n"
+        )
+    sources = mathlib_candidates_from_jsonl(snapshot)
+    full_source_hash = source_pool_hash(sources)
+
+    candidates = generate_depth2_candidates(
+        sources,
+        generation_seed="frontier",
+        epoch_randomness="frontier",
+        count=1,
+        tempo=3,
+        max_queue_depth=0,
+    )
+
+    assert candidates[0].queue_depth == 0
+    assert candidates[0].metadata["source_pool_hash"] == full_source_hash
+
+
 def test_procedural_supply_mode_uses_explicit_active_registry_cache(tmp_path: Path) -> None:
     task = make_task(
         task_id="lemma.cached.active",

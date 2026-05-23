@@ -211,6 +211,7 @@ def generate_depth2_candidates(
     epoch_randomness: str,
     count: int,
     tempo: int,
+    max_queue_depth: int | None = None,
     citation_alpha: float = 0.5,
     citation_weight_cap: float = 64.0,
     citation_window_tempos: int = 2000,
@@ -228,6 +229,11 @@ def generate_depth2_candidates(
         raise ValueError("count must be positive")
     if not sources:
         raise ValueError("source pool must not be empty")
+    eligible_sources = tuple(
+        source for source in sources if max_queue_depth is None or source.queue_depth <= max_queue_depth
+    )
+    if not eligible_sources:
+        raise ValueError(f"source pool has no candidates at max_queue_depth={max_queue_depth}")
 
     pool_hash = source_pool_hash(sources)
     pool_receipt = source_pool_receipt(
@@ -240,7 +246,7 @@ def generate_depth2_candidates(
     operator_hash = procedural_operator_bundle_hash()
     epoch_fields = _epoch_fields(epoch_randomness)
     ordered = _ordered_sources(
-        sources,
+        eligible_sources,
         seed=generation_seed,
         citation_alpha=citation_alpha,
         citation_weight_cap=citation_weight_cap,

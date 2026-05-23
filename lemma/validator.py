@@ -282,6 +282,7 @@ def _procedural_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> Ta
         epoch_randomness=epoch_randomness,
         count=count,
         tempo=tempo,
+        max_queue_depth=settings.frontier_depth,
         citation_alpha=settings.procedural_citation_alpha,
         citation_weight_cap=settings.procedural_citation_weight_cap,
         citation_window_tempos=settings.procedural_citation_window_tempos,
