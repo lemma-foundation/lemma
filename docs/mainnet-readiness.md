@@ -82,6 +82,60 @@ PY
 
 Systemd timers, cron jobs, and local reminders are only wakeups. On every wakeup, the operator should read the chain block and derive the active tempo before deciding whether to prebuild, mine, validate, publish, or wait.
 
+Public-safe live checks should be runnable from the configured operator environment without publishing env files, wallet names, hostnames, IPs, or local machine paths. Use the chain-derived `active_tempo` from the command above as `TEMPO`.
+
+```bash
+uv run lemma operator registry-inspect
+uv run lemma operator diagnostics --output operator-diagnostics.json
+
+uv run python - <<'PY'
+import os
+from pathlib import Path
+
+from lemma.tasks import load_task_registry
+
+tempo = int(os.getenv("TEMPO", ""))
+path = Path(os.getenv("LEMMA_ACTIVE_REGISTRY_CACHE_DIR", "")) / f"tempo-{tempo}.registry.json"
+registry = load_task_registry(path.read_bytes())
+print({"tempo": tempo, "registry_sha256": registry.sha256, "tasks": len(registry.tasks)})
+PY
+
+test -f "${LEMMA_OPERATOR_DATA_DIR:?}/last_bucket_tempo" &&
+  printf 'last_bucket_tempo=%s\n' "$(cat "${LEMMA_OPERATOR_DATA_DIR}/last_bucket_tempo")"
+
+find "${LEMMA_BUCKET_REVEALS_DIR:?}" -maxdepth 2 -type f -name '*.json*' | sort
+
+uv run python - <<'PY'
+import json
+import os
+from pathlib import Path
+
+path = Path(os.getenv("LEMMA_OPERATOR_DATA_DIR", "")) / "validator-runs.jsonl"
+rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+latest = rows[-1]
+keys = (
+    "active_tempo",
+    "registry_sha256",
+    "verified_count",
+    "accepted_unique_count",
+    "corpus_row_count",
+    "score_event_count",
+    "weights_set",
+    "chain_commitment_set",
+    "tempo_commitment_payload",
+)
+print({key: latest.get(key) for key in keys})
+PY
+
+uv run python scripts/publish_corpus_snapshot.py --repo "$LEMMA_CORPUS_REPO" --netuid "sn${BT_NETUID}" --dry-run
+uv run python scripts/publish_chain_commitment.py \
+  --repo "$LEMMA_CORPUS_REPO" \
+  --netuid "sn${BT_NETUID}" \
+  --bt-netuid "$BT_NETUID" \
+  --readback \
+  --hotkey "$VALIDATOR_HOTKEY"
+```
+
 ## Burn-In Gates
 
 Closed burn-in is at least 72 continuous testnet hours with controlled miners. Public burn-in is at least 7 days with procedural depth-2 supply and active `K` filled.
