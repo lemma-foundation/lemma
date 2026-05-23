@@ -81,6 +81,7 @@ PY
 ```
 
 Systemd timers, cron jobs, and local reminders are only wakeups. On every wakeup, the operator should read the chain block and derive the active tempo before deciding whether to prebuild, mine, validate, publish, or wait.
+For burn-in, prefer short wakeups such as 5-10 minutes plus once-per-tempo miner state over epoch-length timers. Epoch-length timers can drift into a validator-before-miner ordering and delay reveal consumption until the next epoch-sized wakeup.
 
 Public-safe live checks should be runnable from the configured operator environment without publishing env files, wallet names, hostnames, IPs, or local machine paths. Use the chain-derived `active_tempo` from the command above as `TEMPO`.
 
