@@ -126,6 +126,98 @@ def test_rebuild_active_procedural_registry_bypasses_active_cache(
     assert "lemma.procedural.rebuilt" in output.read_text(encoding="utf-8")
 
 
+def test_prebuild_active_procedural_registry_writes_configured_cache(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    task = make_task(
+        task_id="lemma.procedural.prebuilt",
+        title="Prebuilt",
+        theorem_name="prebuilt",
+        type_expr="True",
+        source_stream="procedural",
+        source_name="pytest",
+    )
+    calls = {}
+
+    def fake_registry(settings, *, tempo):  # noqa: ANN001
+        calls["tempo"] = tempo
+        calls["active_registry_json"] = settings.active_registry_json
+        calls["active_registry_cache_dir"] = settings.active_registry_cache_dir
+        return type("Registry", (), {"tasks": (task,)})()
+
+    monkeypatch.setattr("lemma.validator.current_active_tempo", lambda settings: 23)
+    monkeypatch.setattr("lemma.validator.task_registry_for_validation", fake_registry)
+    cache_dir = tmp_path / "cache"
+
+    result = CliRunner().invoke(
+        main,
+        ["tasks", "prebuild-active-procedural-registry"],
+        env={
+            "LEMMA_PREFER_PROCESS_ENV": "1",
+            "LEMMA_TASK_SUPPLY_MODE": "procedural",
+            "LEMMA_ACTIVE_REGISTRY_CACHE_DIR": str(cache_dir),
+        },
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["built"] is True
+    assert payload["tempo"] == 23
+    assert calls == {"tempo": 23, "active_registry_json": None, "active_registry_cache_dir": None}
+    assert "lemma.procedural.prebuilt" in (cache_dir / "tempo-23.registry.json").read_text(encoding="utf-8")
+
+
+def test_prebuild_active_procedural_registry_skips_existing_cache(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    task = make_task(
+        task_id="lemma.procedural.cached",
+        title="Cached",
+        theorem_name="cached",
+        type_expr="True",
+        source_stream="procedural",
+        source_name="pytest",
+    )
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    write_registry([task], cache_dir / "tempo-29.registry.json")
+
+    def fail_registry(settings, *, tempo):  # noqa: ANN001
+        raise AssertionError("existing cache should not rebuild")
+
+    monkeypatch.setattr("lemma.validator.task_registry_for_validation", fail_registry)
+
+    result = CliRunner().invoke(
+        main,
+        ["tasks", "prebuild-active-procedural-registry", "--tempo", "29"],
+        env={
+            "LEMMA_PREFER_PROCESS_ENV": "1",
+            "LEMMA_TASK_SUPPLY_MODE": "procedural",
+            "LEMMA_ACTIVE_REGISTRY_CACHE_DIR": str(cache_dir),
+        },
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["built"] is False
+    assert payload["tasks"] == 1
+
+
+def test_prebuild_active_procedural_registry_requires_cache_dir(tmp_path) -> None:
+    result = CliRunner().invoke(
+        main,
+        ["tasks", "prebuild-active-procedural-registry", "--tempo", "1"],
+        env={
+            "LEMMA_PREFER_PROCESS_ENV": "1",
+            "LEMMA_TASK_SUPPLY_MODE": "procedural",
+            "LEMMA_ACTIVE_REGISTRY_JSON": str(tmp_path / "one.registry.json"),
+        },
+    )
+
+    assert result.exit_code != 0
+    assert "requires LEMMA_ACTIVE_REGISTRY_CACHE_DIR" in result.output
+
+
 def test_root_help_exposes_only_barebones_public_commands() -> None:
     result = CliRunner().invoke(main, ["--help"])
 

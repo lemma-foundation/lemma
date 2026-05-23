@@ -1026,6 +1026,50 @@ def tasks_rebuild_active_procedural_registry_cmd(output_path: Path, tempo: int |
     )
 
 
+@tasks_cmd.command("prebuild-active-procedural-registry", hidden=True)
+@click.option("--tempo", type=click.IntRange(min=0), default=None)
+@click.option("--force", is_flag=True)
+def tasks_prebuild_active_procedural_registry_cmd(tempo: int | None, force: bool) -> None:
+    """Ensure the configured active procedural registry cache exists."""
+    from lemma.task_supply import write_registry
+    from lemma.tasks import load_task_registry
+    from lemma.validator import active_registry_cache_path, current_active_tempo, task_registry_for_validation
+
+    settings = LemmaSettings()
+    if settings.active_registry_json is not None:
+        raise click.ClickException("active registry prebuild requires LEMMA_ACTIVE_REGISTRY_CACHE_DIR")
+    active_tempo = current_active_tempo(settings) if tempo is None else tempo
+    cache_path = active_registry_cache_path(settings, tempo=active_tempo)
+    if cache_path is None:
+        raise click.ClickException("set LEMMA_ACTIVE_REGISTRY_CACHE_DIR before prebuilding")
+
+    built = False
+    if cache_path.exists() and not force:
+        registry = load_task_registry(cache_path.read_bytes())
+    else:
+        rebuild_settings = settings.model_copy(update={"active_registry_json": None, "active_registry_cache_dir": None})
+        registry = task_registry_for_validation(rebuild_settings, tempo=active_tempo)
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = cache_path.with_name(cache_path.name + ".tmp")
+        write_registry(registry.tasks, tmp_path)
+        tmp_path.replace(cache_path)
+        built = True
+
+    click.echo(
+        json.dumps(
+            {
+                "built": built,
+                "output": str(cache_path),
+                "tempo": active_tempo,
+                "registry_sha256": hashlib.sha256(cache_path.read_bytes()).hexdigest(),
+                "tasks": len(registry.tasks),
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+
+
 @tasks_cmd.command("build-procedural-registry")
 @click.option(
     "--candidate-jsonl",

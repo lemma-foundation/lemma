@@ -82,6 +82,12 @@ LEMMA_OPERATOR_DATA_DIR=validator-data
 `LEMMA_ACTIVE_K` is validator throughput. `LEMMA_FRONTIER_DEPTH` and generated queue depth control difficulty. Payment uses deterministic active slot weights, not subjective validator scores.
 When `LEMMA_ACTIVE_REGISTRY_CACHE_DIR` is set, miners and validators load `tempo-<tempo>.registry.json` for the active tempo if it exists. `LEMMA_ACTIVE_REGISTRY_JSON` pins one exact registry file and fails closed if that file is missing.
 
+Prebuild the live tempo cache before miners run:
+
+```bash
+uv run lemma tasks prebuild-active-procedural-registry
+```
+
 Inspect registry depth before accepting submissions:
 
 ```bash
