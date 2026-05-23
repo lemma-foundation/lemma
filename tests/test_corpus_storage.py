@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
 from lemma.chain.commitments import (
     compact_storage_commitment_payload,
     compact_tempo_cid_commitment_payload,
@@ -70,6 +71,116 @@ def test_build_storage_index_writes_per_epoch_commitment_artifacts(tmp_path: Pat
     )
     assert len(commitment["commitment_payload"].encode("utf-8")) <= 128
     assert (repo / "canonical" / "sn467" / "storage-index.json").is_file()
+
+
+def test_build_storage_index_uses_row_tempo_when_present(tmp_path: Path) -> None:
+    repo = tmp_path / "lemma-corpus"
+    rows = [
+        {
+            "row_id": "a" * 64,
+            "task_id": "task.a",
+            "proof_sha256": "b" * 64,
+            "queue_position": 0,
+            "solver_hotkey": "solver",
+            "tempo": 19954,
+            "validator_hotkey": "validator",
+        }
+    ]
+    epoch_file = repo / "corpus" / "sn467" / "epoch-000045.jsonl"
+    _write_epoch(epoch_file, rows)
+    stale_dir = repo / "canonical" / "sn467" / "tempos" / "tempo-000045"
+    stale_dir.mkdir(parents=True)
+    (stale_dir / "manifest.json").write_bytes(
+        canonical_json_bytes(
+            {
+                "accepted_merkle_root": "0" * 64,
+                "entry_count": 1,
+                "source_epoch_file": "corpus/sn467/epoch-000045.jsonl",
+                "tempo": 45,
+            }
+        )
+    )
+    stale_commitment = repo / "canonical" / "sn467" / "commitments" / "tempo-000045.json"
+    stale_commitment.parent.mkdir(parents=True)
+    stale_commitment.write_bytes(
+        canonical_json_bytes(
+            {
+                "accepted_merkle_root": "0" * 64,
+                "active_pool_directory_sha256": None,
+                "tempo": 45,
+                "tempo_directory_sha256": "1" * 64,
+            }
+        )
+    )
+
+    index = build_storage_index(repo, "sn467", resolver="hippius-s3-arion")
+
+    assert index["epochs"][0]["tempo"] == 19954
+    assert (repo / "canonical" / "sn467" / "tempos" / "tempo-019954" / "manifest.json").is_file()
+    assert not (repo / "canonical" / "sn467" / "tempos" / "tempo-000045").exists()
+    assert not stale_commitment.exists()
+
+
+def test_build_storage_index_preserves_existing_live_tempo_artifacts(tmp_path: Path) -> None:
+    repo = tmp_path / "lemma-corpus"
+    row = {
+        "row_id": "a" * 64,
+        "task_id": "task.a",
+        "proof_sha256": "b" * 64,
+        "queue_position": 0,
+        "solver_hotkey": "solver",
+        "tempo": 19954,
+        "validator_hotkey": "validator",
+    }
+    _write_epoch(repo / "corpus" / "sn467" / "epoch-000045.jsonl", [row])
+    task = make_task(
+        task_id="lemma.test.active",
+        title="Active true",
+        theorem_name="active_true",
+        type_expr="True",
+        source_stream="human_curated",
+        source_name="pytest",
+    )
+    output_root = repo / "canonical"
+    active = build_active_pool_storage((task,), output_root, netuid="sn467", tempo=19954, resolver="hippius-s3-arion")
+    build_epoch_storage_from_rows(
+        [row],
+        output_root,
+        netuid="sn467",
+        tempo=19954,
+        resolver="hippius-s3-arion",
+        active_pool=active,
+    )
+    commitment_path = output_root / "sn467" / "commitments" / "tempo-019954.json"
+    before = json.loads(commitment_path.read_text(encoding="utf-8"))
+
+    index = build_storage_index(repo, "sn467", resolver="hippius-s3-arion")
+    after = json.loads(commitment_path.read_text(encoding="utf-8"))
+
+    assert index["epochs"][0]["tempo"] == 19954
+    assert after == before
+    assert after["active_pool_directory_sha256"] == active["active_pool_directory_sha256"]
+    assert "source_epoch_file" not in json.loads(
+        (output_root / "sn467" / "tempos" / "tempo-019954" / "manifest.json").read_text(encoding="utf-8")
+    )
+
+
+def test_build_storage_index_rejects_duplicate_row_ids(tmp_path: Path) -> None:
+    repo = tmp_path / "lemma-corpus"
+    row = {
+        "row_id": "a" * 64,
+        "task_id": "task.a",
+        "proof_sha256": "b" * 64,
+        "queue_position": 0,
+        "solver_hotkey": "solver",
+        "tempo": 19954,
+        "validator_hotkey": "validator",
+    }
+    _write_epoch(repo / "corpus" / "sn467" / "epoch-000045.jsonl", [row])
+    _write_epoch(repo / "corpus" / "sn467" / "epoch-000046.jsonl", [{**row, "tempo": 19954}])
+
+    with pytest.raises(ValueError, match="duplicate corpus row_id"):
+        build_storage_index(repo, "sn467", resolver="hippius-s3-arion")
 
 
 def test_active_pool_and_accepted_storage_share_tempo_commitment(tmp_path: Path) -> None:

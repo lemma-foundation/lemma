@@ -238,8 +238,87 @@ def build_epoch_storage_from_rows(
     }
 
 
-def build_epoch_storage(epoch_file: Path, output_root: Path, *, netuid: str, resolver: str) -> dict[str, object]:
-    tempo = epoch_number(epoch_file)
+def _epoch_storage_tempo(epoch_file: Path, rows: Sequence[dict[str, Any]]) -> int:
+    row_tempos: set[int] = set()
+    missing_tempo = False
+    for line_number, row in enumerate(rows, start=1):
+        value = row.get("tempo")
+        if value is None:
+            missing_tempo = True
+            continue
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError(f"{epoch_file}:{line_number}: tempo must be a non-negative integer")
+        row_tempos.add(value)
+    if not row_tempos:
+        return epoch_number(epoch_file)
+    if missing_tempo or len(row_tempos) != 1:
+        raise ValueError(f"{epoch_file}: all rows must carry the same tempo")
+    return next(iter(row_tempos))
+
+
+def _rows_have_chain_tempo(rows: Sequence[dict[str, Any]]) -> bool:
+    return any(row.get("tempo") is not None for row in rows)
+
+
+def _existing_epoch_storage(
+    rows: Sequence[dict[str, Any]], output_root: Path, *, netuid: str, tempo: int
+) -> dict[str, object] | None:
+    tempo_dir = output_root / netuid / "tempos" / f"tempo-{tempo:06d}"
+    manifest_path = tempo_dir / "manifest.json"
+    commitment_path = output_root / netuid / "commitments" / f"tempo-{tempo:06d}.json"
+    if not manifest_path.exists() and not commitment_path.exists():
+        return None
+    if not manifest_path.is_file() or not commitment_path.is_file():
+        raise ValueError(f"incomplete canonical storage for {netuid} tempo {tempo}")
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    commitment = json.loads(commitment_path.read_text(encoding="utf-8"))
+    accepted_merkle_root = merkle_root([sha256_hex(canonical_json_bytes(row)) for row in rows])
+    entry_count = len(rows)
+    if manifest.get("tempo") != tempo or commitment.get("tempo") != tempo:
+        raise ValueError(f"canonical storage tempo mismatch for {netuid} tempo {tempo}")
+    if manifest.get("entry_count") != entry_count:
+        raise ValueError(f"canonical storage entry count mismatch for {netuid} tempo {tempo}")
+    if manifest.get("accepted_merkle_root") != accepted_merkle_root:
+        raise ValueError(f"canonical storage accepted root mismatch for {netuid} tempo {tempo}")
+    if commitment.get("accepted_merkle_root") != accepted_merkle_root:
+        raise ValueError(f"canonical commitment accepted root mismatch for {netuid} tempo {tempo}")
+
+    tempo_directory_sha256 = directory_digest(tempo_dir)
+    if commitment.get("tempo_directory_sha256") != tempo_directory_sha256:
+        raise ValueError(f"canonical commitment directory hash mismatch for {netuid} tempo {tempo}")
+    return {
+        "accepted_merkle_root": accepted_merkle_root,
+        "commitment": commitment_path,
+        "directory": tempo_dir,
+        "entry_count": entry_count,
+        "tempo": tempo,
+        "tempo_commitment_payload": commitment.get("tempo_commitment_payload") or commitment.get("commitment_payload"),
+        "tempo_directory_sha256": tempo_directory_sha256,
+    }
+
+
+def _remove_legacy_epoch_storage(epoch_file: Path, output_root: Path, *, netuid: str, tempo: int) -> None:
+    legacy_tempo = epoch_number(epoch_file)
+    if legacy_tempo == tempo:
+        return
+    tempo_dir = output_root / netuid / "tempos" / f"tempo-{legacy_tempo:06d}"
+    manifest_path = tempo_dir / "manifest.json"
+    if not manifest_path.is_file():
+        return
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if manifest.get("source_epoch_file") != f"corpus/{netuid}/{epoch_file.name}":
+        return
+    commitment_path = output_root / netuid / "commitments" / f"tempo-{legacy_tempo:06d}.json"
+    if commitment_path.is_file():
+        commitment = json.loads(commitment_path.read_text(encoding="utf-8"))
+        if commitment.get("active_pool_directory_sha256"):
+            return
+        commitment_path.unlink()
+    shutil.rmtree(tempo_dir)
+
+
+def _read_epoch_rows(epoch_file: Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for line_number, line in enumerate(epoch_file.read_text(encoding="utf-8").splitlines(), start=1):
         if not line.strip():
@@ -248,6 +327,17 @@ def build_epoch_storage(epoch_file: Path, output_root: Path, *, netuid: str, res
         if not isinstance(row, dict):
             raise ValueError(f"{epoch_file}:{line_number}: expected JSON object")
         rows.append(row)
+    return rows
+
+
+def build_epoch_storage(epoch_file: Path, output_root: Path, *, netuid: str, resolver: str) -> dict[str, object]:
+    rows = _read_epoch_rows(epoch_file)
+    tempo = _epoch_storage_tempo(epoch_file, rows)
+    _remove_legacy_epoch_storage(epoch_file, output_root, netuid=netuid, tempo=tempo)
+    if _rows_have_chain_tempo(rows):
+        existing = _existing_epoch_storage(rows, output_root, netuid=netuid, tempo=tempo)
+        if existing is not None:
+            return existing
     result = build_epoch_storage_from_rows(rows, output_root, netuid=netuid, tempo=tempo, resolver=resolver)
     directory = result["directory"]
     commitment_path = result["commitment"]
@@ -281,10 +371,38 @@ def build_storage_index(repo: Path, netuid: str, *, resolver: str = "hippius-s3-
     if not corpus_dir.is_dir():
         raise SystemExit(f"missing corpus directory: {corpus_dir}")
 
-    epochs = [
-        build_epoch_storage(path, output_root, netuid=netuid, resolver=resolver)
-        for path in sorted(corpus_dir.glob("epoch-*.jsonl"))
-    ]
+    rows_by_tempo: dict[int, list[dict[str, Any]]] = {}
+    files_by_tempo: dict[int, list[Path]] = {}
+    seen_row_ids: dict[tuple[int, str], str] = {}
+    for path in sorted(corpus_dir.glob("epoch-*.jsonl")):
+        rows = _read_epoch_rows(path)
+        tempo = _epoch_storage_tempo(path, rows)
+        _remove_legacy_epoch_storage(path, output_root, netuid=netuid, tempo=tempo)
+        for line_number, row in enumerate(rows, start=1):
+            row_id = str(row.get("row_id") or sha256_hex(canonical_json_bytes(row)))
+            location = f"{path.name}:{line_number}"
+            key = (tempo, row_id)
+            if previous := seen_row_ids.get(key):
+                raise ValueError(f"duplicate corpus row_id {row_id} for tempo {tempo}: {previous} and {location}")
+            seen_row_ids[key] = location
+        rows_by_tempo.setdefault(tempo, []).extend(rows)
+        files_by_tempo.setdefault(tempo, []).append(path)
+
+    epochs: list[dict[str, object]] = []
+    for tempo in sorted(rows_by_tempo):
+        rows = rows_by_tempo[tempo]
+        if _rows_have_chain_tempo(rows):
+            existing = _existing_epoch_storage(rows, output_root, netuid=netuid, tempo=tempo)
+            if existing is not None:
+                epochs.append(existing)
+                continue
+        files = files_by_tempo[tempo]
+        if len(files) == 1:
+            epochs.append(build_epoch_storage(files[0], output_root, netuid=netuid, resolver=resolver))
+        else:
+            epochs.append(
+                build_epoch_storage_from_rows(rows, output_root, netuid=netuid, tempo=tempo, resolver=resolver)
+            )
     index = {
         "schema_version": 1,
         "epochs": [

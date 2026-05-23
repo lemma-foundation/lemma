@@ -20,7 +20,9 @@ The current public storage shape is:
 Keep Hippius writes append-only in practice: publish a new `snapshots/<timestamp>/` prefix and do not sync with `--delete`.
 For live validator tempos, set `LEMMA_CANONICAL_PUBLISH_IPFS_API_URL=http://<ipfs-node>:5001` so each pass publishes the active-pool and accepted-entry directories to IPFS, verifies readback by CID, and writes a CID-bound tempo commitment. Set `LEMMA_CANONICAL_PUBLISH_S3_URI=s3://<bucket>/<canonical-prefix>` to also mirror the bytes to Hippius S3.
 
-The publisher builds one deterministic directory per accepted epoch:
+The publisher indexes one deterministic directory per accepted chain tempo. If rows
+carry `tempo`, that chain tempo is authoritative; the `epoch-*.jsonl` filename is
+only a legacy fallback for rows without a tempo.
 
 ```text
 canonical/sn467/tempos/tempo-000001/
