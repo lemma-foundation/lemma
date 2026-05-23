@@ -226,6 +226,7 @@ class LemmaSettings(BaseSettings):
     prover_api_key: str = Field(default="", validation_alias="LEMMA_PROVER_API_KEY")
     prover_model: str = Field(default="", validation_alias="LEMMA_PROVER_MODEL")
     prover_timeout_s: float = Field(default=300.0, gt=0.0, validation_alias="LEMMA_PROVER_TIMEOUT_S")
+    prover_repair_attempts: int = Field(default=0, ge=0, le=3, validation_alias="LEMMA_PROVER_REPAIR_ATTEMPTS")
 
     wallet_cold: str = Field(default="default", validation_alias="BT_WALLET_COLD")
     wallet_hot: str = Field(default="default", validation_alias="BT_WALLET_HOT")

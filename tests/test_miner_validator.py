@@ -16,6 +16,7 @@ from lemma.lean.sandbox import VerifyResult
 from lemma.miner import (
     ProverError,
     ProverResult,
+    _normalize_prover_result,
     _strip_json_fence,
     mine_once,
     run_openai_compatible_prover,
@@ -113,6 +114,26 @@ def test_openai_compatible_prover_accepts_fenced_json() -> None:
     assert json.loads(_strip_json_fence(f"```json\n{json.dumps(payload)}\n```")) == payload
 
 
+def test_prover_result_normalizer_appends_submission_end() -> None:
+    proof = ProverResult(
+        task_id="lemma.test.true",
+        proof_script="\n".join(
+            [
+                "import Mathlib",
+                "",
+                "namespace Submission",
+                "",
+                "theorem test_true : True := by",
+                "  trivial",
+            ]
+        ),
+    )
+
+    normalized = _normalize_prover_result(_task(), proof)
+
+    assert normalized.proof_script.endswith("end Submission\n")
+
+
 def test_openai_compatible_prover_rejects_malformed_json(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     class FakeResponse:
         def raise_for_status(self) -> None:
@@ -128,6 +149,45 @@ def test_openai_compatible_prover_rejects_malformed_json(monkeypatch: pytest.Mon
             _settings(tmp_path).model_copy(update={"prover_base_url": "https://example.test", "prover_model": "model"}),
             _task(),
         )
+
+
+def test_openai_compatible_repair_prompt_includes_verifier_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    captured = {}
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps({"task_id": "lemma.test.true", "proof_script": _proof()}),
+                        }
+                    }
+                ]
+            }
+
+    def fake_post(*args: object, **kwargs: object) -> FakeResponse:
+        captured["json"] = kwargs["json"]
+        return FakeResponse()
+
+    monkeypatch.setattr("lemma.miner.httpx.post", fake_post)
+
+    run_openai_compatible_prover(
+        _settings(tmp_path).model_copy(update={"prover_base_url": "https://example.test", "prover_model": "model"}),
+        _task(),
+        failed_proof=ProverResult(task_id="lemma.test.true", proof_script="bad proof"),
+        failed_verification=VerifyResult(passed=False, reason="compile_error", stderr_tail="unsolved goals"),
+    )
+
+    user_payload = json.loads(captured["json"]["messages"][1]["content"])
+    assert user_payload["failed_attempt"]["proof_script"] == "bad proof"
+    assert user_payload["failed_attempt"]["reason"] == "compile_error"
+    assert user_payload["failed_attempt"]["stderr_tail"] == "unsolved goals"
 
 
 def test_local_prover_adapter_times_out(tmp_path: Path) -> None:
@@ -152,8 +212,51 @@ def test_mine_once_rejects_local_verify_failure(monkeypatch: pytest.MonkeyPatch,
 
     monkeypatch.setattr("lemma.verifiers.lean.run_lean_verify", fake_verify)
 
-    with pytest.raises(ProverError, match="local verification failed"):
+    with pytest.raises(ProverError, match=r"local verification failed after 1 attempt\(s\)"):
         mine_once(_settings(tmp_path), prover_command=f"{sys.executable} {script}", registry=_registry())
+
+
+def test_mine_once_repairs_hosted_proof_after_compile_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    calls = []
+
+    def fake_prover(
+        settings: LemmaSettings,
+        task: object,
+        *,
+        failed_proof: ProverResult | None = None,
+        failed_verification: VerifyResult | None = None,
+    ) -> ProverResult:
+        calls.append((failed_proof, failed_verification))
+        body = "  exact bad" if failed_proof is None else "  trivial"
+        return ProverResult(task_id="lemma.test.true", proof_script=_proof(body))
+
+    def fake_verify(task: object, submission: object) -> VerifyResult:
+        assert isinstance(submission, LemmaSubmission)
+        if "exact bad" in submission.proof_script:
+            return VerifyResult(passed=False, reason="compile_error", stderr_tail="unknown identifier")
+        return VerifyResult(passed=True, reason="ok")
+
+    class FakeVerifier:
+        def verify(self, task: object, submission: object) -> VerifyResult:
+            return fake_verify(task, submission)
+
+    monkeypatch.setattr("lemma.miner.run_openai_compatible_prover", fake_prover)
+    monkeypatch.setattr("lemma.miner.get_verifier", lambda *args, **kwargs: FakeVerifier())
+    monkeypatch.setattr("lemma.miner.verify_result_from_adapter_result", lambda result: result)
+
+    result = mine_once(
+        _settings(tmp_path).model_copy(
+            update={"prover_base_url": "https://example.test", "prover_model": "model", "prover_repair_attempts": 1}
+        ),
+        registry=_registry(),
+    )
+
+    assert result.verification.passed is True
+    assert len(calls) == 2
+    assert calls[1][0] is not None
+    assert calls[1][1] is not None
 
 
 def test_mine_once_defaults_to_validator_active_window(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

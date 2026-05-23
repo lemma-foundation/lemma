@@ -59,9 +59,10 @@ Miners may use OpenAI-compatible endpoints through:
 LEMMA_PROVER_BASE_URL
 LEMMA_PROVER_API_KEY
 LEMMA_PROVER_MODEL
+LEMMA_PROVER_REPAIR_ATTEMPTS
 ```
 
-The provider is not scored. Lemma only checks the final Lean proof.
+The provider is not scored. Lemma only checks the final Lean proof. Set `LEMMA_PROVER_REPAIR_ATTEMPTS` to let the reference miner send Lean verifier errors back to the hosted endpoint for bounded repair retries.
 
 ## Reward Rule
 
