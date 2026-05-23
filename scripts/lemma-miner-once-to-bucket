@@ -81,7 +81,9 @@ resolved_proof = subprocess.run(
     capture_output=True,
     check=False,
 )
-prover_command = proof_dir_prover if resolved_proof.returncode == 0 else configured_prover or None
+resolved_proof_path = Path(resolved_proof.stdout.strip())
+has_verified_proof = resolved_proof.returncode == 0 and resolved_proof_path.is_file()
+prover_command = proof_dir_prover if has_verified_proof else configured_prover or None
 if prover_command is None and not hosted_prover:
     prover_command = proof_dir_prover
 try:

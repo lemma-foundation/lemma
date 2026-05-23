@@ -27,4 +27,5 @@ def test_bucket_miner_prefers_verified_proof_dir_before_hosted_prover() -> None:
     miner = (ROOT / "scripts" / "lemma-miner-once-to-bucket").read_text(encoding="utf-8")
 
     assert '["/usr/local/bin/lemma-proof-dir-prover", "--resolve", task.id, str(proof_dir)]' in miner
-    assert "prover_command = proof_dir_prover if resolved_proof.returncode == 0 else configured_prover or None" in miner
+    assert "has_verified_proof = resolved_proof.returncode == 0 and resolved_proof_path.is_file()" in miner
+    assert "prover_command = proof_dir_prover if has_verified_proof else configured_prover or None" in miner
