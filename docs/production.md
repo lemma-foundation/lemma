@@ -29,6 +29,9 @@ state, then exit idempotently when there is nothing new to do. Bucket intake
 timers should poll often enough that miner/validator ordering jitter costs
 minutes, not an epoch. Weight writes stay block-gated; on commit-reveal subnets,
 the writer waits for the final weight window before submitting.
+Active-registry prebuild services must allow slow Lean gates to finish; miners
+should idle on missing cache rather than rebuilding the same registry in
+parallel.
 
 Generic validators only need the protocol path:
 
