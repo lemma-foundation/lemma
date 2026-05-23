@@ -36,6 +36,21 @@ Accept the gate only when `weight-submissions.jsonl` has resolved UIDs, `success
 
 Also run a second-validator parity pass from a clean operator data directory. Both validators must rebuild the same active task set from public inputs and accept the same bucket reveal with matching task, proof, score, and weight-shape outputs. Validator-local row IDs and validator hotkeys may differ.
 
+## Live Evidence Checklist
+
+For each live tempo, keep protocol evidence separate from operator strategy:
+
+- active registry prebuild runs before miners need the tempo cache;
+- the miner publishes at most one bucket reveal for the chain tempo;
+- the validator reveal inbox contains the expected tempo reveal before the validation pass;
+- the validator pass reports `bucket_reveals_consumed > 0`, `verified_count > 0`, `accepted_unique_count > 0`, `corpus_row_count > 0`, and a non-empty tempo commitment payload;
+- `verification-records.jsonl`, `score-events.jsonl`, and the canonical tempo directory contain the accepted task id, proof hash, solver hotkey, validator hotkey, and dependency metadata;
+- the reveal inbox is empty or archived after a successful pass;
+- the corpus publisher, storage commitment, and post-publish checker succeed on the next publish cycle;
+- no live check depends on local notes, private paths, hostnames, IPs, wallet files, logs, or env files being published.
+
+Miner implementation is intentionally open-ended. The protocol does not require a particular proof-search loop, model provider, agent framework, or scheduler. A Codex-orchestrated miner, a custom Lean search engine, a model API wrapper, a manual prover, or a direct non-Python client are all operator strategies as long as they produce valid task-bound proofs and publish authenticated bucket commitments.
+
 ## Burn-In Gates
 
 Closed burn-in is at least 72 continuous testnet hours with controlled miners. Public burn-in is at least 7 days with procedural depth-2 supply and active `K` filled.
