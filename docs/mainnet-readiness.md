@@ -40,6 +40,7 @@ Also run a second-validator parity pass from a clean operator data directory. Bo
 
 For each live tempo, keep protocol evidence separate from operator strategy:
 
+- chain state, not wall-clock time, defines the active tempo;
 - active registry prebuild runs before miners need the tempo cache;
 - the miner publishes at most one bucket reveal for the chain tempo;
 - the validator reveal inbox contains the expected tempo reveal before the validation pass;
@@ -50,6 +51,36 @@ For each live tempo, keep protocol evidence separate from operator strategy:
 - no live check depends on local notes, private paths, hostnames, IPs, wallet files, logs, or env files being published.
 
 Miner implementation is intentionally open-ended. The protocol does not require a particular proof-search loop, model provider, agent framework, or scheduler. A Codex-orchestrated miner, a custom Lean search engine, a model API wrapper, a manual prover, or a direct non-Python client are all operator strategies as long as they produce valid task-bound proofs and publish authenticated bucket commitments.
+
+Use the configured operator environment to read the chain-derived tempo:
+
+```bash
+uv run python - <<'PY'
+from typing import Any, cast
+
+import bittensor as bt
+
+from lemma.common.config import LemmaSettings
+
+settings = LemmaSettings()
+subtensor = bt.Subtensor(network=settings.bt_network or None)
+block = int(subtensor.get_current_block())
+tempo = int(cast(Any, subtensor.get_subnet_hyperparameters(settings.netuid, block=block)).tempo)
+print(
+    {
+        "netuid": settings.netuid,
+        "network": settings.bt_network,
+        "block": block,
+        "subnet_tempo": tempo,
+        "active_tempo": block // tempo,
+        "blocks_into_tempo": block % tempo,
+        "blocks_remaining": tempo - (block % tempo),
+    }
+)
+PY
+```
+
+Systemd timers, cron jobs, and local reminders are only wakeups. On every wakeup, the operator should read the chain block and derive the active tempo before deciding whether to prebuild, mine, validate, publish, or wait.
 
 ## Burn-In Gates
 
