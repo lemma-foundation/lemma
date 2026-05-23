@@ -102,6 +102,7 @@ def _normalize_prover_result(task: LemmaTask, proof: ProverResult) -> ProverResu
 
 
 _LEAN_DECL_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_']*(?:\.[A-Za-z_][A-Za-z0-9_']*)*")
+_TRUE_ARROW_PREFIX_RE = re.compile(r"^True\s*→\s*")
 
 
 def _source_theorem_name(task: LemmaTask) -> str | None:
@@ -117,12 +118,36 @@ def _source_theorem_wrapper_prover(task: LemmaTask) -> ProverResult | None:
     if source_theorem is None or "\n  sorry" not in task.submission_stub:
         return None
     exact = _source_theorem_exact(task, source_theorem)
-    proof_script = task.submission_stub.replace("\n  sorry", f"\n  intros\n  exact {exact}", 1)
+    intros = "".join("\n  intro _" for _ in range(_leading_true_premise_count(task.type_expr)))
+    proof_script = task.submission_stub.replace("\n  sorry", f"{intros}\n  exact {exact}", 1)
     return ProverResult(
         task_id=task.id,
         proof_script=proof_script,
         metadata={"prover": "source_theorem_wrapper", "source_theorem_name": source_theorem},
     )
+
+
+def _leading_true_premise_count(type_expr: str) -> int:
+    text = _strip_outer_parens(type_expr.strip())
+    count = 0
+    while match := _TRUE_ARROW_PREFIX_RE.match(text):
+        count += 1
+        text = _strip_outer_parens(text[match.end() :].strip())
+    return count
+
+
+def _strip_outer_parens(text: str) -> str:
+    while text.startswith("(") and text.endswith(")"):
+        depth = 0
+        for index, char in enumerate(text):
+            if char == "(":
+                depth += 1
+            elif char == ")":
+                depth -= 1
+                if depth == 0 and index != len(text) - 1:
+                    return text
+        text = text[1:-1].strip()
+    return text
 
 
 def _source_theorem_exact(task: LemmaTask, source_theorem: str) -> str:

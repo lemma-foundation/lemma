@@ -33,7 +33,7 @@ Lean theorem supply
 
 ## Controllers
 
-`frontier_depth` is the protocol difficulty proxy and is driven by EMA solve rate. `active_K` is the throughput target and is driven by validator capacity. A low or zero solve rate halts frontier advancement and requests hard-target variants; it does not step the queue head backward into already exposed tasks. Tempo is 72 minutes / 360 blocks until subnet tempo customization exists.
+`frontier_depth` is the protocol difficulty proxy and `active_K` is the throughput target. For launch burn-in they are fixed public config. The curriculum controller can retarget them in development, and should only be enabled in production after its state is published and replayable from public artifacts. Tempo is the chain tempo; on SN467 that is currently 360 blocks.
 
 ## Boundaries
 

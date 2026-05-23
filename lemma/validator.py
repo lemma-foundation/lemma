@@ -208,6 +208,11 @@ def cached_active_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> 
 def curriculum_controlled_settings(settings: LemmaSettings, *, tempo: int) -> LemmaSettings:
     if not settings.curriculum_retarget_enabled or settings.curriculum_state_jsonl is None:
         return settings
+    if settings.protocol_mode == "production":
+        raise RuntimeError(
+            "production mode requires public active-state inputs; disable LEMMA_CURRICULUM_RETARGET "
+            "until curriculum state is published and replayable"
+        )
     from lemma.supply.controller import read_curriculum_records
 
     records = tuple(

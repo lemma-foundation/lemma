@@ -39,4 +39,4 @@ The previous-weight fallback rule is removed from scoring.
 - Valid alternates become corpus rows with `rewarded: false`.
 - Duplicate proof identities do not create extra rows or credit.
 
-No subjective scoring is used. Held-out benchmark tasks are not paid tasks. Difficulty adapts through frontier depth; `K` adapts through validator throughput capacity.
+No subjective scoring is used. Held-out benchmark tasks are not paid tasks. For launch burn-in, `frontier_depth` and `K` are fixed public config; adaptive curriculum only returns once its state is public and replayable by miners and validators.
