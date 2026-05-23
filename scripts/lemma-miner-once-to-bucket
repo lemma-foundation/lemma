@@ -40,7 +40,6 @@ from lemma.chain.miner_buckets import (
 )
 from lemma.common.config import LemmaSettings
 from lemma.miner import ProverError, mine_once
-from lemma.task_supply import write_registry
 from lemma.tasks import load_task_registry
 from lemma.validator import active_registry_cache_path, active_tasks_for_validation, current_active_tempo, task_registry_for_validation
 
@@ -49,12 +48,9 @@ def registry_for_tempo(settings: LemmaSettings, tempo: int):
     cache_path = active_registry_cache_path(settings, tempo=tempo)
     if cache_path is not None and cache_path.is_file():
         return load_task_registry(cache_path.read_bytes()), str(cache_path), False
-    registry = task_registry_for_validation(settings, tempo=tempo)
     if cache_path is not None and settings.active_registry_json is None:
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = cache_path.with_name(cache_path.name + ".tmp")
-        write_registry(registry.tasks, tmp)
-        tmp.replace(cache_path)
+        return None, str(cache_path), False
+    registry = task_registry_for_validation(settings, tempo=tempo)
     return registry, str(cache_path) if cache_path is not None else "", True
 
 
@@ -71,6 +67,19 @@ if once_per_tempo:
         print(json.dumps({"idle": True, "reason": f"already published tempo {tempo}", "tempo": tempo}))
         raise SystemExit(0)
 registry, registry_cache, registry_built = registry_for_tempo(settings, tempo)
+if registry is None:
+    print(
+        json.dumps(
+            {
+                "idle": True,
+                "reason": "active registry cache missing",
+                "tempo": tempo,
+                "registry_cache": registry_cache,
+                "registry_built": registry_built,
+            }
+        )
+    )
+    raise SystemExit(0)
 active = active_tasks_for_validation(registry, settings, tempo=tempo)
 if not active:
     print(json.dumps({"idle": True, "reason": "no active tasks"}))

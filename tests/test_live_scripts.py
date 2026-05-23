@@ -42,6 +42,14 @@ def test_bucket_miner_publishes_once_per_chain_tempo() -> None:
     assert 'printf \'%s\\n\' "$tempo" > "$state_dir/last_bucket_tempo"' in miner
 
 
+def test_bucket_miner_idles_when_active_registry_cache_is_missing() -> None:
+    miner = (ROOT / "scripts" / "lemma-miner-once-to-bucket").read_text(encoding="utf-8")
+
+    assert "active registry cache missing" in miner
+    assert "return None, str(cache_path), False" in miner
+    assert "write_registry(registry.tasks" not in miner
+
+
 def test_validator_bucket_wrapper_requires_explicit_weight_write_flag() -> None:
     validator = (ROOT / "scripts" / "lemma-validator-bucket-live").read_text(encoding="utf-8")
 
