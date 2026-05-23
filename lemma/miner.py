@@ -118,7 +118,7 @@ def _source_theorem_wrapper_prover(task: LemmaTask) -> ProverResult | None:
     if source_theorem is None or "\n  sorry" not in task.submission_stub:
         return None
     exact = _source_theorem_exact(task, source_theorem)
-    intro_count = _fresh_prop_hypothesis_intro_count(task) + _leading_true_premise_count(task.type_expr)
+    intro_count = _source_theorem_wrapper_intro_count(task)
     intros = "".join("\n  intro _" for _ in range(intro_count))
     proof_script = task.submission_stub.replace("\n  sorry", f"{intros}\n  exact {exact}", 1)
     return ProverResult(
@@ -134,6 +134,17 @@ def _leading_true_premise_count(type_expr: str) -> int:
     while match := _TRUE_ARROW_PREFIX_RE.match(text):
         count += 1
         text = _strip_outer_parens(text[match.end() :].strip())
+    return count
+
+
+def _source_theorem_wrapper_intro_count(task: LemmaTask) -> int:
+    count = _fresh_prop_hypothesis_intro_count(task) + _leading_true_premise_count(task.type_expr)
+    for step in task.metadata.get("mutation_chain", ()):
+        if not isinstance(step, dict):
+            continue
+        params = step.get("params")
+        if isinstance(params, dict) and params.get("mode") == "peer_premise":
+            count += 1
     return count
 
 
