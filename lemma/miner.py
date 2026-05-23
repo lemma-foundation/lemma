@@ -116,7 +116,8 @@ def _source_theorem_wrapper_prover(task: LemmaTask) -> ProverResult | None:
     source_theorem = _source_theorem_name(task)
     if source_theorem is None or "\n  sorry" not in task.submission_stub:
         return None
-    proof_script = task.submission_stub.replace("\n  sorry", f"\n  intros\n  exact {source_theorem}", 1)
+    exact = f"Or.inl {source_theorem}" if "∨" in task.type_expr and "False" in task.type_expr else source_theorem
+    proof_script = task.submission_stub.replace("\n  sorry", f"\n  intros\n  exact {exact}", 1)
     return ProverResult(
         task_id=task.id,
         proof_script=proof_script,

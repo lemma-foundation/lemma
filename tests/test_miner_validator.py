@@ -306,6 +306,41 @@ def test_mine_once_tries_source_theorem_wrapper_before_hosted(
     assert result.submission.metadata["prover"] == "source_theorem_wrapper"
 
 
+def test_mine_once_wraps_source_theorem_for_false_disjunction(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    task = make_task(
+        task_id="lemma.test.or_false",
+        title="Or false task",
+        theorem_name="test_or_false",
+        type_expr="True ∨ False",
+        source_stream="human_curated",
+        source_name="pytest",
+        metadata={"source_theorem_name": "known_true"},
+    )
+    registry = TaskRegistry(schema_version=1, tasks=(task,), sha256="0" * 64)
+
+    def fail_prover(*args: object, **kwargs: object) -> ProverResult:
+        raise AssertionError("hosted prover should not run when source theorem wrapper verifies")
+
+    class FakeVerifier:
+        def verify(self, task: object, submission: object) -> VerifyResult:
+            assert isinstance(submission, LemmaSubmission)
+            return VerifyResult(passed="exact Or.inl known_true" in submission.proof_script, reason="ok")
+
+    monkeypatch.setattr("lemma.miner.run_openai_compatible_prover", fail_prover)
+    monkeypatch.setattr("lemma.miner.get_verifier", lambda *args, **kwargs: FakeVerifier())
+    monkeypatch.setattr("lemma.miner.verify_result_from_adapter_result", lambda result: result)
+
+    result = mine_once(
+        _settings(tmp_path).model_copy(update={"prover_base_url": "https://example.test", "prover_model": "model"}),
+        registry=registry,
+    )
+
+    assert result.verification.passed is True
+    assert result.submission.metadata["prover"] == "source_theorem_wrapper"
+
+
 def test_mine_once_falls_back_to_hosted_when_source_theorem_wrapper_fails(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
