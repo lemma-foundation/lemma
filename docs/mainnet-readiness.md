@@ -128,7 +128,13 @@ keys = (
 print({key: latest.get(key) for key in keys})
 PY
 
-uv run python scripts/publish_corpus_snapshot.py --repo "$LEMMA_CORPUS_REPO" --netuid "sn${BT_NETUID}" --dry-run
+uv run python scripts/publish_corpus_snapshot.py \
+  --repo "$LEMMA_CORPUS_REPO" \
+  --netuid "sn${BT_NETUID}" \
+  --sync-corpus-dir "$LEMMA_CORPUS_OUTPUT_DIR" \
+  --sync-canonical-dir "$LEMMA_CANONICAL_OUTPUT_DIR/sn${BT_NETUID}" \
+  --sync-registry-cache-dir "$LEMMA_ACTIVE_REGISTRY_CACHE_DIR" \
+  --dry-run
 uv run python scripts/publish_chain_commitment.py \
   --repo "$LEMMA_CORPUS_REPO" \
   --netuid "sn${BT_NETUID}" \

@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from lemma.corpus.storage import build_storage_index  # noqa: E402
+from lemma.tasks import load_task_registry  # noqa: E402
 from scripts.prepare_corpus_publish import prepare  # noqa: E402
 
 DEFAULT_BUCKET = "lemma-corpus-sn467"
@@ -32,6 +33,7 @@ LEAK_PATTERN = re.compile(
     "api[_-]?key|to" + "ken|mne" + "monic|sec" + "ret|s" + "sh",
     re.IGNORECASE,
 )
+EPOCH_FILE_RE = re.compile(r"epoch-\d{6}\.jsonl$")
 
 
 def snapshot_id(now: datetime | None = None) -> str:
@@ -68,6 +70,55 @@ def write_manifest(repo: Path, netuid: str, manifest_path: Path | None = None) -
         lines.append(f"{digest}  {relative}")
     target.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return target
+
+
+def _copy_tree_contents(source: Path, target: Path) -> int:
+    copied = 0
+    for path in source.rglob("*"):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(source)
+        destination = target / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, destination)
+        copied += 1
+    return copied
+
+
+def sync_public_inputs(
+    repo: Path,
+    netuid: str,
+    *,
+    corpus_dir: Path | None = None,
+    canonical_dir: Path | None = None,
+    registry_cache_dir: Path | None = None,
+) -> dict[str, int]:
+    counts = {"corpus_files": 0, "canonical_files": 0, "registry_files": 0}
+    if corpus_dir is not None:
+        target = repo / "corpus" / netuid
+        target.mkdir(parents=True, exist_ok=True)
+        for path in sorted(corpus_dir.glob("epoch-*.jsonl")):
+            if path.is_file() and EPOCH_FILE_RE.fullmatch(path.name):
+                shutil.copy2(path, target / path.name)
+                counts["corpus_files"] += 1
+    if canonical_dir is not None:
+        target = repo / "canonical" / netuid
+        target.mkdir(parents=True, exist_ok=True)
+        counts["canonical_files"] = _copy_tree_contents(canonical_dir, target)
+    if registry_cache_dir is not None:
+        target = repo / "registries" / netuid
+        target.mkdir(parents=True, exist_ok=True)
+        for path in sorted(registry_cache_dir.glob("tempo-*.registry.json")):
+            if not path.is_file():
+                continue
+            raw = path.read_bytes()
+            payload = json.loads(raw)
+            sha256 = payload.get("sha256")
+            if not isinstance(sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", sha256):
+                sha256 = load_task_registry(raw).sha256
+            shutil.copy2(path, target / f"{sha256}.json")
+            counts["registry_files"] += 1
+    return counts
 
 
 def aws_command(value: str | None) -> list[str]:
@@ -353,6 +404,13 @@ def main() -> int:
     )
     parser.add_argument("--hf-repo-id", default=os.environ.get("HF_REPO_ID"), help="Hugging Face dataset repo id")
     parser.add_argument("--pull", action="store_true", help="run git pull --ff-only in the corpus repo first")
+    parser.add_argument("--sync-corpus-dir", type=Path, help="copy public epoch JSONL files into the corpus repo")
+    parser.add_argument("--sync-canonical-dir", type=Path, help="copy public canonical artifacts into the corpus repo")
+    parser.add_argument(
+        "--sync-registry-cache-dir",
+        type=Path,
+        help="copy tempo registry cache files into the corpus repo by registry hash",
+    )
     parser.add_argument("--skip-hippius", action="store_true", help="prepare files but do not upload to Hippius")
     parser.add_argument("--skip-github", action="store_true", help="prepare files but do not create the GitHub release")
     parser.add_argument(
@@ -369,6 +427,13 @@ def main() -> int:
     if args.pull:
         run(["git", "-C", str(repo), "pull", "--ff-only"], dry_run=args.dry_run)
 
+    synced = sync_public_inputs(
+        repo,
+        args.netuid,
+        corpus_dir=args.sync_corpus_dir.resolve() if args.sync_corpus_dir else None,
+        canonical_dir=args.sync_canonical_dir.resolve() if args.sync_canonical_dir else None,
+        registry_cache_dir=args.sync_registry_cache_dir.resolve() if args.sync_registry_cache_dir else None,
+    )
     summary = prepare(repo, args.netuid)
     storage_index = build_storage_index(repo, args.netuid, resolver=args.resolver)
     manifest_path = write_manifest(repo, args.netuid)
@@ -448,6 +513,7 @@ def main() -> int:
                 "snapshot": args.snapshot,
                 "storage_epochs": len(storage_index["epochs"]),
                 "storage_index": str(storage_index_path),
+                "synced": synced,
             },
             indent=2,
             sort_keys=True,

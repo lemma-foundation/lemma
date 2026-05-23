@@ -112,7 +112,7 @@ Publish the current public corpus snapshot after a closed SN467 production-mode 
 uv run python scripts/publish_corpus_snapshot.py --repo ~/lemma-corpus --netuid sn467 --push-repo
 ```
 
-This regenerates the public index/export, builds deterministic accepted-entry directories under `canonical/sn467/`, writes `MANIFEST.sha256`, uploads a timestamped Hippius snapshot, creates the GitHub immutable release mirror, and syncs an append-only Hugging Face dataset snapshot. Hippius, GitHub, and Hugging Face credentials must stay in the operator environment, never in repo files.
+For a live validator, pass `--sync-corpus-dir`, `--sync-canonical-dir`, and `--sync-registry-cache-dir` so the public checkout receives the validator's latest corpus rows, canonical tempo artifacts, and active registry caches before upload. This regenerates the public index/export, writes `MANIFEST.sha256`, uploads a timestamped Hippius snapshot, creates the GitHub immutable release mirror, and syncs an append-only Hugging Face dataset snapshot. Hippius, GitHub, and Hugging Face credentials must stay in the operator environment, never in repo files.
 
 Refresh the public website's active-problem dashboard from the validator host:
 

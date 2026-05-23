@@ -39,6 +39,18 @@ From the Lemma repo, publish a prepared `lemma-corpus` checkout with:
 uv run python scripts/publish_corpus_snapshot.py --repo ~/lemma-corpus --netuid sn467 --push-repo
 ```
 
+When publishing from a live validator, sync its public outputs into the corpus checkout first:
+
+```bash
+uv run python scripts/publish_corpus_snapshot.py \
+  --repo "$LEMMA_CORPUS_REPO" \
+  --netuid "sn${BT_NETUID}" \
+  --sync-corpus-dir "$LEMMA_CORPUS_OUTPUT_DIR" \
+  --sync-canonical-dir "$LEMMA_CANONICAL_OUTPUT_DIR/sn${BT_NETUID}" \
+  --sync-registry-cache-dir "$LEMMA_ACTIVE_REGISTRY_CACHE_DIR" \
+  --push-repo
+```
+
 For a no-upload preview:
 
 ```bash
