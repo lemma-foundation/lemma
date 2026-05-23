@@ -116,13 +116,34 @@ def _source_theorem_wrapper_prover(task: LemmaTask) -> ProverResult | None:
     source_theorem = _source_theorem_name(task)
     if source_theorem is None or "\n  sorry" not in task.submission_stub:
         return None
-    exact = f"Or.inl {source_theorem}" if "∨" in task.type_expr and "False" in task.type_expr else source_theorem
+    exact = _source_theorem_exact(task, source_theorem)
     proof_script = task.submission_stub.replace("\n  sorry", f"\n  intros\n  exact {exact}", 1)
     return ProverResult(
         task_id=task.id,
         proof_script=proof_script,
         metadata={"prover": "source_theorem_wrapper", "source_theorem_name": source_theorem},
     )
+
+
+def _source_theorem_exact(task: LemmaTask, source_theorem: str) -> str:
+    exact = source_theorem
+    wraps_false = False
+    for step in task.metadata.get("mutation_chain", ()):
+        if not isinstance(step, dict):
+            continue
+        params = step.get("params")
+        if not isinstance(params, dict):
+            continue
+        if params.get("rule") == "conjoin_peer_conclusion":
+            peer = params.get("peer_theorem_name")
+            if isinstance(peer, str) and _LEAN_DECL_RE.fullmatch(peer.strip()):
+                exact = f"And.intro ({exact}) {peer.strip()}"
+        elif params.get("rule") == "false_disjunct":
+            exact = f"Or.inl ({exact})"
+            wraps_false = True
+    if not wraps_false and "∨" in task.type_expr and "False" in task.type_expr:
+        exact = f"Or.inl {exact}"
+    return exact
 
 
 def run_openai_compatible_prover(
