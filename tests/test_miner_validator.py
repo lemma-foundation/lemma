@@ -151,6 +151,26 @@ def test_openai_compatible_prover_rejects_malformed_json(monkeypatch: pytest.Mon
         )
 
 
+def test_openai_compatible_prover_accepts_proof_script_only(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {"choices": [{"message": {"content": json.dumps({"proof_script": _proof()})}}]}
+
+    monkeypatch.setattr("lemma.miner.httpx.post", lambda *args, **kwargs: FakeResponse())
+
+    proof = run_openai_compatible_prover(
+        _settings(tmp_path).model_copy(update={"prover_base_url": "https://example.test", "prover_model": "model"}),
+        _task(),
+    )
+
+    assert proof.task_id == "lemma.test.true"
+
+
 def test_openai_compatible_repair_prompt_includes_verifier_failure(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

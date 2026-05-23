@@ -140,9 +140,13 @@ def run_openai_compatible_prover(
     response.raise_for_status()
     content = response.json()["choices"][0]["message"]["content"]
     try:
-        return _normalize_prover_result(task, ProverResult.model_validate_json(_strip_json_fence(content)))
+        payload = json.loads(_strip_json_fence(content))
+        if isinstance(payload, dict) and "task_id" not in payload:
+            payload["task_id"] = task.id
+        proof = ProverResult.model_validate(payload)
     except ValueError as e:
         raise ProverError(f"OpenAI-compatible prover returned invalid JSON: {e}") from e
+    return _normalize_prover_result(task, proof)
 
 
 def solve_task(settings: LemmaSettings, task: LemmaTask, *, prover_command: str | None = None) -> ProverResult:
