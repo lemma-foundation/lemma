@@ -184,7 +184,9 @@ def _source_theorem_exact(task: LemmaTask, source_theorem: str) -> str:
         params = step.get("params")
         if not isinstance(params, dict):
             continue
-        if params.get("rule") == "conjoin_peer_conclusion":
+        if params.get("fallback") == "true_premise":
+            exact = f"(fun _ => {exact})"
+        elif params.get("rule") == "conjoin_peer_conclusion":
             peer = params.get("peer_theorem_name")
             if isinstance(peer, str) and _LEAN_DECL_RE.fullmatch(peer.strip()):
                 exact = f"And.intro ({exact}) {peer.strip()}"
@@ -217,29 +219,32 @@ def run_openai_compatible_prover(
             "stderr_tail": failed_verification.stderr_tail[-6000:],
             "stdout_tail": failed_verification.stdout_tail[-2000:],
         }
-    response = httpx.post(
-        url,
-        headers=headers,
-        timeout=settings.prover_timeout_s,
-        json={
-            "model": settings.prover_model,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": (
-                        "Return only a JSON object with task_id and proof_script, no Markdown. "
-                        "proof_script must be a complete Lean file matching submission_stub exactly: keep only the "
-                        "listed imports, the namespace, the exact theorem header, and the final end line, replacing "
-                        "only the sorry proof. Do not use sorry, admit, axioms, unsafe features, or extra imports. "
-                        "If source_theorem_name is present and the target only wraps that theorem in extra binders "
-                        "or trivial premises, introduce the wrappers and reuse source_theorem_name directly."
-                    ),
-                },
-                {"role": "user", "content": json.dumps(user_payload)},
-            ],
-        },
-    )
-    response.raise_for_status()
+    try:
+        response = httpx.post(
+            url,
+            headers=headers,
+            timeout=settings.prover_timeout_s,
+            json={
+                "model": settings.prover_model,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": (
+                            "Return only a JSON object with task_id and proof_script, no Markdown. "
+                            "proof_script must be a complete Lean file matching submission_stub exactly: keep only the "
+                            "listed imports, the namespace, the exact theorem header, and the final end line, replacing "
+                            "only the sorry proof. Do not use sorry, admit, axioms, unsafe features, or extra imports. "
+                            "If source_theorem_name is present and the target only wraps that theorem in extra binders "
+                            "or trivial premises, introduce the wrappers and reuse source_theorem_name directly."
+                        ),
+                    },
+                    {"role": "user", "content": json.dumps(user_payload)},
+                ],
+            },
+        )
+        response.raise_for_status()
+    except httpx.HTTPError as e:
+        raise ProverError(f"OpenAI-compatible prover request failed: {e}") from e
     content = response.json()["choices"][0]["message"]["content"]
     try:
         payload = json.loads(_strip_json_fence(content))

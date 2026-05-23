@@ -7,6 +7,7 @@ import json
 import sys
 from pathlib import Path
 
+import httpx
 import pytest
 from bittensor_wallet import Keypair
 from lemma.chain.commitments import ChainCommitmentSubmission
@@ -145,6 +146,23 @@ def test_openai_compatible_prover_rejects_malformed_json(monkeypatch: pytest.Mon
     monkeypatch.setattr("lemma.miner.httpx.post", lambda *args, **kwargs: FakeResponse())
 
     with pytest.raises(ProverError, match="invalid JSON"):
+        run_openai_compatible_prover(
+            _settings(tmp_path).model_copy(update={"prover_base_url": "https://example.test", "prover_model": "model"}),
+            _task(),
+        )
+
+
+def test_openai_compatible_prover_wraps_http_errors(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def fail_post(*args: object, **kwargs: object) -> object:
+        raise httpx.HTTPStatusError(
+            "503 Service Unavailable",
+            request=httpx.Request("POST", "https://example.test/chat/completions"),
+            response=httpx.Response(503),
+        )
+
+    monkeypatch.setattr("lemma.miner.httpx.post", fail_post)
+
+    with pytest.raises(ProverError, match="request failed"):
         run_openai_compatible_prover(
             _settings(tmp_path).model_copy(update={"prover_base_url": "https://example.test", "prover_model": "model"}),
             _task(),
@@ -407,6 +425,51 @@ def test_mine_once_wraps_true_premise_source_theorem_without_overintroducing(
         def verify(self, task: object, submission: object) -> VerifyResult:
             assert isinstance(submission, LemmaSubmission)
             expected = "intro _\n  intro _\n  exact NoZeroDivisors.to_isDomain"
+            return VerifyResult(passed=expected in submission.proof_script, reason="ok")
+
+    monkeypatch.setattr("lemma.miner.run_openai_compatible_prover", fail_prover)
+    monkeypatch.setattr("lemma.miner.get_verifier", lambda *args, **kwargs: FakeVerifier())
+    monkeypatch.setattr("lemma.miner.verify_result_from_adapter_result", lambda result: result)
+
+    result = mine_once(
+        _settings(tmp_path).model_copy(update={"prover_base_url": "https://example.test", "prover_model": "model"}),
+        registry=registry,
+    )
+
+    assert result.verification.passed is True
+    assert result.submission.metadata["prover"] == "source_theorem_wrapper"
+
+
+def test_mine_once_wraps_true_premise_before_strengthened_source_theorem(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    task = make_task(
+        task_id="lemma.test.true_premise_and_peer",
+        title="True premise and peer task",
+        theorem_name="test_true_premise_and_peer",
+        type_expr="(True → True) ∧ True",
+        source_stream="human_curated",
+        source_name="pytest",
+        metadata={
+            "source_theorem_name": "known_true",
+            "mutation_chain": [
+                {"operator": "specialize", "params": {"fallback": "true_premise"}},
+                {
+                    "operator": "strengthen",
+                    "params": {"rule": "conjoin_peer_conclusion", "peer_theorem_name": "known_peer"},
+                },
+            ],
+        },
+    )
+    registry = TaskRegistry(schema_version=1, tasks=(task,), sha256="0" * 64)
+
+    def fail_prover(*args: object, **kwargs: object) -> ProverResult:
+        raise AssertionError("hosted prover should not run when source theorem wrapper verifies")
+
+    class FakeVerifier:
+        def verify(self, task: object, submission: object) -> VerifyResult:
+            assert isinstance(submission, LemmaSubmission)
+            expected = "exact And.intro ((fun _ => known_true)) known_peer"
             return VerifyResult(passed=expected in submission.proof_script, reason="ok")
 
     monkeypatch.setattr("lemma.miner.run_openai_compatible_prover", fail_prover)
