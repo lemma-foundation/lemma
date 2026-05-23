@@ -33,6 +33,14 @@ def test_bucket_miner_prefers_verified_proof_dir_before_hosted_prover() -> None:
     assert "prover_command = proof_dir_prover if has_verified_proof else configured_prover or None" in miner
 
 
+def test_validator_bucket_wrapper_requires_explicit_weight_write_flag() -> None:
+    validator = (ROOT / "scripts" / "lemma-validator-bucket-live").read_text(encoding="utf-8")
+
+    assert 'weight_flag="--no-set-weights"' in validator
+    assert 'LEMMA_VALIDATOR_SET_WEIGHTS:-0' in validator
+    assert '"$weight_flag"' in validator
+
+
 def test_active_registry_prebuild_wrapper_calls_hidden_cli() -> None:
     prebuild = (ROOT / "scripts" / "lemma-active-registry-prebuild").read_text(encoding="utf-8")
 

@@ -3,10 +3,15 @@ set -euo pipefail
 
 export LEMMA_PREFER_PROCESS_ENV="${LEMMA_PREFER_PROCESS_ENV:-1}"
 
+weight_flag="--no-set-weights"
+if [[ "${LEMMA_VALIDATOR_SET_WEIGHTS:-0}" == "1" ]]; then
+  weight_flag="--set-weights"
+fi
+
 cd "${LEMMA_APP_DIR:-/opt/lemma-sn467/app}"
 
 exec "${UV_BIN:-uv}" run lemma validate \
   --once \
   --bucket-reveals-dir "${LEMMA_BUCKET_REVEALS_DIR:-/var/lib/lemma/bucket-reveals}" \
   --verify-chain-commitments \
-  --set-weights
+  "$weight_flag"
