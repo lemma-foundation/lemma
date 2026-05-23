@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shlex
 import subprocess
 from dataclasses import dataclass
@@ -51,7 +52,7 @@ def _strip_json_fence(content: str) -> str:
 
 
 def prover_input(task: LemmaTask, timeout_s: float) -> dict[str, Any]:
-    return {
+    payload: dict[str, Any] = {
         "task_id": task.id,
         "task_version": task.task_version,
         "statement": task.statement,
@@ -59,6 +60,10 @@ def prover_input(task: LemmaTask, timeout_s: float) -> dict[str, Any]:
         "submission_stub": task.submission_stub,
         "timeout_s": timeout_s,
     }
+    source_theorem = _source_theorem_name(task)
+    if source_theorem is not None:
+        payload["source_theorem_name"] = source_theorem
+    return payload
 
 
 def run_prover_command(command: str, task: LemmaTask, timeout_s: float) -> ProverResult:
@@ -96,6 +101,29 @@ def _normalize_prover_result(task: LemmaTask, proof: ProverResult) -> ProverResu
     return proof.model_copy(update={"proof_script": script})
 
 
+_LEAN_DECL_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_']*(?:\.[A-Za-z_][A-Za-z0-9_']*)*")
+
+
+def _source_theorem_name(task: LemmaTask) -> str | None:
+    name = task.metadata.get("source_theorem_name")
+    if not isinstance(name, str):
+        return None
+    name = name.strip()
+    return name if _LEAN_DECL_RE.fullmatch(name) else None
+
+
+def _source_theorem_wrapper_prover(task: LemmaTask) -> ProverResult | None:
+    source_theorem = _source_theorem_name(task)
+    if source_theorem is None or "\n  sorry" not in task.submission_stub:
+        return None
+    proof_script = task.submission_stub.replace("\n  sorry", f"\n  intros\n  exact {source_theorem}", 1)
+    return ProverResult(
+        task_id=task.id,
+        proof_script=proof_script,
+        metadata={"prover": "source_theorem_wrapper", "source_theorem_name": source_theorem},
+    )
+
+
 def run_openai_compatible_prover(
     settings: LemmaSettings,
     task: LemmaTask,
@@ -130,7 +158,9 @@ def run_openai_compatible_prover(
                         "Return only a JSON object with task_id and proof_script, no Markdown. "
                         "proof_script must be a complete Lean file matching submission_stub exactly: keep only the "
                         "listed imports, the namespace, the exact theorem header, and the final end line, replacing "
-                        "only the sorry proof. Do not use sorry, admit, axioms, unsafe features, or extra imports."
+                        "only the sorry proof. Do not use sorry, admit, axioms, unsafe features, or extra imports. "
+                        "If source_theorem_name is present and the target only wraps that theorem in extra binders "
+                        "or trivial premises, introduce the wrappers and reuse source_theorem_name directly."
                     ),
                 },
                 {"role": "user", "content": json.dumps(user_payload)},
@@ -187,16 +217,29 @@ def mine_once(
 
     verifier = get_verifier(task.domain_id, settings=settings)
     command = prover_command if prover_command is not None else settings.prover_command
-    max_attempts = 1 if command.strip() else 1 + settings.prover_repair_attempts
+    hosted_attempt_limit = 0 if command.strip() else 1 + settings.prover_repair_attempts
+    source_wrapper = None if command.strip() else _source_theorem_wrapper_prover(task)
+    source_wrapper_tried = False
+    initial_prover_tried = False
+    hosted_attempts = 0
     proof: ProverResult | None = None
     draft_submission: LemmaSubmission | None = None
     verification: VerifyResult | None = None
-    for attempt in range(max_attempts):
-        if attempt == 0:
+    attempts = 0
+    while True:
+        if source_wrapper is not None and not source_wrapper_tried:
+            proof = source_wrapper
+            source_wrapper_tried = True
+        elif not initial_prover_tried:
             proof = solve_task(settings, task, prover_command=prover_command)
+            initial_prover_tried = True
+            if not command.strip():
+                hosted_attempts += 1
         else:
             if proof is None or verification is None:
                 raise ProverError("prover repair attempted before an initial proof")
+            if hosted_attempts >= hosted_attempt_limit:
+                break
             proof = _normalize_prover_result(
                 task,
                 run_openai_compatible_prover(
@@ -206,6 +249,8 @@ def mine_once(
                     failed_verification=verification,
                 ),
             )
+            hosted_attempts += 1
+        attempts += 1
         draft_submission = build_submission(
             task,
             solver_hotkey=solver_hotkey or settings.wallet_hot,
@@ -218,7 +263,7 @@ def mine_once(
     if proof is None or draft_submission is None or verification is None:
         raise ProverError("prover did not return a proof")
     if not verification.passed:
-        raise ProverError(f"local verification failed after {max_attempts} attempt(s): {verification.reason}")
+        raise ProverError(f"local verification failed after {attempts} attempt(s): {verification.reason}")
 
     submission = sign_submission_with_wallet(settings, draft_submission) if sign else draft_submission
     append_jsonl(

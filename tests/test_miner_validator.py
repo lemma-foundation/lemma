@@ -279,6 +279,62 @@ def test_mine_once_repairs_hosted_proof_after_compile_error(
     assert calls[1][1] is not None
 
 
+def test_mine_once_tries_source_theorem_wrapper_before_hosted(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    task = _task().model_copy(update={"metadata": {"source_theorem_name": "known_true"}})
+    registry = TaskRegistry(schema_version=1, tasks=(task,), sha256="0" * 64)
+
+    def fail_prover(*args: object, **kwargs: object) -> ProverResult:
+        raise AssertionError("hosted prover should not run when source theorem wrapper verifies")
+
+    class FakeVerifier:
+        def verify(self, task: object, submission: object) -> VerifyResult:
+            assert isinstance(submission, LemmaSubmission)
+            return VerifyResult(passed="exact known_true" in submission.proof_script, reason="ok")
+
+    monkeypatch.setattr("lemma.miner.run_openai_compatible_prover", fail_prover)
+    monkeypatch.setattr("lemma.miner.get_verifier", lambda *args, **kwargs: FakeVerifier())
+    monkeypatch.setattr("lemma.miner.verify_result_from_adapter_result", lambda result: result)
+
+    result = mine_once(
+        _settings(tmp_path).model_copy(update={"prover_base_url": "https://example.test", "prover_model": "model"}),
+        registry=registry,
+    )
+
+    assert result.verification.passed is True
+    assert result.submission.metadata["prover"] == "source_theorem_wrapper"
+
+
+def test_mine_once_falls_back_to_hosted_when_source_theorem_wrapper_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    task = _task().model_copy(update={"metadata": {"source_theorem_name": "known_true"}})
+    registry = TaskRegistry(schema_version=1, tasks=(task,), sha256="0" * 64)
+    calls = []
+
+    def fake_prover(*args: object, **kwargs: object) -> ProverResult:
+        calls.append(kwargs)
+        return ProverResult(task_id=task.id, proof_script=_proof("  trivial"))
+
+    class FakeVerifier:
+        def verify(self, task: object, submission: object) -> VerifyResult:
+            assert isinstance(submission, LemmaSubmission)
+            return VerifyResult(passed="trivial" in submission.proof_script, reason="ok")
+
+    monkeypatch.setattr("lemma.miner.run_openai_compatible_prover", fake_prover)
+    monkeypatch.setattr("lemma.miner.get_verifier", lambda *args, **kwargs: FakeVerifier())
+    monkeypatch.setattr("lemma.miner.verify_result_from_adapter_result", lambda result: result)
+
+    result = mine_once(
+        _settings(tmp_path).model_copy(update={"prover_base_url": "https://example.test", "prover_model": "model"}),
+        registry=registry,
+    )
+
+    assert result.verification.passed is True
+    assert len(calls) == 1
+
+
 def test_mine_once_defaults_to_validator_active_window(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     first = _task("lemma.test.first")
     second = _task("lemma.test.second")
