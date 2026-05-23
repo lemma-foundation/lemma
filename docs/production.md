@@ -21,6 +21,39 @@ The launch gate sequence is tracked in [Mainnet Readiness](mainnet-readiness.md)
 - Delay public proof release until the scoring window closes.
 - Keep `.env`, wallets, local state, logs, caches, and machine paths out of commits.
 
+## Production Readiness Gates
+
+The chain is the authority for epoch correctness. Timers are only wakeups: each
+prebuild, miner, and validator pass must recompute the active tempo from chain
+state, then exit idempotently when there is nothing new to do. Bucket intake
+timers should poll often enough that miner/validator ordering jitter costs
+minutes, not an epoch. Weight writes stay block-gated; on commit-reveal subnets,
+the writer waits for the final weight window before submitting.
+
+Generic validators only need the protocol path:
+
+1. rebuild or load the active registry from public pinned inputs;
+2. consume live bucket reveals;
+3. verify submitted proofs with the pinned Lean environment;
+4. write local verification, score, run, corpus, and canonical tempo artifacts;
+5. set weights from accepted Lean proofs.
+
+Subnet-owner publishing is separate operator infrastructure. Hippius, GitHub
+releases, and Hugging Face mirrors provide a canonical public corpus service,
+but validators are not required to hold those credentials or publish those
+mirrors. They may store or mirror their own artifacts if they want to.
+
+Before calling SN467 production-ready, prove:
+
+- one full natural tempo with no manual starts: registry prebuild, miner bucket
+  delivery, validator intake, Lean verification, weight write, and commitment
+  readback;
+- a 24- to 72-hour burn-in with repeated natural tempos and no operator nudges;
+- at least one second validator or clean rebuild that reproduces active-registry
+  and Lean-verification behavior from public inputs;
+- a short runbook for active tempo, registry cache, miner marker, reveal queue,
+  validator result, corpus artifacts, and chain readback.
+
 ## Commands
 
 ```bash
