@@ -180,7 +180,7 @@ def test_prebuild_active_procedural_registry_skips_existing_cache(
         type_expr="True",
         source_stream="procedural",
         source_name="pytest",
-    )
+    ).model_copy(update={"frontier_depth": 0})
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
     write_registry([task], cache_dir / "tempo-29.registry.json")
@@ -197,6 +197,7 @@ def test_prebuild_active_procedural_registry_skips_existing_cache(
             "LEMMA_PREFER_PROCESS_ENV": "1",
             "LEMMA_TASK_SUPPLY_MODE": "procedural",
             "LEMMA_ACTIVE_REGISTRY_CACHE_DIR": str(cache_dir),
+            "LEMMA_ACTIVE_K": "1",
         },
     )
 
@@ -204,6 +205,56 @@ def test_prebuild_active_procedural_registry_skips_existing_cache(
     payload = json.loads(result.output)
     assert payload["built"] is False
     assert payload["tasks"] == 1
+
+
+def test_prebuild_active_procedural_registry_refreshes_stale_frontier_cache(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    old_task = make_task(
+        task_id="lemma.procedural.old-frontier",
+        title="Old Frontier",
+        theorem_name="old_frontier",
+        type_expr="True",
+        source_stream="procedural",
+        source_name="pytest",
+    ).model_copy(update={"frontier_depth": 2})
+    new_task = make_task(
+        task_id="lemma.procedural.new-frontier",
+        title="New Frontier",
+        theorem_name="new_frontier",
+        type_expr="True",
+        source_stream="procedural",
+        source_name="pytest",
+    ).model_copy(update={"frontier_depth": 0})
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    cache_path = cache_dir / "tempo-30.registry.json"
+    write_registry([old_task], cache_path)
+
+    def fake_registry(settings, *, tempo):  # noqa: ANN001
+        assert tempo == 30
+        assert settings.active_registry_json is None
+        assert settings.active_registry_cache_dir is None
+        return type("Registry", (), {"tasks": (new_task,)})()
+
+    monkeypatch.setattr("lemma.validator.task_registry_for_validation", fake_registry)
+
+    result = CliRunner().invoke(
+        main,
+        ["tasks", "prebuild-active-procedural-registry", "--tempo", "30"],
+        env={
+            "LEMMA_PREFER_PROCESS_ENV": "1",
+            "LEMMA_TASK_SUPPLY_MODE": "procedural",
+            "LEMMA_ACTIVE_REGISTRY_CACHE_DIR": str(cache_dir),
+            "LEMMA_ACTIVE_K": "1",
+            "LEMMA_FRONTIER_DEPTH": "0",
+        },
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["built"] is True
+    assert "lemma.procedural.new-frontier" in cache_path.read_text(encoding="utf-8")
 
 
 def test_prebuild_active_procedural_registry_refreshes_stale_curriculum_cache(

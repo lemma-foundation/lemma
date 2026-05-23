@@ -1033,7 +1033,12 @@ def tasks_prebuild_active_procedural_registry_cmd(tempo: int | None, force: bool
     """Ensure the configured active procedural registry cache exists."""
     from lemma.task_supply import write_registry
     from lemma.tasks import load_task_registry
-    from lemma.validator import active_registry_cache_path, current_active_tempo, task_registry_for_validation
+    from lemma.validator import (
+        active_registry_cache_path,
+        current_active_tempo,
+        curriculum_controlled_settings,
+        task_registry_for_validation,
+    )
 
     settings = LemmaSettings()
     if settings.active_registry_json is not None:
@@ -1053,9 +1058,13 @@ def tasks_prebuild_active_procedural_registry_cmd(tempo: int | None, force: bool
         and cache_path.exists()
         and settings.curriculum_state_jsonl.stat().st_mtime > cache_path.stat().st_mtime
     )
-    if cache_path.exists() and not force and not curriculum_state_newer:
+    effective_settings = curriculum_controlled_settings(settings, tempo=active_tempo)
+    needs_rebuild = force or curriculum_state_newer or not cache_path.exists()
+    registry = None
+    if not needs_rebuild:
         registry = load_task_registry(cache_path.read_bytes())
-    else:
+        needs_rebuild = _active_registry_cache_stale(registry, effective_settings)
+    if needs_rebuild:
         rebuild_settings = settings.model_copy(update={"active_registry_json": None, "active_registry_cache_dir": None})
         registry = task_registry_for_validation(rebuild_settings, tempo=active_tempo)
         cache_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1063,6 +1072,8 @@ def tasks_prebuild_active_procedural_registry_cmd(tempo: int | None, force: bool
         write_registry(registry.tasks, tmp_path)
         tmp_path.replace(cache_path)
         built = True
+    if registry is None:
+        raise click.ClickException("active registry prebuild failed to load or build registry")
 
     click.echo(
         json.dumps(
@@ -1077,6 +1088,18 @@ def tasks_prebuild_active_procedural_registry_cmd(tempo: int | None, force: bool
             sort_keys=True,
         )
     )
+
+
+def _active_registry_cache_stale(registry, settings: LemmaSettings) -> bool:  # noqa: ANN001
+    expected_count = settings.procedural_candidate_count or settings.active_task_count
+    if len(registry.tasks) != expected_count:
+        return True
+    if any(task.frontier_depth != settings.frontier_depth for task in registry.tasks):
+        return True
+    expected_source = (settings.procedural_source_sha256_expected or "").strip().lower().removeprefix("sha256:")
+    if expected_source:
+        return {str(task.metadata.get("source_pool_hash") or "") for task in registry.tasks} != {expected_source}
+    return False
 
 
 @tasks_cmd.command("build-procedural-registry")
