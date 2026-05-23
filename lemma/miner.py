@@ -184,7 +184,7 @@ def _source_theorem_exact(task: LemmaTask, source_theorem: str) -> str:
         params = step.get("params")
         if not isinstance(params, dict):
             continue
-        if params.get("fallback") == "true_premise":
+        if params.get("fallback") in {"true_premise", "no_supported_type_occurrence"}:
             exact = f"(fun _ => {exact})"
         elif params.get("rule") == "conjoin_peer_conclusion":
             peer = params.get("peer_theorem_name")
