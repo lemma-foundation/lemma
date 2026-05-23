@@ -825,8 +825,13 @@ def test_operator_diagnostics_writes_public_safe_report(tmp_path) -> None:
     assert summary["score_event_count"] == 1
     assert summary["corpus_row_count"] == 3
     assert summary["validator_run_count"] == 2
+    assert summary["curriculum_can_increase_K"] is False
+    assert summary["curriculum_latest_tempo"] is None
+    assert summary["validator_capacity"] == 0
     assert payload.preflight.ok is True
     assert payload.registry_sha256 == registry_sha256
+    assert payload.curriculum.enabled is False
+    assert payload.curriculum.current_active_K == 2
     assert payload.artifacts.validator_run_count == 2
     assert payload.artifacts.verification_record_count == 2
     assert payload.artifacts.score_event_count == 1
@@ -840,6 +845,7 @@ def test_operator_diagnostics_writes_public_safe_report(tmp_path) -> None:
     assert set(payload.active_task_ids) == {"lemma.test.preflight_0", "lemma.test.preflight_1"}
     assert checks["corpus_output_dir"].detail == "ready"
     assert checks["operator_data_dir"].detail == "ready"
+    assert checks["curriculum_controller"].detail == "retarget disabled"
     assert str(tmp_path) not in payload_text
     assert "LEMMA_TASK_REGISTRY_URL" not in payload_text
 

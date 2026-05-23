@@ -113,7 +113,7 @@ uv run lemma operator preflight
 ```
 
 The command fails if the procedural source pool is not pinned in production mode, generated rows do not carry the chain-pinned Lean AST/elaborator mutation bundle plus drand-keyed mutation params, the active window cannot fill `K`, output directories cannot be prepared, or the Lean verifier backend is not configured.
-It emits a versioned JSON report with `schema_version`, `ok`, `registry_sha256`, `active_K`, `frontier_depth`, and `checks`.
+It emits a versioned JSON report with `schema_version`, `ok`, `registry_sha256`, `active_K`, `frontier_depth`, and `checks`. The checks include the curriculum controller status so operators can see whether retargeting is disabled, capped, or able to raise `K`.
 
 For reproducible support/debugging, write a diagnostics file before accepting submissions:
 

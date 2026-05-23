@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from lemma.operator import (
     OperatorArtifactSummary,
+    OperatorCurriculumSummary,
     OperatorDiagnosticsReport,
     OperatorPreflightReport,
     OperatorRegistryInspectReport,
@@ -160,7 +161,24 @@ def test_operator_diagnostics_report_contract() -> None:
         "frontier_depth",
         "active_task_ids",
         "registry_inspect",
+        "curriculum",
         "artifacts",
+    } <= required
+    assert schema["additionalProperties"] is False
+
+
+def test_operator_curriculum_summary_contract() -> None:
+    schema = OperatorCurriculumSummary.model_json_schema()
+    required = set(schema["required"])
+
+    assert {
+        "schema_version",
+        "enabled",
+        "validator_capacity",
+        "k_min",
+        "k_max",
+        "current_active_K",
+        "can_increase_K",
     } <= required
     assert schema["additionalProperties"] is False
 

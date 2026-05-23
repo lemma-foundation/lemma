@@ -629,6 +629,8 @@ def test_operator_reports_use_curriculum_controlled_active_window(
         "LEMMA_ACTIVE_QUEUE_SEED": "operator-smoke",
         "LEMMA_CURRICULUM_RETARGET": "1",
         "LEMMA_CURRICULUM_STATE_JSONL": str(state_path),
+        "LEMMA_VALIDATOR_CAPACITY": "4",
+        "LEMMA_CURRICULUM_K_MAX": "4",
         "LEMMA_CORPUS_OUTPUT_DIR": str(tmp_path / "corpus"),
         "LEMMA_OPERATOR_DATA_DIR": str(tmp_path / "operator"),
         "LEMMA_USE_DOCKER": "0",
@@ -650,6 +652,20 @@ def test_operator_reports_use_curriculum_controlled_active_window(
     assert preflight_payload.active_K == 2
     assert preflight_payload.frontier_depth == 2
     assert checks["active_window"].detail.startswith("2 active / K=2 at frontier_depth=2")
+    assert checks["curriculum_controller"].detail.endswith("current_K=2 can_increase_K=true")
+
+    diagnostics_path = tmp_path / "operator-diagnostics.json"
+    diagnostics = runner.invoke(main, ["operator", "diagnostics", "--output", str(diagnostics_path)], env=env)
+    assert diagnostics.exit_code == 0, diagnostics.output
+    diagnostics_payload = OperatorDiagnosticsReport.model_validate_json(diagnostics_path.read_text(encoding="utf-8"))
+    assert diagnostics_payload.curriculum.enabled is True
+    assert diagnostics_payload.curriculum.validator_capacity == 4
+    assert diagnostics_payload.curriculum.k_max == 4
+    assert diagnostics_payload.curriculum.current_active_K == 2
+    assert diagnostics_payload.curriculum.can_increase_K is True
+    assert diagnostics_payload.curriculum.latest_tempo == 4
+    assert diagnostics_payload.curriculum.latest_active_K == 2
+    assert diagnostics_payload.curriculum.latest_frontier_depth == 2
 
 
 def test_production_preflight_fails_closed_without_launch_flags(tmp_path: Path) -> None:

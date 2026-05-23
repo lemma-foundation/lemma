@@ -1565,6 +1565,9 @@ def operator_diagnostics_cmd(ctx: click.Context, output_path: Path) -> None:
         "verification_record_count": report.artifacts.verification_record_count,
         "score_event_count": report.artifacts.score_event_count,
         "corpus_row_count": report.artifacts.corpus_row_count,
+        "curriculum_can_increase_K": report.curriculum.can_increase_K,
+        "curriculum_latest_tempo": report.curriculum.latest_tempo,
+        "validator_capacity": report.curriculum.validator_capacity,
     }
     if report.registry_inspect is not None:
         summary.update(

@@ -28,6 +28,7 @@ PreflightCheckName = Literal[
     "commit_reveal",
     "strong_proof_identity",
     "epoch_randomness",
+    "curriculum_controller",
     "import_graph",
     "procedural_supply",
 ]
@@ -93,6 +94,27 @@ class OperatorArtifactSummary(BaseModel):
     corpus_row_count: int = Field(ge=0)
 
 
+class OperatorCurriculumSummary(BaseModel):
+    """Public-safe curriculum controller state."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal[1]
+    enabled: bool
+    validator_capacity: int = Field(ge=0)
+    k_min: int = Field(ge=1)
+    k_max: int = Field(ge=1)
+    current_active_K: int = Field(ge=1)
+    can_increase_K: bool
+    latest_tempo: int | None = Field(default=None, ge=0)
+    latest_active_K: int | None = Field(default=None, ge=1)
+    latest_frontier_depth: int | None = Field(default=None, ge=0)
+    latest_ema_solve_rate: float | None = Field(default=None, ge=0.0, le=1.0)
+    latest_solved_slots: int | None = Field(default=None, ge=0)
+    latest_action: str | None = None
+    latest_variant_stream_requested: bool | None = None
+
+
 class OperatorDiagnosticsReport(BaseModel):
     """Public-safe local support report for operator debugging."""
 
@@ -105,6 +127,7 @@ class OperatorDiagnosticsReport(BaseModel):
     frontier_depth: int = Field(ge=0)
     active_task_ids: tuple[str, ...]
     registry_inspect: OperatorRegistryInspectReport | None
+    curriculum: OperatorCurriculumSummary
     artifacts: OperatorArtifactSummary
 
 
@@ -135,6 +158,35 @@ def _summarize_artifacts(settings: LemmaSettings) -> OperatorArtifactSummary:
         score_event_count=_count_jsonl_rows(settings.operator_data_dir / "score-events.jsonl"),
         corpus_jsonl_file_count=len(corpus_files),
         corpus_row_count=sum(_count_jsonl_rows(path) for path in corpus_files),
+    )
+
+
+def _summarize_curriculum(settings: LemmaSettings, *, current_active_K: int) -> OperatorCurriculumSummary:
+    latest = None
+    if settings.curriculum_retarget_enabled and settings.curriculum_state_jsonl is not None:
+        from lemma.supply.controller import read_curriculum_records
+
+        records = read_curriculum_records(settings.curriculum_state_jsonl)
+        latest = records[-1] if records else None
+    return OperatorCurriculumSummary(
+        schema_version=1,
+        enabled=settings.curriculum_retarget_enabled,
+        validator_capacity=settings.validator_capacity,
+        k_min=settings.curriculum_k_min,
+        k_max=settings.curriculum_k_max,
+        current_active_K=current_active_K,
+        can_increase_K=(
+            settings.curriculum_retarget_enabled
+            and settings.validator_capacity > current_active_K
+            and settings.curriculum_k_max > current_active_K
+        ),
+        latest_tempo=latest.tempo if latest is not None else None,
+        latest_active_K=latest.active_K if latest is not None else None,
+        latest_frontier_depth=latest.frontier_depth if latest is not None else None,
+        latest_ema_solve_rate=latest.ema_solve_rate if latest is not None else None,
+        latest_solved_slots=latest.solved_slots if latest is not None else None,
+        latest_action=latest.action if latest is not None else None,
+        latest_variant_stream_requested=latest.variant_stream_requested if latest is not None else None,
     )
 
 
@@ -244,6 +296,24 @@ def _build_operator_state(
         spool_ok, spool_detail = _ensure_dir(settings.submission_spool_dir)
         checks.append(_check("submission_spool_dir", spool_ok, spool_detail))
 
+    curriculum_summary = _summarize_curriculum(settings, current_active_K=active_window_settings.active_task_count)
+    checks.append(
+        _check(
+            "curriculum_controller",
+            settings.curriculum_k_max >= settings.curriculum_k_min,
+            (
+                "retarget disabled"
+                if not curriculum_summary.enabled
+                else (
+                    f"retarget enabled capacity={curriculum_summary.validator_capacity} "
+                    f"k_range={curriculum_summary.k_min}-{curriculum_summary.k_max} "
+                    f"current_K={curriculum_summary.current_active_K} "
+                    f"can_increase_K={str(curriculum_summary.can_increase_K).lower()}"
+                )
+            ),
+        )
+    )
+
     if (settings.lean_verify_remote_url or "").strip():
         verifier_detail = "remote Lean worker configured"
         verifier_ok = True
@@ -346,6 +416,7 @@ def build_operator_diagnostics(settings: LemmaSettings) -> OperatorDiagnosticsRe
         frontier_depth=preflight.frontier_depth,
         active_task_ids=active_task_ids,
         registry_inspect=registry_inspect,
+        curriculum=_summarize_curriculum(settings, current_active_K=preflight.active_K),
         artifacts=_summarize_artifacts(settings),
     )
 
