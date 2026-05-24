@@ -1065,7 +1065,9 @@ def tasks_prebuild_active_procedural_registry_cmd(tempo: int | None, force: bool
         registry = load_task_registry(cache_path.read_bytes())
         needs_rebuild = _active_registry_cache_stale(registry, effective_settings)
     if needs_rebuild:
-        rebuild_settings = settings.model_copy(update={"active_registry_json": None, "active_registry_cache_dir": None})
+        rebuild_settings = effective_settings.model_copy(
+            update={"active_registry_json": None, "active_registry_cache_dir": None}
+        )
         registry = task_registry_for_validation(rebuild_settings, tempo=active_tempo)
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         tmp_path = cache_path.with_name(cache_path.name + ".tmp")

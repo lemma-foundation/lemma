@@ -276,6 +276,14 @@ def test_prebuild_active_procedural_registry_refreshes_stale_curriculum_cache(
         source_stream="procedural",
         source_name="pytest",
     )
+    second_task = make_task(
+        task_id="lemma.procedural.second",
+        title="Second",
+        theorem_name="second",
+        type_expr="True",
+        source_stream="procedural",
+        source_name="pytest",
+    )
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
     cache_path = cache_dir / "tempo-31.registry.json"
@@ -286,7 +294,7 @@ def test_prebuild_active_procedural_registry_refreshes_stale_curriculum_cache(
         state_path,
         CurriculumTempoRecord(
             tempo=30,
-            active_K=1,
+            active_K=2,
             frontier_depth=0,
             ema_solve_rate=0.5,
             solved_slots=1,
@@ -299,7 +307,10 @@ def test_prebuild_active_procedural_registry_refreshes_stale_curriculum_cache(
 
     def fake_registry(settings, *, tempo):  # noqa: ANN001
         assert tempo == 31
-        return type("Registry", (), {"tasks": (new_task,)})()
+        assert settings.active_task_count == 2
+        assert settings.active_registry_json is None
+        assert settings.active_registry_cache_dir is None
+        return type("Registry", (), {"tasks": (new_task, second_task)})()
 
     monkeypatch.setattr("lemma.validator.task_registry_for_validation", fake_registry)
 
@@ -318,6 +329,7 @@ def test_prebuild_active_procedural_registry_refreshes_stale_curriculum_cache(
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)
     assert payload["built"] is True
+    assert payload["tasks"] == 2
     assert "lemma.procedural.new" in cache_path.read_text(encoding="utf-8")
 
 
