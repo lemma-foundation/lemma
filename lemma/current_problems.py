@@ -90,8 +90,10 @@ def build_current_problems_snapshot(
     settings: LemmaSettings,
     *,
     registry: TaskRegistry | None = None,
+    registry_is_active: bool = False,
     generated_at: str | None = None,
     tempo: int | None = None,
+    include_randomness_hashes: bool = True,
 ) -> CurrentProblemsSnapshot:
     """Build the public active-task snapshot without proof or operator state."""
     from lemma.protocol_invariants import enforce_production_invariants
@@ -108,7 +110,14 @@ def build_current_problems_snapshot(
     effective_settings = curriculum_controlled_settings(settings, tempo=active_tempo)
     task_registry = registry or task_registry_for_validation(effective_settings, tempo=active_tempo)
     enforce_production_invariants(settings, task_registry)
-    active_tasks = active_tasks_for_validation(task_registry, effective_settings, tempo=active_tempo)
+    active_tasks = (
+        tuple(
+            task.model_copy(update={"queue_position": position, "frontier_depth": effective_settings.frontier_depth})
+            for position, task in enumerate(task_registry.tasks[: effective_settings.active_task_count])
+        )
+        if registry_is_active
+        else active_tasks_for_validation(task_registry, effective_settings, tempo=active_tempo)
+    )
     tasks = tuple(_problem(task) for task in active_tasks)
     return CurrentProblemsSnapshot(
         schema_version=1,
@@ -121,9 +130,15 @@ def build_current_problems_snapshot(
         active_tempo_seconds=effective_settings.active_tempo_seconds,
         active_seed_mode=effective_settings.active_seed_mode,
         active_epoch_randomness_source=effective_settings.active_epoch_randomness_source,
-        active_epoch_randomness_sha256=active_epoch_randomness_sha256(effective_settings, tempo=active_tempo),
-        active_selection_seed_sha256=active_selection_seed_sha256(
-            task_registry, effective_settings, tempo=active_tempo
+        active_epoch_randomness_sha256=(
+            active_epoch_randomness_sha256(effective_settings, tempo=active_tempo)
+            if include_randomness_hashes
+            else None
+        ),
+        active_selection_seed_sha256=(
+            active_selection_seed_sha256(task_registry, effective_settings, tempo=active_tempo)
+            if include_randomness_hashes
+            else None
         ),
         frontier_depth=effective_settings.frontier_depth,
         active_queue_seed=effective_settings.active_queue_seed,

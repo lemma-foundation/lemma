@@ -19,9 +19,14 @@ def main() -> int:
     parser.add_argument("--host", default="localhost")
     parser.add_argument("--port", type=int, default=8731)
     parser.add_argument("--tempo", type=int, default=None, help="Override the active-window tempo")
+    parser.add_argument("--snapshot-json", type=Path, default=None, help="Serve a prebuilt snapshot JSON file")
     args = parser.parse_args()
 
-    run_server(args.host, args.port, CurrentProblemService(LemmaSettings(), tempo=args.tempo))
+    run_server(
+        args.host,
+        args.port,
+        CurrentProblemService(LemmaSettings(), tempo=args.tempo, snapshot_path=args.snapshot_json),
+    )
     return 0
 
 

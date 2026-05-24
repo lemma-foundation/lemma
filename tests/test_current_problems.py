@@ -135,6 +135,27 @@ def test_current_problem_snapshot_reports_curriculum_effective_window(tmp_path: 
     assert {task.frontier_depth for task in snapshot.tasks} == {2}
 
 
+def test_current_problem_snapshot_can_render_active_registry_without_randomness() -> None:
+    settings = LemmaSettings(
+        active_task_count=1,
+        active_seed_mode="epoch_randomness",
+        active_epoch_randomness_source="chain_drand",
+    )
+
+    snapshot = build_current_problems_snapshot(
+        settings,
+        registry=_registry(),
+        registry_is_active=True,
+        tempo=2,
+        include_randomness_hashes=False,
+    )
+
+    assert snapshot.task_count == 1
+    assert snapshot.tasks[0].queue_position == 0
+    assert snapshot.active_epoch_randomness_sha256 is None
+    assert snapshot.active_selection_seed_sha256 is None
+
+
 def test_current_problem_snapshot_enforces_production_boundary() -> None:
     settings = LemmaSettings(
         protocol_mode="production",
@@ -239,6 +260,30 @@ def test_current_problem_service_serves_stale_cache_if_refresh_fails() -> None:
     assert second_status == 200
     assert first_body == second_body
     assert calls == 2
+
+
+def test_current_problem_service_serves_snapshot_file(tmp_path: Path) -> None:
+    snapshot_path = tmp_path / "current-problems.json"
+    snapshot_path.write_text('{"schema_version":1,"task_count":4}\n', encoding="utf-8")
+    service = CurrentProblemService(LemmaSettings(), snapshot_path=snapshot_path)
+
+    status, body = service.response("/current-problems.json?t=1")
+
+    assert status == 200
+    assert json.loads(body) == {"schema_version": 1, "task_count": 4}
+
+
+def test_current_problem_service_serves_stale_snapshot_file_if_refresh_fails(tmp_path: Path) -> None:
+    snapshot_path = tmp_path / "current-problems.json"
+    snapshot_path.write_text('{"schema_version":1,"task_count":4}\n', encoding="utf-8")
+    service = CurrentProblemService(LemmaSettings(), snapshot_path=snapshot_path)
+    first_status, first_body = service.response("/current-problems.json")
+    snapshot_path.unlink()
+    second_status, second_body = service.response("/current-problems.json")
+
+    assert first_status == 200
+    assert second_status == 200
+    assert first_body == second_body
 
 
 def test_current_problem_service_fails_closed() -> None:

@@ -7,6 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from time import monotonic
 from urllib.parse import urlsplit
 
@@ -23,26 +24,38 @@ class _CachedResponse:
     body: bytes
 
 
+@dataclass(frozen=True)
+class _CachedFile:
+    mtime_ns: int
+    size: int
+    body: bytes
+
+
 class CurrentProblemService:
     def __init__(
         self,
         settings: LemmaSettings,
         *,
         tempo: int | None = None,
+        snapshot_path: Path | None = None,
         snapshot_builder: SnapshotBuilder = build_current_problems_snapshot,
         cache_ttl_s: float = 600.0,
     ) -> None:
         self.settings = settings
         self.tempo = tempo
+        self.snapshot_path = snapshot_path
         self.snapshot_builder = snapshot_builder
         self.cache_ttl_s = max(0.0, cache_ttl_s)
         self._cached_response: _CachedResponse | None = None
+        self._cached_file: _CachedFile | None = None
 
     def response(self, raw_path: str) -> tuple[int, bytes]:
         path = urlsplit(raw_path).path
         if path == "/healthz":
             return HTTPStatus.OK, b'{"ok":true}\n'
         if path in {"/", "/current-problems.json"}:
+            if self.snapshot_path is not None:
+                return self._file_response()
             now = monotonic()
             if self._cached_response is not None and self._cached_response.expires_at > now:
                 return self._cached_response.status, self._cached_response.body
@@ -57,6 +70,26 @@ class CurrentProblemService:
             self._cached_response = _CachedResponse(now + self.cache_ttl_s, HTTPStatus.OK, body)
             return HTTPStatus.OK, body
         return HTTPStatus.NOT_FOUND, b'{"error":"not found"}\n'
+
+    def _file_response(self) -> tuple[int, bytes]:
+        try:
+            stat = self.snapshot_path.stat() if self.snapshot_path is not None else None
+            if (
+                stat is not None
+                and self._cached_file is not None
+                and self._cached_file.mtime_ns == stat.st_mtime_ns
+                and self._cached_file.size == stat.st_size
+            ):
+                return HTTPStatus.OK, self._cached_file.body
+            if self.snapshot_path is None:
+                raise FileNotFoundError
+            body = self.snapshot_path.read_bytes()
+            self._cached_file = _CachedFile(stat.st_mtime_ns, stat.st_size, body)
+            return HTTPStatus.OK, body
+        except Exception:
+            if self._cached_file is not None:
+                return HTTPStatus.OK, self._cached_file.body
+            return HTTPStatus.SERVICE_UNAVAILABLE, b'{"error":"problem feed unavailable"}\n'
 
 
 def make_handler(service: CurrentProblemService) -> type[BaseHTTPRequestHandler]:
