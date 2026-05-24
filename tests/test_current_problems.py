@@ -66,6 +66,7 @@ def test_current_problem_snapshot_is_public_safe() -> None:
     assert payload["registry_task_count"] == 3
     assert payload["active_K"] == 2
     assert payload["tempo"] == 0
+    assert payload["active_tempo_source"] == "wall_clock"
     assert payload["active_tempo_seconds"] == 4320
     assert payload["task_count"] == 2
     assert {task["task_id"] for task in payload["tasks"]} == {"lemma.test.alpha", "lemma.test.beta"}
@@ -117,6 +118,7 @@ def test_current_problem_snapshot_reports_curriculum_effective_window(tmp_path: 
     )
     settings = LemmaSettings(
         active_task_count=20,
+        active_tempo_source="chain",
         frontier_depth=0,
         active_queue_seed="pytest",
         curriculum_retarget_enabled=True,
@@ -127,6 +129,7 @@ def test_current_problem_snapshot_reports_curriculum_effective_window(tmp_path: 
     snapshot = build_current_problems_snapshot(settings, registry=_registry(), tempo=2)
 
     assert snapshot.active_K == 1
+    assert snapshot.active_tempo_source == "chain"
     assert snapshot.frontier_depth == 2
     assert snapshot.task_count == 1
     assert {task.frontier_depth for task in snapshot.tasks} == {2}
@@ -188,6 +191,54 @@ def test_current_problem_service_serves_snapshot() -> None:
     assert status == 200
     assert payload["schema_version"] == 1
     assert payload["task_count"] == 1
+
+
+def test_current_problem_service_caches_snapshot_response() -> None:
+    calls = 0
+
+    def snapshot_builder(_settings: LemmaSettings, *, tempo: int | None = None):
+        nonlocal calls
+        calls += 1
+        return build_current_problems_snapshot(
+            LemmaSettings(active_task_count=1, frontier_depth=0, active_queue_seed="pytest"),
+            registry=_registry(),
+            generated_at="2026-05-20T00:00:00Z",
+            tempo=0 if tempo is None else tempo,
+        )
+
+    service = CurrentProblemService(LemmaSettings(), snapshot_builder=snapshot_builder)
+    first_status, first_body = service.response("/current-problems.json")
+    second_status, second_body = service.response("/current-problems.json?t=2")
+
+    assert first_status == 200
+    assert second_status == 200
+    assert first_body == second_body
+    assert calls == 1
+
+
+def test_current_problem_service_serves_stale_cache_if_refresh_fails() -> None:
+    calls = 0
+
+    def snapshot_builder(_settings: LemmaSettings, *, tempo: int | None = None):
+        nonlocal calls
+        calls += 1
+        if calls > 1:
+            raise RuntimeError("temporary chain lookup failure")
+        return build_current_problems_snapshot(
+            LemmaSettings(active_task_count=1, frontier_depth=0, active_queue_seed="pytest"),
+            registry=_registry(),
+            generated_at="2026-05-20T00:00:00Z",
+            tempo=0 if tempo is None else tempo,
+        )
+
+    service = CurrentProblemService(LemmaSettings(), snapshot_builder=snapshot_builder, cache_ttl_s=0)
+    first_status, first_body = service.response("/current-problems.json")
+    second_status, second_body = service.response("/current-problems.json")
+
+    assert first_status == 200
+    assert second_status == 200
+    assert first_body == second_body
+    assert calls == 2
 
 
 def test_current_problem_service_fails_closed() -> None:

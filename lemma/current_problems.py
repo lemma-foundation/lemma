@@ -48,6 +48,7 @@ class CurrentProblemsSnapshot(BaseModel):
     registry_task_count: int = Field(ge=0)
     active_K: int = Field(ge=1)
     tempo: int = Field(ge=0)
+    active_tempo_source: Literal["wall_clock", "chain"] = "wall_clock"
     active_tempo_seconds: int = Field(ge=1)
     active_seed_mode: Literal["static", "epoch_randomness"] = "static"
     active_epoch_randomness_source: Literal["manual", "chain_drand"] = "manual"
@@ -116,6 +117,7 @@ def build_current_problems_snapshot(
         registry_task_count=len(task_registry.tasks),
         active_K=effective_settings.active_task_count,
         tempo=active_tempo,
+        active_tempo_source=effective_settings.active_tempo_source,
         active_tempo_seconds=effective_settings.active_tempo_seconds,
         active_seed_mode=effective_settings.active_seed_mode,
         active_epoch_randomness_source=effective_settings.active_epoch_randomness_source,

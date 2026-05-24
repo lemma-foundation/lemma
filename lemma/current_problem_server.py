@@ -4,14 +4,23 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from dataclasses import dataclass
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from time import monotonic
 from urllib.parse import urlsplit
 
 from lemma.common.config import LemmaSettings
 from lemma.current_problems import CurrentProblemsSnapshot, build_current_problems_snapshot
 
 SnapshotBuilder = Callable[..., CurrentProblemsSnapshot]
+
+
+@dataclass(frozen=True)
+class _CachedResponse:
+    expires_at: float
+    status: int
+    body: bytes
 
 
 class CurrentProblemService:
@@ -21,22 +30,32 @@ class CurrentProblemService:
         *,
         tempo: int | None = None,
         snapshot_builder: SnapshotBuilder = build_current_problems_snapshot,
+        cache_ttl_s: float = 600.0,
     ) -> None:
         self.settings = settings
         self.tempo = tempo
         self.snapshot_builder = snapshot_builder
+        self.cache_ttl_s = max(0.0, cache_ttl_s)
+        self._cached_response: _CachedResponse | None = None
 
     def response(self, raw_path: str) -> tuple[int, bytes]:
         path = urlsplit(raw_path).path
         if path == "/healthz":
             return HTTPStatus.OK, b'{"ok":true}\n'
         if path in {"/", "/current-problems.json"}:
+            now = monotonic()
+            if self._cached_response is not None and self._cached_response.expires_at > now:
+                return self._cached_response.status, self._cached_response.body
             try:
                 snapshot = self.snapshot_builder(self.settings, tempo=self.tempo)
             except Exception:
+                if self._cached_response is not None:
+                    return self._cached_response.status, self._cached_response.body
                 return HTTPStatus.SERVICE_UNAVAILABLE, b'{"error":"problem feed unavailable"}\n'
             payload = snapshot.model_dump(mode="json", exclude_none=True)
-            return HTTPStatus.OK, (json.dumps(payload, sort_keys=True) + "\n").encode()
+            body = (json.dumps(payload, sort_keys=True) + "\n").encode()
+            self._cached_response = _CachedResponse(now + self.cache_ttl_s, HTTPStatus.OK, body)
+            return HTTPStatus.OK, body
         return HTTPStatus.NOT_FOUND, b'{"error":"not found"}\n'
 
 
