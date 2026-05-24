@@ -73,17 +73,17 @@ class CurrentProblemService:
 
     def _file_response(self) -> tuple[int, bytes]:
         try:
-            stat = self.snapshot_path.stat() if self.snapshot_path is not None else None
+            path = self.snapshot_path
+            if path is None:
+                raise FileNotFoundError
+            stat = path.stat()
             if (
-                stat is not None
-                and self._cached_file is not None
+                self._cached_file is not None
                 and self._cached_file.mtime_ns == stat.st_mtime_ns
                 and self._cached_file.size == stat.st_size
             ):
                 return HTTPStatus.OK, self._cached_file.body
-            if self.snapshot_path is None:
-                raise FileNotFoundError
-            body = self.snapshot_path.read_bytes()
+            body = path.read_bytes()
             self._cached_file = _CachedFile(stat.st_mtime_ns, stat.st_size, body)
             return HTTPStatus.OK, body
         except Exception:
