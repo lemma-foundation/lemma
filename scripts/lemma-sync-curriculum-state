@@ -10,6 +10,10 @@ fi
 mkdir -p "$(dirname "$path")"
 tmp="${path}.tmp.$$"
 if curl -fsSL "$url" -o "$tmp"; then
+  if [[ -e "$path" ]] && cmp -s "$tmp" "$path"; then
+    rm -f "$tmp"
+    exit 0
+  fi
   mv "$tmp" "$path"
   exit 0
 fi
