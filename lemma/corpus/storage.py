@@ -368,6 +368,33 @@ def _existing_epoch_storage(
     }
 
 
+def _existing_active_pool(
+    output_root: Path, *, netuid: str, tempo: int
+) -> dict[str, object] | None:
+    active_dir = output_root / netuid / "active-pools" / f"tempo-{tempo:06d}"
+    commitment_path = output_root / netuid / "commitments" / f"tempo-{tempo:06d}.json"
+    if not active_dir.is_dir() or not commitment_path.is_file():
+        return None
+    commitment = json.loads(commitment_path.read_text(encoding="utf-8"))
+    active_pool_directory_sha256 = commitment.get("active_pool_directory_sha256")
+    if not active_pool_directory_sha256:
+        return None
+    return {
+        "active_pool_directory": active_dir,
+        "active_pool_directory_cid": commitment.get("active_pool_directory_cid"),
+        "active_pool_directory_sha256": active_pool_directory_sha256,
+    }
+
+
+def _can_rebuild_existing_epoch_storage(error: ValueError) -> bool:
+    message = str(error)
+    return (
+        message.startswith("canonical storage entry count mismatch")
+        or message.startswith("canonical storage accepted root mismatch")
+        or message.startswith("canonical commitment accepted root mismatch")
+    )
+
+
 def _remove_legacy_epoch_storage(epoch_file: Path, output_root: Path, *, netuid: str, tempo: int) -> None:
     legacy_tempo = epoch_number(epoch_file)
     if legacy_tempo == tempo:
@@ -462,16 +489,28 @@ def build_storage_index(repo: Path, netuid: str, *, resolver: str = "hippius-s3-
     for tempo in sorted(rows_by_tempo):
         rows = rows_by_tempo[tempo]
         if _rows_have_chain_tempo(rows):
-            existing = _existing_epoch_storage(rows, output_root, netuid=netuid, tempo=tempo)
+            try:
+                existing = _existing_epoch_storage(rows, output_root, netuid=netuid, tempo=tempo)
+            except ValueError as error:
+                if not _can_rebuild_existing_epoch_storage(error):
+                    raise
+                existing = None
             if existing is not None:
                 epochs.append(existing)
                 continue
         files = files_by_tempo[tempo]
-        if len(files) == 1:
+        if len(files) == 1 and not _rows_have_chain_tempo(rows):
             epochs.append(build_epoch_storage(files[0], output_root, netuid=netuid, resolver=resolver))
         else:
             epochs.append(
-                build_epoch_storage_from_rows(rows, output_root, netuid=netuid, tempo=tempo, resolver=resolver)
+                build_epoch_storage_from_rows(
+                    rows,
+                    output_root,
+                    netuid=netuid,
+                    tempo=tempo,
+                    resolver=resolver,
+                    active_pool=_existing_active_pool(output_root, netuid=netuid, tempo=tempo),
+                )
             )
     index = {
         "schema_version": 1,

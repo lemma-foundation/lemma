@@ -727,6 +727,58 @@ def test_validate_consumes_latest_bucket_reveal_dir(monkeypatch: pytest.MonkeyPa
     assert json.loads(second.output)["verified"] == 0
 
 
+def test_production_bucket_reveals_wait_for_completed_chain_tempo(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    inbox = tmp_path / "bucket-reveals"
+    inbox.mkdir()
+    task = make_task(
+        task_id="lemma.sample.true_intro",
+        title="Smoke-test True",
+        theorem_name="true_intro_sample",
+        type_expr="True",
+        source_stream="human_curated",
+        source_name="pytest",
+    )
+    registry_path = tmp_path / "registry.json"
+    write_registry([task], registry_path)
+    ciphertext = "current-cipher"
+    reveal = MinerBucketReveal(
+        tempo=7,
+        miner_hotkey="hk-current",
+        drand_round=77,
+        drand_signature="0xsig",
+        commit_block=7,
+        commit_extrinsic_hash="0xcurrent",
+        merkle_root=miner_submission_merkle_root(((0, ciphertext_sha256(ciphertext.encode("utf-8"))),)),
+        blobs=(RevealedBucketBlob(slot_index=0, ciphertext=ciphertext, proof_script=_true_intro_proof()),),
+    )
+    reveal_path = inbox / "current.json"
+    reveal_path.write_text(reveal.model_dump_json() + "\n", encoding="utf-8")
+    monkeypatch.setattr("lemma.validator.current_active_tempo", lambda settings: 7)
+
+    result = CliRunner().invoke(
+        main,
+        ["validate", "--once", "--bucket-reveals-dir", str(inbox), "--no-set-weights"],
+        env={
+            "LEMMA_PREFER_PROCESS_ENV": "1",
+            "LEMMA_PROTOCOL_MODE": "production",
+            "LEMMA_OPERATOR_DATA_DIR": str(tmp_path / "operator"),
+            "LEMMA_CORPUS_OUTPUT_DIR": str(tmp_path / "corpus"),
+            "LEMMA_TASK_REGISTRY_URL": str(registry_path),
+            "LEMMA_ACTIVE_K": "1",
+        },
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["reason"] == "bucket reveal tempo is not complete"
+    assert payload["bucket_reveals_consumed"] == 0
+    assert payload["bucket_tempo"] == 7
+    assert reveal_path.exists()
+    assert not (inbox / "processed").exists()
+
+
 def _write_preflight_registry(tmp_path, *, task_count: int = 2) -> tuple[str, str]:
     tasks = [
         make_task(

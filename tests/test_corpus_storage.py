@@ -168,6 +168,55 @@ def test_build_storage_index_preserves_existing_live_tempo_artifacts(tmp_path: P
     )
 
 
+def test_build_storage_index_rebuilds_expanded_live_tempo_artifacts(tmp_path: Path) -> None:
+    repo = tmp_path / "lemma-corpus"
+    first = {
+        "row_id": "a" * 64,
+        "task_id": "task.a",
+        "proof_sha256": "b" * 64,
+        "queue_position": 0,
+        "solver_hotkey": "solver-a",
+        "tempo": 19954,
+        "validator_hotkey": "validator",
+    }
+    second = {
+        "row_id": "c" * 64,
+        "task_id": "task.a",
+        "proof_sha256": "d" * 64,
+        "queue_position": 0,
+        "solver_hotkey": "solver-b",
+        "tempo": 19954,
+        "validator_hotkey": "validator",
+    }
+    _write_epoch(repo / "corpus" / "sn467" / "epoch-000045.jsonl", [first])
+    _write_epoch(repo / "corpus" / "sn467" / "epoch-000046.jsonl", [second])
+    task = make_task(
+        task_id="lemma.test.active",
+        title="Active true",
+        theorem_name="active_true",
+        type_expr="True",
+        source_stream="human_curated",
+        source_name="pytest",
+    )
+    output_root = repo / "canonical"
+    active = build_active_pool_storage((task,), output_root, netuid="sn467", tempo=19954, resolver="hippius-s3-arion")
+    build_epoch_storage_from_rows(
+        [first],
+        output_root,
+        netuid="sn467",
+        tempo=19954,
+        resolver="hippius-s3-arion",
+        active_pool=active,
+    )
+
+    index = build_storage_index(repo, "sn467", resolver="hippius-s3-arion")
+    commitment = json.loads((output_root / "sn467" / "commitments" / "tempo-019954.json").read_text(encoding="utf-8"))
+
+    assert index["epochs"][0]["entry_count"] == 2
+    assert commitment["active_pool_directory_sha256"] == active["active_pool_directory_sha256"]
+    assert commitment["tempo_commitment_payload"].startswith("lemma-tempo-v1:")
+
+
 def test_build_storage_index_rejects_duplicate_row_ids(tmp_path: Path) -> None:
     repo = tmp_path / "lemma-corpus"
     row = {

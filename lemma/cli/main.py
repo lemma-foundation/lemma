@@ -1716,7 +1716,7 @@ def validate_cmd(
     if bucket_reveals_dir is not None:
         from lemma.chain.commitments import read_all_commitments
         from lemma.chain.miner_buckets import latest_bucket_reveal_batch, submissions_from_bucket_reveals
-        from lemma.validator import task_registry_for_validation
+        from lemma.validator import current_active_tempo, task_registry_for_validation
 
         bucket_reveal_batch = latest_bucket_reveal_batch(bucket_reveals_dir)
         bucket_rejections.extend(bucket_reveal_batch.rejections)
@@ -1750,6 +1750,34 @@ def validate_cmd(
         reveal_tempo = bucket_reveal_batch.tempo
         if reveal_tempo is None:
             raise click.ClickException("bucket reveal directory did not resolve a tempo")
+        chain_active_tempo = current_active_tempo(settings)
+        if settings.protocol_mode == "production" and reveal_tempo >= chain_active_tempo:
+            click.echo(
+                json.dumps(
+                    {
+                        "verified": 0,
+                        "accepted_unique": 0,
+                        "credits": {},
+                        "scores": {},
+                        "submission_files_consumed": len(spool_paths),
+                        "bucket_reveals_consumed": 0,
+                        "bucket_reveals_rejected": len(bucket_rejections),
+                        "bucket_tempo": reveal_tempo,
+                        "active_tempo": chain_active_tempo,
+                        "reason": "bucket reveal tempo is not complete",
+                        "weights": {},
+                        "corpus_rows": 0,
+                        "unearned_policy": settings.unearned_allocation_policy,
+                        "unearned_share": 0.0,
+                        "weights_set": False,
+                        "chain_commitment_set": False,
+                        "tempo_commitment_payload": "",
+                    },
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
+            return
         if validation_tempo is not None and validation_tempo != reveal_tempo:
             raise click.ClickException("live miner intake sources must target the same tempo")
         validation_tempo = reveal_tempo
