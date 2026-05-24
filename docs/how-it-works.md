@@ -14,9 +14,11 @@ active Lean task -> task-bound proof -> pinned verification -> rank-0 credit -> 
 6. Validators compute miner weights from deterministic active slot weights; unsolved-slot value is burned by default instead of redistributed.
 7. Accepted rows can be exported or mirrored; publishing is optional for validators.
 
-## Lean Is The Judge
+## Lean Is The Correctness Boundary
 
-Lean theorem proving is the active path. The correctness boundary is the pinned Lean verifier. Explanations, model names, and claimed effort are not scored.
+Lean theorem proving is the active path. The pinned verifier checks whether a
+proof passes. Ranking and credit come from validator scoring over accepted
+submissions.
 
 A submitted Lean proof passes or fails.
 

@@ -157,6 +157,8 @@ def test_public_surfaces_do_not_reintroduce_legacy_protocol_language() -> None:
         "before it needs to broaden",
         "not a library like mathlib",
         "publication machinery",
+        "verifier decides",
+        "lean is the judge",
         "open corpus of reusable proof data",
         "added to an open corpus",
         "reusable proof data",
