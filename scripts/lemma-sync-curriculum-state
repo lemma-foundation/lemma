@@ -8,7 +8,7 @@ if [[ -z "$url" || -z "$path" ]]; then
 fi
 
 mkdir -p "$(dirname "$path")"
-tmp="${path}.tmp"
+tmp="${path}.tmp.$$"
 if curl -fsSL "$url" -o "$tmp"; then
   mv "$tmp" "$path"
   exit 0

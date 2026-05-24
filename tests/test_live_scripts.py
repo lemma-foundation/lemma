@@ -30,6 +30,7 @@ def test_live_wrappers_sync_public_curriculum_state_before_work() -> None:
     assert expected in prebuild
     assert "LEMMA_CURRICULUM_STATE_URL" in sync
     assert "LEMMA_CURRICULUM_STATE_JSONL" in sync
+    assert 'tmp="${path}.tmp.$$"' in sync
 
 
 def test_bucket_miner_defaults_to_local_docker_verify() -> None:
@@ -60,7 +61,8 @@ def test_bucket_miner_idles_when_active_registry_cache_is_missing() -> None:
     miner = (ROOT / "scripts" / "lemma-miner-once-to-bucket").read_text(encoding="utf-8")
 
     assert "active registry cache missing or stale" in miner
-    assert "cached_active_registry_for_tempo(settings, tempo=tempo)" in miner
+    assert "effective_settings = curriculum_controlled_settings(settings, tempo=tempo)" in miner
+    assert "cached_active_registry_for_tempo(effective_settings, tempo=tempo)" in miner
     assert "return None, str(cache_path), False" in miner
     assert "write_registry(registry.tasks" not in miner
 
