@@ -37,7 +37,7 @@ For a live website feed, run `uv run python scripts/serve_current_problems.py --
 ## Runtime Steps
 
 1. Load the active task registry.
-2. Select the deterministic active window from `LEMMA_ACTIVE_K`, `LEMMA_FRONTIER_DEPTH`, `LEMMA_ACTIVE_QUEUE_SEED`, and production chain/drand epoch randomness.
+2. Load the latest prior public curriculum tempo state when retargeting is enabled, then select the deterministic active window from active `K`, frontier depth, `LEMMA_ACTIVE_QUEUE_SEED`, and production chain/drand epoch randomness.
 3. Read miner bucket reveals in production, or local smoke submissions in development.
 4. Reject submissions outside the active window.
 5. Reject task-version and target-hash mismatches.

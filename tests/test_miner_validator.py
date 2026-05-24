@@ -30,7 +30,12 @@ from lemma.supply.mathlib_snapshot import candidates_from_jsonl
 from lemma.supply.types import registry_tasks_from_candidates
 from lemma.task_supply import make_task, write_registry
 from lemma.tasks import TaskRegistry
-from lemma.validator import ValidatorRunSummary, active_tasks_for_validation, validate_once
+from lemma.validator import (
+    ValidatorRunSummary,
+    active_tasks_for_validation,
+    curriculum_controlled_settings,
+    validate_once,
+)
 
 
 def _task(task_id: str = "lemma.test.true", queue_depth: int = 0):
@@ -811,6 +816,40 @@ def test_curriculum_state_applies_after_recorded_tempo(tmp_path: Path) -> None:
     assert {task.frontier_depth for task in next_tempo} == {1}
 
 
+def test_production_curriculum_state_must_be_marked_public(tmp_path: Path) -> None:
+    state_path = tmp_path / "curriculum.jsonl"
+    append_curriculum_record(
+        state_path,
+        CurriculumTempoRecord(
+            tempo=4,
+            active_K=2,
+            frontier_depth=1,
+            ema_solve_rate=0.5,
+            solved_slots=1,
+            parked_task_ids=(),
+            action="hold",
+            variant_stream_requested=False,
+        ),
+    )
+    settings = _settings(tmp_path).model_copy(
+        update={
+            "active_task_count": 1,
+            "frontier_depth": 0,
+            "protocol_mode": "production",
+            "curriculum_retarget_enabled": True,
+            "curriculum_state_jsonl": state_path,
+        }
+    )
+
+    with pytest.raises(RuntimeError, match="LEMMA_CURRICULUM_STATE_PUBLIC"):
+        curriculum_controlled_settings(settings, tempo=5)
+
+    public = curriculum_controlled_settings(settings.model_copy(update={"curriculum_state_public": True}), tempo=5)
+
+    assert public.active_task_count == 2
+    assert public.frontier_depth == 1
+
+
 def test_validate_once_retargets_curriculum_state_after_tempo(tmp_path: Path) -> None:
     state_path = tmp_path / "curriculum.jsonl"
     first = _task("lemma.test.first")
@@ -843,6 +882,12 @@ def test_validate_once_retargets_curriculum_state_after_tempo(tmp_path: Path) ->
     assert records[0].solved_slots == 1
     assert records[0].active_K == 3
     assert records[0].frontier_depth == 0
+    curriculum_dir = tmp_path / "operator" / "canonical" / "sn0" / "curriculum"
+    manifest = json.loads((curriculum_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["latest_tempo"] == 9
+    assert manifest["latest_active_K"] == 3
+    assert (curriculum_dir / "tempo-000009.json").is_file()
+    assert json.loads((curriculum_dir / "curriculum.jsonl").read_text(encoding="utf-8"))["tempo"] == 9
 
     validate_once(settings, [], registry=registry, tempo=9, no_set_weights=True)
 

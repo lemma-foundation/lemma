@@ -209,10 +209,11 @@ def curriculum_controlled_settings(settings: LemmaSettings, *, tempo: int) -> Le
     if not settings.curriculum_retarget_enabled or settings.curriculum_state_jsonl is None:
         return settings
     if settings.protocol_mode == "production":
-        raise RuntimeError(
-            "production mode requires public active-state inputs; disable LEMMA_CURRICULUM_RETARGET "
-            "until curriculum state is published and replayable"
-        )
+        if not settings.curriculum_state_public:
+            raise RuntimeError(
+                "production curriculum retargeting requires LEMMA_CURRICULUM_STATE_PUBLIC=1 "
+                "and a published/replayed LEMMA_CURRICULUM_STATE_JSONL"
+            )
     from lemma.supply.controller import read_curriculum_records
 
     records = tuple(
@@ -531,8 +532,13 @@ def _write_public_tempo_artifacts(
     active_tasks: Sequence[LemmaTask],
     rows: Sequence[CorpusRow],
     tempo: int,
+    curriculum_records: Sequence[object] = (),
 ) -> dict[str, object]:
-    from lemma.corpus.storage import build_active_pool_storage, build_epoch_storage_from_rows
+    from lemma.corpus.storage import (
+        build_active_pool_storage,
+        build_curriculum_state_storage,
+        build_epoch_storage_from_rows,
+    )
 
     output_root = _canonical_output_root(settings)
     netuid = _netuid_label(settings)
@@ -546,7 +552,12 @@ def _write_public_tempo_artifacts(
         resolver=resolver,
         active_pool=active_pool,
     )
-    return {**active_pool, **accepted}
+    curriculum = (
+        build_curriculum_state_storage(curriculum_records, output_root, netuid=netuid, resolver=resolver)
+        if curriculum_records
+        else {}
+    )
+    return {**active_pool, **accepted, **curriculum}
 
 
 def _write_cid_bound_commitment(
@@ -596,6 +607,7 @@ def _publish_public_tempo_artifacts(
     rows: list[dict[str, str]] = []
     active_pool_directory = artifacts.get("active_pool_directory")
     accepted_directory = artifacts.get("directory")
+    curriculum_directory = artifacts.get("curriculum_directory")
     if settings.canonical_publish_ipfs_api_url.strip():
         if not isinstance(active_pool_directory, Path) or not isinstance(accepted_directory, Path):
             raise RuntimeError("missing canonical directories for IPFS publish")
@@ -632,6 +644,21 @@ def _publish_public_tempo_artifacts(
                 },
             ]
         )
+        if isinstance(curriculum_directory, Path):
+            curriculum_ipfs = add_directory_to_ipfs(
+                curriculum_directory,
+                api_url=settings.canonical_publish_ipfs_api_url,
+                verify=settings.canonical_publish_verify,
+                timeout_s=settings.canonical_publish_ipfs_timeout_s,
+            )
+            rows.append(
+                {
+                    "kind": "ipfs_directory",
+                    "local_path": str(Path(curriculum_ipfs.path).relative_to(output_root)),
+                    "cid": curriculum_ipfs.cid,
+                    "file_count": str(curriculum_ipfs.file_count),
+                }
+            )
     if not settings.canonical_publish_s3_uri.strip():
         append_jsonl(settings.operator_data_dir / "canonical-publish.jsonl", rows)
         return tuple(rows)
@@ -641,6 +668,7 @@ def _publish_public_tempo_artifacts(
         for path in (
             active_pool_directory,
             accepted_directory,
+            curriculum_directory,
             artifacts.get("commitment"),
         )
         if isinstance(path, Path)
@@ -732,9 +760,9 @@ def _record_rank_key(record: VerificationRecord) -> tuple[object, ...]:
     return (1, record.received_at)
 
 
-def _retarget_curriculum_after_validation(settings: LemmaSettings, *, tempo: int, solved_slots: int) -> None:
+def _retarget_curriculum_after_validation(settings: LemmaSettings, *, tempo: int, solved_slots: int):
     if not settings.curriculum_retarget_enabled or settings.curriculum_state_jsonl is None:
-        return
+        return None
     if settings.curriculum_k_max < settings.curriculum_k_min:
         raise RuntimeError("LEMMA_CURRICULUM_K_MAX must be >= LEMMA_CURRICULUM_K_MIN")
 
@@ -748,8 +776,9 @@ def _retarget_curriculum_after_validation(settings: LemmaSettings, *, tempo: int
     )
 
     records = read_curriculum_records(settings.curriculum_state_jsonl)
-    if any(record.tempo == tempo for record in records):
-        return
+    for record in records:
+        if record.tempo == tempo:
+            return record
     prior_ema = records[-1].ema_solve_rate if records else 0.50
     decision = retarget_curriculum(
         CurriculumState(
@@ -767,19 +796,18 @@ def _retarget_curriculum_after_validation(settings: LemmaSettings, *, tempo: int
             k_max=settings.curriculum_k_max,
         ),
     )
-    append_curriculum_record(
-        settings.curriculum_state_jsonl,
-        CurriculumTempoRecord(
-            tempo=tempo,
-            active_K=decision.state.active_K,
-            frontier_depth=decision.state.frontier_depth,
-            ema_solve_rate=decision.state.ema_solve_rate,
-            solved_slots=solved_slots,
-            parked_task_ids=(),
-            action=decision.action,
-            variant_stream_requested=decision.variant_stream_requested,
-        ),
+    record = CurriculumTempoRecord(
+        tempo=tempo,
+        active_K=decision.state.active_K,
+        frontier_depth=decision.state.frontier_depth,
+        ema_solve_rate=decision.state.ema_solve_rate,
+        solved_slots=solved_slots,
+        parked_task_ids=(),
+        action=decision.action,
+        variant_stream_requested=decision.variant_stream_requested,
     )
+    append_curriculum_record(settings.curriculum_state_jsonl, record)
+    return record
 
 
 def validate_once(
@@ -927,6 +955,16 @@ def validate_once(
     )
     if score.score_events:
         append_jsonl(settings.operator_data_dir / "score-events.jsonl", score.score_events)
+    _retarget_curriculum_after_validation(
+        settings,
+        tempo=active_tempo,
+        solved_slots=len(score.valid_unique_proofs),
+    )
+    curriculum_records: tuple[Any, ...] = ()
+    if settings.curriculum_retarget_enabled and settings.curriculum_state_jsonl is not None:
+        from lemma.supply.controller import read_curriculum_records
+
+        curriculum_records = read_curriculum_records(settings.curriculum_state_jsonl)
     rows: list[CorpusRow] = []
     for scored in score.valid_unique_proofs:
         key = (scored.record.task_id, scored.record.solver_hotkey, scored.record.proof_sha256)
@@ -963,6 +1001,7 @@ def validate_once(
         active_tasks=active_tasks,
         rows=rows,
         tempo=active_tempo,
+        curriculum_records=curriculum_records,
     )
     _require_cid_publish_for_production_commitment(settings)
     published_artifacts = _publish_public_tempo_artifacts(settings, public_artifacts)
@@ -1044,7 +1083,6 @@ def validate_once(
         chain_weight_values=weight_submission.weights if weight_submission else None,
     )
     append_jsonl(settings.operator_data_dir / "validator-runs.jsonl", [summary])
-    _retarget_curriculum_after_validation(settings, tempo=active_tempo, solved_slots=len(score.valid_unique_proofs))
     return ValidatorRunResult(
         verification_records=tuple(records),
         score=score,

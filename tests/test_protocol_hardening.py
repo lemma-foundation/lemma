@@ -552,7 +552,7 @@ def test_production_mode_rejects_private_curriculum_retarget_state(tmp_path) -> 
         curriculum_state_jsonl=tmp_path / "curriculum.jsonl",
     )
 
-    with pytest.raises(RuntimeError, match="public active-state inputs"):
+    with pytest.raises(RuntimeError, match="LEMMA_CURRICULUM_STATE_PUBLIC"):
         active_tasks_for_validation(registry, settings, tempo=3)
 
 

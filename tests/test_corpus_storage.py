@@ -12,12 +12,15 @@ from lemma.chain.commitments import (
 )
 from lemma.corpus.storage import (
     build_active_pool_storage,
+    build_curriculum_state_storage,
     build_epoch_storage_from_rows,
     build_storage_index,
     canonical_json_bytes,
+    directory_digest,
     merkle_root,
     sha256_hex,
 )
+from lemma.supply.controller import CurriculumTempoRecord
 from lemma.task_supply import make_task
 
 
@@ -218,6 +221,37 @@ def test_active_pool_and_accepted_storage_share_tempo_commitment(tmp_path: Path)
     assert commitment["active_pool_directory_sha256"] == active["active_pool_directory_sha256"]
     assert commitment["commitment_payload"] == expected
     assert commitment["tempo_commitment_payload"] == expected
+
+
+def test_curriculum_state_storage_is_public_replayable_and_indexed(tmp_path: Path) -> None:
+    repo = tmp_path / "lemma-corpus"
+    output_root = repo / "canonical"
+    record = CurriculumTempoRecord(
+        tempo=12,
+        active_K=3,
+        frontier_depth=2,
+        ema_solve_rate=0.75,
+        solved_slots=2,
+        parked_task_ids=(),
+        action="advance_frontier",
+        variant_stream_requested=False,
+    )
+
+    result = build_curriculum_state_storage((record,), output_root, netuid="sn467", resolver="hippius-s3-arion")
+    (repo / "corpus" / "sn467").mkdir(parents=True)
+    index = build_storage_index(repo, "sn467", resolver="hippius-s3-arion")
+
+    curriculum_dir = output_root / "sn467" / "curriculum"
+    state_row = json.loads((curriculum_dir / "curriculum.jsonl").read_text(encoding="utf-8"))
+    tempo_state = json.loads((curriculum_dir / "tempo-000012.json").read_text(encoding="utf-8"))
+
+    assert result["curriculum_latest_tempo"] == 12
+    assert state_row["kind"] == "curriculum_tempo_state"
+    assert state_row["active_K"] == 3
+    assert tempo_state == state_row
+    assert index["curriculum"]["latest_active_K"] == 3
+    assert index["curriculum"]["latest_frontier_depth"] == 2
+    assert index["curriculum"]["directory_sha256"] == directory_digest(curriculum_dir)
 
 
 def test_rebuilding_same_tempo_removes_stale_storage_files(tmp_path: Path) -> None:

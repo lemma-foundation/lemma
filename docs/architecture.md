@@ -33,7 +33,7 @@ Lean theorem supply
 
 ## Controllers
 
-`frontier_depth` is the protocol difficulty proxy and `active_K` is the throughput target. For launch burn-in they are fixed public config. The curriculum controller can retarget them in development, and should only be enabled in production after its state is published and replayable from public artifacts. Tempo is the chain tempo; on SN467 that is currently 360 blocks.
+`frontier_depth` is the protocol difficulty proxy and `active_K` is the throughput target. In production they come from the latest published curriculum tempo state before the active chain tempo. Validators write that retarget state into canonical public artifacts after each pass, and miners/validators replay the same state before prebuilding the next active registry. Tempo is the chain tempo; on SN467 that is currently 360 blocks.
 
 ## Boundaries
 

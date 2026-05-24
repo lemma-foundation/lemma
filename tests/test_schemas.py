@@ -174,6 +174,7 @@ def test_operator_curriculum_summary_contract() -> None:
     assert {
         "schema_version",
         "enabled",
+        "state_public",
         "validator_capacity",
         "k_min",
         "k_max",

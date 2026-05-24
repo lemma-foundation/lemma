@@ -101,6 +101,7 @@ class OperatorCurriculumSummary(BaseModel):
 
     schema_version: Literal[1]
     enabled: bool
+    state_public: bool
     validator_capacity: int = Field(ge=0)
     k_min: int = Field(ge=1)
     k_max: int = Field(ge=1)
@@ -171,6 +172,7 @@ def _summarize_curriculum(settings: LemmaSettings, *, current_active_K: int) -> 
     return OperatorCurriculumSummary(
         schema_version=1,
         enabled=settings.curriculum_retarget_enabled,
+        state_public=settings.curriculum_state_public,
         validator_capacity=settings.validator_capacity,
         k_min=settings.curriculum_k_min,
         k_max=settings.curriculum_k_max,
@@ -306,6 +308,7 @@ def _build_operator_state(
                 if not curriculum_summary.enabled
                 else (
                     f"retarget enabled capacity={curriculum_summary.validator_capacity} "
+                    f"state_public={str(curriculum_summary.state_public).lower()} "
                     f"k_range={curriculum_summary.k_min}-{curriculum_summary.k_max} "
                     f"current_K={curriculum_summary.current_active_K} "
                     f"can_increase_K={str(curriculum_summary.can_increase_K).lower()}"

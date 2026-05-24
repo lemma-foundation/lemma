@@ -203,6 +203,7 @@ class LemmaSettings(BaseSettings):
     )
     curriculum_retarget_enabled: bool = Field(default=False, validation_alias="LEMMA_CURRICULUM_RETARGET")
     curriculum_state_jsonl: Path | None = Field(default=None, validation_alias="LEMMA_CURRICULUM_STATE_JSONL")
+    curriculum_state_public: bool = Field(default=False, validation_alias="LEMMA_CURRICULUM_STATE_PUBLIC")
     validator_capacity: int = Field(default=0, ge=0, validation_alias="LEMMA_VALIDATOR_CAPACITY")
     curriculum_beta: float = Field(default=0.8, ge=0.0, lt=1.0, validation_alias="LEMMA_CURRICULUM_BETA")
     curriculum_low_band: float = Field(default=0.40, ge=0.0, le=1.0, validation_alias="LEMMA_CURRICULUM_LOW_BAND")

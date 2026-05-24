@@ -16,6 +16,7 @@ from lemma.chain.commitments import (
     compact_tempo_commitment_payload,
 )
 from lemma.corpus import CorpusRow
+from lemma.supply.controller import CurriculumTempoRecord
 from lemma.tasks import LemmaTask
 
 EPOCH_RE = re.compile(r"epoch-(\d+)\.jsonl$")
@@ -238,6 +239,75 @@ def build_epoch_storage_from_rows(
     }
 
 
+def _curriculum_record_payload(record: CurriculumTempoRecord, *, netuid: str, resolver: str) -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "kind": "curriculum_tempo_state",
+        "netuid": netuid,
+        "resolver": resolver,
+        **json.loads(record.to_json()),
+    }
+
+
+def build_curriculum_state_storage(
+    records: Sequence[CurriculumTempoRecord],
+    output_root: Path,
+    *,
+    netuid: str,
+    resolver: str,
+) -> dict[str, object]:
+    curriculum_dir = output_root / netuid / "curriculum"
+    if curriculum_dir.exists():
+        shutil.rmtree(curriculum_dir)
+    curriculum_dir.mkdir(parents=True, exist_ok=True)
+
+    unique = {record.tempo: record for record in records}
+    ordered = [unique[tempo] for tempo in sorted(unique)]
+    entries: list[dict[str, object]] = []
+    jsonl_lines: list[str] = []
+    for record in ordered:
+        payload = _curriculum_record_payload(record, netuid=netuid, resolver=resolver)
+        record_bytes = canonical_json_bytes(payload)
+        record_sha256 = sha256_hex(record_bytes)
+        filename = f"tempo-{record.tempo:06d}.json"
+        (curriculum_dir / filename).write_bytes(record_bytes)
+        jsonl_lines.append(record_bytes.decode("utf-8").rstrip("\n"))
+        entries.append(
+            {
+                "tempo": record.tempo,
+                "file": filename,
+                "record_sha256": record_sha256,
+                "active_K": record.active_K,
+                "frontier_depth": record.frontier_depth,
+                "ema_solve_rate": record.ema_solve_rate,
+            }
+        )
+
+    state_jsonl = curriculum_dir / "curriculum.jsonl"
+    state_jsonl.write_text("\n".join(jsonl_lines) + ("\n" if jsonl_lines else ""), encoding="utf-8")
+    latest = ordered[-1] if ordered else None
+    manifest = {
+        "schema_version": 1,
+        "kind": "curriculum_state",
+        "netuid": netuid,
+        "resolver": resolver,
+        "records": entries,
+        "record_count": len(entries),
+        "latest_tempo": latest.tempo if latest else None,
+        "latest_active_K": latest.active_K if latest else None,
+        "latest_frontier_depth": latest.frontier_depth if latest else None,
+        "state_jsonl": "curriculum.jsonl",
+    }
+    (curriculum_dir / "manifest.json").write_bytes(canonical_json_bytes(manifest))
+    return {
+        "curriculum_directory": curriculum_dir,
+        "curriculum_directory_sha256": directory_digest(curriculum_dir),
+        "curriculum_record_count": len(entries),
+        "curriculum_latest_tempo": latest.tempo if latest else None,
+        "curriculum_state_jsonl": state_jsonl,
+    }
+
+
 def _epoch_storage_tempo(epoch_file: Path, rows: Sequence[dict[str, Any]]) -> int:
     row_tempos: set[int] = set()
     missing_tempo = False
@@ -418,6 +488,18 @@ def build_storage_index(repo: Path, netuid: str, *, resolver: str = "hippius-s3-
         "netuid": netuid,
         "resolver": resolver,
     }
+    curriculum_dir = output_root / netuid / "curriculum"
+    curriculum_manifest = curriculum_dir / "manifest.json"
+    if curriculum_manifest.is_file():
+        manifest = json.loads(curriculum_manifest.read_text(encoding="utf-8"))
+        index["curriculum"] = {
+            "directory": f"canonical/{netuid}/curriculum/",
+            "directory_sha256": directory_digest(curriculum_dir),
+            "latest_active_K": manifest.get("latest_active_K"),
+            "latest_frontier_depth": manifest.get("latest_frontier_depth"),
+            "latest_tempo": manifest.get("latest_tempo"),
+            "record_count": manifest.get("record_count"),
+        }
     index_path = output_root / netuid / "storage-index.json"
     index_path.parent.mkdir(parents=True, exist_ok=True)
     index_path.write_bytes(canonical_json_bytes(index))
