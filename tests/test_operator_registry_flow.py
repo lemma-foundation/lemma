@@ -619,7 +619,7 @@ def test_operator_reports_use_curriculum_controlled_active_window(
             variant_stream_requested=False,
         ),
     )
-    monkeypatch.setattr("lemma.validator.current_active_tempo", lambda settings: 5)
+    monkeypatch.setattr("lemma.validator.current_active_tempo", lambda settings: 6)
     env = {
         "LEMMA_PREFER_PROCESS_ENV": "1",
         "LEMMA_TASK_REGISTRY_URL": str(registry_path),
