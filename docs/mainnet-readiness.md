@@ -89,6 +89,11 @@ minutes, not a tempo. A production-shaped systemd setup should use the same
 pattern:
 
 ```ini
+# lemma-active-registry-prebuild.service.d/10-local-lean-worker.conf
+[Service]
+Environment=LEMMA_LEAN_VERIFY_REMOTE_URL=http://localhost:8787
+Environment=LEMMA_LEAN_VERIFY_WORKSPACE_CACHE_DIR=/var/lib/lemma-lean-cache
+
 # lemma-active-registry-prebuild.service.d/20-timeout.conf
 [Service]
 TimeoutStartSec=4500
