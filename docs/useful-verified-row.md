@@ -1,6 +1,6 @@
 # Useful Verified Row
 
-A valid Lean proof row is not automatically useful mathematical corpus data.
+A valid Lean proof row is not automatically useful reusable proof data.
 
 A useful verified row passes these gates:
 

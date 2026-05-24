@@ -1,12 +1,12 @@
 # Architecture
 
-Lemma has three production layers: Lean theorem supply, Lean proof verification, and verified mathematics publication.
+Lemma has three production layers: Lean theorem supply, Lean proof verification, and reusable proof-data publication.
 
 Lean theorem proving is the production domain.
 
 ```text
 Lean theorem supply
-  -> miner proof search
+  -> miner proof-search agent
   -> task-bound Lean submission
   -> pinned Lean verification
   -> first-accepted scoring
@@ -41,6 +41,6 @@ Scoring is pure. Verifiers do not know about Bittensor weights. Provider/model l
 
 Lemma does not custody funds and does not route owner emissions through contracts. Rewards flow through normal Bittensor miner and validator mechanics.
 
-The production architecture is Lean-first and math-first. Generic verifier adapters are internal/research extension points, not the public product. Public docs should describe the active Lean path unless they are explicitly marked as research.
+The production architecture is Lean-first and proof-agent-first. Generic verifier adapters are internal/research extension points, not the public product. Public docs should describe the active Lean competition unless they are explicitly marked as research.
 
 `LEMMA_PROTOCOL_MODE=production` fails closed unless `LEMMA_ENABLED_DOMAINS` is exactly `lean`, procedural supply uses a pinned public source pool, explicit prior-substrate mirror, public source-pool receipt, public novelty cache, and public import graph, paid tasks are depth-2 and generated from chain/drand epoch randomness with the chain-pinned Lean AST/elaborator mutation bundle and drand-keyed params, live miner submissions are hotkey-authenticated, commit/reveal fields are required, strong proof identity is required for reward, and Lean verifier networking is disabled. File submissions authenticate by signature; bucket-path submissions authenticate by the miner's chain commitment.

@@ -1,6 +1,6 @@
 # Production
 
-Production Lemma is the Lean proof corpus loop:
+Production Lemma is the Lean proof competition loop:
 
 1. rebuild the active task pool from public procedural inputs;
 2. read miner bucket reveals after commitment/reveal;

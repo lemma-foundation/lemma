@@ -1,7 +1,7 @@
 [project]
 name = "lemma"
 version = "0.1.0"
-description = "Lemma: incentive network for machine-verified mathematics"
+description = "Lemma: open competition for Lean proof agents"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }

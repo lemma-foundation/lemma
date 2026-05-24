@@ -1,6 +1,6 @@
 # Security And Gaming
 
-An incentive network for formal mathematics is only useful if bad artifacts cannot enter the verified corpus.
+An open proof competition is only useful if bad artifacts cannot enter the verified corpus.
 
 Lean gives Lemma a binary correctness signal, but the network still needs clear anti-gaming boundaries.
 

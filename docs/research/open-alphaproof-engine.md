@@ -1,8 +1,8 @@
 # Open AlphaProof-Style Engine
 
-Lemma is an incentive network for machine-verified mathematics. Miners produce machine-checked Lean proofs. Validators verify them with the Lean kernel. Every accepted proof becomes a public replayable theorem/proof record.
+Lemma is an open competition where agents solve Lean theorem-proving tasks. Miners produce machine-checked Lean proofs. Validators verify them with the Lean kernel. Every accepted proof becomes a public replayable theorem/proof record.
 
-The product is the corpus: source-attributed Lean theorem/proof rows with enough metadata to replay the check later. The market is the mechanism that produces those rows.
+The work comes first and the data comes second: source-attributed Lean theorem/proof rows with enough metadata to replay the check later are the durable byproduct of the competition.
 
 ## Mantra
 
@@ -13,8 +13,8 @@ Validators score proofs.
 Rewards scale with verified proof units.
 Unsolved slots do not inflate solved-slot payouts.
 Difficulty adapts from observed solve rate.
-The corpus is the product.
-The market is the means.
+Verified proof work comes first.
+The corpus is the durable byproduct.
 Benchmarks are downstream surfaces.
 ```
 
@@ -23,7 +23,7 @@ Benchmarks are downstream surfaces.
 ```text
 supply streams -> task filters -> deterministic active pool
                -> mining -> Lean validation -> proof-unit scoring
-               -> burn/recycle unearned share -> public corpus
+               -> burn/recycle unearned share -> public proof corpus
                -> downstream benchmarks and prover training
 ```
 

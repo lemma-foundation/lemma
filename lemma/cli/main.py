@@ -1480,7 +1480,7 @@ def export_corpus_cmd(
     license_filter: str | None,
     exclude_near_duplicates: bool,
 ) -> None:
-    """Export accepted Lean proofs as a mathematical corpus.
+    """Export accepted Lean proofs as a reusable proof corpus.
 
     \b
     Example:

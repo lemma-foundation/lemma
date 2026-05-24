@@ -64,8 +64,10 @@ def test_public_docs_keep_corpus_and_economics_invariant() -> None:
     readme = Path("README.md").read_text(encoding="utf-8")
     scoring = Path("docs/scoring.md").read_text(encoding="utf-8")
 
-    assert "permissionless incentive network for growing open, machine-verified mathematics" in readme
-    assert "The product is the open mathematical corpus" in Path("docs/what-is-lemma.md").read_text(
+    assert "Lemma is an open competition for formal proof" in readme
+    assert "Proof agents compete. Lean judges. Verified proofs become reusable data." in Path(
+        "docs/what-is-lemma.md"
+    ).read_text(
         encoding="utf-8"
     )
     assert "weight(miner) = credit(miner) / sum(all_credits)" not in scoring

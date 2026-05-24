@@ -1,6 +1,6 @@
 # Affine Integration
 
-Affine rewards model dominance. Lemma produces machine-verified mathematical corpora that can help theorem-proving models improve.
+Affine rewards model dominance. Lemma produces verified Lean proof corpora that can help theorem-proving models improve.
 
 The relationship is data-consumer oriented:
 

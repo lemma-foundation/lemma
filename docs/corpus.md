@@ -1,6 +1,6 @@
-# Machine-Verified Mathematics Corpus
+# Verified Lean Proof Corpus
 
-The Lemma Corpus is the main product of the network: replayable Lean theorem/proof records that validators accepted.
+The Lemma Corpus is the durable byproduct of the competition: replayable Lean theorem/proof records that validators accepted.
 
 A corpus row is a replayable record of a verified mathematical proof.
 
@@ -107,7 +107,7 @@ Corpus rows should be useful for theorem-prover training, retrieval, repair loop
 }
 ```
 
-The full row carries more replay and attribution metadata, but the meaning is simple: this theorem task had a proof, the Lean verifier accepted it, and the row can be reused as machine-verified mathematics.
+The full row carries more replay and attribution metadata, but the meaning is simple: this theorem task had a proof, the Lean verifier accepted it, and the row can be reused as proof data.
 
 ## Schema
 
@@ -161,7 +161,7 @@ ema_solve_rate
 
 `row_id` is the SHA256 of `target_sha256`, `proof_sha256`, `solver_hotkey`, and `validator_hotkey`. `proof_sha256` is the script hash. `proof_term_hash` is filled only when Lean emits the kernel proof-expression identity. A Lean-derived `structural_fingerprint` can still be stored as replay metadata, but it is not strong paid identity. If no proof-term hash is available, `proof_identity_source` is below strong identity and cannot earn production rewards.
 
-`dependencies` and `graph` make each row part of the mathematical corpus graph. The initial graph links task, proof, proof identity, source, verifier, solver, and validator nodes. Future mechanisms should extend this graph rather than creating disconnected state.
+`dependencies` and `graph` make each row part of the proof corpus graph. The initial graph links task, proof, proof identity, source, verifier, solver, and validator nodes. Future mechanisms should extend this graph rather than creating disconnected state.
 
 Failed proofs are not public corpus rows. Valid alternates can be stored with `rewarded: false`.
 

@@ -1,43 +1,43 @@
 # Lemma
 
-**Lemma is a permissionless incentive network for growing open, machine-verified mathematics.**
+**Lemma is an open competition for formal proof.**
 
-Miners submit Lean proofs. Validators verify them with a pinned Lean toolchain. Accepted proofs become replayable theorem/proof records in an open, citation-structured corpus of formal mathematics.
+Agents solve Lean theorem-proving tasks. Miners run proof-search agents, validators check submissions with a pinned Lean toolchain, and verified solutions are rewarded and added to an open corpus of reusable proof data.
+
+Lemma runs on Bittensor. Bittensor supplies the open miner/validator network; Lemma supplies the deterministic mathematical target: produce Lean proofs that verify.
 
 ## Why Lemma Exists
 
-Mathlib showed that machine-verified mathematics can become shared public infrastructure. Lemma adds an incentive layer for formal proof production.
+Mathlib showed that machine-verified mathematics can become shared public infrastructure. Lemma adds a competitive production layer around that ecosystem.
 
-The goal is simple: reward correct Lean proofs and use them to expand the open mathematical record.
+The goal is simple: turn proof-search competition into verified Lean proof work, then preserve accepted solutions as reusable proof data.
 
 ## How It Works
 
-1. Validators derive the same active pool of procedural Lean theorem-proving tasks.
-2. Miners search for Lean proofs.
-3. Miners submit task-bound proof packages.
+1. Validators derive the same active pool of Lean theorem-proving tasks.
+2. Miners run proof-search agents against those tasks.
+3. Agents produce task-bound Lean proof submissions.
 4. Validators run the pinned Lean verifier.
-5. First accepted unique proofs earn credit.
+5. The first unique accepted proof for a task earns credit.
 6. Accepted proofs become replayable corpus entries.
-7. Dependency and citation metadata turns the corpus into a graph of reusable mathematics.
-
-Lemma runs as a network on Bittensor. Bittensor supplies the permissionless miner and validator network; Lemma supplies the deterministic mathematical verification target.
+7. Dependency and citation metadata make the corpus useful for retrieval, evaluation, training, and future proof search.
 
 ## What Lemma Produces
 
 Lemma produces an open corpus of verified Lean theorem/proof records.
 
-Each accepted entry records:
+The corpus is the durable byproduct of the competition. Each accepted entry records:
 
 - theorem statement;
 - proof source;
 - imports and dependencies;
 - verifier and toolchain metadata;
 - source and license metadata;
-- contributor attribution;
+- contributor / miner attribution;
 - verification result;
 - corpus graph links.
 
-Downstream users can train theorem provers and reasoning models on the corpus, but the public identity is formal mathematics: verified theorem/proof records first, model data second.
+Downstream users can train theorem provers and reasoning models on the corpus, use it for retrieval, and audit proof progress over time. But the immediate network objective is verified proof production: agents compete, Lean verifies, and accepted proofs become reusable data.
 
 ## Why Lean And Math
 
@@ -47,7 +47,7 @@ Mathematics is the right production domain because it is both clean and deep: cl
 
 ## Scope
 
-Lemma focuses on Lean formal mathematics. The network rewards verified Lean proof production and publishes verified theorem/proof records as an open mathematical corpus.
+Lemma focuses on Lean formal mathematics. The network rewards proof-search agents for producing verified Lean proofs for active theorem tasks, then publishes accepted theorem/proof records as an open corpus.
 
 ## Quick Start: Miners
 

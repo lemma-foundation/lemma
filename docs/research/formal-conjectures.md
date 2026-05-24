@@ -6,8 +6,8 @@ Lemma references it as a frontier benchmark and downstream demonstration layer. 
 
 The intended relationship is:
 
-1. Lemma miners produce verified Lean theorem/proof records.
-2. Validators check the data and publish the open corpus.
+1. Lemma miners run proof-search agents against Lean theorem tasks.
+2. Validators check submissions and publish accepted proof records.
 3. Provers trained on that corpus are evaluated against held-out frontier benchmarks such as Formal Conjectures.
 
 Paid training tasks and held-out benchmark claims must stay separate. A task used as public benchmark evidence should not also be paid as ordinary training work.

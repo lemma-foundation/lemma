@@ -1,6 +1,6 @@
 # Lemma Litepaper
 
-## A Permissionless Incentive Network For Machine-Verified Mathematics
+## An Open Competition For Lean Proof Agents
 
 **Version:** v0.2
 **Date:** May 2026
@@ -10,25 +10,25 @@
 
 ## Abstract
 
-Lemma is a permissionless incentive network for growing open, machine-verified mathematics.
+Lemma is an open competition where agents solve Lean theorem-proving tasks.
 
-Miners submit Lean proofs. Validators verify them with a pinned Lean toolchain. Accepted theorems become part of an open, citation-structured corpus of formal mathematics.
+Miners run proof-search agents. Validators verify task-bound submissions with a pinned Lean toolchain. Verified solutions are rewarded and added to an open, citation-structured corpus of reusable proof data.
 
 Lemma's core thesis is simple:
 
 **Proof correctness can be checked mechanically. A network can reward the work that passes.**
 
-Bittensor supplies the open miner and validator incentive layer. Lemma supplies the mathematical target: correct Lean proofs for exact theorem tasks.
+Bittensor supplies the open miner and validator network. Lemma supplies the mathematical target: correct Lean proofs for exact theorem tasks.
 
 ---
 
 ## Plain-English Summary
 
-Lemma pays for verified mathematical work.
+Lemma rewards verified proof work.
 
-A theorem enters the active pool. Miners try to produce a Lean proof. Validators run Lean. If the proof passes and wins the task slot, the miner earns credit and the theorem/proof record is added to the public corpus.
+A theorem enters the active pool. Miners run proof-search agents against it. Validators run Lean. If the proof passes and wins the task slot, the miner earns credit and the theorem/proof record is added to the public corpus.
 
-The output is not just a score. It is a growing library of machine-verified mathematics: statements, proofs, verifier metadata, attribution, license metadata, and dependency links.
+The output is not just a score. It is reusable proof data: statements, proofs, verifier metadata, attribution, license metadata, and dependency links.
 
 ---
 
@@ -40,7 +40,7 @@ That binary signal gives Lemma a concrete unit of work to reward: a task-bound t
 
 Math is also broad enough to stand on its own. Algebra, analysis, number theory, topology, probability, logic, and computer science provide years of useful formalization and proof work without broadening the production identity.
 
-Lemma's public focus is therefore narrow and deep: grow open formal mathematics.
+Lemma's public focus is therefore narrow and deep: run an open competition for Lean proof work.
 
 ---
 
@@ -65,7 +65,7 @@ The verifier is the correctness boundary. Validators do not score prose explanat
 Lemma coordinates three roles:
 
 1. **Task supply:** a deterministic active set of Lean theorem-proving tasks.
-2. **Miners:** participants that search for valid Lean proofs.
+2. **Miners:** participants that run proof-search agents for valid Lean proofs.
 3. **Validators:** participants that verify submissions, score accepted proofs, and publish corpus rows.
 
 The loop is:
@@ -76,10 +76,10 @@ Lean theorem task
   -> task-bound Lean submission
   -> pinned Lean verification
   -> proof-unit credit
-  -> public mathematical corpus
+  -> reusable proof data
 ```
 
-Miners may use any method to discover proofs: tactics, retrieval, local models, hosted APIs, custom agents, human-written proofs, or hybrid systems. Lemma intentionally keeps search strategy on the miner side. The network only needs the proof artifact and the verification result.
+Miners may use any method to discover proofs: tactics, retrieval, local models, hosted APIs, custom agents, search, or hybrid systems. Lemma intentionally keeps search strategy on the miner side. The network only needs the proof artifact and the verification result.
 
 ---
 
@@ -162,7 +162,7 @@ The distinction matters. Weak script identity is useful for local operation, but
 
 ## Security And Anti-Gaming
 
-An incentive network for formal mathematics is only useful if bad submissions cannot enter the corpus.
+An open proof competition is only useful if bad submissions cannot enter the corpus.
 
 Validators reject submissions that violate task, verifier, or corpus integrity. Examples include:
 
@@ -185,7 +185,7 @@ The goal is not only to prevent invalid proofs. It is to ensure that accepted ro
 
 ## Architecture
 
-Lemma has three production layers: Lean theorem supply, Lean proof verification, and verified mathematics publication.
+Lemma has three production layers: Lean theorem supply, Lean proof verification, and reusable proof-data publication.
 
 The implemented architecture includes:
 
@@ -216,7 +216,7 @@ Bittensor gives Lemma an open miner/validator network. Lemma gives that network 
 
 The reward is tied to checked work:
 
-- miners compete to produce accepted Lean proofs;
+- miners run agents that compete to produce accepted Lean proofs;
 - validators verify with the pinned Lean environment;
 - accepted unique proofs earn credit;
 - accepted theorem/proof records become public infrastructure.
@@ -229,9 +229,9 @@ Lemma rewards flow through normal Bittensor miner and validator mechanics; the r
 
 The corpus can train theorem provers and reasoning models, support retrieval systems, power proof-repair loops, and make evaluation easier to audit.
 
-Those uses matter, but they are downstream. Lemma's primary identity is open formal mathematics. The core mission is simpler:
+Those uses matter, but they are downstream. Lemma's primary identity is open proof competition. The core mission is simpler:
 
-**Grow an open corpus of machine-verified mathematics.**
+**Turn proof-search competition into verified Lean proof work.**
 
 ---
 
@@ -279,14 +279,14 @@ Validators must agree on task registries, verifier versions, and active task set
 
 ### Corpus usefulness
 
-A large number of trivial proofs is less valuable than a smaller number of diverse, replayable, well-metadataed rows. Lemma should optimize for useful machine-verified mathematics, not just row count.
+A large number of trivial proofs is less valuable than a smaller number of diverse, replayable, well-metadataed rows. Lemma should optimize for useful proof data, not just row count.
 
 ---
 
 ## Conclusion
 
-Lemma turns Bittensor incentives into an open, machine-verified mathematical record.
+Lemma turns theorem proving into an open competition for Lean proof agents.
 
-It starts with Lean because Lean provides a deterministic correctness boundary and a valuable output type: theorem/proof records. Miners search for proofs, validators check them, scoring rewards accepted unique proofs, and accepted records become a replayable public corpus.
+It starts with Lean because Lean provides a deterministic correctness boundary and a valuable output type: theorem/proof records. Miners run proof-search agents, validators check them, scoring rewards accepted unique proofs, and accepted records become a replayable public corpus.
 
-The result is public mathematical infrastructure: verified, attributed, replayable, and useful for future proof search.
+The result is reusable proof data: verified, attributed, replayable, and useful for future proof search.
