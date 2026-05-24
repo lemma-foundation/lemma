@@ -239,10 +239,18 @@ def curriculum_controlled_settings(settings: LemmaSettings, *, tempo: int) -> Le
                 "production curriculum retargeting requires LEMMA_CURRICULUM_STATE_PUBLIC=1 "
                 "and a published/replayed LEMMA_CURRICULUM_STATE_JSONL"
             )
+        canonical_state_jsonl = _canonical_output_root(settings) / _netuid_label(settings) / "curriculum" / "curriculum.jsonl"
+        if settings.curriculum_state_jsonl.expanduser().resolve() == canonical_state_jsonl.expanduser().resolve():
+            raise RuntimeError(
+                "production curriculum retargeting requires LEMMA_CURRICULUM_STATE_JSONL "
+                "to be a replay cache outside canonical publish output"
+            )
     from lemma.supply.controller import read_curriculum_records
 
+    # Retarget rows are produced after validating a tempo, so they activate with
+    # one extra tempo of public replay lag to avoid mid-epoch active-set changes.
     records = tuple(
-        record for record in read_curriculum_records(settings.curriculum_state_jsonl) if record.tempo < tempo
+        record for record in read_curriculum_records(settings.curriculum_state_jsonl) if record.tempo < tempo - 1
     )
     if not records:
         return settings

@@ -126,7 +126,7 @@ def test_current_problem_snapshot_reports_curriculum_effective_window(tmp_path: 
         curriculum_state_public=True,
     )
 
-    snapshot = build_current_problems_snapshot(settings, registry=_registry(), tempo=2)
+    snapshot = build_current_problems_snapshot(settings, registry=_registry(), tempo=3)
 
     assert snapshot.active_K == 1
     assert snapshot.active_tempo_source == "chain"

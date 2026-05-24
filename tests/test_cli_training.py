@@ -286,7 +286,7 @@ def test_prebuild_active_procedural_registry_refreshes_stale_curriculum_cache(
     )
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
-    cache_path = cache_dir / "tempo-31.registry.json"
+    cache_path = cache_dir / "tempo-32.registry.json"
     write_registry([old_task], cache_path)
     os.utime(cache_path, (1, 1))
     state_path = tmp_path / "curriculum.jsonl"
@@ -306,7 +306,7 @@ def test_prebuild_active_procedural_registry_refreshes_stale_curriculum_cache(
     os.utime(state_path, (2, 2))
 
     def fake_registry(settings, *, tempo):  # noqa: ANN001
-        assert tempo == 31
+        assert tempo == 32
         assert settings.active_task_count == 2
         assert settings.active_registry_json is None
         assert settings.active_registry_cache_dir is None
@@ -316,7 +316,7 @@ def test_prebuild_active_procedural_registry_refreshes_stale_curriculum_cache(
 
     result = CliRunner().invoke(
         main,
-        ["tasks", "prebuild-active-procedural-registry", "--tempo", "31"],
+        ["tasks", "prebuild-active-procedural-registry", "--tempo", "32"],
         env={
             "LEMMA_PREFER_PROCESS_ENV": "1",
             "LEMMA_TASK_SUPPLY_MODE": "procedural",

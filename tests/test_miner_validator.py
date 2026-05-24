@@ -811,10 +811,12 @@ def test_curriculum_state_applies_after_recorded_tempo(tmp_path: Path) -> None:
 
     same_tempo = active_tasks_for_validation(registry, settings, tempo=4)
     next_tempo = active_tasks_for_validation(registry, settings, tempo=5)
+    effective_tempo = active_tasks_for_validation(registry, settings, tempo=6)
 
     assert len(same_tempo) == 1
-    assert len(next_tempo) == 2
-    assert {task.frontier_depth for task in next_tempo} == {1}
+    assert len(next_tempo) == 1
+    assert len(effective_tempo) == 2
+    assert {task.frontier_depth for task in effective_tempo} == {1}
 
 
 def test_production_curriculum_state_must_be_marked_public(tmp_path: Path) -> None:
@@ -845,7 +847,7 @@ def test_production_curriculum_state_must_be_marked_public(tmp_path: Path) -> No
     with pytest.raises(RuntimeError, match="LEMMA_CURRICULUM_STATE_PUBLIC"):
         curriculum_controlled_settings(settings, tempo=5)
 
-    public = curriculum_controlled_settings(settings.model_copy(update={"curriculum_state_public": True}), tempo=5)
+    public = curriculum_controlled_settings(settings.model_copy(update={"curriculum_state_public": True}), tempo=6)
 
     assert public.active_task_count == 2
     assert public.frontier_depth == 1
@@ -868,7 +870,7 @@ def test_curriculum_state_rejects_stale_active_registry_cache(tmp_path: Path) ->
     )
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
-    cache_path = cache_dir / "tempo-5.registry.json"
+    cache_path = cache_dir / "tempo-6.registry.json"
     write_registry([_task("lemma.test.old").model_copy(update={"frontier_depth": 0})], cache_path)
     settings = _settings(tmp_path).model_copy(
         update={
@@ -879,9 +881,9 @@ def test_curriculum_state_rejects_stale_active_registry_cache(tmp_path: Path) ->
             "curriculum_state_jsonl": state_path,
         }
     )
-    effective = curriculum_controlled_settings(settings, tempo=5)
+    effective = curriculum_controlled_settings(settings, tempo=6)
 
-    assert cached_active_registry_for_tempo(effective, tempo=5) is None
+    assert cached_active_registry_for_tempo(effective, tempo=6) is None
 
     write_registry(
         [
@@ -891,7 +893,7 @@ def test_curriculum_state_rejects_stale_active_registry_cache(tmp_path: Path) ->
         cache_path,
     )
 
-    cached = cached_active_registry_for_tempo(effective, tempo=5)
+    cached = cached_active_registry_for_tempo(effective, tempo=6)
     assert cached is not None
     assert len(cached.tasks) == 2
 

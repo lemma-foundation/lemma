@@ -556,6 +556,21 @@ def test_production_mode_rejects_private_curriculum_retarget_state(tmp_path) -> 
         active_tasks_for_validation(registry, settings, tempo=3)
 
 
+def test_production_mode_rejects_canonical_curriculum_replay_path(tmp_path) -> None:  # noqa: ANN001
+    registry = TaskRegistry(schema_version=1, tasks=(_production_task(),), sha256="0" * 64, signature_status="verified")
+    state_jsonl = tmp_path / "canonical" / "sn467" / "curriculum" / "curriculum.jsonl"
+    settings = _production_settings(
+        netuid=467,
+        operator_data_dir=tmp_path,
+        curriculum_retarget_enabled=True,
+        curriculum_state_jsonl=state_jsonl,
+        curriculum_state_public=True,
+    )
+
+    with pytest.raises(RuntimeError, match="outside canonical publish output"):
+        active_tasks_for_validation(registry, settings, tempo=3)
+
+
 def test_testnet_protocol_mode_enforces_production_rules() -> None:
     registry = TaskRegistry(schema_version=1, tasks=(_task(),), sha256="0" * 64, signature_status="verified")
     settings = LemmaSettings(
