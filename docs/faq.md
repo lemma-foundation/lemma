@@ -32,4 +32,4 @@ It earns credit for the winning miner and is written as a replayable theorem/pro
 
 ## Can accepted records be used for model training?
 
-Yes. The subnet owner publishes canonical snapshots, and validators can mirror or export their own artifacts. Those records can train theorem provers and reasoning models, but that is downstream of the competition.
+Yes. The subnet owner publishes canonical snapshots, and validators can publish the same kind of mirrors if they configure their own storage. Those records can train theorem provers and reasoning models, but that is a byproduct of the competition, not a requirement for validation.

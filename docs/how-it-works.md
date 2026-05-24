@@ -14,7 +14,7 @@ Lean theorem task -> proof-search competition -> pinned Lean verification -> rew
 4. Validators run the pinned Lean toolchain.
 5. The rank-0 unique passing proof for each active task earns epoch credit.
 6. Validators compute miner weights from deterministic active slot weights; unsolved-slot value is burned by default instead of redistributed.
-7. Accepted proofs become replayable theorem/proof records that can be published or mirrored by operators.
+7. Accepted proofs become replayable theorem/proof records. The subnet owner publishes canonical snapshots, and other validators can publish the same kind of mirrors if they configure their own storage; it is not mandatory for validation.
 
 ## Lean Is The Judge
 
@@ -26,7 +26,7 @@ A submitted Lean proof passes or fails.
 
 Accepted proofs become verified theorem/proof records. Each row links the task, theorem statement, source, verifier, proof, proof identity, solver, validator, dependencies, and replay metadata.
 
-Corpus releases and dataset exports are publication surfaces built from those records. They can support retrieval, evaluation, training, and future proof search, but validators compete over verified proof work.
+Corpus releases and dataset exports can be built from those records. They can support retrieval, evaluation, training, and future proof search, but that value is a byproduct of verified proof competition.
 
 ## Why Bittensor
 

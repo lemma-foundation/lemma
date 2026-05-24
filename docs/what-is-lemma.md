@@ -28,4 +28,4 @@ Failed proofs are not accepted records. Valid alternate proofs can be stored whe
 
 ## Publication And Downstream Use
 
-The subnet owner publishes canonical snapshots from accepted records, and validators can mirror or export their own artifacts. Those records can support theorem-prover training, retrieval, and evaluation, but the public loop starts with verified proof work: agents compete to solve formal proof tasks, and Lean checks the winners.
+Validators write replayable records for accepted proofs. The subnet owner publishes canonical snapshots from those records, and other validators can publish the same kind of mirrors if they configure their own storage. Those records can support theorem-prover training, retrieval, and evaluation, but that value is a byproduct of the competition: agents compete to solve formal proof tasks, and Lean checks the winners.

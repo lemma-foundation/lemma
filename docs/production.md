@@ -7,7 +7,7 @@ Production Lemma is the Lean proof competition loop:
 3. verify each proof with the pinned Lean environment;
 4. score rank-0 unique proofs by miner commit block;
 5. compute miner weights from deterministic active slot weights and burn unearned share by default;
-6. write accepted proof records and publish the configured corpus/index artifacts.
+6. write accepted proof records and, when snapshot publishing is configured, publish the configured corpus/index artifacts.
 
 Production mode is stricter than local smoke mode. SN467 testnet burn-in must run this same production mode with `BT_NETWORK=test` and `BT_NETUID=467`; mainnet cutover should only change the chain target. Production mode fails closed unless procedural supply is rebuilt from a pinned public source pool, an explicit prior-substrate mirror, and chain/drand epoch randomness, live miner submissions are hotkey-authenticated, commit/reveal fields are present, Lean verifier networking is disabled, and paid rewards require strong Lean-derived proof identity.
 The launch gate sequence is tracked in [Mainnet Readiness](mainnet-readiness.md).
@@ -41,10 +41,11 @@ Generic validators only need the protocol path:
 4. write local verification, score, run, corpus, and canonical tempo artifacts;
 5. set weights from accepted Lean proofs.
 
-Subnet-owner publishing is separate operator infrastructure. Hippius, GitHub
-releases, and Hugging Face mirrors provide a canonical public corpus service,
-but validators are not required to hold those credentials or publish those
-mirrors. They may store or mirror their own artifacts if they want to.
+Snapshot publishing is a separate deployment setup. The subnet owner uses the
+repo's Hippius, GitHub release, and Hugging Face tooling for the canonical
+public corpus service. Validators can run the same publishing tools for their
+own mirrors if they configure storage and credentials, but that is optional;
+validation itself only requires the protocol path above.
 
 Before calling SN467 production-ready, prove:
 
@@ -148,7 +149,7 @@ Publish the current public corpus snapshot after a closed SN467 production-mode 
 uv run python scripts/publish_corpus_snapshot.py --repo ~/lemma-corpus --netuid sn467 --push-repo
 ```
 
-For a live validator, pass `--sync-corpus-dir`, `--sync-canonical-dir`, and `--sync-registry-cache-dir` so the public checkout receives the validator's latest corpus rows, canonical tempo artifacts, and active registry caches before upload. This regenerates the public index/export, writes `MANIFEST.sha256`, uploads a timestamped Hippius snapshot, creates the GitHub immutable release mirror, and syncs an append-only Hugging Face dataset snapshot. Hippius, GitHub, and Hugging Face credentials must stay in the operator environment, never in repo files.
+For a live validator, pass `--sync-corpus-dir`, `--sync-canonical-dir`, and `--sync-registry-cache-dir` so the public checkout receives the validator's latest corpus rows, canonical tempo artifacts, and active registry caches before upload. This regenerates the public index/export, writes `MANIFEST.sha256`, uploads a timestamped Hippius snapshot, creates the GitHub immutable release mirror, and syncs an append-only Hugging Face dataset snapshot. Hippius, GitHub, and Hugging Face credentials must stay in the deployment environment, never in repo files.
 
 Refresh the public website's active-problem dashboard from the validator host:
 
