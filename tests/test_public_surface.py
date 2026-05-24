@@ -64,7 +64,7 @@ def test_public_docs_keep_corpus_and_economics_invariant() -> None:
     scoring = Path("docs/scoring.md").read_text(encoding="utf-8")
 
     assert "Lemma is an open competition for formal proof" in readme
-    assert "Agents compete. Lean checks. Verified proofs earn credit." in Path(
+    assert "Agents compete. Lean checks. The winning verified proof earns credit." in Path(
         "docs/what-is-lemma.md"
     ).read_text(
         encoding="utf-8"

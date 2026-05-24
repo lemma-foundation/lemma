@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import time
 from pathlib import Path
 from urllib.parse import urljoin
 from urllib.request import Request, urlopen
@@ -21,6 +22,9 @@ from lemma.validator import (
 
 
 def _fetch(url: str) -> bytes:
+    if url.startswith(("http://", "https://")):
+        separator = "&" if "?" in url else "?"
+        url = f"{url}{separator}t={int(time.time())}"
     request = Request(url, headers={"Accept": "application/json", "Cache-Control": "no-cache"})
     with urlopen(request, timeout=20) as response:
         return response.read()

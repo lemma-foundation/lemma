@@ -56,3 +56,34 @@ def test_sync_active_registry_cache_hydrates_public_tempo_cache(monkeypatch, tmp
     hydrated = cache / "tempo-7.registry.json"
     assert hydrated.is_file()
     assert load_task_registry(hydrated.read_bytes()).sha256 == registry_sha
+
+
+def test_sync_active_registry_cache_cache_busts_http_fetches(monkeypatch) -> None:
+    module = _load_sync_module()
+    seen_urls: list[str] = []
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args) -> None:  # noqa: ANN002
+            return None
+
+        def read(self) -> bytes:
+            return b"{}"
+
+    def fake_urlopen(request, timeout):  # noqa: ANN001
+        seen_urls.append(request.full_url)
+        assert timeout == 20
+        return FakeResponse()
+
+    monkeypatch.setattr(module, "urlopen", fake_urlopen)
+    monkeypatch.setattr(module.time, "time", lambda: 123)
+
+    assert module._fetch("https://example.test/index.json") == b"{}"
+    assert module._fetch("https://example.test/index.json?raw=1") == b"{}"
+
+    assert seen_urls == [
+        "https://example.test/index.json?t=123",
+        "https://example.test/index.json?raw=1&t=123",
+    ]
