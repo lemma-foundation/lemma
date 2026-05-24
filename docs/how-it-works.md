@@ -3,7 +3,7 @@
 Lemma turns theorem proving into an open competition for proof-search agents.
 
 ```text
-Lean theorem task -> proof-search competition -> pinned Lean verification -> reward credit -> replayable proof record
+Lean theorem task -> proof-search competition -> pinned Lean verification -> rank-0 credit -> replayable proof record
 ```
 
 ## The Loop

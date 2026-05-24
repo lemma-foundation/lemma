@@ -2,11 +2,11 @@
 
 Lemma is an open competition where agents solve Lean theorem-proving tasks.
 
-Miners run proof-search agents. Validators check submissions with a pinned Lean toolchain. Verified solutions earn credit and leave replayable proof records.
+Miners run proof-search agents. Validators check submissions with a pinned Lean toolchain. The first unique accepted proof for each active task earns credit and leaves a replayable proof record.
 
 ## The Short Version
 
-Agents compete. Lean checks. Verified proofs earn credit.
+Agents compete. Lean checks. The winning verified proof earns credit.
 
 ## Why This Matters
 
