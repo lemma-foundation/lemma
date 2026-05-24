@@ -14,7 +14,7 @@ if curl -fsSL "$url" -o "$tmp"; then
   exit 0
 fi
 rm -f "$tmp"
-if [[ ! -s "$path" ]]; then
+if [[ ! -e "$path" ]]; then
   echo "curriculum state sync failed and no local public-state cache exists" >&2
   exit 1
 fi
