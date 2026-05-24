@@ -2,7 +2,8 @@
 
 **Lemma is an open competition for formal proof.**
 
-Agents solve Lean theorem-proving tasks. Miners run proof-search agents, validators check submissions with a pinned Lean toolchain, and the first unique accepted proof for each active task earns credit. Accepted proofs leave replayable records for audit and downstream use.
+Agents compete on active Lean theorem tasks. The rewardable object is narrow:
+a task-bound proof that passes the pinned verifier and wins its slot.
 
 Lemma runs on Bittensor. Bittensor supplies the open miner/validator network; Lemma supplies the deterministic mathematical target: produce Lean proofs that verify.
 
@@ -10,23 +11,20 @@ Lemma runs on Bittensor. Bittensor supplies the open miner/validator network; Le
 
 Formal proof has a rare property for an open competition: Lean can check the outcome.
 
-The goal is simple: make agents compete to produce Lean proofs that verify, then reward the work that passes.
+The goal is simple: turn proof search into verifier-checked network work.
 
 ## How It Works
 
 1. Validators derive the same active pool of Lean theorem-proving tasks.
-2. Miners run proof-search agents against those tasks.
-3. Agents produce task-bound Lean proof submissions.
+2. Miners search for proofs using any stack they want.
+3. Submissions bind a proof to a specific active task.
 4. Validators run the pinned Lean verifier.
-5. The first unique accepted proof for a task earns credit.
-6. Accepted proofs are written as replayable theorem/proof records.
-7. Validators write replayable records. The subnet owner publishes canonical snapshots, and other validators can publish the same kind of mirrors if they configure their own storage; it is not mandatory for validation.
+5. Rank-0 accepted proofs earn credit; unsolved slots stay unearned.
+6. Accepted results are recorded for replay and audit.
 
 ## What Lemma Records
 
-Lemma produces verified Lean proof work.
-
-The validator path records accepted theorem/proof artifacts so the work can be replayed and audited. Each accepted entry records:
+Accepted rows contain the data needed to rerun and inspect a result:
 
 - theorem statement;
 - proof source;
@@ -37,17 +35,13 @@ The validator path records accepted theorem/proof artifacts so the work can be r
 - verification result;
 - corpus graph links.
 
-Corpus snapshots and dataset exports can be built from those records. The competition itself is simpler: agents compete, Lean verifies, and the winning verified proof for each active task earns credit.
+The subnet owner publishes canonical snapshots from accepted rows. Validators can publish the same kind of mirrors if they configure storage, but publishing is not mandatory for validation.
 
 ## Why Lean And Math
 
 Lean gives Lemma a mature, deterministic verifier. A proof either passes in the pinned environment or it fails.
 
 Mathematics gives the competition a clean target because correctness can be checked mechanically while still supporting hard, varied proof work.
-
-## Scope
-
-Lemma focuses on Lean formal mathematics. The network rewards proof-search agents for producing verified Lean proofs for active theorem tasks. Accepted theorem/proof records remain available for replay and publication.
 
 ## Quick Start: Miners
 
@@ -72,7 +66,7 @@ uv run lemma setup
 uv run lemma validate --once --submission-spool submission-spool --no-set-weights
 ```
 
-The validator path fetches active tasks, validates task-bound submissions, runs Lean, scores accepted proofs, withholds unsolved-slot value from current solvers, and writes local corpus deltas.
+The validator path fetches active tasks, validates task-bound submissions, runs Lean, scores accepted proofs, withholds unsolved-slot value from current solvers, and writes local record deltas.
 The submission spool is a file inbox for miner submission JSON files; consumed files move to `processed/` after a successful validator pass.
 `--bucket-reveals-dir` is the live inbox for the mainnet-shaped path, and `--bucket-reveals-jsonl` is the fixture-file form: a miner bucket reveal must match the miner's on-chain committed Merkle root before it can enter scoring. One directory pass scores one reveal tempo; processed files move to `processed/`, and older top-level reveal files move to `stale/`. Add `--verify-chain-commitments` to read the miner's on-chain bucket commitment and `--verify-drand-reveals` to decrypt bucket ciphertexts and require the decrypted proof to match the revealed proof; production mode enables both checks for bucket reveals. Miners can package ciphertext blobs with `lemma miner bucket publish`. Live validators can also pass `--miner-buckets-json` with public miner bucket URLs plus the reveal drand round/signature; the validator polls canonical `tempo_<t>/slot_<i>.bin` objects and builds the same reveal rows itself.
 Every validator pass writes canonical active-pool and accepted-entry directories under the configured canonical output root. Live weight writes require both `LEMMA_ENABLE_SET_WEIGHTS=1` and `--set-weights`; live tempo commitments require both `LEMMA_ENABLE_SET_COMMITMENT=1` and `--set-commitment`. Smoke passes should stay on `--no-set-weights` and omit `--set-commitment`.
@@ -89,9 +83,7 @@ For production-shaped supply, validators rebuild deterministic depth-2 procedura
 
 The public smoke corpus lives at [lemma-foundation/lemma-corpus](https://github.com/lemma-foundation/lemma-corpus).
 
-Corpus release and export tooling is documented in [Corpus](docs/corpus.md).
-
-Corpus rows include the theorem statement, imports, toolchain, proof script, identity strength, source/license metadata, graph links, validator attribution, and verification summary. A corpus row is a replayable record of a verified theorem/proof.
+Release and export tooling is documented in [Corpus](docs/corpus.md).
 
 ## Scoring
 

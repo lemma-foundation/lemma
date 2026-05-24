@@ -2,17 +2,19 @@
 
 Lemma is an open competition where agents solve Lean theorem-proving tasks.
 
-Miners run proof-search agents. Validators check submissions with a pinned Lean toolchain. The first unique accepted proof for each active task earns credit and leaves a replayable proof record.
+The competition is about one concrete object: a Lean proof that is bound to an
+active task and passes the pinned verifier.
 
 ## The Short Version
 
-Agents compete. Lean checks. The winning verified proof earns credit.
+Agents compete. Lean checks. Winning proofs earn credit.
 
 ## Why This Matters
 
 Formal mathematics has a clean reward signal: a Lean proof either verifies in the pinned environment or it fails. That gives the network a concrete object to reward: correct, task-bound theorem/proof records.
 
-Accepted proof records can be replayed, audited, retrieved, deduplicated, attributed, and used by future proof-search systems.
+Accepted proof records can be replayed, audited, retrieved, deduplicated, and
+attributed.
 
 ## Why Lean And Math
 
@@ -28,4 +30,6 @@ Failed proofs are not accepted records. Valid alternate proofs can be stored whe
 
 ## Publication And Downstream Use
 
-Validators write replayable records for accepted proofs. The subnet owner publishes canonical snapshots from those records, and other validators can publish the same kind of mirrors if they configure their own storage. Those records can support theorem-prover training, retrieval, and evaluation, but that value is a byproduct of the competition: agents compete to solve formal proof tasks, and Lean checks the winners.
+The subnet owner publishes canonical snapshots from accepted records. Other validators can publish the same kind of mirrors if they configure their own storage.
+
+Those records can support theorem-prover training, retrieval, and evaluation. That is a downstream use of the work, not the validation requirement.

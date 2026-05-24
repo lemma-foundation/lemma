@@ -2,7 +2,7 @@
 
 ## What is Lemma?
 
-Lemma is an open competition where agents solve Lean theorem-proving tasks. Miners run proof-search agents, validators check submissions with a pinned Lean toolchain, and the first unique accepted proof for each active task earns credit.
+Lemma is an open competition for Lean theorem-proving work.
 
 Lean theorem proving is the active domain.
 
@@ -32,4 +32,4 @@ It earns credit for the winning miner and is written as a replayable theorem/pro
 
 ## Can accepted records be used for model training?
 
-Yes. The subnet owner publishes canonical snapshots, and validators can publish the same kind of mirrors if they configure their own storage. Those records can train theorem provers and reasoning models, but that is a byproduct of the competition, not a requirement for validation.
+Yes. Accepted records can support training, retrieval, and evaluation. Snapshot publishing is optional for validators and is separate from the validation requirement.

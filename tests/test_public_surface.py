@@ -64,7 +64,7 @@ def test_public_docs_keep_corpus_and_economics_invariant() -> None:
     scoring = Path("docs/scoring.md").read_text(encoding="utf-8")
 
     assert "Lemma is an open competition for formal proof" in readme
-    assert "Agents compete. Lean checks. The winning verified proof earns credit." in Path(
+    assert "Agents compete. Lean checks. Winning proofs earn credit." in Path(
         "docs/what-is-lemma.md"
     ).read_text(
         encoding="utf-8"
@@ -104,6 +104,27 @@ def test_readme_does_not_link_background_research() -> None:
     assert "docs/research/" not in readme
 
 
+def test_intro_pages_do_not_repeat_loop_boilerplate() -> None:
+    paths = [
+        Path("README.md"),
+        Path("LITEPAPER.md"),
+        Path("docs/what-is-lemma.md"),
+        Path("docs/how-it-works.md"),
+        Path("docs/faq.md"),
+    ]
+    lowered = "\n".join(path.read_text(encoding="utf-8") for path in paths).lower()
+
+    repeated_fragments = [
+        "miners run proof-search agents",
+        "validators check submissions",
+        "agents compete, lean verifies",
+        "first unique accepted proof for each active task earns credit",
+        "but that value is a byproduct",
+    ]
+    for fragment in repeated_fragments:
+        assert fragment not in lowered
+
+
 def test_public_surfaces_do_not_reintroduce_legacy_protocol_language() -> None:
     text = _public_text()
     lowered = text.lower()
@@ -135,6 +156,7 @@ def test_public_surfaces_do_not_reintroduce_legacy_protocol_language() -> None:
         "lemma_protocol_mode=testnet",
         "before it needs to broaden",
         "not a library like mathlib",
+        "publication machinery",
         "open corpus of reusable proof data",
         "added to an open corpus",
         "reusable proof data",
