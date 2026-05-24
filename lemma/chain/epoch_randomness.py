@@ -6,6 +6,7 @@ import json
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Literal, Protocol, cast
 
+import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
 if TYPE_CHECKING:
@@ -15,6 +16,8 @@ if TYPE_CHECKING:
 DRAND_QUICKNET_CHAIN_HASH = "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971"
 DRAND_QUICKNET_GENESIS_TIME = 1_692_803_367
 DRAND_QUICKNET_PERIOD_SECONDS = 3
+DRAND_QUICKNET_API_URL = f"https://api.drand.sh/{DRAND_QUICKNET_CHAIN_HASH}"
+DRAND_HTTP_TIMEOUT_S = 10.0
 _MILLISECONDS_TIMESTAMP_FLOOR = 10_000_000_000
 
 
@@ -68,6 +71,22 @@ def _unix_timestamp_seconds(timestamp: int) -> int:
     return timestamp // 1000 if timestamp >= _MILLISECONDS_TIMESTAMP_FLOOR else timestamp
 
 
+def fetch_drand_signature_for_round(round_no: int) -> str:
+    """Fetch a Quicknet signature with a bounded public HTTP read."""
+    try:
+        response = httpx.get(f"{DRAND_QUICKNET_API_URL}/public/{round_no}", timeout=DRAND_HTTP_TIMEOUT_S)
+        response.raise_for_status()
+        payload = response.json()
+    except httpx.HTTPError as e:
+        raise RuntimeError(f"Drand Quicknet round {round_no} is unavailable") from e
+    if int(payload.get("round", -1)) != round_no:
+        raise RuntimeError(f"Drand Quicknet returned the wrong round for {round_no}")
+    signature = str(payload.get("signature") or "")
+    if not signature:
+        raise RuntimeError(f"Drand Quicknet round {round_no} has no signature")
+    return signature
+
+
 def resolve_chain_drand_epoch_randomness(
     settings: LemmaSettings,
     *,
@@ -81,9 +100,7 @@ def resolve_chain_drand_epoch_randomness(
 
         subtensor = bt.Subtensor(network=settings.bt_network or None)
     if drand_signature_for_round is None:
-        import bittensor_drand
-
-        drand_signature_for_round = bittensor_drand.get_signature_for_round
+        drand_signature_for_round = fetch_drand_signature_for_round
 
     current_block = int(subtensor.get_current_block())
     hyperparams = cast(

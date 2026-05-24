@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from lemma.chain.epoch_randomness import (
+    DRAND_QUICKNET_CHAIN_HASH,
     DRAND_QUICKNET_GENESIS_TIME,
     drand_round_for_timestamp,
+    fetch_drand_signature_for_round,
     resolve_chain_drand_epoch_randomness,
 )
 from lemma.common.config import LemmaSettings
@@ -12,6 +14,30 @@ def test_drand_round_for_timestamp_uses_quicknet_period() -> None:
     assert drand_round_for_timestamp(DRAND_QUICKNET_GENESIS_TIME) == 1
     assert drand_round_for_timestamp(DRAND_QUICKNET_GENESIS_TIME + 2) == 1
     assert drand_round_for_timestamp(DRAND_QUICKNET_GENESIS_TIME + 3) == 2
+
+
+def test_fetch_drand_signature_for_round_uses_bounded_quicknet_http(monkeypatch) -> None:
+    captured = {}
+
+    class Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {"round": 42, "signature": "abc123"}
+
+    def fake_get(url: str, *, timeout: float) -> Response:
+        captured["url"] = url
+        captured["timeout"] = timeout
+        return Response()
+
+    monkeypatch.setattr("lemma.chain.epoch_randomness.httpx.get", fake_get)
+
+    assert fetch_drand_signature_for_round(42) == "abc123"
+    assert captured == {
+        "timeout": 10.0,
+        "url": f"https://api.drand.sh/{DRAND_QUICKNET_CHAIN_HASH}/public/42",
+    }
 
 
 def test_chain_drand_epoch_randomness_anchors_to_tempo_boundary() -> None:
