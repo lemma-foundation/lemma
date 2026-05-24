@@ -30,6 +30,7 @@ def test_live_wrappers_sync_public_curriculum_state_before_work() -> None:
     assert expected in prebuild
     assert "LEMMA_CURRICULUM_STATE_URL" in sync
     assert "LEMMA_CURRICULUM_STATE_JSONL" in sync
+    assert "production curriculum retargeting requires LEMMA_CURRICULUM_STATE_URL" in sync
     assert 'tmp="${path}.tmp.$$"' in sync
 
 

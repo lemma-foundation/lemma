@@ -3,7 +3,18 @@ set -euo pipefail
 
 url="${LEMMA_CURRICULUM_STATE_URL:-}"
 path="${LEMMA_CURRICULUM_STATE_JSONL:-}"
-if [[ -z "$url" || -z "$path" ]]; then
+retarget="${LEMMA_CURRICULUM_RETARGET:-0}"
+public="${LEMMA_CURRICULUM_STATE_PUBLIC:-0}"
+protocol="${LEMMA_PROTOCOL_MODE:-dev}"
+
+if [[ -z "$path" ]]; then
+  exit 0
+fi
+if [[ -z "$url" ]]; then
+  if [[ "$retarget" == "1" && "$public" == "1" && ( "$protocol" == "production" || "$protocol" == "testnet" ) ]]; then
+    echo "production curriculum retargeting requires LEMMA_CURRICULUM_STATE_URL" >&2
+    exit 1
+  fi
   exit 0
 fi
 
