@@ -9,7 +9,6 @@ def _public_text() -> str:
     paths = [
         Path("README.md"),
         Path("LITEPAPER.md"),
-        Path("ROADMAP.md"),
         Path(".env.example"),
         Path("lemma/cli/main.py"),
         Path("examples/operator-smoke/README.md"),

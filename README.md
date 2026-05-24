@@ -105,17 +105,6 @@ weight = miner_score
 The unearned share is not redistributed to current solvers. It is burned by default and can only be routed to future proof-production rails by an explicit policy.
 In production, weak script identity and structural print fingerprints can be stored as corpus metadata but cannot earn paid reward; rewarded rows need a strong Lean-derived proof-term hash.
 
-## Roadmap
-
-1. Stabilize the Lean verifier path.
-2. Improve miner and validator reliability.
-3. Expand task supply for useful Lean theorem proving.
-4. Export high-quality corpus releases.
-5. Improve dependency/citation graph tooling.
-6. Support downstream theorem-prover training and evaluation.
-
-Long-term verifier-domain research exists, but it is not part of the public production thesis.
-
 ## Docs
 
 Getting Started:
