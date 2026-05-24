@@ -239,7 +239,9 @@ def curriculum_controlled_settings(settings: LemmaSettings, *, tempo: int) -> Le
                 "production curriculum retargeting requires LEMMA_CURRICULUM_STATE_PUBLIC=1 "
                 "and a published/replayed LEMMA_CURRICULUM_STATE_JSONL"
             )
-        canonical_state_jsonl = _canonical_output_root(settings) / _netuid_label(settings) / "curriculum" / "curriculum.jsonl"
+        canonical_state_jsonl = (
+            _canonical_output_root(settings) / _netuid_label(settings) / "curriculum" / "curriculum.jsonl"
+        )
         if settings.curriculum_state_jsonl.expanduser().resolve() == canonical_state_jsonl.expanduser().resolve():
             raise RuntimeError(
                 "production curriculum retargeting requires LEMMA_CURRICULUM_STATE_JSONL "
