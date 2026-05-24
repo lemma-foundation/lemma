@@ -83,6 +83,50 @@ PY
 Systemd timers, cron jobs, and local reminders are only wakeups. On every wakeup, the operator should read the chain block and derive the active tempo before deciding whether to prebuild, mine, validate, publish, or wait.
 For burn-in, prefer short wakeups such as 5-10 minutes plus once-per-tempo miner state over epoch-length timers. Epoch-length timers can drift into a validator-before-miner ordering and delay reveal consumption until the next epoch-sized wakeup.
 
+For SN467 burn-in, keep service timeouts long enough for slow Lean gates and
+keep wakeup jitter small enough that a miner/validator ordering miss costs
+minutes, not a tempo. A production-shaped systemd setup should use the same
+pattern:
+
+```ini
+# lemma-active-registry-prebuild.service.d/20-timeout.conf
+[Service]
+TimeoutStartSec=4500
+
+# lemma-active-registry-prebuild.timer.d/10-cadence.conf
+[Timer]
+OnActiveSec=
+OnUnitInactiveSec=
+AccuracySec=
+RandomizedDelaySec=
+OnActiveSec=90s
+OnUnitInactiveSec=2min
+AccuracySec=15s
+RandomizedDelaySec=15s
+
+# lemma-miner-bucket@miner5.timer.d/10-cadence.conf
+[Timer]
+OnActiveSec=
+OnUnitInactiveSec=
+AccuracySec=
+RandomizedDelaySec=
+OnActiveSec=2min
+OnUnitInactiveSec=2min
+AccuracySec=15s
+RandomizedDelaySec=15s
+
+# lemma-validator-bucket.timer.d/10-cadence.conf
+[Timer]
+OnActiveSec=
+OnUnitInactiveSec=
+AccuracySec=
+RandomizedDelaySec=
+OnActiveSec=90s
+OnUnitInactiveSec=2min
+AccuracySec=15s
+RandomizedDelaySec=15s
+```
+
 Public-safe live checks should be runnable from the configured operator environment without publishing env files, wallet names, hostnames, IPs, or local machine paths. Use the chain-derived `active_tempo` from the command above as `TEMPO`.
 
 ```bash
