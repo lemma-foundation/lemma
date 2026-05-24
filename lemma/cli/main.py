@@ -1817,22 +1817,22 @@ def validate_cmd(
         validation_tempo = reveal_tempo
         registry = task_registry_for_validation(settings, tempo=reveal_tempo)
         bucket_reveal_count += len(bucket_reveal_batch.reveals)
-        bucket_chain_commitments = None
-        bucket_chain_commitments_by_block = None
+        directory_chain_commitments: dict[str, str] | None = None
+        directory_chain_commitments_by_block: dict[int, dict[str, str]] | None = None
         if verify_chain_commitments or settings.protocol_mode == "production":
-            commit_blocks = {reveal.commit_block for reveal in bucket_reveal_batch.reveals}
-            if commit_blocks and all(block > 0 for block in commit_blocks):
-                bucket_chain_commitments_by_block = {
-                    block: read_all_commitments(settings, block=block) for block in sorted(commit_blocks)
+            reveal_commit_blocks = {reveal.commit_block for reveal in bucket_reveal_batch.reveals}
+            if reveal_commit_blocks and all(block > 0 for block in reveal_commit_blocks):
+                directory_chain_commitments_by_block = {
+                    block: read_all_commitments(settings, block=block) for block in sorted(reveal_commit_blocks)
                 }
             else:
-                bucket_chain_commitments = read_all_commitments(settings)
+                directory_chain_commitments = read_all_commitments(settings)
         bucket_submissions, bucket_authenticated = submissions_from_bucket_reveals(
             bucket_reveal_batch.reveals,
             active_tasks_for_validation(registry, settings, tempo=reveal_tempo),
             verify_drand=verify_drand_reveals or settings.protocol_mode == "production",
-            chain_commitments=bucket_chain_commitments,
-            chain_commitments_by_block=bucket_chain_commitments_by_block,
+            chain_commitments=directory_chain_commitments,
+            chain_commitments_by_block=directory_chain_commitments_by_block,
             strict=False,
             rejection_log=bucket_rejections.append,
         )
@@ -1853,22 +1853,22 @@ def validate_cmd(
         validation_tempo = active_tempo
         registry = task_registry_for_validation(settings, tempo=active_tempo)
         bucket_reveal_count += len(reveals)
-        bucket_chain_commitments = None
-        bucket_chain_commitments_by_block = None
+        jsonl_chain_commitments: dict[str, str] | None = None
+        jsonl_chain_commitments_by_block: dict[int, dict[str, str]] | None = None
         if verify_chain_commitments or settings.protocol_mode == "production":
-            commit_blocks = {reveal.commit_block for reveal in reveals}
-            if commit_blocks and all(block > 0 for block in commit_blocks):
-                bucket_chain_commitments_by_block = {
-                    block: read_all_commitments(settings, block=block) for block in sorted(commit_blocks)
+            reveal_commit_blocks = {reveal.commit_block for reveal in reveals}
+            if reveal_commit_blocks and all(block > 0 for block in reveal_commit_blocks):
+                jsonl_chain_commitments_by_block = {
+                    block: read_all_commitments(settings, block=block) for block in sorted(reveal_commit_blocks)
                 }
             else:
-                bucket_chain_commitments = read_all_commitments(settings)
+                jsonl_chain_commitments = read_all_commitments(settings)
         bucket_submissions, bucket_authenticated = submissions_from_bucket_reveals(
             reveals,
             active_tasks_for_validation(registry, settings, tempo=active_tempo),
             verify_drand=verify_drand_reveals or settings.protocol_mode == "production",
-            chain_commitments=bucket_chain_commitments,
-            chain_commitments_by_block=bucket_chain_commitments_by_block,
+            chain_commitments=jsonl_chain_commitments,
+            chain_commitments_by_block=jsonl_chain_commitments_by_block,
             strict=False,
             rejection_log=bucket_rejections.append,
         )
