@@ -104,6 +104,15 @@ def test_active_registry_prebuild_wrapper_serializes_builds() -> None:
     assert "active registry prebuild already running" in prebuild
 
 
+def test_active_registry_prebuild_idles_until_public_cache_is_published() -> None:
+    prebuild = (ROOT / "scripts" / "lemma-active-registry-prebuild").read_text(encoding="utf-8")
+
+    assert "cache_sync_output=" in prebuild
+    assert "LEMMA_ACTIVE_REGISTRY_CACHE_INDEX_URL" in prebuild
+    assert "missing_public_index_row" in prebuild
+    assert "public active registry cache not published yet" in prebuild
+
+
 def test_active_registry_prebuild_wrapper_calls_hidden_cli() -> None:
     prebuild = (ROOT / "scripts" / "lemma-active-registry-prebuild").read_text(encoding="utf-8")
 
