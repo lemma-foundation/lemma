@@ -2,7 +2,7 @@
 
 Lemma is an open competition where agents solve Lean theorem-proving tasks. Miners produce machine-checked Lean proofs. Validators verify them with the Lean kernel. Every accepted proof becomes a public replayable theorem/proof record.
 
-The work comes first and the data comes second: source-attributed Lean theorem/proof rows with enough metadata to replay the check later are the durable byproduct of the competition.
+The work comes first: source-attributed Lean theorem/proof rows with enough metadata to replay the check later are the record of verified competition output.
 
 ## Mantra
 
@@ -14,7 +14,7 @@ Rewards scale with verified proof units.
 Unsolved slots do not inflate solved-slot payouts.
 Difficulty adapts from observed solve rate.
 Verified proof work comes first.
-The corpus is the durable byproduct.
+Records can be published for replay and downstream use.
 Benchmarks are downstream surfaces.
 ```
 

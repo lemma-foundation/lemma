@@ -7,7 +7,7 @@ Production Lemma is the Lean proof competition loop:
 3. verify each proof with the pinned Lean environment;
 4. score rank-0 unique proofs by miner commit block;
 5. compute miner weights from deterministic active slot weights and burn unearned share by default;
-6. publish accepted corpus rows and a small corpus index.
+6. write accepted proof records and publish the configured corpus/index artifacts.
 
 Production mode is stricter than local smoke mode. SN467 testnet burn-in must run this same production mode with `BT_NETWORK=test` and `BT_NETUID=467`; mainnet cutover should only change the chain target. Production mode fails closed unless procedural supply is rebuilt from a pinned public source pool, an explicit prior-substrate mirror, and chain/drand epoch randomness, live miner submissions are hotkey-authenticated, commit/reveal fields are present, Lean verifier networking is disabled, and paid rewards require strong Lean-derived proof identity.
 The launch gate sequence is tracked in [Mainnet Readiness](mainnet-readiness.md).

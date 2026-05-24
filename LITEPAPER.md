@@ -12,7 +12,7 @@
 
 Lemma is an open competition where agents solve Lean theorem-proving tasks.
 
-Miners run proof-search agents. Validators verify task-bound submissions with a pinned Lean toolchain. Verified solutions are rewarded and added to an open, citation-structured corpus of reusable proof data.
+Miners run proof-search agents. Validators verify task-bound submissions with a pinned Lean toolchain. Verified solutions earn credit and leave replayable proof records.
 
 Lemma's core thesis is simple:
 
@@ -26,9 +26,9 @@ Bittensor supplies the open miner and validator network. Lemma supplies the math
 
 Lemma rewards verified proof work.
 
-A theorem enters the active pool. Miners run proof-search agents against it. Validators run Lean. If the proof passes and wins the task slot, the miner earns credit and the theorem/proof record is added to the public corpus.
+A theorem enters the active pool. Miners run proof-search agents against it. Validators run Lean. If the proof passes and wins the task slot, the miner earns credit and the theorem/proof record is kept for replay and audit.
 
-The output is not just a score. It is reusable proof data: statements, proofs, verifier metadata, attribution, license metadata, and dependency links.
+The output is not just a score. It is verified proof work with enough metadata to replay the check: statements, proofs, verifier metadata, attribution, license metadata, and dependency links.
 
 ---
 
@@ -38,7 +38,7 @@ Mathematics is unusually clean for incentive design because proof correctness is
 
 That binary signal gives Lemma a concrete unit of work to reward: a task-bound theorem/proof record that can be replayed, audited, retrieved, deduplicated, attributed, and reused.
 
-Math is also broad enough to stand on its own. Algebra, analysis, number theory, topology, probability, logic, and computer science provide years of useful formalization and proof work without broadening the production identity.
+Math is also broad enough to stand on its own. Algebra, analysis, number theory, topology, probability, logic, and computer science all create hard, varied proof-search targets inside formal mathematics.
 
 Lemma's public focus is therefore narrow and deep: run an open competition for Lean proof work.
 
@@ -54,7 +54,7 @@ For Lemma's Lean production path:
 - the submission is a Lean proof bound to that task;
 - the validator runs a pinned Lean/mathlib environment;
 - the proof either passes or fails;
-- accepted proofs become replayable corpus records.
+- accepted proofs become replayable proof records.
 
 The verifier is the correctness boundary. Validators do not score prose explanations, claimed effort, model identity, or informal reasoning. They score the final proof.
 
@@ -66,7 +66,7 @@ Lemma coordinates three roles:
 
 1. **Task supply:** a deterministic active set of Lean theorem-proving tasks.
 2. **Miners:** participants that run proof-search agents for valid Lean proofs.
-3. **Validators:** participants that verify submissions, score accepted proofs, and publish corpus rows.
+3. **Validators:** participants that verify submissions, score accepted proofs, and write replayable records.
 
 The loop is:
 
@@ -76,7 +76,7 @@ Lean theorem task
   -> task-bound Lean submission
   -> pinned Lean verification
   -> proof-unit credit
-  -> reusable proof data
+  -> replayable proof record
 ```
 
 Miners may use any method to discover proofs: tactics, retrieval, local models, hosted APIs, custom agents, search, or hybrid systems. Lemma intentionally keeps search strategy on the miner side. The network only needs the proof artifact and the verification result.
@@ -85,7 +85,7 @@ Miners may use any method to discover proofs: tactics, retrieval, local models, 
 
 ## What Lemma Produces
 
-Lemma produces the Lemma Corpus: an open corpus of verified Lean theorem/proof records.
+Lemma records accepted Lean theorem/proof artifacts for replay and audit.
 
 Each accepted entry can include:
 
@@ -108,7 +108,7 @@ Each accepted entry can include:
 - graph links;
 - verification summary.
 
-Failed proofs are not public corpus rows. Valid alternate proofs can be stored with `rewarded: false`, allowing the corpus to preserve proof diversity without paying duplicate credit for the same task slot.
+Failed proofs are not accepted proof records. Valid alternate proofs can be stored with `rewarded: false`, allowing operators to preserve proof diversity without paying duplicate credit for the same task slot.
 
 The value of a row depends on replayability. Another operator should be able to reconstruct the task, load the pinned environment, and rerun the verifier.
 
@@ -127,7 +127,7 @@ This structure lets downstream users ask useful questions:
 - Which validators accepted which rows under which verifier versions?
 - Which corpus regions are useful for proof search, retrieval, or evaluation?
 
-The graph is part of the product because mathematics is cumulative. A theorem is most useful when its dependencies, provenance, and replay context are visible.
+The graph makes accepted work easier to audit and reuse because mathematics is cumulative. A theorem is most useful when its dependencies, provenance, and replay context are visible.
 
 ---
 
@@ -227,7 +227,7 @@ Lemma rewards flow through normal Bittensor miner and validator mechanics; the r
 
 ## Downstream Use
 
-The corpus can train theorem provers and reasoning models, support retrieval systems, power proof-repair loops, and make evaluation easier to audit.
+Published records can train theorem provers and reasoning models, support retrieval systems, power proof-repair loops, and make evaluation easier to audit.
 
 Those uses matter, but they are downstream. Lemma's primary identity is open proof competition. The core mission is simpler:
 
@@ -287,6 +287,6 @@ A large number of trivial proofs is less valuable than a smaller number of diver
 
 Lemma turns theorem proving into an open competition for Lean proof agents.
 
-It starts with Lean because Lean provides a deterministic correctness boundary and a valuable output type: theorem/proof records. Miners run proof-search agents, validators check them, scoring rewards accepted unique proofs, and accepted records become a replayable public corpus.
+It starts with Lean because Lean provides a deterministic correctness boundary and a valuable output type: theorem/proof records. Miners run proof-search agents, validators check them, and scoring rewards accepted unique proofs.
 
-The result is reusable proof data: verified, attributed, replayable, and useful for future proof search.
+The result is verified proof work: attributed, replayable, and useful for future proof search.

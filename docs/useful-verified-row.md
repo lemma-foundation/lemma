@@ -1,6 +1,6 @@
 # Useful Verified Row
 
-A valid Lean proof row is not automatically useful reusable proof data.
+A valid Lean proof row is not automatically a useful proof record.
 
 A useful verified row passes these gates:
 

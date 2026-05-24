@@ -1,8 +1,8 @@
-# Background Research: Future Verifier Domains
+# Background Research: Other Verifier Domains
 
-This is background research, not Lemma's production thesis. Lemma's public production identity is formal mathematics in Lean. Do not link this doc from the homepage or primary getting-started path.
+This is archived background research, not Lemma's production thesis or roadmap. Lemma's public identity is the Lean proof competition. Do not use this doc to imply a broader roadmap, and do not link it from the homepage or primary getting-started path.
 
-The same network pattern can apply outside Lean only when a domain has deterministic verifiers and replayable outputs.
+The same verification pattern could be studied outside Lean only when a domain has deterministic verifiers and replayable outputs.
 
 These are research directions, not live production mechanisms.
 
@@ -33,7 +33,7 @@ No artifact can enter the corpus unless the deterministic verifier accepts it.
 
 ## Adapter Interface
 
-Each production domain enters through `lemma.verifiers.base.VerifierAdapter`:
+Each experimental adapter enters through `lemma.verifiers.base.VerifierAdapter`:
 
 ```python
 class VerifierAdapter:
@@ -55,4 +55,4 @@ class VerifierAdapter:
 - Level 4: active miner competition
 - Level 5: external model-training consumers
 
-Lean is the only Level 4 production domain today. Verus is Level 0/1 and disabled by default.
+Lean theorem proving is the only active competition path. Verus is Level 0/1 and disabled by default.

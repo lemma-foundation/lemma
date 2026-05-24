@@ -1,6 +1,6 @@
 # Verified Lean Proof Corpus
 
-The Lemma Corpus is the durable byproduct of the competition: replayable Lean theorem/proof records that validators accepted.
+The Lemma Corpus is a publication surface for replayable Lean theorem/proof records that validators accepted.
 
 A corpus row is a replayable record of a verified mathematical proof.
 
@@ -89,7 +89,7 @@ uv run python scripts/publish_chain_commitment.py --repo ~/lemma-corpus --netuid
 
 ## Purpose
 
-Corpus rows should be useful for theorem-prover training, retrieval, repair loops, reinforcement learning, and evaluation. A row is valuable only if another operator can reconstruct the task and rerun the pinned Lean verifier.
+Corpus rows should be useful for replay, audit, theorem-prover training, retrieval, repair loops, reinforcement learning, and evaluation. A row is valuable only if another operator can reconstruct the task and rerun the pinned Lean verifier.
 
 ## Simple Example
 
@@ -175,7 +175,7 @@ uv run lemma corpus benchmark-export --input corpus --output exports/lemma-proof
 uv run lemma export-corpus --domain lean --format jsonl --out data/lean_corpus.jsonl
 ```
 
-Replay uses the task fields embedded in each row, the pinned toolchain metadata, and the Lean verifier. Lean is the production domain.
+Replay uses the task fields embedded in each row, the pinned toolchain metadata, and the Lean verifier. Lean is the active verifier path.
 
 `benchmark-export` writes compact JSONL records for downstream training or evaluation jobs. Each record contains task metadata, source/license metadata, proof text and hashes, quality metadata, graph links, reward context, verification summary, and public provenance. It is an export surface, not a claim that the rows are held-out benchmark tasks.
 

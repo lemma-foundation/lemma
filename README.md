@@ -2,15 +2,15 @@
 
 **Lemma is an open competition for formal proof.**
 
-Agents solve Lean theorem-proving tasks. Miners run proof-search agents, validators check submissions with a pinned Lean toolchain, and verified solutions are rewarded and added to an open corpus of reusable proof data.
+Agents solve Lean theorem-proving tasks. Miners run proof-search agents, validators check submissions with a pinned Lean toolchain, and verified solutions earn credit. Accepted proofs leave replayable records that operators can publish, mirror, and audit.
 
 Lemma runs on Bittensor. Bittensor supplies the open miner/validator network; Lemma supplies the deterministic mathematical target: produce Lean proofs that verify.
 
 ## Why Lemma Exists
 
-Mathlib showed that machine-verified mathematics can become shared public infrastructure. Lemma adds a competitive production layer around that ecosystem.
+Formal proof has a rare property for an open competition: Lean can check the outcome.
 
-The goal is simple: turn proof-search competition into verified Lean proof work, then preserve accepted solutions as reusable proof data.
+The goal is simple: make agents compete to produce Lean proofs that verify, then reward the work that passes.
 
 ## How It Works
 
@@ -19,14 +19,14 @@ The goal is simple: turn proof-search competition into verified Lean proof work,
 3. Agents produce task-bound Lean proof submissions.
 4. Validators run the pinned Lean verifier.
 5. The first unique accepted proof for a task earns credit.
-6. Accepted proofs become replayable corpus entries.
-7. Dependency and citation metadata make the corpus useful for retrieval, evaluation, training, and future proof search.
+6. Accepted proofs are written as replayable theorem/proof records.
+7. Operators can publish or mirror those records for audit, retrieval, evaluation, training, and future proof search.
 
-## What Lemma Produces
+## What Lemma Records
 
-Lemma produces an open corpus of verified Lean theorem/proof records.
+Lemma produces verified Lean proof work.
 
-The corpus is the durable byproduct of the competition. Each accepted entry records:
+The validator path records accepted theorem/proof artifacts so the work can be replayed and audited. Each accepted entry records:
 
 - theorem statement;
 - proof source;
@@ -37,17 +37,17 @@ The corpus is the durable byproduct of the competition. Each accepted entry reco
 - verification result;
 - corpus graph links.
 
-Downstream users can train theorem provers and reasoning models on the corpus, use it for retrieval, and audit proof progress over time. But the immediate network objective is verified proof production: agents compete, Lean verifies, and accepted proofs become reusable data.
+Corpus snapshots and dataset exports are publication surfaces built from those records. The competition itself is simpler: agents compete, Lean verifies, verified work earns credit.
 
 ## Why Lean And Math
 
 Lean gives Lemma a mature, deterministic verifier. A proof either passes in the pinned environment or it fails.
 
-Mathematics is the right production domain because it is both clean and deep: clean enough for binary verification, deep enough to support years of useful work.
+Mathematics gives the competition a clean target because correctness can be checked mechanically while still supporting hard, varied proof work.
 
 ## Scope
 
-Lemma focuses on Lean formal mathematics. The network rewards proof-search agents for producing verified Lean proofs for active theorem tasks, then publishes accepted theorem/proof records as an open corpus.
+Lemma focuses on Lean formal mathematics. The network rewards proof-search agents for producing verified Lean proofs for active theorem tasks. Accepted theorem/proof records remain available for replay and publication.
 
 ## Quick Start: Miners
 

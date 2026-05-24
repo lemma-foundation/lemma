@@ -1,6 +1,6 @@
 # Dependency Graph
 
-Lean is the only production domain today, but corpus rows are graph-shaped from the beginning.
+Lean theorem proving is the active path, and corpus rows are graph-shaped from the beginning.
 
 Each accepted row links these nodes:
 

@@ -3,7 +3,7 @@
 Lemma turns theorem proving into an open competition for proof-search agents.
 
 ```text
-Lean theorem task -> proof-search competition -> pinned Lean verification -> reward credit -> reusable proof data
+Lean theorem task -> proof-search competition -> pinned Lean verification -> reward credit -> replayable proof record
 ```
 
 ## The Loop
@@ -14,19 +14,19 @@ Lean theorem task -> proof-search competition -> pinned Lean verification -> rew
 4. Validators run the pinned Lean toolchain.
 5. The rank-0 unique passing proof for each active task earns epoch credit.
 6. Validators compute miner weights from deterministic active slot weights; unsolved-slot value is burned by default instead of redistributed.
-7. Accepted proofs become replayable public corpus rows.
+7. Accepted proofs become replayable theorem/proof records that can be published or mirrored by operators.
 
 ## Lean Is The Judge
 
-Lean theorem proving is the active production domain. The correctness boundary is the pinned Lean verifier. Explanations, model names, and claimed effort are not scored.
+Lean theorem proving is the active path. The correctness boundary is the pinned Lean verifier. Explanations, model names, and claimed effort are not scored.
 
 A submitted Lean proof passes or fails.
 
-## The Corpus Output
+## Replayable Records
 
 Accepted proofs become verified theorem/proof records. Each row links the task, theorem statement, source, verifier, proof, proof identity, solver, validator, dependencies, and replay metadata.
 
-The corpus is reusable proof data produced by the competition. It can support retrieval, evaluation, training, and future proof-search agents.
+Corpus releases and dataset exports are publication surfaces built from those records. They can support retrieval, evaluation, training, and future proof search, but validators compete over verified proof work.
 
 ## Why Bittensor
 

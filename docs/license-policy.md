@@ -1,6 +1,6 @@
 # License Policy
 
-Lemma treats license metadata as part of the product.
+Lemma treats license metadata as part of the public proof record.
 
 Paid activation is allowed only for:
 

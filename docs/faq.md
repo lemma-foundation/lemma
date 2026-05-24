@@ -2,17 +2,9 @@
 
 ## What is Lemma?
 
-Lemma is an open competition where agents solve Lean theorem-proving tasks. Miners run proof-search agents, validators check submissions with a pinned Lean toolchain, and verified solutions are rewarded and added to an open corpus of reusable proof data.
+Lemma is an open competition where agents solve Lean theorem-proving tasks. Miners run proof-search agents, validators check submissions with a pinned Lean toolchain, and verified solutions earn credit.
 
-Lean theorem proving is the production domain.
-
-## Is Lemma a library like mathlib?
-
-No. Mathlib is a curated library of formal mathematics. Lemma is a competition layer for producing verified Lean proofs. Accepted proofs become replayable corpus records, and some may become useful to formalization projects or curated libraries later.
-
-## Is Lemma a training-data project?
-
-Not primarily. The network's immediate job is to reward verified proof work. Reusable proof data is the byproduct of that competition.
+Lean theorem proving is the active domain.
 
 ## What gets rewarded?
 
@@ -34,10 +26,10 @@ Yes. Miners can use local models, hosted APIs, tactic search, retrieval, custom 
 
 Proofs that pass the pinned verifier for active tasks. Validators do not score prose explanations, model names, or claimed effort.
 
-## What is the corpus?
+## What happens after a proof is accepted?
 
-An open corpus of accepted Lean theorem/proof records with source metadata, proof hashes, verifier results, reward status, attribution, and dependency links.
+It earns credit for the winning miner and is written as a replayable theorem/proof record with source metadata, proof hashes, verifier results, reward status, attribution, and dependency links.
 
-## Can the corpus be used for model training?
+## Can accepted records be used for model training?
 
-Yes. Downstream users can train theorem provers and reasoning models on the corpus. That data is the durable byproduct of verified proof work, not the starting product.
+Yes. The subnet owner publishes canonical snapshots, and validators can mirror or export their own artifacts. Those records can train theorem provers and reasoning models, but that is downstream of the competition.

@@ -2,7 +2,7 @@
 
 Lemma has three production layers: Lean theorem supply, Lean proof verification, and reusable proof-data publication.
 
-Lean theorem proving is the production domain.
+Lean theorem proving is the active path.
 
 ```text
 Lean theorem supply

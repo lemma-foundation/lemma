@@ -50,7 +50,7 @@ This plan keeps the Lean verification spine intact and changes the public contra
 ## Acceptance
 
 - All tests pass.
-- Docs and schemas name the corpus as the product.
+- Docs and schemas foreground verified proof work and treat corpus exports as publication surfaces.
 - Scoring tests cover `K=10` with 0, 2, 7, and 10 solved slots.
 - The public site stays static and avoids endorsement or payout-path claims.
 - Leak checks pass before any commit or push.

@@ -65,7 +65,7 @@ def test_public_docs_keep_corpus_and_economics_invariant() -> None:
     scoring = Path("docs/scoring.md").read_text(encoding="utf-8")
 
     assert "Lemma is an open competition for formal proof" in readme
-    assert "Proof agents compete. Lean judges. Verified proofs become reusable data." in Path(
+    assert "Agents compete. Lean checks. Verified proofs earn credit." in Path(
         "docs/what-is-lemma.md"
     ).read_text(
         encoding="utf-8"
@@ -94,7 +94,8 @@ def test_future_domain_docs_are_research_only() -> None:
     assert not Path("docs/domain-adapter-spec.md").exists()
     assert not Path("docs/domains/verus.md").exists()
     research = Path("docs/research/future-verifier-domains.md").read_text(encoding="utf-8")
-    assert "This is background research, not Lemma's production thesis." in research
+    assert "This is archived background research, not Lemma's production thesis or roadmap." in research
+    assert "Do not use this doc to imply a broader roadmap" in research
 
 
 def test_readme_does_not_link_background_research() -> None:
@@ -133,6 +134,13 @@ def test_public_surfaces_do_not_reintroduce_legacy_protocol_language() -> None:
         "spacetime" + "-tao",
         "lemma" + "-wta",
         "lemma_protocol_mode=testnet",
+        "before it needs to broaden",
+        "not a library like mathlib",
+        "open corpus of reusable proof data",
+        "added to an open corpus",
+        "reusable proof data",
+        "corpus is the durable byproduct",
+        "the corpus is the product",
     ]
     for fragment in forbidden:
         assert fragment not in lowered

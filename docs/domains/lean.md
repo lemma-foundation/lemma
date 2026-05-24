@@ -1,6 +1,6 @@
 # Lean Domain
 
-Lean theorem proving is the production Lemma domain.
+Lean theorem proving is the active Lemma path.
 
 ## Why Lean First
 

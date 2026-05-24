@@ -2,7 +2,7 @@
 
 These invariants protect Lemma's core promise: published theorem/proof records must be mechanically verified, replayable, licensed, and safe to publish as open corpus rows.
 
-Lemma launches with Lean formal mathematics as the only paid production domain. Research adapters stay outside production rewards unless they have the same deterministic verifier, replay, license, identity, and corpus guarantees.
+Lemma launches with Lean formal mathematics as the paid path. Research adapters stay outside production rewards unless they have the same deterministic verifier, replay, license, identity, and corpus guarantees.
 
 Production invariants:
 
