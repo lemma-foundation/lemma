@@ -1052,15 +1052,8 @@ def tasks_prebuild_active_procedural_registry_cmd(tempo: int | None, force: bool
         raise click.ClickException("set LEMMA_ACTIVE_REGISTRY_CACHE_DIR before prebuilding")
 
     built = False
-    curriculum_state_newer = (
-        settings.curriculum_retarget_enabled
-        and settings.curriculum_state_jsonl is not None
-        and settings.curriculum_state_jsonl.exists()
-        and cache_path.exists()
-        and settings.curriculum_state_jsonl.stat().st_mtime > cache_path.stat().st_mtime
-    )
     effective_settings = curriculum_controlled_settings(settings, tempo=active_tempo)
-    needs_rebuild = force or curriculum_state_newer or not cache_path.exists()
+    needs_rebuild = force or not cache_path.exists()
     registry = None
     if not needs_rebuild:
         registry = load_task_registry(cache_path.read_bytes())

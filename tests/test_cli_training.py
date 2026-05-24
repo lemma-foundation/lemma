@@ -333,6 +333,62 @@ def test_prebuild_active_procedural_registry_refreshes_stale_curriculum_cache(
     assert "lemma.procedural.new" in cache_path.read_text(encoding="utf-8")
 
 
+def test_prebuild_active_procedural_registry_keeps_cache_for_inactive_curriculum_row(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    task = make_task(
+        task_id="lemma.procedural.cached",
+        title="Cached",
+        theorem_name="cached",
+        type_expr="True",
+        source_stream="procedural",
+        source_name="pytest",
+    ).model_copy(update={"frontier_depth": 0})
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    cache_path = cache_dir / "tempo-32.registry.json"
+    write_registry([task], cache_path)
+    os.utime(cache_path, (1, 1))
+    state_path = tmp_path / "curriculum.jsonl"
+    append_curriculum_record(
+        state_path,
+        CurriculumTempoRecord(
+            tempo=31,
+            active_K=2,
+            frontier_depth=0,
+            ema_solve_rate=0.5,
+            solved_slots=1,
+            parked_task_ids=(),
+            action="hold",
+            variant_stream_requested=False,
+        ),
+    )
+    os.utime(state_path, (2, 2))
+
+    def fail_registry(settings, *, tempo):  # noqa: ANN001
+        raise AssertionError("inactive curriculum row should not rebuild")
+
+    monkeypatch.setattr("lemma.validator.task_registry_for_validation", fail_registry)
+
+    result = CliRunner().invoke(
+        main,
+        ["tasks", "prebuild-active-procedural-registry", "--tempo", "32"],
+        env={
+            "LEMMA_PREFER_PROCESS_ENV": "1",
+            "LEMMA_TASK_SUPPLY_MODE": "procedural",
+            "LEMMA_ACTIVE_REGISTRY_CACHE_DIR": str(cache_dir),
+            "LEMMA_CURRICULUM_RETARGET": "1",
+            "LEMMA_CURRICULUM_STATE_JSONL": str(state_path),
+            "LEMMA_ACTIVE_K": "1",
+        },
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["built"] is False
+    assert payload["tasks"] == 1
+
+
 def test_prebuild_active_procedural_registry_requires_cache_dir(tmp_path) -> None:
     result = CliRunner().invoke(
         main,
