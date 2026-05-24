@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 from lemma.chain.commitments import (
+    _commitment_block_number,
     compact_storage_commitment_payload,
     compact_tempo_cid_commitment_payload,
     compact_tempo_commitment_payload,
@@ -59,6 +60,26 @@ def test_latest_storage_commitment_file_selects_highest_tempo(tmp_path: Path) ->
 
     assert latest_storage_commitment_file(tmp_path, "sn467") == latest
     assert storage_commitment_file(tmp_path, "sn467", 5).name == "tempo-000005.json"
+
+
+def test_commitment_block_number_uses_receipt_block_hash_when_number_missing() -> None:
+    class Receipt:
+        block_hash = "0xabc"
+        block_number = None
+
+    class Response:
+        extrinsic_receipt = Receipt()
+
+    class Substrate:
+        @staticmethod
+        def get_block_number(block_hash: str) -> int:
+            assert block_hash == "0xabc"
+            return 123
+
+    class Subtensor:
+        substrate = Substrate()
+
+    assert _commitment_block_number(Response(), Subtensor()) == 123
 
 
 def test_storage_commitment_payload_validates_expected_preimage(tmp_path: Path) -> None:

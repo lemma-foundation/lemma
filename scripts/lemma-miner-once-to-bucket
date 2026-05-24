@@ -23,6 +23,7 @@ export LEMMA_LEAN_VERIFY_WORKSPACE_CACHE_DIR="${LEMMA_LEAN_VERIFY_WORKSPACE_CACH
 export LEMMA_USE_DOCKER="${LEMMA_USE_DOCKER:-1}"
 
 "${LEMMA_CURRICULUM_SYNC_BIN:-$script_dir/lemma-sync-curriculum-state}"
+"$uv_bin" --directory "$workdir" run python "$script_dir/lemma-sync-active-registry-cache"
 
 result="$("$uv_bin" --directory "$workdir" run python - <<'PYBUCKET'
 from __future__ import annotations

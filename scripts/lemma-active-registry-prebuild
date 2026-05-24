@@ -7,7 +7,17 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 export LEMMA_PREFER_PROCESS_ENV="${LEMMA_PREFER_PROCESS_ENV:-1}"
 
+lock_dir="${LEMMA_ACTIVE_REGISTRY_CACHE_DIR:-${TMPDIR:-/tmp}}"
+mkdir -p "$lock_dir"
+lock_path="${LEMMA_ACTIVE_REGISTRY_PREBUILD_LOCK:-$lock_dir/.prebuild.lock}"
+exec 9>"$lock_path"
+if ! flock -n 9; then
+  echo '{"idle":true,"reason":"active registry prebuild already running"}'
+  exit 0
+fi
+
 "${LEMMA_CURRICULUM_SYNC_BIN:-$script_dir/lemma-sync-curriculum-state}"
 
 cd "$workdir"
+"$uv_bin" run python "$script_dir/lemma-sync-active-registry-cache"
 exec "$uv_bin" run lemma tasks prebuild-active-procedural-registry "$@"

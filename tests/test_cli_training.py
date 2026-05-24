@@ -333,6 +333,70 @@ def test_prebuild_active_procedural_registry_refreshes_stale_curriculum_cache(
     assert "lemma.procedural.new" in cache_path.read_text(encoding="utf-8")
 
 
+def test_prebuild_active_procedural_registry_rechecks_curriculum_after_slow_build(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    old_task = make_task(
+        task_id="lemma.procedural.old-frontier",
+        title="Old",
+        theorem_name="old_frontier",
+        type_expr="True",
+        source_stream="procedural",
+        source_name="pytest",
+    ).model_copy(update={"frontier_depth": 4})
+    new_task = make_task(
+        task_id="lemma.procedural.new-frontier",
+        title="New",
+        theorem_name="new_frontier",
+        type_expr="True",
+        source_stream="procedural",
+        source_name="pytest",
+    ).model_copy(update={"frontier_depth": 5})
+    state_path = tmp_path / "curriculum.jsonl"
+    calls: list[int] = []
+
+    def fake_registry(settings, *, tempo):  # noqa: ANN001
+        assert tempo == 7
+        calls.append(settings.frontier_depth)
+        if len(calls) == 1:
+            append_curriculum_record(
+                state_path,
+                CurriculumTempoRecord(
+                    tempo=5,
+                    active_K=1,
+                    frontier_depth=5,
+                    ema_solve_rate=0.5,
+                    solved_slots=1,
+                    parked_task_ids=(),
+                    action="advance_frontier",
+                    variant_stream_requested=False,
+                ),
+            )
+            return type("Registry", (), {"tasks": (old_task,)})()
+        return type("Registry", (), {"tasks": (new_task,)})()
+
+    monkeypatch.setattr("lemma.validator.task_registry_for_validation", fake_registry)
+
+    cache_dir = tmp_path / "cache"
+    result = CliRunner().invoke(
+        main,
+        ["tasks", "prebuild-active-procedural-registry", "--tempo", "7"],
+        env={
+            "LEMMA_PREFER_PROCESS_ENV": "1",
+            "LEMMA_TASK_SUPPLY_MODE": "procedural",
+            "LEMMA_ACTIVE_REGISTRY_CACHE_DIR": str(cache_dir),
+            "LEMMA_ACTIVE_K": "1",
+            "LEMMA_FRONTIER_DEPTH": "4",
+            "LEMMA_CURRICULUM_RETARGET": "1",
+            "LEMMA_CURRICULUM_STATE_JSONL": str(state_path),
+        },
+    )
+
+    assert result.exit_code == 0, result.output
+    assert calls == [4, 5]
+    assert "lemma.procedural.new-frontier" in (cache_dir / "tempo-7.registry.json").read_text(encoding="utf-8")
+
+
 def test_prebuild_active_procedural_registry_keeps_cache_for_inactive_curriculum_row(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:

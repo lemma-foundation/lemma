@@ -11,10 +11,16 @@ if [[ "${LEMMA_VALIDATOR_SET_WEIGHTS:-0}" == "1" ]]; then
   weight_flag="--set-weights"
 fi
 
+commitment_flag=()
+if [[ "${LEMMA_VALIDATOR_SET_COMMITMENT:-0}" == "1" ]]; then
+  commitment_flag=(--set-commitment)
+fi
+
 cd "${LEMMA_APP_DIR:-/opt/lemma-sn467/app}"
 
 exec "${UV_BIN:-uv}" run lemma validate \
   --once \
   --bucket-reveals-dir "${LEMMA_BUCKET_REVEALS_DIR:-/var/lib/lemma/bucket-reveals}" \
   --verify-chain-commitments \
+  "${commitment_flag[@]}" \
   "$weight_flag"

@@ -108,6 +108,8 @@ def sync_public_inputs(
     if registry_cache_dir is not None:
         target = repo / "registries" / netuid
         target.mkdir(parents=True, exist_ok=True)
+        registries: dict[str, object] = {}
+        registry_index: dict[str, object] = {"schema_version": 1, "netuid": netuid, "registries": registries}
         for path in sorted(registry_cache_dir.glob("tempo-*.registry.json")):
             if not path.is_file():
                 continue
@@ -116,8 +118,15 @@ def sync_public_inputs(
             sha256 = payload.get("sha256")
             if not isinstance(sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", sha256):
                 sha256 = load_task_registry(raw).sha256
-            shutil.copy2(path, target / f"{sha256}.json")
+            filename = f"{sha256}.json"
+            shutil.copy2(path, target / filename)
+            if match := re.fullmatch(r"tempo-(\d+)\.registry\.json", path.name):
+                registries[match.group(1)] = {"sha256": sha256, "path": filename}
             counts["registry_files"] += 1
+        (target / "index.json").write_text(
+            json.dumps(registry_index, sort_keys=True, separators=(",", ":")) + "\n",
+            encoding="utf-8",
+        )
     return counts
 
 

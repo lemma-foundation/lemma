@@ -1063,6 +1063,12 @@ def tasks_prebuild_active_procedural_registry_cmd(tempo: int | None, force: bool
             update={"active_registry_json": None, "active_registry_cache_dir": None}
         )
         registry = task_registry_for_validation(rebuild_settings, tempo=active_tempo)
+        latest_effective_settings = curriculum_controlled_settings(settings, tempo=active_tempo)
+        if active_registry_cache_stale(registry, latest_effective_settings):
+            rebuild_settings = latest_effective_settings.model_copy(
+                update={"active_registry_json": None, "active_registry_cache_dir": None}
+            )
+            registry = task_registry_for_validation(rebuild_settings, tempo=active_tempo)
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         tmp_path = cache_path.with_name(cache_path.name + ".tmp")
         write_registry(registry.tasks, tmp_path)
@@ -1711,12 +1717,48 @@ def validate_cmd(
         from lemma.chain.miner_buckets import latest_bucket_reveal_batch, submissions_from_bucket_reveals
         from lemma.validator import current_active_tempo, task_registry_for_validation
 
-        bucket_reveal_batch = latest_bucket_reveal_batch(bucket_reveals_dir)
+        chain_active_tempo = current_active_tempo(settings)
+        bucket_reveal_batch = latest_bucket_reveal_batch(
+            bucket_reveals_dir,
+            before_tempo=chain_active_tempo if settings.protocol_mode == "production" else None,
+        )
         bucket_rejections.extend(bucket_reveal_batch.rejections)
         if not bucket_reveal_batch.reveals:
             from lemma.chain.miner_buckets import archive_bucket_reveal_batch
 
             archive_bucket_reveal_batch(bucket_reveal_batch)
+            reveal_tempo = bucket_reveal_batch.tempo
+            if (
+                settings.protocol_mode == "production"
+                and reveal_tempo is not None
+                and reveal_tempo >= chain_active_tempo
+            ):
+                click.echo(
+                    json.dumps(
+                        {
+                            "verified": 0,
+                            "accepted_unique": 0,
+                            "credits": {},
+                            "scores": {},
+                            "submission_files_consumed": len(spool_paths),
+                            "bucket_reveals_consumed": 0,
+                            "bucket_reveals_rejected": len(bucket_rejections),
+                            "bucket_tempo": reveal_tempo,
+                            "active_tempo": chain_active_tempo,
+                            "reason": "bucket reveal tempo is not complete",
+                            "weights": {},
+                            "corpus_rows": 0,
+                            "unearned_policy": settings.unearned_allocation_policy,
+                            "unearned_share": 0.0,
+                            "weights_set": False,
+                            "chain_commitment_set": False,
+                            "tempo_commitment_payload": "",
+                        },
+                        indent=2,
+                        sort_keys=True,
+                    )
+                )
+                return
             click.echo(
                 json.dumps(
                     {
@@ -1743,7 +1785,6 @@ def validate_cmd(
         reveal_tempo = bucket_reveal_batch.tempo
         if reveal_tempo is None:
             raise click.ClickException("bucket reveal directory did not resolve a tempo")
-        chain_active_tempo = current_active_tempo(settings)
         if settings.protocol_mode == "production" and reveal_tempo >= chain_active_tempo:
             click.echo(
                 json.dumps(
@@ -1776,16 +1817,22 @@ def validate_cmd(
         validation_tempo = reveal_tempo
         registry = task_registry_for_validation(settings, tempo=reveal_tempo)
         bucket_reveal_count += len(bucket_reveal_batch.reveals)
-        bucket_chain_commitments = (
-            read_all_commitments(settings)
-            if verify_chain_commitments or settings.protocol_mode == "production"
-            else None
-        )
+        bucket_chain_commitments = None
+        bucket_chain_commitments_by_block = None
+        if verify_chain_commitments or settings.protocol_mode == "production":
+            commit_blocks = {reveal.commit_block for reveal in bucket_reveal_batch.reveals}
+            if commit_blocks and all(block > 0 for block in commit_blocks):
+                bucket_chain_commitments_by_block = {
+                    block: read_all_commitments(settings, block=block) for block in sorted(commit_blocks)
+                }
+            else:
+                bucket_chain_commitments = read_all_commitments(settings)
         bucket_submissions, bucket_authenticated = submissions_from_bucket_reveals(
             bucket_reveal_batch.reveals,
             active_tasks_for_validation(registry, settings, tempo=reveal_tempo),
             verify_drand=verify_drand_reveals or settings.protocol_mode == "production",
             chain_commitments=bucket_chain_commitments,
+            chain_commitments_by_block=bucket_chain_commitments_by_block,
             strict=False,
             rejection_log=bucket_rejections.append,
         )
@@ -1806,16 +1853,22 @@ def validate_cmd(
         validation_tempo = active_tempo
         registry = task_registry_for_validation(settings, tempo=active_tempo)
         bucket_reveal_count += len(reveals)
-        bucket_chain_commitments = (
-            read_all_commitments(settings)
-            if verify_chain_commitments or settings.protocol_mode == "production"
-            else None
-        )
+        bucket_chain_commitments = None
+        bucket_chain_commitments_by_block = None
+        if verify_chain_commitments or settings.protocol_mode == "production":
+            commit_blocks = {reveal.commit_block for reveal in reveals}
+            if commit_blocks and all(block > 0 for block in commit_blocks):
+                bucket_chain_commitments_by_block = {
+                    block: read_all_commitments(settings, block=block) for block in sorted(commit_blocks)
+                }
+            else:
+                bucket_chain_commitments = read_all_commitments(settings)
         bucket_submissions, bucket_authenticated = submissions_from_bucket_reveals(
             reveals,
             active_tasks_for_validation(registry, settings, tempo=active_tempo),
             verify_drand=verify_drand_reveals or settings.protocol_mode == "production",
             chain_commitments=bucket_chain_commitments,
+            chain_commitments_by_block=bucket_chain_commitments_by_block,
             strict=False,
             rejection_log=bucket_rejections.append,
         )

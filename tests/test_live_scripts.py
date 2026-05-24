@@ -34,6 +34,18 @@ def test_live_wrappers_sync_public_curriculum_state_before_work() -> None:
     assert 'tmp="${path}.tmp.$$"' in sync
 
 
+def test_live_wrappers_hydrate_public_registry_cache_before_work() -> None:
+    miner = (ROOT / "scripts" / "lemma-miner-once-to-bucket").read_text(encoding="utf-8")
+    prebuild = (ROOT / "scripts" / "lemma-active-registry-prebuild").read_text(encoding="utf-8")
+    sync = (ROOT / "scripts" / "lemma-sync-active-registry-cache").read_text(encoding="utf-8")
+
+    assert "lemma-sync-active-registry-cache" in miner
+    assert "lemma-sync-active-registry-cache" in prebuild
+    assert "LEMMA_ACTIVE_REGISTRY_CACHE_INDEX_URL" in sync
+    assert "active_registry_cache_stale" in sync
+    assert '"cache": "hydrated"' in sync
+
+
 def test_bucket_miner_defaults_to_local_docker_verify() -> None:
     miner = (ROOT / "scripts" / "lemma-miner-once-to-bucket").read_text(encoding="utf-8")
 
@@ -74,6 +86,22 @@ def test_validator_bucket_wrapper_requires_explicit_weight_write_flag() -> None:
     assert 'weight_flag="--no-set-weights"' in validator
     assert 'LEMMA_VALIDATOR_SET_WEIGHTS:-0' in validator
     assert '"$weight_flag"' in validator
+
+
+def test_validator_bucket_wrapper_requires_explicit_commitment_write_flag() -> None:
+    validator = (ROOT / "scripts" / "lemma-validator-bucket-live").read_text(encoding="utf-8")
+
+    assert "commitment_flag=()" in validator
+    assert "LEMMA_VALIDATOR_SET_COMMITMENT:-0" in validator
+    assert '"${commitment_flag[@]}"' in validator
+
+
+def test_active_registry_prebuild_wrapper_serializes_builds() -> None:
+    prebuild = (ROOT / "scripts" / "lemma-active-registry-prebuild").read_text(encoding="utf-8")
+
+    assert "LEMMA_ACTIVE_REGISTRY_PREBUILD_LOCK" in prebuild
+    assert "flock -n 9" in prebuild
+    assert "active registry prebuild already running" in prebuild
 
 
 def test_active_registry_prebuild_wrapper_calls_hidden_cli() -> None:

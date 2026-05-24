@@ -930,16 +930,62 @@ def test_validate_once_retargets_curriculum_state_after_tempo(tmp_path: Path) ->
     assert records[0].solved_slots == 1
     assert records[0].active_K == 3
     assert records[0].frontier_depth == 0
+    assert records[0].retarget_receipt == {
+        "version": "lemma-curriculum-retarget-v1",
+        "activation_tempo": 11,
+        "previous_active_K": 2,
+        "previous_frontier_depth": 0,
+        "previous_ema_solve_rate": 0.5,
+        "solved_slots": 1,
+        "solve_rate": 0.5,
+        "validator_capacity": 4,
+        "config": {
+            "beta": 0.0,
+            "low_band": 0.4,
+            "high_band": 0.7,
+            "k_min": 1,
+            "k_max": 4,
+        },
+        "next_active_K": 3,
+        "next_frontier_depth": 0,
+        "next_ema_solve_rate": 0.5,
+    }
     curriculum_dir = tmp_path / "operator" / "canonical" / "sn0" / "curriculum"
     manifest = json.loads((curriculum_dir / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["latest_tempo"] == 9
     assert manifest["latest_active_K"] == 3
     assert (curriculum_dir / "tempo-000009.json").is_file()
-    assert json.loads((curriculum_dir / "curriculum.jsonl").read_text(encoding="utf-8"))["tempo"] == 9
+    public_row = json.loads((curriculum_dir / "curriculum.jsonl").read_text(encoding="utf-8"))
+    assert public_row["tempo"] == 9
+    assert public_row["retarget_receipt"] == records[0].retarget_receipt
 
     validate_once(settings, [], registry=registry, tempo=9, no_set_weights=True)
 
     assert len(read_curriculum_records(state_path)) == 1
+
+
+def test_validate_once_does_not_duplicate_corpus_rows_for_same_tempo(tmp_path: Path) -> None:
+    task = _task()
+    registry = TaskRegistry(schema_version=1, tasks=(task,), sha256="0" * 64)
+    settings = _settings(tmp_path)
+    submission = build_submission(task, solver_hotkey="hk-a", proof_script=_proof())
+
+    for _ in range(2):
+        validate_once(
+            settings,
+            [submission],
+            registry=registry,
+            verify_submission=lambda task, submission: VerifyResult(passed=True, reason="ok"),
+            tempo=9,
+            no_set_weights=True,
+        )
+
+    files = sorted(settings.corpus_output_dir.glob("epoch-*.jsonl"))
+    rows = [json.loads(line) for path in files for line in path.read_text(encoding="utf-8").splitlines()]
+
+    assert len(files) == 1
+    assert len(rows) == 1
+    assert rows[0]["tempo"] == 9
 
 
 def test_validator_scores_and_writes_alternate_corpus_rows(tmp_path: Path) -> None:
@@ -1028,6 +1074,7 @@ def test_validator_no_epoch_uses_next_numbered_local_file(tmp_path: Path) -> Non
         [submission],
         registry=_registry(),
         verify_submission=lambda task, submission: VerifyResult(passed=True, reason="ok"),
+        tempo=1,
         no_set_weights=True,
     )
     validate_once(
@@ -1035,6 +1082,7 @@ def test_validator_no_epoch_uses_next_numbered_local_file(tmp_path: Path) -> Non
         [submission],
         registry=_registry(),
         verify_submission=lambda task, submission: VerifyResult(passed=True, reason="ok"),
+        tempo=2,
         no_set_weights=True,
     )
 

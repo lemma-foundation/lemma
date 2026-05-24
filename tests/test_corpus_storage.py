@@ -284,6 +284,20 @@ def test_curriculum_state_storage_is_public_replayable_and_indexed(tmp_path: Pat
         parked_task_ids=(),
         action="advance_frontier",
         variant_stream_requested=False,
+        retarget_receipt={
+            "version": "lemma-curriculum-retarget-v1",
+            "activation_tempo": 14,
+            "previous_active_K": 2,
+            "previous_frontier_depth": 1,
+            "previous_ema_solve_rate": 0.5,
+            "solved_slots": 2,
+            "solve_rate": 1.0,
+            "validator_capacity": 3,
+            "config": {"beta": 0.8, "low_band": 0.4, "high_band": 0.7, "k_min": 1, "k_max": 6},
+            "next_active_K": 3,
+            "next_frontier_depth": 2,
+            "next_ema_solve_rate": 0.75,
+        },
     )
 
     result = build_curriculum_state_storage((record,), output_root, netuid="sn467", resolver="hippius-s3-arion")
@@ -297,6 +311,7 @@ def test_curriculum_state_storage_is_public_replayable_and_indexed(tmp_path: Pat
     assert result["curriculum_latest_tempo"] == 12
     assert state_row["kind"] == "curriculum_tempo_state"
     assert state_row["active_K"] == 3
+    assert state_row["retarget_receipt"]["activation_tempo"] == 14
     assert tempo_state == state_row
     assert index["curriculum"]["latest_active_K"] == 3
     assert index["curriculum"]["latest_frontier_depth"] == 2

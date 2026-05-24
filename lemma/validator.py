@@ -553,6 +553,24 @@ def _next_local_epoch_file(corpus_dir: Path) -> Path:
     return corpus_dir / f"epoch-{next_epoch:06d}.jsonl"
 
 
+def _existing_corpus_row_ids(corpus_dir: Path, *, tempo: int) -> set[str]:
+    row_ids: set[str] = set()
+    for path in sorted(corpus_dir.glob("epoch-*.jsonl")):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(row, dict) or row.get("tempo") != tempo:
+                continue
+            row_id = row.get("row_id")
+            if isinstance(row_id, str) and row_id:
+                row_ids.add(row_id)
+    return row_ids
+
+
 def _netuid_label(settings: LemmaSettings) -> str:
     return f"sn{settings.netuid}"
 
@@ -806,6 +824,7 @@ def _retarget_curriculum_after_validation(settings: LemmaSettings, *, tempo: int
         CurriculumState,
         CurriculumTempoRecord,
         append_curriculum_record,
+        curriculum_retarget_receipt,
         read_curriculum_records,
         retarget_curriculum,
     )
@@ -815,21 +834,25 @@ def _retarget_curriculum_after_validation(settings: LemmaSettings, *, tempo: int
         if record.tempo == tempo:
             return record
     prior_ema = records[-1].ema_solve_rate if records else 0.50
+    active_k = settings.active_task_count
+    validator_capacity = settings.validator_capacity or active_k
+    config = CurriculumConfig(
+        beta=settings.curriculum_beta,
+        low_band=settings.curriculum_low_band,
+        high_band=settings.curriculum_high_band,
+        k_min=settings.curriculum_k_min,
+        k_max=settings.curriculum_k_max,
+    )
+    previous_state = CurriculumState(
+        active_K=active_k,
+        frontier_depth=settings.frontier_depth,
+        ema_solve_rate=prior_ema,
+    )
     decision = retarget_curriculum(
-        CurriculumState(
-            active_K=settings.active_task_count,
-            frontier_depth=settings.frontier_depth,
-            ema_solve_rate=prior_ema,
-        ),
+        previous_state,
         solved_slots=solved_slots,
-        validator_capacity=settings.validator_capacity or settings.active_task_count,
-        config=CurriculumConfig(
-            beta=settings.curriculum_beta,
-            low_band=settings.curriculum_low_band,
-            high_band=settings.curriculum_high_band,
-            k_min=settings.curriculum_k_min,
-            k_max=settings.curriculum_k_max,
-        ),
+        validator_capacity=validator_capacity,
+        config=config,
     )
     record = CurriculumTempoRecord(
         tempo=tempo,
@@ -840,6 +863,14 @@ def _retarget_curriculum_after_validation(settings: LemmaSettings, *, tempo: int
         parked_task_ids=(),
         action=decision.action,
         variant_stream_requested=decision.variant_stream_requested,
+        retarget_receipt=curriculum_retarget_receipt(
+            tempo=tempo,
+            previous_state=previous_state,
+            solved_slots=solved_slots,
+            validator_capacity=validator_capacity,
+            config=config,
+            decision=decision,
+        ),
     )
     append_curriculum_record(settings.curriculum_state_jsonl, record)
     return record
@@ -1022,13 +1053,15 @@ def validate_once(
             )
         )
 
-    if rows:
+    existing_row_ids = _existing_corpus_row_ids(settings.corpus_output_dir, tempo=active_tempo)
+    new_rows = [row for row in rows if row.row_id not in existing_row_ids]
+    if new_rows:
         output_path = (
             settings.corpus_output_dir / f"epoch-{epoch}.jsonl"
             if epoch is not None
             else _next_local_epoch_file(settings.corpus_output_dir)
         )
-        write_jsonl(rows, output_path)
+        write_jsonl(new_rows, output_path)
         write_corpus_index(settings.corpus_output_dir, settings.corpus_output_dir / "corpus-index.json")
 
     public_artifacts = _write_public_tempo_artifacts(

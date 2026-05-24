@@ -388,6 +388,24 @@ def _receipt_int_value(response: object, field: str) -> int | None:
     return value if isinstance(value, int) else None
 
 
+def _commitment_block_number(response: object, subtensor: object) -> int | None:
+    direct = _receipt_int_value(response, "block_number")
+    if direct is not None:
+        return direct
+    block_hash = _receipt_value(response, "block_hash")
+    if not block_hash:
+        return None
+    substrate = getattr(subtensor, "substrate", None)
+    getter = getattr(substrate, "get_block_number", None)
+    if not callable(getter):
+        return None
+    try:
+        block_number = getter(block_hash)
+    except Exception:
+        return None
+    return block_number if isinstance(block_number, int) else None
+
+
 def wallet_hotkey_address(settings: LemmaSettings) -> str:
     import bittensor as bt
 
@@ -416,7 +434,7 @@ def submit_storage_commitment(settings: LemmaSettings, payload: str) -> ChainCom
         extrinsic_function=str(response.extrinsic_function or ""),
         extrinsic_hash=str(_receipt_value(response, "extrinsic_hash") or ""),
         block_hash=str(_receipt_value(response, "block_hash") or ""),
-        block_number=_receipt_int_value(response, "block_number"),
+        block_number=_commitment_block_number(response, subtensor),
         extrinsic_fee_rao=getattr(response.extrinsic_fee, "rao", None) if response.extrinsic_fee else None,
     )
 
@@ -426,9 +444,9 @@ def read_storage_commitment(settings: LemmaSettings, hotkey: str | None = None) 
     return str(read_all_commitments(settings).get(target_hotkey, ""))
 
 
-def read_all_commitments(settings: LemmaSettings) -> dict[str, str]:
+def read_all_commitments(settings: LemmaSettings, *, block: int | None = None) -> dict[str, str]:
     import bittensor as bt
 
     subtensor = bt.Subtensor(network=settings.bt_network or None)
-    commitments: Mapping[str, str] = subtensor.get_all_commitments(settings.netuid)
+    commitments: Mapping[str, str] = subtensor.get_all_commitments(settings.netuid, block=block)
     return {str(hotkey): str(payload) for hotkey, payload in commitments.items()}

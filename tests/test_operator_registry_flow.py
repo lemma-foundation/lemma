@@ -438,7 +438,7 @@ def test_production_like_procedural_submission_smoke(monkeypatch: pytest.MonkeyP
     bucket_reveals_jsonl.write_text(reveal.model_dump_json() + "\n", encoding="utf-8")
     monkeypatch.setattr(
         "lemma.chain.commitments.read_all_commitments",
-        lambda settings: {
+        lambda settings, *, block=None: {
             miner_keypair.ss58_address: miner_bucket_commitment_payload(
                 tempo=reveal_tempo,
                 drand_round=10,

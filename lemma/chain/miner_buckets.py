@@ -214,7 +214,7 @@ def read_bucket_reveal_file(path: Path) -> tuple[MinerBucketReveal, ...]:
         raise ValueError(f"{path}: invalid miner bucket reveal: {e}") from e
 
 
-def latest_bucket_reveal_batch(reveal_dir: Path) -> BucketRevealBatch:
+def latest_bucket_reveal_batch(reveal_dir: Path, *, before_tempo: int | None = None) -> BucketRevealBatch:
     if not reveal_dir.exists():
         return BucketRevealBatch(None, (), (), ())
     if not reveal_dir.is_dir():
@@ -237,12 +237,22 @@ def latest_bucket_reveal_batch(reveal_dir: Path) -> BucketRevealBatch:
             rejections.append(f"{path}: bucket reveal file must contain exactly one tempo")
             continue
         by_path.append((path, reveals))
-    if not by_path:
-        return BucketRevealBatch(None, (), (), (), tuple(rejected_paths), tuple(rejections))
-    latest_tempo = max(reveals[0].tempo for _, reveals in by_path)
-    selected_paths = tuple(path for path, reveals in by_path if reveals[0].tempo == latest_tempo)
-    stale_paths = tuple(path for path, reveals in by_path if reveals[0].tempo != latest_tempo)
-    selected = tuple(reveal for path, reveals in by_path if path in selected_paths for reveal in reveals)
+    eligible = tuple(
+        (path, reveals) for path, reveals in by_path if before_tempo is None or reveals[0].tempo < before_tempo
+    )
+    if not eligible:
+        return BucketRevealBatch(
+            max((reveals[0].tempo for _, reveals in by_path), default=None),
+            (),
+            (),
+            (),
+            tuple(rejected_paths),
+            tuple(rejections),
+        )
+    latest_tempo = max(reveals[0].tempo for _, reveals in eligible)
+    selected_paths = tuple(path for path, reveals in eligible if reveals[0].tempo == latest_tempo)
+    stale_paths = tuple(path for path, reveals in eligible if reveals[0].tempo != latest_tempo)
+    selected = tuple(reveal for path, reveals in eligible if path in selected_paths for reveal in reveals)
     return BucketRevealBatch(
         latest_tempo,
         selected,
@@ -337,6 +347,7 @@ def submissions_from_bucket_reveals(
     *,
     verify_drand: bool = False,
     chain_commitments: Mapping[str, str] | None = None,
+    chain_commitments_by_block: Mapping[int, Mapping[str, str]] | None = None,
     decrypt_timelocked: DecryptTimelockedPayload = decrypt_timelocked_payload,
     strict: bool = True,
     rejection_log: RejectionLog | None = None,
@@ -350,6 +361,7 @@ def submissions_from_bucket_reveals(
                 active_tasks,
                 verify_drand=verify_drand,
                 chain_commitments=chain_commitments,
+                chain_commitments_by_block=chain_commitments_by_block,
                 decrypt_timelocked=decrypt_timelocked,
             )
         except ValueError as e:
@@ -369,19 +381,25 @@ def _submissions_from_bucket_reveal(
     *,
     verify_drand: bool,
     chain_commitments: Mapping[str, str] | None,
+    chain_commitments_by_block: Mapping[int, Mapping[str, str]] | None,
     decrypt_timelocked: DecryptTimelockedPayload,
 ) -> tuple[tuple[LemmaSubmission, ...], frozenset[ChainAuthenticatedKey]]:
     pairs = _claimed_pairs(reveal)
     root = miner_submission_merkle_root(pairs)
     if root != reveal.merkle_root:
         raise ValueError(f"{reveal.miner_hotkey}: miner Merkle root mismatch")
-    if chain_commitments is not None:
+    commitments = chain_commitments
+    if chain_commitments_by_block is not None:
+        if reveal.commit_block <= 0:
+            raise ValueError(f"{reveal.miner_hotkey}: missing chain commitment block")
+        commitments = chain_commitments_by_block.get(reveal.commit_block, {})
+    if commitments is not None:
         expected = miner_bucket_commitment_payload(
             tempo=reveal.tempo,
             drand_round=reveal.drand_round,
             merkle_root=reveal.merkle_root,
         )
-        if chain_commitments.get(reveal.miner_hotkey) != expected:
+        if commitments.get(reveal.miner_hotkey) != expected:
             raise ValueError(f"{reveal.miner_hotkey}: chain commitment mismatch")
     if verify_drand and not (reveal.drand_signature or "").strip():
         raise ValueError(f"{reveal.miner_hotkey}: missing drand signature")

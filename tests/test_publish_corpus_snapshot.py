@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
@@ -186,3 +187,5 @@ def test_sync_public_inputs_copies_only_publishable_live_outputs(tmp_path: Path)
     assert (repo / "canonical/sn467/tempos/tempo-019958/manifest.json").exists()
     assert (repo / f"registries/sn467/{registry_sha}.json").exists()
     assert (repo / f"registries/sn467/{hashlib.sha256(legacy_registry.encode()).hexdigest()}.json").exists()
+    index = json.loads((repo / "registries/sn467/index.json").read_text(encoding="utf-8"))
+    assert index["registries"]["19958"] == {"path": f"{registry_sha}.json", "sha256": registry_sha}

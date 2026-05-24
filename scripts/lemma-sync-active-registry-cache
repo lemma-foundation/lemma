@@ -1,0 +1,89 @@
+#!/usr/bin/env python3
+"""Hydrate the active registry cache from a public corpus registry mirror."""
+
+from __future__ import annotations
+
+import json
+import os
+import tempfile
+from pathlib import Path
+from urllib.parse import urljoin
+from urllib.request import Request, urlopen
+
+from lemma.common.config import LemmaSettings
+from lemma.tasks import load_task_registry
+from lemma.validator import (
+    active_registry_cache_path,
+    active_registry_cache_stale,
+    current_active_tempo,
+    curriculum_controlled_settings,
+)
+
+
+def _fetch(url: str) -> bytes:
+    request = Request(url, headers={"Accept": "application/json", "Cache-Control": "no-cache"})
+    with urlopen(request, timeout=20) as response:
+        return response.read()
+
+
+def _registry_url(index_url: str, row: dict[str, object]) -> str | None:
+    if isinstance(row.get("url"), str):
+        return str(row["url"])
+    path = row.get("path")
+    if not isinstance(path, str) or not path:
+        sha256 = row.get("sha256")
+        if not isinstance(sha256, str) or not sha256:
+            return None
+        path = f"{sha256}.json"
+    base = os.environ.get("LEMMA_ACTIVE_REGISTRY_CACHE_BASE_URL") or index_url.rsplit("/", 1)[0] + "/"
+    return urljoin(base if base.endswith("/") else base + "/", path)
+
+
+def main() -> None:
+    index_url = os.environ.get("LEMMA_ACTIVE_REGISTRY_CACHE_INDEX_URL", "").strip()
+    if not index_url:
+        return
+    settings = LemmaSettings()
+    if settings.active_registry_json is not None or settings.active_registry_cache_dir is None:
+        return
+    tempo = current_active_tempo(settings)
+    effective = curriculum_controlled_settings(settings, tempo=tempo)
+    cache_path = active_registry_cache_path(settings, tempo=tempo)
+    if cache_path is None:
+        return
+    if cache_path.is_file():
+        cached = load_task_registry(cache_path.read_bytes())
+        if not active_registry_cache_stale(cached, effective):
+            print(json.dumps({"cache": "present", "tempo": tempo, "registry_sha256": cached.sha256}))
+            return
+
+    index = json.loads(_fetch(index_url).decode("utf-8"))
+    registries = index.get("registries") if isinstance(index, dict) else None
+    row = registries.get(str(tempo)) if isinstance(registries, dict) else None
+    if not isinstance(row, dict):
+        print(json.dumps({"cache": "missing_public_index_row", "tempo": tempo}))
+        return
+    url = _registry_url(index_url, row)
+    expected = row.get("sha256")
+    if not url or not isinstance(expected, str):
+        print(json.dumps({"cache": "invalid_public_index_row", "tempo": tempo}))
+        return
+
+    raw = _fetch(url)
+    registry = load_task_registry(raw, expected)
+    if active_registry_cache_stale(registry, effective):
+        print(json.dumps({"cache": "stale_public_registry", "tempo": tempo, "registry_sha256": registry.sha256}))
+        return
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=cache_path.name + ".", suffix=".tmp", dir=cache_path.parent)
+    with os.fdopen(fd, "wb") as handle:
+        handle.write(raw)
+    Path(tmp_name).replace(cache_path)
+    print(json.dumps({"cache": "hydrated", "tempo": tempo, "registry_sha256": registry.sha256}))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as exc:
+        print(json.dumps({"cache": "sync_failed", "error_type": type(exc).__name__}))

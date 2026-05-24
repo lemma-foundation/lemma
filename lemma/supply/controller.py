@@ -6,6 +6,8 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+CURRICULUM_RETARGET_VERSION = "lemma-curriculum-retarget-v1"
+
 
 @dataclass(frozen=True)
 class CurriculumConfig:
@@ -40,22 +42,22 @@ class CurriculumTempoRecord:
     parked_task_ids: tuple[str, ...]
     action: str
     variant_stream_requested: bool
+    retarget_receipt: dict[str, object] | None = None
 
     def to_json(self) -> str:
-        return json.dumps(
-            {
-                "tempo": self.tempo,
-                "active_K": self.active_K,
-                "frontier_depth": self.frontier_depth,
-                "ema_solve_rate": self.ema_solve_rate,
-                "solved_slots": self.solved_slots,
-                "parked_task_ids": list(self.parked_task_ids),
-                "action": self.action,
-                "variant_stream_requested": self.variant_stream_requested,
-            },
-            sort_keys=True,
-            separators=(",", ":"),
-        )
+        payload: dict[str, object] = {
+            "tempo": self.tempo,
+            "active_K": self.active_K,
+            "frontier_depth": self.frontier_depth,
+            "ema_solve_rate": self.ema_solve_rate,
+            "solved_slots": self.solved_slots,
+            "parked_task_ids": list(self.parked_task_ids),
+            "action": self.action,
+            "variant_stream_requested": self.variant_stream_requested,
+        }
+        if self.retarget_receipt is not None:
+            payload["retarget_receipt"] = self.retarget_receipt
+        return json.dumps(payload, sort_keys=True, separators=(",", ":"))
 
     @classmethod
     def from_json(cls, raw: str) -> CurriculumTempoRecord:
@@ -69,6 +71,7 @@ class CurriculumTempoRecord:
             parked_task_ids=tuple(str(item) for item in data.get("parked_task_ids", [])),
             action=str(data["action"]),
             variant_stream_requested=bool(data["variant_stream_requested"]),
+            retarget_receipt=data.get("retarget_receipt"),
         )
 
 
@@ -131,3 +134,37 @@ def retarget_curriculum(
         action=action,
         variant_stream_requested=variants,
     )
+
+
+def curriculum_retarget_receipt(
+    *,
+    tempo: int,
+    previous_state: CurriculumState,
+    solved_slots: int,
+    validator_capacity: int,
+    config: CurriculumConfig,
+    decision: CurriculumDecision,
+) -> dict[str, object]:
+    if previous_state.active_K <= 0:
+        raise ValueError("active_K must be positive")
+    solve_rate = min(1.0, solved_slots / previous_state.active_K)
+    return {
+        "version": CURRICULUM_RETARGET_VERSION,
+        "activation_tempo": tempo + 2,
+        "previous_active_K": previous_state.active_K,
+        "previous_frontier_depth": previous_state.frontier_depth,
+        "previous_ema_solve_rate": previous_state.ema_solve_rate,
+        "solved_slots": solved_slots,
+        "solve_rate": solve_rate,
+        "validator_capacity": validator_capacity,
+        "config": {
+            "beta": config.beta,
+            "low_band": config.low_band,
+            "high_band": config.high_band,
+            "k_min": config.k_min,
+            "k_max": config.k_max,
+        },
+        "next_active_K": decision.state.active_K,
+        "next_frontier_depth": decision.state.frontier_depth,
+        "next_ema_solve_rate": decision.state.ema_solve_rate,
+    }

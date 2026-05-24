@@ -13,6 +13,7 @@ from lemma.supply.controller import (
     CurriculumState,
     CurriculumTempoRecord,
     append_curriculum_record,
+    curriculum_retarget_receipt,
     read_curriculum_records,
     retarget_curriculum,
 )
@@ -78,6 +79,34 @@ def test_curriculum_halts_frontier_and_requests_variants_on_zero_solve() -> None
     assert decision.state.frontier_depth == 4
     assert decision.action == "halt_frontier_and_request_variants"
     assert decision.variant_stream_requested is True
+
+
+def test_curriculum_retarget_receipt_replays_public_state() -> None:
+    state = CurriculumState(active_K=20, frontier_depth=4, ema_solve_rate=0.4)
+    config = CurriculumConfig(k_min=10, k_max=100)
+    decision = retarget_curriculum(state, solved_slots=0, validator_capacity=50, config=config)
+
+    assert curriculum_retarget_receipt(
+        tempo=7,
+        previous_state=state,
+        solved_slots=0,
+        validator_capacity=50,
+        config=config,
+        decision=decision,
+    ) == {
+        "version": "lemma-curriculum-retarget-v1",
+        "activation_tempo": 9,
+        "previous_active_K": 20,
+        "previous_frontier_depth": 4,
+        "previous_ema_solve_rate": 0.4,
+        "solved_slots": 0,
+        "solve_rate": 0.0,
+        "validator_capacity": 50,
+        "config": {"beta": 0.8, "low_band": 0.4, "high_band": 0.7, "k_min": 10, "k_max": 100},
+        "next_active_K": 20,
+        "next_frontier_depth": 4,
+        "next_ema_solve_rate": 0.32000000000000006,
+    }
 
 
 def test_curriculum_records_persist_per_tempo(tmp_path) -> None:

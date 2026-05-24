@@ -158,6 +158,36 @@ def test_bucket_reveal_inbox_selects_latest_tempo_and_archives(tmp_path: Path) -
     assert (inbox / "stale" / "old.json").exists()
 
 
+def test_bucket_reveal_inbox_selects_latest_completed_tempo(tmp_path: Path) -> None:
+    inbox = tmp_path / "bucket-reveals"
+    inbox.mkdir()
+    old = _reveal(miner="hk-old", commit_block=5, ciphertext="old-cipher", proof=_proof("  trivial")).model_copy(
+        update={"tempo": 6}
+    )
+    complete = _reveal(
+        miner="hk-complete", commit_block=6, ciphertext="complete-cipher", proof=_proof("  trivial")
+    )
+    current = _reveal(
+        miner="hk-current", commit_block=7, ciphertext="current-cipher", proof=_proof("  trivial")
+    ).model_copy(update={"tempo": 8})
+    (inbox / "old.json").write_text(old.model_dump_json() + "\n", encoding="utf-8")
+    (inbox / "complete.json").write_text(complete.model_dump_json() + "\n", encoding="utf-8")
+    (inbox / "current.json").write_text(current.model_dump_json() + "\n", encoding="utf-8")
+
+    batch = latest_bucket_reveal_batch(inbox, before_tempo=8)
+
+    assert batch.tempo == 7
+    assert [reveal.miner_hotkey for reveal in batch.reveals] == ["hk-complete"]
+    assert [path.name for path in batch.paths] == ["complete.json"]
+    assert [path.name for path in batch.stale_paths] == ["old.json"]
+
+    archive_bucket_reveal_batch(batch)
+
+    assert (inbox / "current.json").exists()
+    assert (inbox / "processed" / "complete.json").exists()
+    assert (inbox / "stale" / "old.json").exists()
+
+
 def test_bucket_reveal_inbox_quarantines_mixed_tempo_file(tmp_path: Path) -> None:
     inbox = tmp_path / "bucket-reveals"
     inbox.mkdir()
@@ -231,6 +261,46 @@ def test_bucket_reveal_requires_matching_chain_commitment(tmp_path: Path) -> Non
         assert "chain commitment mismatch" in str(e)
     else:
         raise AssertionError("bad chain commitment should fail closed")
+
+
+def test_bucket_reveal_can_verify_historical_chain_commitment(tmp_path: Path) -> None:
+    task = _task()
+    registry = TaskRegistry(schema_version=1, tasks=(task,), sha256="0" * 64)
+    active_tasks = active_tasks_for_validation(registry, _settings(tmp_path), tempo=7)
+    reveal = _reveal(miner="hk-a", commit_block=10, ciphertext="cipher-a", proof=_proof("  trivial"))
+    historical = {
+        10: {
+            "hk-a": miner_bucket_commitment_payload(
+                tempo=reveal.tempo,
+                drand_round=reveal.drand_round,
+                merkle_root=reveal.merkle_root,
+            )
+        },
+        11: {"hk-a": "newer-commitment"},
+    }
+
+    submissions, authenticated = submissions_from_bucket_reveals(
+        (reveal,),
+        active_tasks,
+        chain_commitments_by_block=historical,
+    )
+
+    assert len(submissions) == 1
+    assert (submissions[0].task_id, "hk-a", submissions[0].proof_sha256) in authenticated
+
+
+def test_bucket_reveal_requires_commit_block_for_historical_commitment(tmp_path: Path) -> None:
+    task = _task()
+    registry = TaskRegistry(schema_version=1, tasks=(task,), sha256="0" * 64)
+    active_tasks = active_tasks_for_validation(registry, _settings(tmp_path), tempo=7)
+    reveal = _reveal(miner="hk-a", commit_block=0, ciphertext="cipher-a", proof=_proof("  trivial"))
+
+    try:
+        submissions_from_bucket_reveals((reveal,), active_tasks, chain_commitments_by_block={})
+    except ValueError as e:
+        assert "missing chain commitment block" in str(e)
+    else:
+        raise AssertionError("historical commitment verification should require a commit block")
 
 
 def test_bucket_reveal_can_skip_bad_chain_commitment_without_poisoning_batch(tmp_path: Path) -> None:

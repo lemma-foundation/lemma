@@ -1,0 +1,58 @@
+from __future__ import annotations
+
+import importlib.machinery
+import importlib.util
+import json
+from pathlib import Path
+
+from lemma.task_supply import make_task, write_registry
+from lemma.tasks import load_task_registry
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _load_sync_module():
+    path = ROOT / "scripts" / "lemma-sync-active-registry-cache"
+    loader = importlib.machinery.SourceFileLoader("lemma_sync_active_registry_cache", str(path))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    assert spec is not None
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def test_sync_active_registry_cache_hydrates_public_tempo_cache(monkeypatch, tmp_path: Path) -> None:
+    module = _load_sync_module()
+    public = tmp_path / "public"
+    public.mkdir()
+    cache = tmp_path / "cache"
+    registry_path = public / "registry.json"
+    task = make_task(
+        task_id="lemma.procedural.public-cache",
+        title="Public cache",
+        theorem_name="public_cache",
+        type_expr="True",
+        source_stream="procedural",
+        source_name="pytest",
+        frontier_depth=0,
+    )
+    write_registry([task], registry_path)
+    registry_sha = load_task_registry(registry_path.read_bytes()).sha256
+    index = {
+        "schema_version": 1,
+        "netuid": "sn467",
+        "registries": {"7": {"sha256": registry_sha, "path": "registry.json"}},
+    }
+    index_path = public / "index.json"
+    index_path.write_text(json.dumps(index), encoding="utf-8")
+
+    monkeypatch.setenv("LEMMA_ACTIVE_REGISTRY_CACHE_DIR", str(cache))
+    monkeypatch.setenv("LEMMA_ACTIVE_REGISTRY_CACHE_INDEX_URL", index_path.as_uri())
+    monkeypatch.setenv("LEMMA_ACTIVE_K", "1")
+    monkeypatch.setattr(module, "current_active_tempo", lambda settings: 7)
+
+    module.main()
+
+    hydrated = cache / "tempo-7.registry.json"
+    assert hydrated.is_file()
+    assert load_task_registry(hydrated.read_bytes()).sha256 == registry_sha

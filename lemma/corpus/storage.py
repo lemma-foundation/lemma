@@ -92,6 +92,7 @@ def build_active_pool_storage(
 
     slots: list[dict[str, object]] = []
     leaf_hashes: list[str] = []
+    frontier_depths = {task.frontier_depth for task in active_tasks if task.frontier_depth is not None}
     for slot_index, task in enumerate(active_tasks):
         payload = task.model_dump(mode="json", exclude_none=True)
         slot_bytes = canonical_json_bytes(payload)
@@ -113,7 +114,9 @@ def build_active_pool_storage(
     active_pool_merkle_root = merkle_root(leaf_hashes)
     manifest = {
         "schema_version": 1,
+        "active_K": len(slots),
         "active_pool_merkle_root": active_pool_merkle_root,
+        "frontier_depth": next(iter(frontier_depths)) if len(frontier_depths) == 1 else None,
         "kind": "active_pool",
         "netuid": netuid,
         "resolver": resolver,
