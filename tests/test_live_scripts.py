@@ -59,7 +59,8 @@ def test_bucket_miner_publishes_once_per_chain_tempo() -> None:
 def test_bucket_miner_idles_when_active_registry_cache_is_missing() -> None:
     miner = (ROOT / "scripts" / "lemma-miner-once-to-bucket").read_text(encoding="utf-8")
 
-    assert "active registry cache missing" in miner
+    assert "active registry cache missing or stale" in miner
+    assert "cached_active_registry_for_tempo(settings, tempo=tempo)" in miner
     assert "return None, str(cache_path), False" in miner
     assert "write_registry(registry.tasks" not in miner
 

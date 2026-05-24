@@ -203,7 +203,31 @@ def cached_active_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> 
         if settings.active_registry_json is not None:
             raise RuntimeError(f"active registry file does not exist: {path}")
         return None
-    return load_task_registry(path.read_bytes())
+    registry = load_task_registry(path.read_bytes())
+    curriculum_state_replay = (
+        settings.curriculum_retarget_enabled
+        and settings.curriculum_state_jsonl is not None
+        and settings.curriculum_state_jsonl.exists()
+    )
+    if (
+        settings.active_registry_json is None
+        and curriculum_state_replay
+        and active_registry_cache_stale(registry, settings)
+    ):
+        return None
+    return registry
+
+
+def active_registry_cache_stale(registry: TaskRegistry, settings: LemmaSettings) -> bool:
+    expected_count = settings.procedural_candidate_count or settings.active_task_count
+    if len(registry.tasks) != expected_count:
+        return True
+    if any(task.frontier_depth != settings.frontier_depth for task in registry.tasks):
+        return True
+    expected_source = (settings.procedural_source_sha256_expected or "").strip().lower().removeprefix("sha256:")
+    if expected_source:
+        return {str(task.metadata.get("source_pool_hash") or "") for task in registry.tasks} != {expected_source}
+    return False
 
 
 def curriculum_controlled_settings(settings: LemmaSettings, *, tempo: int) -> LemmaSettings:

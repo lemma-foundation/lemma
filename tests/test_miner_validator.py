@@ -33,6 +33,7 @@ from lemma.tasks import TaskRegistry
 from lemma.validator import (
     ValidatorRunSummary,
     active_tasks_for_validation,
+    cached_active_registry_for_tempo,
     curriculum_controlled_settings,
     validate_once,
 )
@@ -848,6 +849,51 @@ def test_production_curriculum_state_must_be_marked_public(tmp_path: Path) -> No
 
     assert public.active_task_count == 2
     assert public.frontier_depth == 1
+
+
+def test_curriculum_state_rejects_stale_active_registry_cache(tmp_path: Path) -> None:
+    state_path = tmp_path / "curriculum.jsonl"
+    append_curriculum_record(
+        state_path,
+        CurriculumTempoRecord(
+            tempo=4,
+            active_K=2,
+            frontier_depth=1,
+            ema_solve_rate=0.5,
+            solved_slots=1,
+            parked_task_ids=(),
+            action="hold",
+            variant_stream_requested=False,
+        ),
+    )
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    cache_path = cache_dir / "tempo-5.registry.json"
+    write_registry([_task("lemma.test.old").model_copy(update={"frontier_depth": 0})], cache_path)
+    settings = _settings(tmp_path).model_copy(
+        update={
+            "active_task_count": 1,
+            "frontier_depth": 0,
+            "active_registry_cache_dir": cache_dir,
+            "curriculum_retarget_enabled": True,
+            "curriculum_state_jsonl": state_path,
+        }
+    )
+    effective = curriculum_controlled_settings(settings, tempo=5)
+
+    assert cached_active_registry_for_tempo(effective, tempo=5) is None
+
+    write_registry(
+        [
+            _task("lemma.test.new-a").model_copy(update={"frontier_depth": 1}),
+            _task("lemma.test.new-b").model_copy(update={"frontier_depth": 1}),
+        ],
+        cache_path,
+    )
+
+    cached = cached_active_registry_for_tempo(effective, tempo=5)
+    assert cached is not None
+    assert len(cached.tasks) == 2
 
 
 def test_validate_once_retargets_curriculum_state_after_tempo(tmp_path: Path) -> None:

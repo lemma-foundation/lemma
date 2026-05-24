@@ -1035,6 +1035,7 @@ def tasks_prebuild_active_procedural_registry_cmd(tempo: int | None, force: bool
     from lemma.tasks import load_task_registry
     from lemma.validator import (
         active_registry_cache_path,
+        active_registry_cache_stale,
         current_active_tempo,
         curriculum_controlled_settings,
         task_registry_for_validation,
@@ -1063,7 +1064,7 @@ def tasks_prebuild_active_procedural_registry_cmd(tempo: int | None, force: bool
     registry = None
     if not needs_rebuild:
         registry = load_task_registry(cache_path.read_bytes())
-        needs_rebuild = _active_registry_cache_stale(registry, effective_settings)
+        needs_rebuild = active_registry_cache_stale(registry, effective_settings)
     if needs_rebuild:
         rebuild_settings = effective_settings.model_copy(
             update={"active_registry_json": None, "active_registry_cache_dir": None}
@@ -1090,19 +1091,6 @@ def tasks_prebuild_active_procedural_registry_cmd(tempo: int | None, force: bool
             sort_keys=True,
         )
     )
-
-
-def _active_registry_cache_stale(registry, settings: LemmaSettings) -> bool:  # noqa: ANN001
-    expected_count = settings.procedural_candidate_count or settings.active_task_count
-    if len(registry.tasks) != expected_count:
-        return True
-    if any(task.frontier_depth != settings.frontier_depth for task in registry.tasks):
-        return True
-    expected_source = (settings.procedural_source_sha256_expected or "").strip().lower().removeprefix("sha256:")
-    if expected_source:
-        return {str(task.metadata.get("source_pool_hash") or "") for task in registry.tasks} != {expected_source}
-    return False
-
 
 @tasks_cmd.command("build-procedural-registry")
 @click.option(

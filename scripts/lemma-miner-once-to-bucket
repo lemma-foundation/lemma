@@ -43,14 +43,20 @@ from lemma.chain.miner_buckets import (
 )
 from lemma.common.config import LemmaSettings
 from lemma.miner import ProverError, mine_once
-from lemma.tasks import load_task_registry
-from lemma.validator import active_registry_cache_path, active_tasks_for_validation, current_active_tempo, task_registry_for_validation
+from lemma.validator import (
+    active_registry_cache_path,
+    active_tasks_for_validation,
+    cached_active_registry_for_tempo,
+    current_active_tempo,
+    task_registry_for_validation,
+)
 
 
 def registry_for_tempo(settings: LemmaSettings, tempo: int):
     cache_path = active_registry_cache_path(settings, tempo=tempo)
-    if cache_path is not None and cache_path.is_file():
-        return load_task_registry(cache_path.read_bytes()), str(cache_path), False
+    cached = cached_active_registry_for_tempo(settings, tempo=tempo)
+    if cached is not None:
+        return cached, str(cache_path), False
     if cache_path is not None and settings.active_registry_json is None:
         return None, str(cache_path), False
     registry = task_registry_for_validation(settings, tempo=tempo)
@@ -75,7 +81,7 @@ if registry is None:
         json.dumps(
             {
                 "idle": True,
-                "reason": "active registry cache missing",
+                "reason": "active registry cache missing or stale",
                 "tempo": tempo,
                 "registry_cache": registry_cache,
                 "registry_built": registry_built,
