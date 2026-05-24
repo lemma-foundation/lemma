@@ -23,6 +23,7 @@ from lemma.protocol_invariants import enforce_production_invariants
 from lemma.scoring import ScoreResult, UnearnedPolicy, VerificationRecord, score_epoch
 from lemma.store import append_jsonl
 from lemma.submissions import LemmaSubmission, validate_submission_for_task
+from lemma.supply.controller import CurriculumTempoRecord
 from lemma.supply.queue import initial_active_pool
 from lemma.supply.slot_weight import slot_weight_receipt_for_kernel_dependencies, slot_weight_receipt_for_task
 from lemma.task_activation import task_reward_eligibility, task_slot_weight
@@ -532,7 +533,7 @@ def _write_public_tempo_artifacts(
     active_tasks: Sequence[LemmaTask],
     rows: Sequence[CorpusRow],
     tempo: int,
-    curriculum_records: Sequence[object] = (),
+    curriculum_records: Sequence[CurriculumTempoRecord] = (),
 ) -> dict[str, object]:
     from lemma.corpus.storage import (
         build_active_pool_storage,
@@ -960,7 +961,7 @@ def validate_once(
         tempo=active_tempo,
         solved_slots=len(score.valid_unique_proofs),
     )
-    curriculum_records: tuple[Any, ...] = ()
+    curriculum_records: tuple[CurriculumTempoRecord, ...] = ()
     if settings.curriculum_retarget_enabled and settings.curriculum_state_jsonl is not None:
         from lemma.supply.controller import read_curriculum_records
 
