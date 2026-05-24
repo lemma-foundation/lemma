@@ -99,28 +99,32 @@ def build_current_problems_snapshot(
         active_selection_seed_sha256,
         active_tasks_for_validation,
         current_active_tempo,
+        curriculum_controlled_settings,
         task_registry_for_validation,
     )
 
     active_tempo = current_active_tempo(settings) if tempo is None else tempo
-    task_registry = registry or task_registry_for_validation(settings, tempo=active_tempo)
+    effective_settings = curriculum_controlled_settings(settings, tempo=active_tempo)
+    task_registry = registry or task_registry_for_validation(effective_settings, tempo=active_tempo)
     enforce_production_invariants(settings, task_registry)
-    active_tasks = active_tasks_for_validation(task_registry, settings, tempo=active_tempo)
+    active_tasks = active_tasks_for_validation(task_registry, effective_settings, tempo=active_tempo)
     tasks = tuple(_problem(task) for task in active_tasks)
     return CurrentProblemsSnapshot(
         schema_version=1,
         generated_at=generated_at or _timestamp(),
         registry_sha256=task_registry.sha256,
         registry_task_count=len(task_registry.tasks),
-        active_K=settings.active_task_count,
+        active_K=effective_settings.active_task_count,
         tempo=active_tempo,
-        active_tempo_seconds=settings.active_tempo_seconds,
-        active_seed_mode=settings.active_seed_mode,
-        active_epoch_randomness_source=settings.active_epoch_randomness_source,
-        active_epoch_randomness_sha256=active_epoch_randomness_sha256(settings, tempo=active_tempo),
-        active_selection_seed_sha256=active_selection_seed_sha256(task_registry, settings, tempo=active_tempo),
-        frontier_depth=settings.frontier_depth,
-        active_queue_seed=settings.active_queue_seed,
+        active_tempo_seconds=effective_settings.active_tempo_seconds,
+        active_seed_mode=effective_settings.active_seed_mode,
+        active_epoch_randomness_source=effective_settings.active_epoch_randomness_source,
+        active_epoch_randomness_sha256=active_epoch_randomness_sha256(effective_settings, tempo=active_tempo),
+        active_selection_seed_sha256=active_selection_seed_sha256(
+            task_registry, effective_settings, tempo=active_tempo
+        ),
+        frontier_depth=effective_settings.frontier_depth,
+        active_queue_seed=effective_settings.active_queue_seed,
         task_count=len(tasks),
         tasks=tasks,
     )

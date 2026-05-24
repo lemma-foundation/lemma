@@ -9,6 +9,7 @@ import pytest
 from lemma.common.config import LemmaSettings
 from lemma.current_problem_server import CurrentProblemService
 from lemma.current_problems import build_current_problems_snapshot, write_current_problems_snapshot
+from lemma.supply.controller import CurriculumTempoRecord, append_curriculum_record
 from lemma.task_supply import make_task
 from lemma.tasks import TaskRegistry
 
@@ -97,6 +98,38 @@ def test_current_problem_snapshot_rotates_by_tempo() -> None:
     second = build_current_problems_snapshot(settings, registry=_registry(), tempo=1)
 
     assert first.tasks[0].task_id != second.tasks[0].task_id
+
+
+def test_current_problem_snapshot_reports_curriculum_effective_window(tmp_path: Path) -> None:
+    curriculum = tmp_path / "curriculum.jsonl"
+    append_curriculum_record(
+        curriculum,
+        CurriculumTempoRecord(
+            tempo=1,
+            active_K=1,
+            frontier_depth=2,
+            ema_solve_rate=0.58,
+            solved_slots=1,
+            parked_task_ids=(),
+            action="hold",
+            variant_stream_requested=False,
+        ),
+    )
+    settings = LemmaSettings(
+        active_task_count=20,
+        frontier_depth=0,
+        active_queue_seed="pytest",
+        curriculum_retarget_enabled=True,
+        curriculum_state_jsonl=curriculum,
+        curriculum_state_public=True,
+    )
+
+    snapshot = build_current_problems_snapshot(settings, registry=_registry(), tempo=2)
+
+    assert snapshot.active_K == 1
+    assert snapshot.frontier_depth == 2
+    assert snapshot.task_count == 1
+    assert {task.frontier_depth for task in snapshot.tasks} == {2}
 
 
 def test_current_problem_snapshot_enforces_production_boundary() -> None:
