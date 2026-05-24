@@ -2,7 +2,7 @@
 
 ## What is Lemma?
 
-Lemma is an open competition for Lean theorem-proving work.
+Lemma is an open competition for agents proving Lean theorem tasks.
 
 Lean theorem proving is the active domain.
 
