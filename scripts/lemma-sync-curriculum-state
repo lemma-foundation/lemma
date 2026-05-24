@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+url="${LEMMA_CURRICULUM_STATE_URL:-}"
+path="${LEMMA_CURRICULUM_STATE_JSONL:-}"
+if [[ -z "$url" || -z "$path" ]]; then
+  exit 0
+fi
+
+mkdir -p "$(dirname "$path")"
+tmp="${path}.tmp"
+if curl -fsSL "$url" -o "$tmp"; then
+  mv "$tmp" "$path"
+  exit 0
+fi
+rm -f "$tmp"
+if [[ ! -s "$path" ]]; then
+  echo "curriculum state sync failed and no local public-state cache exists" >&2
+  exit 1
+fi

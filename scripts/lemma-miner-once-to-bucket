@@ -4,6 +4,7 @@ set -euo pipefail
 instance="${1:?miner instance required}"
 workdir="${LEMMA_APP_DIR:-/opt/lemma-sn467/app}"
 uv_bin="${LEMMA_UV_BIN:-/home/lemma/.local/bin/uv}"
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 state_dir="/var/lib/lemma-miners/${instance}"
 bucket_root="${LEMMA_MINER_BUCKET_DIR:-/var/lib/lemma-miner-bucket/${instance}}"
 proof_dir="${LEMMA_PROOF_DIR:-/var/lib/lemma-codex-agent/proofs}"
@@ -20,6 +21,8 @@ export LEMMA_PROOF_DIR="$proof_dir"
 export LEMMA_LEAN_VERIFY_REMOTE_URL="${LEMMA_LEAN_VERIFY_REMOTE_URL:-}"
 export LEMMA_LEAN_VERIFY_WORKSPACE_CACHE_DIR="${LEMMA_LEAN_VERIFY_WORKSPACE_CACHE_DIR:-/var/lib/lemma-lean-cache}"
 export LEMMA_USE_DOCKER="${LEMMA_USE_DOCKER:-1}"
+
+"${LEMMA_CURRICULUM_SYNC_BIN:-$script_dir/lemma-sync-curriculum-state}"
 
 result="$("$uv_bin" --directory "$workdir" run python - <<'PYBUCKET'
 from __future__ import annotations

@@ -3,8 +3,11 @@ set -euo pipefail
 
 workdir="${LEMMA_APP_DIR:-/opt/lemma-sn467/app}"
 uv_bin="${LEMMA_UV_BIN:-uv}"
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 export LEMMA_PREFER_PROCESS_ENV="${LEMMA_PREFER_PROCESS_ENV:-1}"
+
+"${LEMMA_CURRICULUM_SYNC_BIN:-$script_dir/lemma-sync-curriculum-state}"
 
 cd "$workdir"
 exec "$uv_bin" run lemma tasks prebuild-active-procedural-registry "$@"

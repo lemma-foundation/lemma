@@ -18,6 +18,20 @@ def test_bucket_live_wrappers_prefer_process_env() -> None:
     assert expected in prebuild
 
 
+def test_live_wrappers_sync_public_curriculum_state_before_work() -> None:
+    miner = (ROOT / "scripts" / "lemma-miner-once-to-bucket").read_text(encoding="utf-8")
+    validator = (ROOT / "scripts" / "lemma-validator-bucket-live").read_text(encoding="utf-8")
+    prebuild = (ROOT / "scripts" / "lemma-active-registry-prebuild").read_text(encoding="utf-8")
+    sync = (ROOT / "scripts" / "lemma-sync-curriculum-state").read_text(encoding="utf-8")
+
+    expected = '"${LEMMA_CURRICULUM_SYNC_BIN:-$script_dir/lemma-sync-curriculum-state}"'
+    assert expected in miner
+    assert expected in validator
+    assert expected in prebuild
+    assert "LEMMA_CURRICULUM_STATE_URL" in sync
+    assert "LEMMA_CURRICULUM_STATE_JSONL" in sync
+
+
 def test_bucket_miner_defaults_to_local_docker_verify() -> None:
     miner = (ROOT / "scripts" / "lemma-miner-once-to-bucket").read_text(encoding="utf-8")
 
