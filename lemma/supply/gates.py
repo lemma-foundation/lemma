@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import threading
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field, replace
 from typing import Protocol
 
 from lemma.common.config import LemmaSettings
@@ -26,11 +29,13 @@ _TYPECHECK_GATE_DECL = "LemmaProceduralGate.typecheck_gate"
 _PROP_GATE_DECL = "LemmaProceduralGate.prop_gate"
 _KERNEL_NORMAL_MARKER = "LEMMA_KERNEL_NORMAL_FORM "
 TRIVIALITY_STACK = (
-    ("trivial", "  trivial"),
-    ("simp", "  simp"),
+    ("decide", "  decide"),
     ("simp_all", "  simp_all"),
     ("omega", "  omega"),
     ("norm_num", "  norm_num"),
+    ("ring", "  ring"),
+    ("linarith", "  linarith"),
+    ("nlinarith", "  nlinarith"),
     ("aesop", "  aesop"),
 )
 _INFRA_FAILURES: frozenset[VerifyReason] = frozenset({"timeout", "oom", "docker_error", "remote_error"})
@@ -118,12 +123,15 @@ class LeanProceduralGateRunner:
     ) -> None:
         self.settings = settings
         self.gate_timeout_s = min(settings.lean_verify_timeout_s, settings.procedural_gate_timeout_s)
+        self.gate_heartbeats = int(settings.procedural_gate_max_heartbeats)
         self.triviality_budget_receipt = triviality_budget_receipt or static_triviality_budget_receipt(
-            min(settings.lean_verify_timeout_s, settings.procedural_triviality_budget_s)
+            int(settings.procedural_triviality_budget_heartbeats)
         )
-        self.triviality_budget_s = self.triviality_budget_receipt.budget_s
+        self.triviality_budget_heartbeats = self.triviality_budget_receipt.budget_s
         self.novelty_cache = novelty_cache or empty_novelty_cache()
         self.import_graph = import_graph or empty_import_graph()
+        self.lean_workers = _resolve_lean_workers(settings)
+        self._lean_slots = threading.BoundedSemaphore(self.lean_workers)
 
     def __call__(
         self,
@@ -136,15 +144,42 @@ class LeanProceduralGateRunner:
             _typecheck_gate_source(candidate),
             fingerprint_name=_TYPECHECK_GATE_DECL,
         )
-        prop = (
-            self._compile_gate(
+        if not typecheck.passed:
+            return self._gate_verdict(
                 candidate,
-                _prop_gate_source(candidate),
-                fingerprint_name=_PROP_GATE_DECL,
-                eval_commands=("#eval! LemmaProceduralGate.emit_kernel_normal",),
+                seen_canonical_hashes=seen_canonical_hashes,
+                typecheck=typecheck,
+                prop=typecheck,
+                kernel_hash="",
+                novelty="missing_kernel_fingerprint",
+                triviality_checked=False,
+                baseline_solved=False,
+                baseline_solver=None,
+                baseline_reason="not_run",
             )
-            if typecheck.passed
-            else typecheck
+
+        statement_novelty = _novelty_status(candidate, seen_canonical_hashes, self.novelty_cache)
+        if statement_novelty == "duplicate":
+            skipped = VerifyResult(passed=False, reason="compile_error", stderr_tail="statement novelty duplicate")
+            return self._gate_verdict(
+                candidate,
+                seen_canonical_hashes=seen_canonical_hashes,
+                typecheck=typecheck,
+                prop=skipped,
+                kernel_hash="",
+                novelty="duplicate",
+                triviality_checked=False,
+                baseline_solved=False,
+                baseline_solver=None,
+                baseline_reason="not_run",
+                prop_gate_reason="skipped_statement_duplicate",
+            )
+
+        prop = self._compile_gate(
+            candidate,
+            _prop_gate_source(candidate),
+            fingerprint_name=_PROP_GATE_DECL,
+            eval_commands=("#eval! LemmaProceduralGate.emit_kernel_normal",),
         )
         kernel_hash = _gate_canonical_hash(prop) if prop.passed else ""
         novelty = (
@@ -152,12 +187,41 @@ class LeanProceduralGateRunner:
             if kernel_hash
             else "missing_kernel_fingerprint"
         )
-        if typecheck.passed and prop.passed and novelty == "passed":
+        if prop.passed and novelty == "passed":
             triviality_checked, baseline_solved, baseline_solver, baseline_reason = self._run_triviality_stack(
                 candidate
             )
         else:
             triviality_checked, baseline_solved, baseline_solver, baseline_reason = False, False, None, "not_run"
+        return self._gate_verdict(
+            candidate,
+            seen_canonical_hashes=seen_canonical_hashes,
+            typecheck=typecheck,
+            prop=prop,
+            kernel_hash=kernel_hash,
+            novelty=novelty,
+            triviality_checked=triviality_checked,
+            baseline_solved=baseline_solved,
+            baseline_solver=baseline_solver,
+            baseline_reason=baseline_reason,
+        )
+
+    def _gate_verdict(
+        self,
+        candidate: TaskCandidate,
+        *,
+        seen_canonical_hashes: Iterable[str],
+        typecheck: VerifyResult,
+        prop: VerifyResult,
+        kernel_hash: str,
+        novelty: str,
+        triviality_checked: bool,
+        baseline_solved: bool,
+        baseline_solver: str | None,
+        baseline_reason: str,
+        prop_gate_reason: str | None = None,
+    ) -> ProceduralGateVerdict:
+        _ = seen_canonical_hashes
         slot_weight = slot_weight_receipt_for_candidate(candidate, import_graph=self.import_graph)
         return ProceduralGateVerdict(
             typechecked=typecheck.passed,
@@ -169,7 +233,7 @@ class LeanProceduralGateRunner:
             metadata={
                 "gate_runner": "lean",
                 "typecheck_reason": typecheck.reason,
-                "prop_gate_reason": prop.reason,
+                "prop_gate_reason": prop_gate_reason or prop.reason,
                 "kernel_canonical_hash": kernel_hash,
                 "kernel_canonical_name": "LemmaProceduralGate.kernel_normal_form",
                 "canonical_hash": kernel_hash or candidate.metadata.get("canonical_hash"),
@@ -191,28 +255,80 @@ class LeanProceduralGateRunner:
         eval_commands: tuple[str, ...] = (),
     ) -> VerifyResult:
         problem = _gate_problem(candidate, gate_source, fingerprint_name=fingerprint_name, eval_commands=eval_commands)
-        return run_lean_verify(
-            self.settings,
-            verify_timeout_s=self.gate_timeout_s,
-            problem=problem,
-            proof_script=_dummy_submission(candidate),
-            submission_policy="strict_envelope",
-        )
+        problem = replace(problem, extra={**problem.extra, "lean_max_heartbeats": self.gate_heartbeats})
+        with self._lean_slots:
+            return run_lean_verify(
+                self.settings,
+                verify_timeout_s=self.gate_timeout_s,
+                problem=problem,
+                proof_script=_dummy_submission(candidate),
+                submission_policy="strict_envelope",
+            )
 
     def _run_triviality_stack(self, candidate: TaskCandidate) -> tuple[bool, bool, str | None, str]:
+        if len(TRIVIALITY_STACK) <= 1 or self.lean_workers <= 1:
+            return self._run_triviality_stack_sequential(candidate)
+
+        results: dict[str, tuple[bool, VerifyReason | None]] = {}
+        with ThreadPoolExecutor(max_workers=len(TRIVIALITY_STACK)) as pool:
+            futures = {
+                pool.submit(self._run_triviality_tactic, candidate, name, body): name
+                for name, body in TRIVIALITY_STACK
+            }
+            for future in as_completed(futures):
+                name = futures[future]
+                passed, reason = future.result()
+                results[name] = (passed, reason)
+
+        for name, _body in TRIVIALITY_STACK:
+            passed, reason = results[name]
+            if passed:
+                return True, True, name, "baseline_solved"
+            if reason in _INFRA_FAILURES:
+                return False, False, None, reason
+        return True, False, None, "baseline_failed"
+
+    def _run_triviality_stack_sequential(self, candidate: TaskCandidate) -> tuple[bool, bool, str | None, str]:
         for name, body in TRIVIALITY_STACK:
+            passed, reason = self._run_triviality_tactic(candidate, name, body)
+            if passed:
+                return True, True, name, "baseline_solved"
+            if reason in _INFRA_FAILURES:
+                return False, False, None, reason
+        return True, False, None, "baseline_failed"
+
+    def _run_triviality_tactic(
+        self,
+        candidate: TaskCandidate,
+        name: str,
+        body: str,
+    ) -> tuple[bool, VerifyReason | None]:
+        with self._lean_slots:
+            problem = candidate.to_task().to_problem()
+            problem = replace(
+                problem,
+                extra={**problem.extra, "lean_max_heartbeats": self.triviality_budget_heartbeats},
+            )
             result = run_lean_verify(
                 self.settings,
-                verify_timeout_s=self.triviality_budget_s,
-                problem=candidate.to_task().to_problem(),
+                verify_timeout_s=self.gate_timeout_s,
+                problem=problem,
                 proof_script=_candidate_submission(candidate, body),
                 submission_policy=candidate.policy,
             )
-            if result.passed:
-                return True, True, name, "baseline_solved"
-            if result.reason in _INFRA_FAILURES:
-                return False, False, None, result.reason
-        return True, False, None, "baseline_failed"
+        if result.passed:
+            return True, None
+        return False, result.reason
+
+
+def _resolve_lean_workers(settings: LemmaSettings) -> int:
+    configured = int(getattr(settings, "procedural_lean_workers", 0) or 0)
+    if configured > 0:
+        return configured
+    generation_workers = int(getattr(settings, "procedural_generation_workers", 0) or 0)
+    if generation_workers > 0:
+        return generation_workers
+    return min(8, max(1, os.cpu_count() or 1))
 
 
 def _novelty_status(

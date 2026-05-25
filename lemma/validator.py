@@ -338,6 +338,9 @@ def _procedural_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> Ta
             if settings.protocol_mode == "production"
             else None
         ),
+        generation_workers=(
+            None if settings.procedural_generation_workers <= 0 else settings.procedural_generation_workers
+        ),
     )
     build = build_procedural_registry_tasks(candidates, seed=generation_seed, frontier_depth=settings.frontier_depth)
     if build.rejected:

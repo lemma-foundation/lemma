@@ -93,8 +93,8 @@ def production_supply_rejection_reason(task: LemmaTask) -> str:
         return "kernel_canonical_hash"
     if metadata.get("triviality_checked") is not True:
         return "triviality"
-    if _positive_float(metadata.get("triviality_budget_s")) is None:
-        return "triviality_budget_s"
+    if _positive_float(metadata.get("triviality_budget_heartbeats")) is None:
+        return "triviality_budget_heartbeats"
     if metadata.get("triviality_budget_version") != TRIVIALITY_BUDGET_VERSION:
         return "triviality_budget_version"
     retarget_inputs = metadata.get("triviality_retarget_inputs")
@@ -140,7 +140,7 @@ def procedural_gate_receipt_sha256(task: LemmaTask) -> str:
         "prop_gate_reason": metadata.get("prop_gate_reason"),
         "triviality_checked": metadata.get("triviality_checked"),
         "triviality_stack": metadata.get("triviality_stack"),
-        "triviality_budget_s": metadata.get("triviality_budget_s"),
+        "triviality_budget_heartbeats": metadata.get("triviality_budget_heartbeats"),
         "triviality_budget_version": metadata.get("triviality_budget_version"),
         "triviality_burn_rate_basis_points": metadata.get("triviality_burn_rate_basis_points"),
         "triviality_retarget_inputs": metadata.get("triviality_retarget_inputs"),

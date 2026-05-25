@@ -119,6 +119,7 @@ class LeanAstMutationEngine:
                     peer=peer,
                 ),
                 "lean_build_target": "Challenge",
+                "lean_max_heartbeats": int(self.settings.procedural_gate_max_heartbeats),
                 "lean_eval_commands": ("#eval! LemmaProceduralMutator.emit",),
                 "submission_policy": "strict_envelope",
             },

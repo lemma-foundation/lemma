@@ -2,15 +2,24 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
+import time
 from pathlib import Path
 
 import pytest
 from lemma.common.config import LemmaSettings
 from lemma.corpus import build_corpus_row, write_jsonl
 from lemma.lean.sandbox import VerifyResult
+from lemma.lean.workspace import materialize_workspace
 from lemma.protocol_invariants import enforce_production_invariants
+from lemma.problems.base import Problem
 from lemma.submissions import build_submission
-from lemma.supply.gates import AssumedProceduralGateRunner, LeanProceduralGateRunner, ProceduralGateVerdict
+from lemma.supply.gates import (
+    TRIVIALITY_STACK,
+    AssumedProceduralGateRunner,
+    LeanProceduralGateRunner,
+    ProceduralGateVerdict,
+)
 from lemma.supply.import_graph import ImportGraphRow, extract_import_graph_rows, read_import_graph
 from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
 from lemma.supply.mutation import LeanAstMutationEngine, MutationResult, PreviewMutationEngine
@@ -77,6 +86,23 @@ def _write_import_graph(path: Path) -> None:
         ImportGraphRow(module="Mathlib.Algebra.Group.Basic", imports=("Mathlib.Init",)),
     )
     path.write_text("".join(row.model_dump_json() + "\n" for row in rows), encoding="utf-8")
+
+
+def test_materialize_workspace_writes_lean_heartbeat_budget(tmp_path: Path) -> None:
+    problem = Problem(
+        id="heartbeat",
+        theorem_name="heartbeat",
+        type_expr="True",
+        split="pytest",
+        lean_toolchain="leanprover/lean4:v4.15.0",
+        mathlib_rev="abc123",
+        imports=("Mathlib",),
+        extra={"lean_max_heartbeats": 12345},
+    )
+
+    materialize_workspace(tmp_path, problem, problem.submission_stub())
+
+    assert "maxHeartbeats = 12345" in (tmp_path / "lakefile.toml").read_text(encoding="utf-8")
 
 
 def test_import_graph_accepts_prime_module_names(tmp_path: Path) -> None:
@@ -165,6 +191,7 @@ def test_lean_ast_mutation_engine_uses_lean_eval_output(monkeypatch: pytest.Monk
     assert result.params["engine"] == "lean_ast_elaborator"
     assert "replaceIdent" in captured["problem"].extra["challenge_full"]
     assert "let roundtrip ← parseTermOrThrow rendered" in captured["problem"].extra["challenge_full"]
+    assert captured["problem"].extra["lean_max_heartbeats"] == 400_000
     assert captured["problem"].extra["lean_eval_commands"] == ("#eval! LemmaProceduralMutator.emit",)
     assert "theorem lemma_ast_mutation_dummy : True" in captured["proof_script"]
 
@@ -291,6 +318,41 @@ def test_depth2_generation_attempt_limit_scales_with_requested_count() -> None:
     assert gate.calls == 50
 
 
+def test_depth2_generation_parallel_matches_sequential(tmp_path: Path) -> None:
+    class LatencyGate:
+        def __call__(self, candidate, *, seen_canonical_hashes):  # noqa: ANN001, ARG002
+            sequence = int(candidate.source_ref.name.rsplit("-", 1)[1])
+            time.sleep((5 - sequence % 5) * 0.001)
+            return ProceduralGateVerdict(
+                typechecked=True,
+                prop_gate_passed=True,
+                triviality_checked=True,
+                baseline_solved=False,
+                novelty_status="passed",
+                slot_weight=1.0,
+                metadata={"gate_runner": "latency-test"},
+            )
+
+    snapshot = tmp_path / "snapshot.jsonl"
+    novelty_cache = tmp_path / "novelty.jsonl"
+    _write_snapshot(snapshot)
+    _write_novelty_cache(novelty_cache)
+    sources = mathlib_candidates_from_jsonl(snapshot)
+    randomness = json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True)
+    kwargs = {
+        "generation_seed": "epoch-a",
+        "epoch_randomness": randomness,
+        "count": 2,
+        "tempo": 3,
+    }
+
+    sequential = generate_depth2_candidates(sources, generation_workers=1, gate_runner=LatencyGate(), **kwargs)
+
+    for workers in (2, 4, 8, 16):
+        parallel = generate_depth2_candidates(sources, generation_workers=workers, gate_runner=LatencyGate(), **kwargs)
+        assert [candidate.id for candidate in sequential] == [candidate.id for candidate in parallel]
+
+
 def test_procedural_candidate_keeps_peer_imports() -> None:
     class PeerMutationEngine:
         def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001, ARG002
@@ -375,6 +437,7 @@ def test_lean_gate_runner_records_generation_time_gates(monkeypatch: pytest.Monk
     def fake_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001, ARG001
         if problem.id.endswith(".gate"):
             assert problem.extra["lean_build_target"] == "Challenge"
+            assert problem.extra["lean_max_heartbeats"] == 400_000
             gate_source = str(problem.extra["challenge_full"])
             is_typecheck = "def typecheck_gate" in gate_source
             if not is_typecheck:
@@ -389,6 +452,7 @@ def test_lean_gate_runner_records_generation_time_gates(monkeypatch: pytest.Monk
                 declaration_fingerprints={str(problem.extra["lean_fingerprint_names"][0]): "8" * 64},
             )
         calls.append("triviality")
+        assert problem.extra["lean_max_heartbeats"] == 200_000
         return VerifyResult(passed=False, reason="compile_error")
 
     monkeypatch.setattr("lemma.supply.gates.run_lean_verify", fake_verify)
@@ -403,9 +467,69 @@ def test_lean_gate_runner_records_generation_time_gates(monkeypatch: pytest.Monk
     assert verdict.metadata["kernel_canonical_hash"] == kernel_hash
     assert verdict.metadata["canonical_hash"] == kernel_hash
     assert verdict.metadata["triviality_budget_version"] == "lemma-triviality-retarget-v1"
+    assert verdict.metadata["triviality_budget_heartbeats"] == 200_000
     assert verdict.metadata["triviality_reason"] == "baseline_failed"
     assert calls[:2] == ["typecheck", "prop"]
     assert "triviality" in calls
+
+
+def test_lean_gate_runner_caps_parallel_verify_jobs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    snapshot = tmp_path / "snapshot.jsonl"
+    _write_snapshot(snapshot)
+    candidate = generate_depth2_candidates(
+        mathlib_candidates_from_jsonl(snapshot),
+        generation_seed="epoch-a",
+        epoch_randomness=json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
+        count=1,
+        tempo=3,
+    )[0]
+    lock = threading.Lock()
+    active = 0
+    max_active = 0
+    calls: list[str] = []
+
+    def fake_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001, ARG001
+        nonlocal active, max_active
+        with lock:
+            active += 1
+            max_active = max(max_active, active)
+        try:
+            if problem.id.endswith(".gate"):
+                assert problem.extra["lean_max_heartbeats"] == 400_000
+                gate_source = str(problem.extra["challenge_full"])
+                is_typecheck = "def typecheck_gate" in gate_source
+                calls.append("typecheck" if is_typecheck else "prop")
+                return VerifyResult(
+                    passed=True,
+                    reason="ok",
+                    stdout_tail=""
+                    if is_typecheck
+                    else "LEMMA_KERNEL_NORMAL_FORM (forall default const:True:[] const:True:[])",
+                    declaration_fingerprints={str(problem.extra["lean_fingerprint_names"][0]): "8" * 64},
+                )
+            calls.append("triviality")
+            assert problem.extra["lean_max_heartbeats"] == 200_000
+            assert verify_timeout_s == 5
+            time.sleep(0.02)
+            return VerifyResult(passed=False, reason="compile_error")
+        finally:
+            with lock:
+                active -= 1
+
+    monkeypatch.setattr("lemma.supply.gates.run_lean_verify", fake_verify)
+    verdict = LeanProceduralGateRunner(
+        LemmaSettings(
+            _env_file=None,
+            lean_use_docker=False,
+            procedural_gate_timeout_s=5,
+            procedural_lean_workers=2,
+        )
+    )(candidate, seen_canonical_hashes=())
+
+    assert verdict.accepted is True
+    assert calls[:2] == ["typecheck", "prop"]
+    assert calls.count("triviality") == len(TRIVIALITY_STACK)
+    assert max_active == 2
 
 
 def test_lean_gate_runner_skips_triviality_when_compile_gate_fails(

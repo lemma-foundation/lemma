@@ -103,10 +103,30 @@ class LemmaSettings(BaseSettings):
         ge=1,
         validation_alias="LEMMA_PROCEDURAL_GATE_TIMEOUT_S",
     )
+    procedural_gate_max_heartbeats: int = Field(
+        default=400_000,
+        ge=1,
+        validation_alias="LEMMA_PROCEDURAL_GATE_MAX_HEARTBEATS",
+    )
     procedural_triviality_budget_s: int = Field(
         default=120,
         ge=1,
         validation_alias="LEMMA_PROCEDURAL_TRIVIALITY_BUDGET_S",
+    )
+    procedural_triviality_budget_heartbeats: int = Field(
+        default=200_000,
+        ge=1,
+        validation_alias="LEMMA_PROCEDURAL_TRIVIALITY_BUDGET_HEARTBEATS",
+    )
+    procedural_triviality_min_budget_heartbeats: int = Field(
+        default=20_000,
+        ge=1,
+        validation_alias="LEMMA_PROCEDURAL_TRIVIALITY_MIN_BUDGET_HEARTBEATS",
+    )
+    procedural_triviality_max_budget_heartbeats: int = Field(
+        default=2_000_000,
+        ge=1,
+        validation_alias="LEMMA_PROCEDURAL_TRIVIALITY_MAX_BUDGET_HEARTBEATS",
     )
     procedural_triviality_retarget_jsonl: Path | None = Field(
         default=None,
@@ -144,6 +164,16 @@ class LemmaSettings(BaseSettings):
         ge=0.0,
         le=1.0,
         validation_alias="LEMMA_PROCEDURAL_TRIVIALITY_MAX_STEP_RATE",
+    )
+    procedural_generation_workers: int = Field(
+        default=0,
+        ge=0,
+        validation_alias="LEMMA_PROCEDURAL_GENERATION_WORKERS",
+    )
+    procedural_lean_workers: int = Field(
+        default=0,
+        ge=0,
+        validation_alias="LEMMA_PROCEDURAL_LEAN_WORKERS",
     )
     verify_registry_signatures: bool = Field(
         default=False,

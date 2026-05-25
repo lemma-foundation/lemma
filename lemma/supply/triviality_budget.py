@@ -52,6 +52,7 @@ class TrivialityBudgetReceipt:
         return {
             "triviality_budget_version": TRIVIALITY_BUDGET_VERSION,
             "triviality_budget_s": self.budget_s,
+            "triviality_budget_heartbeats": self.budget_s,
             "triviality_burn_rate_basis_points": self.burn_rate_basis_points,
             "triviality_retarget_inputs": self.inputs,
         }
@@ -87,6 +88,9 @@ def triviality_budget_receipt(
             "genesis_budget_s": config.genesis_budget_s,
             "min_budget_s": config.min_budget_s,
             "max_budget_s": config.max_budget_s,
+            "genesis_budget_heartbeats": config.genesis_budget_s,
+            "min_budget_heartbeats": config.min_budget_s,
+            "max_budget_heartbeats": config.max_budget_s,
             "window_tempos": config.window_tempos,
             "low_burn_basis_points": config.low_burn_basis_points,
             "high_burn_basis_points": config.high_burn_basis_points,
@@ -105,11 +109,19 @@ def static_triviality_budget_receipt(budget_s: int) -> TrivialityBudgetReceipt:
 
 
 def triviality_budget_receipt_for_settings(settings: Any, *, tempo: int) -> TrivialityBudgetReceipt:
-    max_budget = min(int(settings.procedural_triviality_max_budget_s), int(settings.lean_verify_timeout_s))
+    genesis_budget = int(
+        getattr(settings, "procedural_triviality_budget_heartbeats", settings.procedural_triviality_budget_s)
+    )
+    min_budget = int(
+        getattr(settings, "procedural_triviality_min_budget_heartbeats", settings.procedural_triviality_min_budget_s)
+    )
+    max_budget = int(
+        getattr(settings, "procedural_triviality_max_budget_heartbeats", settings.procedural_triviality_max_budget_s)
+    )
     config = TrivialityRetargetConfig(
-        genesis_budget_s=int(settings.procedural_triviality_budget_s),
-        min_budget_s=int(settings.procedural_triviality_min_budget_s),
-        max_budget_s=max(max_budget, int(settings.procedural_triviality_min_budget_s)),
+        genesis_budget_s=genesis_budget,
+        min_budget_s=min_budget,
+        max_budget_s=max(max_budget, min_budget),
         window_tempos=int(settings.procedural_triviality_retarget_window_tempos),
         low_burn_basis_points=_rate_to_basis_points(settings.procedural_triviality_low_burn_rate),
         high_burn_basis_points=_rate_to_basis_points(settings.procedural_triviality_high_burn_rate),

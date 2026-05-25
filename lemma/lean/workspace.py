@@ -102,12 +102,17 @@ def _lean_build_target(problem: Problem) -> str:
 def _lakefile_toml(problem: Problem) -> str:
     # Must match `name` in `lemma/lean/template/lakefile.toml` (Lean sandbox image bakes `/opt/lemma-stub/.lake`
     # under that project name so `cp` in the container can warm this workspace).
+    lean_options = ["autoImplicit = false"]
+    max_heartbeats = _lean_max_heartbeats(problem)
+    if max_heartbeats is not None:
+        lean_options.append(f"maxHeartbeats = {max_heartbeats}")
+    lean_options_toml = "\n".join(lean_options)
     return f'''name = "lemma_stub"
 version = "0.1.0"
 defaultTargets = ["Challenge", "Solution", "Submission"]
 
 [leanOptions]
-autoImplicit = false
+{lean_options_toml}
 
 [[require]]
 name = "mathlib"
@@ -123,6 +128,17 @@ name = "Solution"
 [[lean_lib]]
 name = "Submission"
 '''
+
+
+def _lean_max_heartbeats(problem: Problem) -> int | None:
+    raw = problem.extra.get("lean_max_heartbeats")
+    if raw is None:
+        return None
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
 
 
 def _axiom_check_source(problem: Problem, submission_lean: str, policy: str) -> str:

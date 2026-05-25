@@ -845,6 +845,9 @@ def tasks_generate_procedural_depth2_cmd(
             novelty_cache=novelty_cache,
             import_graph=import_graph,
         ),
+        generation_workers=(
+            None if settings.procedural_generation_workers <= 0 else settings.procedural_generation_workers
+        ),
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text("".join(candidate.model_dump_json() + "\n" for candidate in candidates), encoding="utf-8")
@@ -854,7 +857,7 @@ def tasks_generate_procedural_depth2_cmd(
                 "output": str(output_path),
                 "source_pool_sha256": source_pool_hash(sources),
                 "source_pool_receipt_sha256": candidates[0].metadata["source_pool_receipt_sha256"],
-                "triviality_budget_s": triviality_budget.budget_s,
+                "triviality_budget_heartbeats": triviality_budget.budget_s,
                 "triviality_retarget_sha256": hashlib.sha256(
                     json.dumps(triviality_budget.inputs, sort_keys=True, separators=(",", ":")).encode()
                 ).hexdigest(),
@@ -970,6 +973,9 @@ def tasks_rebuild_procedural_registry_cmd(
             novelty_cache=novelty_cache,
             import_graph=import_graph,
         ),
+        generation_workers=(
+            None if settings.procedural_generation_workers <= 0 else settings.procedural_generation_workers
+        ),
     )
     build = build_procedural_registry_tasks(candidates, seed=generation_seed, frontier_depth=frontier_depth)
     if build.rejected:
@@ -983,7 +989,7 @@ def tasks_rebuild_procedural_registry_cmd(
                 "registry_sha256": hashlib.sha256(output_path.read_bytes()).hexdigest(),
                 "source_pool_sha256": source_pool_hash(sources),
                 "source_pool_receipt_sha256": candidates[0].metadata["source_pool_receipt_sha256"],
-                "triviality_budget_s": triviality_budget.budget_s,
+                "triviality_budget_heartbeats": triviality_budget.budget_s,
                 "triviality_retarget_sha256": hashlib.sha256(
                     json.dumps(triviality_budget.inputs, sort_keys=True, separators=(",", ":")).encode()
                 ).hexdigest(),

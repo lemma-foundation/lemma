@@ -5,8 +5,10 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import re
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -37,6 +39,26 @@ class RejectedProceduralCandidate:
 class ProceduralRegistryBuild:
     tasks: tuple[LemmaTask, ...]
     rejected: tuple[RejectedProceduralCandidate, ...]
+
+
+@dataclass(frozen=True)
+class _Depth2GenerationContext:
+    ordered: tuple[TaskCandidate, ...]
+    generation_seed: str
+    epoch_fields: dict[str, Any]
+    pool_hash: str
+    pool_receipt: dict[str, object]
+    operator_hash: str
+    tempo: int
+    mutation_engine: ProceduralMutationEngine
+    gate_runner: ProceduralGateRunner
+
+
+@dataclass(frozen=True)
+class _Depth2Attempt:
+    cursor: int
+    candidate: TaskCandidate | None
+    verdict: ProceduralGateVerdict | None
 
 
 _SAFE_IDENT = re.compile(r"[^A-Za-z0-9_]+")
@@ -204,6 +226,17 @@ def source_pool_hash(sources: tuple[TaskCandidate, ...]) -> str:
     return _hash_json({"version": "lemma-source-pool-v1", "sources": payload})
 
 
+def _resolve_generation_workers(generation_workers: int | None) -> int:
+    configured = generation_workers
+    if configured is None or configured <= 0:
+        raw = os.environ.get("LEMMA_PROCEDURAL_GENERATION_WORKERS", "").strip()
+        if raw.isdigit() and int(raw) > 0:
+            configured = int(raw)
+    if configured is None or configured <= 0:
+        return min(8, max(1, os.cpu_count() or 1))
+    return max(1, configured)
+
+
 def generate_depth2_candidates(
     sources: tuple[TaskCandidate, ...],
     *,
@@ -217,6 +250,7 @@ def generate_depth2_candidates(
     citation_window_tempos: int = 2000,
     gate_runner: ProceduralGateRunner | None = None,
     mutation_engine: ProceduralMutationEngine | None = None,
+    generation_workers: int | None = None,
 ) -> tuple[TaskCandidate, ...]:
     """Generate fresh procedural candidates from public source rows.
 
@@ -251,42 +285,131 @@ def generate_depth2_candidates(
         citation_alpha=citation_alpha,
         citation_weight_cap=citation_weight_cap,
     )
-    runner = gate_runner or AssumedProceduralGateRunner()
-    mutator = mutation_engine or PreviewMutationEngine()
+    ctx = _Depth2GenerationContext(
+        ordered=ordered,
+        generation_seed=generation_seed,
+        epoch_fields=epoch_fields,
+        pool_hash=pool_hash,
+        pool_receipt=pool_receipt,
+        operator_hash=operator_hash,
+        tempo=tempo,
+        mutation_engine=mutation_engine or PreviewMutationEngine(),
+        gate_runner=gate_runner or AssumedProceduralGateRunner(),
+    )
+    workers = _resolve_generation_workers(generation_workers)
+    attempt_limit = count * 50
+    if workers <= 1:
+        return _generate_depth2_candidates_sequential(ctx, count=count, attempt_limit=attempt_limit)
+    return _generate_depth2_candidates_parallel(ctx, count=count, attempt_limit=attempt_limit, workers=workers)
+
+
+def _generate_depth2_candidates_sequential(
+    ctx: _Depth2GenerationContext,
+    *,
+    count: int,
+    attempt_limit: int,
+) -> tuple[TaskCandidate, ...]:
     out: list[TaskCandidate] = []
     seen: set[str] = set()
     cursor = 0
-    attempt_limit = count * 50
     while len(out) < count and cursor < attempt_limit:
-        source = ordered[cursor % len(ordered)]
-        chain = _operator_chain(generation_seed, cursor)
-        try:
-            candidate = _candidate_from_source(
-                source,
-                source_pool=ordered,
-                generation_seed=generation_seed,
-                epoch_fields=epoch_fields,
-                operator_chain=chain,
-                mutation_engine=mutator,
-                source_pool_hash_value=pool_hash,
-                source_pool_receipt_value=pool_receipt,
-                operator_bundle_hash=operator_hash,
-                tempo=tempo,
-                sequence=cursor,
-            )
-        except ValueError:
-            cursor += 1
-            continue
-        verdict = runner(candidate, seen_canonical_hashes=seen)
-        candidate = _with_gate_receipt(candidate, verdict)
-        canonical_hash = str(candidate.metadata["canonical_hash"])
-        if verdict.accepted:
-            seen.add(canonical_hash)
-            out.append(candidate)
+        attempt = _attempt_depth2_candidate(ctx, cursor=cursor, seen_canonical_hashes=frozenset(seen))
+        if attempt.candidate is not None and attempt.verdict is not None:
+            _maybe_accept_depth2_attempt(out, seen, attempt.candidate, attempt.verdict)
         cursor += 1
     if len(out) < count:
         raise ValueError(f"procedural gates accepted {len(out)} candidates, needed {count}")
     return tuple(out)
+
+
+def _generate_depth2_candidates_parallel(
+    ctx: _Depth2GenerationContext,
+    *,
+    count: int,
+    attempt_limit: int,
+    workers: int,
+) -> tuple[TaskCandidate, ...]:
+    out: list[TaskCandidate] = []
+    seen: set[str] = set()
+    cursor = 0
+    while len(out) < count and cursor < attempt_limit:
+        batch_end = min(cursor + workers, attempt_limit)
+        seen_snapshot = frozenset(seen)
+        batch_cursors = range(cursor, batch_end)
+        attempts = _attempt_depth2_candidates_parallel(ctx, batch_cursors, seen_snapshot, workers=workers)
+        for attempt in sorted(attempts, key=lambda item: item.cursor):
+            if len(out) >= count:
+                break
+            if attempt.candidate is None or attempt.verdict is None:
+                continue
+            _maybe_accept_depth2_attempt(out, seen, attempt.candidate, attempt.verdict)
+        cursor = batch_end
+    if len(out) < count:
+        raise ValueError(f"procedural gates accepted {len(out)} candidates, needed {count}")
+    return tuple(out)
+
+
+def _attempt_depth2_candidates_parallel(
+    ctx: _Depth2GenerationContext,
+    cursors: range,
+    seen_snapshot: frozenset[str],
+    *,
+    workers: int,
+) -> tuple[_Depth2Attempt, ...]:
+    if not cursors:
+        return ()
+    worker_count = min(workers, len(cursors))
+    with ThreadPoolExecutor(max_workers=worker_count) as pool:
+        futures = {
+            pool.submit(_attempt_depth2_candidate, ctx, cursor=cursor, seen_canonical_hashes=seen_snapshot): cursor
+            for cursor in cursors
+        }
+        attempts: list[_Depth2Attempt] = []
+        for future in as_completed(futures):
+            attempts.append(future.result())
+    return tuple(attempts)
+
+
+def _attempt_depth2_candidate(
+    ctx: _Depth2GenerationContext,
+    *,
+    cursor: int,
+    seen_canonical_hashes: frozenset[str],
+) -> _Depth2Attempt:
+    source = ctx.ordered[cursor % len(ctx.ordered)]
+    chain = _operator_chain(ctx.generation_seed, cursor)
+    try:
+        candidate = _candidate_from_source(
+            source,
+            source_pool=ctx.ordered,
+            generation_seed=ctx.generation_seed,
+            epoch_fields=ctx.epoch_fields,
+            operator_chain=chain,
+            mutation_engine=ctx.mutation_engine,
+            source_pool_hash_value=ctx.pool_hash,
+            source_pool_receipt_value=ctx.pool_receipt,
+            operator_bundle_hash=ctx.operator_hash,
+            tempo=ctx.tempo,
+            sequence=cursor,
+        )
+    except ValueError:
+        return _Depth2Attempt(cursor=cursor, candidate=None, verdict=None)
+    verdict = ctx.gate_runner(candidate, seen_canonical_hashes=seen_canonical_hashes)
+    return _Depth2Attempt(cursor=cursor, candidate=candidate, verdict=verdict)
+
+
+def _maybe_accept_depth2_attempt(
+    out: list[TaskCandidate],
+    seen: set[str],
+    candidate: TaskCandidate,
+    verdict: ProceduralGateVerdict,
+) -> None:
+    candidate = _with_gate_receipt(candidate, verdict)
+    canonical_hash = str(candidate.metadata["canonical_hash"])
+    if not verdict.accepted or canonical_hash in seen:
+        return
+    seen.add(canonical_hash)
+    out.append(candidate)
 
 
 def build_procedural_registry_tasks(
