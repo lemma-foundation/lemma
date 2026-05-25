@@ -214,10 +214,15 @@ class LeanAstMutationEngine:
 
     def _parse_results(self, output: str) -> tuple[MutationResult, ...]:
         out: list[MutationResult] = []
+        seen_payloads: set[str] = set()
         for line in output.splitlines():
             if not line.startswith(self._MARKER):
                 continue
-            payload = json.loads(line.removeprefix(self._MARKER))
+            raw_payload = line.removeprefix(self._MARKER)
+            if raw_payload in seen_payloads:
+                continue
+            seen_payloads.add(raw_payload)
+            payload = json.loads(raw_payload)
             type_expr = payload.get("type_expr")
             params = payload.get("params")
             if not isinstance(type_expr, str) or not type_expr.strip() or not isinstance(params, dict):

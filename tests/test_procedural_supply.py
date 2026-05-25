@@ -216,6 +216,10 @@ def test_lean_ast_mutation_engine_chain_uses_one_lean_eval(monkeypatch: pytest.M
                 'LEMMA_AST_MUTATION {"params":{"binder":"p","binder_type":"Prop"},'
                 '"type_expr":"∀ p : Prop, p → True"}\n'
                 'LEMMA_AST_MUTATION {"params":{"rule":"false_disjunct"},'
+                '"type_expr":"(∀ p : Prop, p → True) ∨ False"}\n'
+                'LEMMA_AST_MUTATION {"params":{"binder":"p","binder_type":"Prop"},'
+                '"type_expr":"∀ p : Prop, p → True"}\n'
+                'LEMMA_AST_MUTATION {"params":{"rule":"false_disjunct"},'
                 '"type_expr":"(∀ p : Prop, p → True) ∨ False"}'
             ),
         )
