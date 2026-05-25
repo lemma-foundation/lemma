@@ -93,7 +93,7 @@ def production_supply_rejection_reason(task: LemmaTask) -> str:
         return "kernel_canonical_hash"
     if metadata.get("triviality_checked") is not True:
         return "triviality"
-    if _positive_float(metadata.get("triviality_budget_heartbeats")) is None:
+    if _triviality_budget_value(metadata) is None:
         return "triviality_budget_heartbeats"
     if metadata.get("triviality_budget_version") != TRIVIALITY_BUDGET_VERSION:
         return "triviality_budget_version"
@@ -119,11 +119,23 @@ def production_supply_rejection_reason(task: LemmaTask) -> str:
         return slot_weight_reason
     if _positive_float(metadata.get("slot_weight")) is None:
         return "slot_weight"
-    if metadata.get("gate_receipt_sha256") != procedural_gate_receipt_sha256(task):
+    receipt = metadata.get("gate_receipt_sha256")
+    if receipt not in {procedural_gate_receipt_sha256(task), _legacy_procedural_gate_receipt_sha256(task)}:
         return "gate_receipt_sha256"
     return ""
 
 def procedural_gate_receipt_sha256(task: LemmaTask) -> str:
+    return _procedural_gate_receipt_sha256(task, "triviality_budget_heartbeats")
+
+
+def _legacy_procedural_gate_receipt_sha256(task: LemmaTask) -> str:
+    metadata = task.metadata
+    if _positive_float(metadata.get("triviality_budget_s")) is None:
+        return ""
+    return _procedural_gate_receipt_sha256(task, "triviality_budget_s")
+
+
+def _procedural_gate_receipt_sha256(task: LemmaTask, budget_key: str) -> str:
     metadata = task.metadata
     payload = {
         "version": GATE_VERSION,
@@ -140,7 +152,7 @@ def procedural_gate_receipt_sha256(task: LemmaTask) -> str:
         "prop_gate_reason": metadata.get("prop_gate_reason"),
         "triviality_checked": metadata.get("triviality_checked"),
         "triviality_stack": metadata.get("triviality_stack"),
-        "triviality_budget_heartbeats": metadata.get("triviality_budget_heartbeats"),
+        budget_key: metadata.get(budget_key),
         "triviality_budget_version": metadata.get("triviality_budget_version"),
         "triviality_burn_rate_basis_points": metadata.get("triviality_burn_rate_basis_points"),
         "triviality_retarget_inputs": metadata.get("triviality_retarget_inputs"),
@@ -204,6 +216,12 @@ def _positive_float(value: Any) -> float | None:
     except (TypeError, ValueError):
         return None
     return number if number > 0 else None
+
+
+def _triviality_budget_value(metadata: dict[str, Any]) -> float | None:
+    return _positive_float(metadata.get("triviality_budget_heartbeats")) or _positive_float(
+        metadata.get("triviality_budget_s")
+    )
 
 
 def _slot_weight_rejection_reason(task: LemmaTask, *, import_graph: ImportGraph | None = None) -> str:

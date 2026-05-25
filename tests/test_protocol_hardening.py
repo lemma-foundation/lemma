@@ -11,6 +11,7 @@ from lemma.corpus import build_corpus_row
 from lemma.lean.proof_identity import proof_identity
 from lemma.lean.sandbox import VerifyResult
 from lemma.protocol_invariants import (
+    _legacy_procedural_gate_receipt_sha256,
     enforce_production_invariants,
     procedural_gate_receipt_sha256,
     production_supply_rejection_reason,
@@ -494,6 +495,18 @@ def test_production_mode_rejects_missing_triviality_retarget_receipt() -> None:
     tampered = task.model_copy(update={"metadata": metadata})
 
     assert production_supply_rejection_reason(tampered) == "triviality_budget_version"
+
+
+def test_production_mode_accepts_legacy_seconds_triviality_receipt() -> None:
+    task = _production_task()
+    metadata = dict(task.metadata)
+    metadata.pop("triviality_budget_heartbeats")
+    legacy = task.model_copy(update={"metadata": metadata})
+    legacy = legacy.model_copy(
+        update={"metadata": {**legacy.metadata, "gate_receipt_sha256": _legacy_procedural_gate_receipt_sha256(legacy)}}
+    )
+
+    assert production_supply_rejection_reason(legacy) == ""
 
 
 def test_production_mode_rejects_unpinned_operator_params() -> None:
