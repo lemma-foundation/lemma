@@ -23,6 +23,9 @@ cache_sync_output="$("$uv_bin" run python "$script_dir/lemma-sync-active-registr
 if [[ -n "$cache_sync_output" ]]; then
   echo "$cache_sync_output"
 fi
+if [[ "$cache_sync_output" == *'"cache": "present"'* || "$cache_sync_output" == *'"cache": "hydrated"'* ]]; then
+  exit 0
+fi
 if [[ -n "${LEMMA_ACTIVE_REGISTRY_CACHE_INDEX_URL:-}" && "$cache_sync_output" == *missing_public_index_row* ]]; then
   echo '{"idle":true,"reason":"public active registry cache not published yet"}'
   exit 0

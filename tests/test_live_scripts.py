@@ -108,6 +108,8 @@ def test_active_registry_prebuild_idles_until_public_cache_is_published() -> Non
     prebuild = (ROOT / "scripts" / "lemma-active-registry-prebuild").read_text(encoding="utf-8")
 
     assert "cache_sync_output=" in prebuild
+    assert '\'"cache": "present"\'' in prebuild
+    assert '\'"cache": "hydrated"\'' in prebuild
     assert "LEMMA_ACTIVE_REGISTRY_CACHE_INDEX_URL" in prebuild
     assert "missing_public_index_row" in prebuild
     assert "public active registry cache not published yet" in prebuild
