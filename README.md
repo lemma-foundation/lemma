@@ -19,8 +19,8 @@ The goal is simple: turn proof search into verifier-checked network work.
 2. Miners search for proofs using any stack they want.
 3. Submissions bind a proof to a specific active task.
 4. Validators run the pinned Lean verifier.
-5. Rank-0 accepted proofs earn credit; unsolved slots stay unearned.
-6. Accepted results are recorded for replay and audit.
+5. The first eligible accepted proof earns credit; unsolved slots stay unearned.
+6. Accepted results can be mirrored for replay.
 
 ## What Lemma Records
 
@@ -35,13 +35,7 @@ Accepted rows contain the data needed to rerun and inspect a result:
 - verification result;
 - corpus graph links.
 
-The subnet owner publishes canonical snapshots from accepted rows. Validators can publish the same kind of mirrors if they configure storage, but publishing is not mandatory for validation.
-
-## Why Lean And Math
-
-Lean gives Lemma a mature, deterministic verifier. A proof either passes in the pinned environment or it fails.
-
-Mathematics gives the competition a clean target because correctness can be checked mechanically while still supporting hard, varied proof work.
+The subnet owner publishes canonical snapshots from accepted rows. Validators can publish similar mirrors if they configure storage, but publishing is not required for validation.
 
 ## Quick Start: Miners
 
@@ -54,7 +48,7 @@ uv run lemma status
 uv run lemma mine --once --prover-command "python prover.py" --output submission.json
 ```
 
-`lemma mine` is the reference client and smoke path, not the official mining strategy. Competitive miners can replace the CLI entirely as long as they produce valid task-bound proof submissions.
+The mining docs are intentionally sparse. `lemma mine` is the setup and smoke path, not the strategy. The goal is to build an agent or system that proves active tasks; use Cursor, Claude Code, Codex, Antigravity, or any other tool that helps you set up `lemma`, configure `btcli`, inspect tasks, and improve your prover. Miners with the best strategies win.
 
 ## Quick Start: Validators
 
@@ -66,18 +60,13 @@ uv run lemma setup
 uv run lemma validate --once --submission-spool submission-spool --no-set-weights
 ```
 
-The validator path fetches active tasks, validates task-bound submissions, runs Lean, scores accepted proofs, withholds unsolved-slot value from current solvers, and writes local record deltas.
-The submission spool is a file inbox for miner submission JSON files; consumed files move to `processed/` after a successful validator pass.
-`--bucket-reveals-dir` is the live inbox for the mainnet-shaped path, and `--bucket-reveals-jsonl` is the fixture-file form: a miner bucket reveal must match the miner's on-chain committed Merkle root before it can enter scoring. One directory pass scores one reveal tempo; processed files move to `processed/`, and older top-level reveal files move to `stale/`. Add `--verify-chain-commitments` to read the miner's on-chain bucket commitment and `--verify-drand-reveals` to decrypt bucket ciphertexts and require the decrypted proof to match the revealed proof; production mode enables both checks for bucket reveals. Miners can package ciphertext blobs with `lemma miner bucket publish`. Live validators can also pass `--miner-buckets-json` with public miner bucket URLs plus the reveal drand round/signature; the validator polls canonical `tempo_<t>/slot_<i>.bin` objects and builds the same reveal rows itself.
-Every validator pass writes canonical active-pool and accepted-entry directories under the configured canonical output root. Live weight writes require both `LEMMA_ENABLE_SET_WEIGHTS=1` and `--set-weights`; live tempo commitments require both `LEMMA_ENABLE_SET_COMMITMENT=1` and `--set-commitment`. Smoke passes should stay on `--no-set-weights` and omit `--set-commitment`.
-When a live write is attempted, the validator appends a public-safe local receipt to `weight-submissions.jsonl` under `LEMMA_OPERATOR_DATA_DIR`, including the resolved UID vector and extrinsic hash when the Bittensor client returns one.
-Production mode additionally requires procedural depth-2 paid supply rebuilt from a pinned public source pool plus prior accepted-entry substrate mirror, chain/drand epoch randomness, drand-keyed operator parameters from the chain-pinned Lean AST/elaborator bundle, public source-pool receipts, public novelty-cache receipts, public burn-rate retargeting for `T(t)`, hotkey-authenticated miner submissions, commit/reveal fields on revealed submissions, network-disabled Lean verification, kernel-normal canonical statement hashes for procedural novelty, recorded Lean kernel dependencies for accepted-proof slot weights, and strong Lean-derived proof identity for paid rewards. Registry files can be mirrored as caches; they are not the procedural problem authority.
+The validator path fetches active tasks, checks task-bound submissions with Lean, scores accepted proofs, and writes local result records. Use `--no-set-weights` for smoke runs. Live validation, bucket reveals, commitments, and production settings are covered in [Validator Guide](docs/validator.md) and [Production](docs/production.md).
 
 ## Try The Loop Locally
 
 Use [examples/operator-smoke](examples/operator-smoke/README.md) to build a pinned registry, package one proof submission, run a validator pass, and export corpus artifacts.
 
-For production-shaped supply, validators rebuild deterministic depth-2 procedural rows from public inputs before configuring the active pool. Each row carries the operator-bundle version, bundle hash, ordered operators, drand-keyed params, input/output statement hashes, kernel-normal `kernel_canonical_hash`, public source-pool receipt, public novelty-cache receipt, and a pre-proof import-graph slot estimate. Accepted proof rows replace that estimate with the slot weight computed from the verifier-recorded Lean kernel dependencies. The detailed operator path lives in [Operator Registry Flow](docs/operator-registry-flow.md). Curated Mathlib and mixed supply remain useful for local smoke and curriculum development. SN467 burn-in uses the paid mainnet supply path on the test chain.
+For production-shaped supply, validators rebuild active tasks from public inputs before configuring the active pool. The detailed path lives in [Operator Registry Flow](docs/operator-registry-flow.md).
 
 ## Corpus Export
 
@@ -87,7 +76,7 @@ Release and export tooling is documented in [Corpus](docs/corpus.md).
 
 ## Scoring
 
-Each epoch has `K` active paid theorem slots. A miner earns one credit for the rank-0 unique accepted proof for a slot. On the mainnet-shaped path, rank-0 is earliest Merkle-root commit block, with proof identity as the deterministic tie-break. Unsolved slots remain unearned by default.
+Each epoch has `K` active paid theorem slots. A miner earns credit when their accepted proof is first for a slot under the current scoring rules. Unsolved slots remain unearned by default.
 
 ```text
 score = sum(winning_slot_weight) / sum(active_slot_weights)

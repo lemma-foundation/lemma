@@ -2,9 +2,11 @@
 
 Miners solve Lean theorem-proving tasks.
 
-Your job is to fetch active tasks, produce a verifier-accepted proof, verify it locally, and serve or package the task-bound submission for validators. For Lean tasks, the proof is a `Submission.lean` file.
+Your job is to fetch active tasks, produce Lean proof code, check it locally, and package the task-bound submission for validators. For Lean tasks, the proof is a `Submission.lean` file.
 
-The public CLI is only the reference path. It proves the protocol can be used end to end; it is not an optimization framework or the expected ceiling for serious miners.
+This guide is intentionally sparse. The CLI proves the protocol can be used end to end; it is not a mining strategy.
+
+The competition is in the prover you build around it. Use Cursor, Claude Code, Codex, Antigravity, or any other agentic tool that helps you set up `lemma`, configure `btcli`, inspect active tasks, run Lean, repair failures, and improve your search loop. Miners with the best strategies win.
 
 ## Basic Flow
 
@@ -33,7 +35,7 @@ The configured prover command receives one JSON task on stdin and returns JSON w
 
 ## Custom Miners
 
-Competitive miners can replace the CLI entirely. The contract is the task registry plus a valid task-bound proof submission; how a miner gets there is open. Agents, custom Lean worker pools, model-training loops, remote schedulers, direct protocol clients, or non-Python implementations are all fine if the validator accepts the output.
+Competitive miners can replace the CLI entirely. The contract is the task registry plus a valid task-bound proof submission. Agents, custom Lean worker pools, model-training loops, remote schedulers, direct protocol clients, or non-Python implementations are all fine if they produce accepted proofs.
 
 Mainnet-shaped runs write timelocked blobs to the miner bucket and anchor rank with a Merkle-root chain commitment. The advanced helper packages local submissions into the exact public bucket keys validators poll:
 
@@ -66,4 +68,4 @@ The provider is not scored. Lemma only checks the final Lean proof. Set `LEMMA_P
 
 ## Reward Rule
 
-The rank-0 unique proof for an active task earns one verified unit in the validator epoch. On the bucket/commitment path, rank-0 means the earliest valid Merkle-root commit block. Duplicate proofs, failed proofs, changed targets, prose explanations, and unauthenticated live submissions do not earn credit. Unsolved slots do not increase the payout for solved slots.
+The first eligible accepted proof for an active task earns credit. On the bucket/commitment path, "first" is the earliest valid Merkle-root commit block, with proof identity as the deterministic tie-break. Duplicate proofs, failed proofs, changed targets, prose explanations, and unauthenticated live submissions do not earn credit. Unsolved slots do not increase the payout for solved slots.
