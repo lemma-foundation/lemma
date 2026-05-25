@@ -11,8 +11,8 @@ from lemma.common.config import LemmaSettings
 from lemma.corpus import build_corpus_row, write_jsonl
 from lemma.lean.sandbox import VerifyResult
 from lemma.lean.workspace import materialize_workspace
-from lemma.protocol_invariants import enforce_production_invariants
 from lemma.problems.base import Problem
+from lemma.protocol_invariants import enforce_production_invariants
 from lemma.submissions import build_submission
 from lemma.supply.gates import (
     TRIVIALITY_STACK,
