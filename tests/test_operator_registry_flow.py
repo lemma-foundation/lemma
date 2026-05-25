@@ -652,7 +652,7 @@ def test_operator_reports_use_curriculum_controlled_active_window(
     assert preflight_payload.active_K == 2
     assert preflight_payload.frontier_depth == 2
     assert checks["active_window"].detail.startswith("2 active / K=2 at frontier_depth=2")
-    assert checks["curriculum_controller"].detail.endswith("current_K=2 can_increase_K=true")
+    assert checks["curriculum_controller"].detail.endswith("current_K=2 cost_cap=off can_increase_K=true")
 
     diagnostics_path = tmp_path / "operator-diagnostics.json"
     diagnostics = runner.invoke(main, ["operator", "diagnostics", "--output", str(diagnostics_path)], env=env)

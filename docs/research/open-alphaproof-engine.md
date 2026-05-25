@@ -32,7 +32,7 @@ Supply streams include Mathlib proof erasure, Mathlib perturbations, proof-state
 The active pool has two separate controls:
 
 - `frontier_depth`: the protocol difficulty proxy, driven by EMA solve rate.
-- `active_K`: the paid throughput target, driven by validator capacity, with solve rate only as a safety signal.
+- `active_K`: the paid throughput target, capped by validator capacity and the public cost budget.
 
 If solve rate is zero, the frontier does not step backward into already exposed tasks. The controller halts frontier advancement and draws replacements from hard-target variant/scaffold streams around stalled targets.
 

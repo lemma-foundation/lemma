@@ -105,6 +105,10 @@ class OperatorCurriculumSummary(BaseModel):
     validator_capacity: int = Field(ge=0)
     k_min: int = Field(ge=1)
     k_max: int = Field(ge=1)
+    cost_budget_s: float = Field(ge=0.0)
+    base_task_cost_s: float = Field(ge=0.0)
+    depth_cost_multiplier: float = Field(ge=1.0)
+    current_cost_limited_K: int | None = Field(default=None, ge=1)
     current_active_K: int = Field(ge=1)
     can_increase_K: bool
     latest_tempo: int | None = Field(default=None, ge=0)
@@ -162,13 +166,33 @@ def _summarize_artifacts(settings: LemmaSettings) -> OperatorArtifactSummary:
     )
 
 
-def _summarize_curriculum(settings: LemmaSettings, *, current_active_K: int) -> OperatorCurriculumSummary:
+def _summarize_curriculum(
+    settings: LemmaSettings,
+    *,
+    current_active_K: int,
+    current_frontier_depth: int,
+) -> OperatorCurriculumSummary:
     latest = None
     if settings.curriculum_retarget_enabled and settings.curriculum_state_jsonl is not None:
         from lemma.supply.controller import read_curriculum_records
 
         records = read_curriculum_records(settings.curriculum_state_jsonl)
         latest = records[-1] if records else None
+    from lemma.supply.controller import CurriculumConfig, cost_limited_k, target_active_k
+
+    config = CurriculumConfig(
+        beta=settings.curriculum_beta,
+        low_band=settings.curriculum_low_band,
+        high_band=settings.curriculum_high_band,
+        k_min=settings.curriculum_k_min,
+        k_max=settings.curriculum_k_max,
+        cost_budget_s=settings.curriculum_cost_budget_s,
+        base_task_cost_s=settings.curriculum_base_task_cost_s,
+        depth_cost_multiplier=settings.curriculum_depth_cost_multiplier,
+    )
+    current_cost_cap = cost_limited_k(current_frontier_depth, config)
+    validator_capacity = settings.validator_capacity or current_active_K
+    target_k = target_active_k(validator_capacity, frontier_depth=current_frontier_depth, config=config)
     return OperatorCurriculumSummary(
         schema_version=1,
         enabled=settings.curriculum_retarget_enabled,
@@ -176,11 +200,14 @@ def _summarize_curriculum(settings: LemmaSettings, *, current_active_K: int) -> 
         validator_capacity=settings.validator_capacity,
         k_min=settings.curriculum_k_min,
         k_max=settings.curriculum_k_max,
+        cost_budget_s=settings.curriculum_cost_budget_s,
+        base_task_cost_s=settings.curriculum_base_task_cost_s,
+        depth_cost_multiplier=settings.curriculum_depth_cost_multiplier,
+        current_cost_limited_K=current_cost_cap,
         current_active_K=current_active_K,
         can_increase_K=(
             settings.curriculum_retarget_enabled
-            and settings.validator_capacity > current_active_K
-            and settings.curriculum_k_max > current_active_K
+            and target_k > current_active_K
         ),
         latest_tempo=latest.tempo if latest is not None else None,
         latest_active_K=latest.active_K if latest is not None else None,
@@ -298,7 +325,11 @@ def _build_operator_state(
         spool_ok, spool_detail = _ensure_dir(settings.submission_spool_dir)
         checks.append(_check("submission_spool_dir", spool_ok, spool_detail))
 
-    curriculum_summary = _summarize_curriculum(settings, current_active_K=active_window_settings.active_task_count)
+    curriculum_summary = _summarize_curriculum(
+        settings,
+        current_active_K=active_window_settings.active_task_count,
+        current_frontier_depth=active_window_settings.frontier_depth,
+    )
     checks.append(
         _check(
             "curriculum_controller",
@@ -311,6 +342,7 @@ def _build_operator_state(
                     f"state_public={str(curriculum_summary.state_public).lower()} "
                     f"k_range={curriculum_summary.k_min}-{curriculum_summary.k_max} "
                     f"current_K={curriculum_summary.current_active_K} "
+                    f"cost_cap={curriculum_summary.current_cost_limited_K or 'off'} "
                     f"can_increase_K={str(curriculum_summary.can_increase_K).lower()}"
                 )
             ),
@@ -419,7 +451,11 @@ def build_operator_diagnostics(settings: LemmaSettings) -> OperatorDiagnosticsRe
         frontier_depth=preflight.frontier_depth,
         active_task_ids=active_task_ids,
         registry_inspect=registry_inspect,
-        curriculum=_summarize_curriculum(settings, current_active_K=preflight.active_K),
+        curriculum=_summarize_curriculum(
+            settings,
+            current_active_K=preflight.active_K,
+            current_frontier_depth=preflight.frontier_depth,
+        ),
         artifacts=_summarize_artifacts(settings),
     )
 

@@ -845,6 +845,9 @@ def _retarget_curriculum_after_validation(settings: LemmaSettings, *, tempo: int
         high_band=settings.curriculum_high_band,
         k_min=settings.curriculum_k_min,
         k_max=settings.curriculum_k_max,
+        cost_budget_s=settings.curriculum_cost_budget_s,
+        base_task_cost_s=settings.curriculum_base_task_cost_s,
+        depth_cost_multiplier=settings.curriculum_depth_cost_multiplier,
     )
     previous_state = CurriculumState(
         active_K=active_k,

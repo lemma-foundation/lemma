@@ -69,6 +69,12 @@ def test_current_problem_snapshot_is_public_safe() -> None:
     assert payload["tempo"] == 0
     assert payload["active_tempo_source"] == "wall_clock"
     assert payload["active_tempo_seconds"] == 4320
+    assert payload["validator_capacity"] == 0
+    assert payload["cost_budget_s"] == 0.0
+    assert payload["base_task_cost_s"] == 0.0
+    assert payload["depth_cost_multiplier"] == 2.0
+    assert "cost_limited_K" not in payload
+    assert "estimated_task_cost_s" not in payload
     assert payload["task_count"] == 2
     assert {task["task_id"] for task in payload["tasks"]} == {"lemma.test.alpha", "lemma.test.beta"}
     assert "proof_script" not in text
@@ -134,6 +140,28 @@ def test_current_problem_snapshot_reports_curriculum_effective_window(tmp_path: 
     assert snapshot.frontier_depth == 2
     assert snapshot.task_count == 1
     assert {task.frontier_depth for task in snapshot.tasks} == {2}
+
+
+def test_current_problem_snapshot_reports_cost_cap() -> None:
+    settings = LemmaSettings(
+        active_task_count=2,
+        frontier_depth=2,
+        active_queue_seed="pytest",
+        validator_capacity=10,
+        curriculum_cost_budget_s=100,
+        curriculum_base_task_cost_s=10,
+        curriculum_depth_cost_multiplier=2,
+    )
+
+    snapshot = build_current_problems_snapshot(settings, registry=_registry(), tempo=0)
+    payload = snapshot.model_dump(mode="json", exclude_none=True)
+
+    assert payload["validator_capacity"] == 10
+    assert payload["cost_budget_s"] == 100.0
+    assert payload["base_task_cost_s"] == 10.0
+    assert payload["depth_cost_multiplier"] == 2.0
+    assert payload["cost_limited_K"] == 2
+    assert payload["estimated_task_cost_s"] == 40.0
 
 
 def test_current_problem_snapshot_reports_chain_epoch_metadata(monkeypatch: pytest.MonkeyPatch) -> None:

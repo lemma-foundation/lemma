@@ -178,6 +178,9 @@ def test_operator_curriculum_summary_contract() -> None:
         "validator_capacity",
         "k_min",
         "k_max",
+        "cost_budget_s",
+        "base_task_cost_s",
+        "depth_cost_multiplier",
         "current_active_K",
         "can_increase_K",
     } <= required

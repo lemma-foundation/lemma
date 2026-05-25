@@ -240,6 +240,17 @@ class LemmaSettings(BaseSettings):
     curriculum_high_band: float = Field(default=0.70, ge=0.0, le=1.0, validation_alias="LEMMA_CURRICULUM_HIGH_BAND")
     curriculum_k_min: int = Field(default=1, ge=1, validation_alias="LEMMA_CURRICULUM_K_MIN")
     curriculum_k_max: int = Field(default=5000, ge=1, validation_alias="LEMMA_CURRICULUM_K_MAX")
+    curriculum_cost_budget_s: float = Field(default=0.0, ge=0.0, validation_alias="LEMMA_CURRICULUM_COST_BUDGET_S")
+    curriculum_base_task_cost_s: float = Field(
+        default=0.0,
+        ge=0.0,
+        validation_alias="LEMMA_CURRICULUM_BASE_TASK_COST_S",
+    )
+    curriculum_depth_cost_multiplier: float = Field(
+        default=2.0,
+        ge=1.0,
+        validation_alias="LEMMA_CURRICULUM_DEPTH_COST_MULTIPLIER",
+    )
     schema_version: str = Field(default="v2", validation_alias="LEMMA_SCHEMA_VERSION")
     enabled_domains: tuple[str, ...] = Field(default=("lean",), validation_alias="LEMMA_ENABLED_DOMAINS")
     experimental_domains: tuple[str, ...] = Field(default=(), validation_alias="LEMMA_EXPERIMENTAL_DOMAINS")

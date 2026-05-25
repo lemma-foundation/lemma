@@ -39,4 +39,4 @@ The previous-weight fallback rule is removed from scoring.
 - Valid alternates become corpus rows with `rewarded: false`.
 - Duplicate proof identities do not create extra rows or credit.
 
-No subjective scoring is used. Held-out benchmark tasks are not paid tasks. `frontier_depth` and `K` are retargeted from public tempo state: validator capacity moves `K`, and solve-rate history moves the frontier depth. Production miners and validators must replay the same published state before deriving the next active window, and retarget rows activate only after one full tempo of public replay lag.
+No subjective scoring is used. Held-out benchmark tasks are not paid tasks. `frontier_depth` and `K` are retargeted from public tempo state: solve-rate history moves the frontier depth, while validator capacity and the public cost budget cap `K`. Production miners and validators must replay the same published state before deriving the next active window, and retarget rows activate only after one full tempo of public replay lag.

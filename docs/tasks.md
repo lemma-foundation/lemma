@@ -162,8 +162,9 @@ Tasks solved by the pinned triviality tactic stack are excluded from paid activa
 
 The active pool is a deterministic queue window of size `K`.
 
-- `K` controls paid throughput and validator load.
+- `K` controls paid throughput and validator load, capped by validator capacity and the public cost budget.
 - `queue_depth` / `frontier_depth` is the protocol difficulty proxy.
+- Human difficulty labels are compatibility/display metadata, not protocol inputs.
 - Solved slots advance.
 - Expired unsolved slots are parked.
 - Zero solve rate halts frontier advancement and requests hard-target variants around stalled tasks.

@@ -16,6 +16,9 @@ class CurriculumConfig:
     high_band: float = 0.70
     k_min: int = 20
     k_max: int = 5000
+    cost_budget_s: float = 0.0
+    base_task_cost_s: float = 0.0
+    depth_cost_multiplier: float = 2.0
 
 
 @dataclass(frozen=True)
@@ -98,13 +101,19 @@ def retarget_curriculum(
     validator_capacity: int,
     config: CurriculumConfig,
 ) -> CurriculumDecision:
-    """Retarget depth from solve rate and K from validator capacity."""
+    """Retarget depth from solve rate and K from validator/cost capacity."""
     if state.active_K <= 0:
         raise ValueError("active_K must be positive")
     if solved_slots < 0:
         raise ValueError("solved_slots must be non-negative")
     if not 0 <= config.beta < 1:
         raise ValueError("beta must be in [0, 1)")
+    if config.k_max < config.k_min:
+        raise ValueError("k_max must be >= k_min")
+    if config.cost_budget_s < 0 or config.base_task_cost_s < 0:
+        raise ValueError("cost budget and base task cost must be non-negative")
+    if config.depth_cost_multiplier < 1:
+        raise ValueError("depth cost multiplier must be at least 1")
 
     solve_rate = min(1.0, solved_slots / state.active_K)
     ema = config.beta * state.ema_solve_rate + (1 - config.beta) * solve_rate
@@ -122,18 +131,40 @@ def retarget_curriculum(
         action = "hold_frontier_and_request_variants"
         variants = True
 
-    target_k = max(config.k_min, min(config.k_max, validator_capacity))
+    target_k = target_active_k(validator_capacity, frontier_depth=frontier, config=config)
     active_k = state.active_K
-    if target_k > active_k and ema >= config.low_band:
+    frontier_advanced = frontier > state.frontier_depth
+    if target_k > active_k and ema >= config.low_band and not frontier_advanced:
         active_k = min(target_k, active_k + max(1, active_k // 4))
     elif target_k < active_k:
-        active_k = max(target_k, active_k - max(1, active_k // 5))
+        active_k = target_k
 
     return CurriculumDecision(
         state=CurriculumState(active_K=active_k, frontier_depth=frontier, ema_solve_rate=ema),
         action=action,
         variant_stream_requested=variants,
     )
+
+
+def estimated_task_cost_s(frontier_depth: int, config: CurriculumConfig) -> float | None:
+    if config.cost_budget_s <= 0 or config.base_task_cost_s <= 0:
+        return None
+    return config.base_task_cost_s * (config.depth_cost_multiplier**frontier_depth)
+
+
+def cost_limited_k(frontier_depth: int, config: CurriculumConfig) -> int | None:
+    cost = estimated_task_cost_s(frontier_depth, config)
+    if cost is None:
+        return None
+    return max(1, int(config.cost_budget_s // cost))
+
+
+def target_active_k(validator_capacity: int, *, frontier_depth: int, config: CurriculumConfig) -> int:
+    target = max(config.k_min, min(config.k_max, validator_capacity))
+    cost_cap = cost_limited_k(frontier_depth, config)
+    if cost_cap is not None:
+        target = min(target, cost_cap)
+    return max(1, target)
 
 
 def curriculum_retarget_receipt(
@@ -148,7 +179,9 @@ def curriculum_retarget_receipt(
     if previous_state.active_K <= 0:
         raise ValueError("active_K must be positive")
     solve_rate = min(1.0, solved_slots / previous_state.active_K)
-    return {
+    cost_cap = cost_limited_k(decision.state.frontier_depth, config)
+    estimated_cost = estimated_task_cost_s(decision.state.frontier_depth, config)
+    receipt: dict[str, object] = {
         "version": CURRICULUM_RETARGET_VERSION,
         "activation_tempo": tempo + 2,
         "previous_active_K": previous_state.active_K,
@@ -163,8 +196,15 @@ def curriculum_retarget_receipt(
             "high_band": config.high_band,
             "k_min": config.k_min,
             "k_max": config.k_max,
+            "cost_budget_s": config.cost_budget_s,
+            "base_task_cost_s": config.base_task_cost_s,
+            "depth_cost_multiplier": config.depth_cost_multiplier,
         },
         "next_active_K": decision.state.active_K,
         "next_frontier_depth": decision.state.frontier_depth,
         "next_ema_solve_rate": decision.state.ema_solve_rate,
     }
+    if cost_cap is not None and estimated_cost is not None:
+        receipt["next_cost_limited_K"] = cost_cap
+        receipt["next_estimated_task_cost_s"] = estimated_cost
+    return receipt

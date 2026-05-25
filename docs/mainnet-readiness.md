@@ -199,7 +199,7 @@ Closed burn-in is at least 72 continuous testnet hours with controlled miners. P
 For both burn-ins:
 
 - paid task supply is procedural, fresh, depth-2, validator-rebuildable from a SHA-pinned public source pool, and generated from chain/drand epoch randomness;
-- active `K` and frontier depth are dynamic and derived from the latest eligible public curriculum tempo state after one full tempo of replay lag;
+- active `K` and frontier depth are dynamic and derived from the latest eligible public curriculum tempo state after one full tempo of replay lag, with `K` capped by the public validator-cost budget;
 - miner submissions are bucket reveals authenticated by miner chain commitments;
 - miner bucket reveals fail closed unless their `(slot_index, ciphertext_sha256)` Merkle root matches the miner's on-chain committed root and drand decryption matches the revealed proof;
 - Lean verification runs with networking disabled;

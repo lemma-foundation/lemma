@@ -89,9 +89,12 @@ LEMMA_CURRICULUM_RETARGET=1
 LEMMA_CURRICULUM_STATE_JSONL=validator-data/curriculum.jsonl
 LEMMA_CURRICULUM_STATE_PUBLIC=1
 LEMMA_VALIDATOR_CAPACITY=20
+LEMMA_CURRICULUM_COST_BUDGET_S=2700
+LEMMA_CURRICULUM_BASE_TASK_COST_S=180
+LEMMA_CURRICULUM_DEPTH_COST_MULTIPLIER=2
 ```
 
-The retarget loop records one row per tempo. Later tempos load the latest prior row: validator capacity moves `K`, and solve rate moves `frontier_depth`. Production mode accepts retargeting only when `LEMMA_CURRICULUM_STATE_PUBLIC=1`; operators should set `LEMMA_CURRICULUM_STATE_JSONL` to a state file synced from the canonical public corpus artifacts, not a private scratch log.
+The retarget loop records one row per tempo. Later tempos load the latest prior row: solve rate moves `frontier_depth`, and `K` is capped by validator capacity plus the configured cost budget. A frontier increase never grows `K` in the same retarget step; if the estimated cost at the new frontier is too high, the cost cap lowers `K` immediately. Production mode accepts retargeting only when `LEMMA_CURRICULUM_STATE_PUBLIC=1`; operators should set `LEMMA_CURRICULUM_STATE_JSONL` to a state file synced from the canonical public corpus artifacts, not a private scratch log.
 
 Prebuild the live tempo cache before miners run:
 

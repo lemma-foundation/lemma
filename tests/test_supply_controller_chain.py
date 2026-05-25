@@ -102,7 +102,16 @@ def test_curriculum_retarget_receipt_replays_public_state() -> None:
         "solved_slots": 0,
         "solve_rate": 0.0,
         "validator_capacity": 50,
-        "config": {"beta": 0.8, "low_band": 0.4, "high_band": 0.7, "k_min": 10, "k_max": 100},
+        "config": {
+            "beta": 0.8,
+            "low_band": 0.4,
+            "high_band": 0.7,
+            "k_min": 10,
+            "k_max": 100,
+            "cost_budget_s": 0.0,
+            "base_task_cost_s": 0.0,
+            "depth_cost_multiplier": 2.0,
+        },
         "next_active_K": 20,
         "next_frontier_depth": 4,
         "next_ema_solve_rate": 0.32000000000000006,
@@ -270,6 +279,62 @@ def test_curriculum_separates_depth_from_validator_capacity() -> None:
     assert harder.state.active_K == 20
     assert more_capacity.state.frontier_depth == 2
     assert more_capacity.state.active_K > 20
+
+
+def test_curriculum_does_not_raise_k_while_advancing_frontier() -> None:
+    config = CurriculumConfig(beta=0.0, low_band=0.4, high_band=0.7, k_min=10, k_max=100)
+    state = CurriculumState(active_K=20, frontier_depth=2, ema_solve_rate=0.5)
+
+    decision = retarget_curriculum(state, solved_slots=18, validator_capacity=100, config=config)
+
+    assert decision.state.frontier_depth == 3
+    assert decision.state.active_K == 20
+
+
+def test_curriculum_cost_budget_hard_caps_k_at_higher_frontier() -> None:
+    config = CurriculumConfig(
+        beta=0.0,
+        low_band=0.4,
+        high_band=0.7,
+        k_min=10,
+        k_max=100,
+        cost_budget_s=100,
+        base_task_cost_s=10,
+        depth_cost_multiplier=2,
+    )
+    state = CurriculumState(active_K=10, frontier_depth=1, ema_solve_rate=0.5)
+
+    decision = retarget_curriculum(state, solved_slots=10, validator_capacity=100, config=config)
+
+    assert decision.state.frontier_depth == 2
+    assert decision.state.active_K == 2
+
+
+def test_curriculum_retarget_receipt_exposes_cost_cap_for_replay() -> None:
+    config = CurriculumConfig(
+        beta=0.0,
+        low_band=0.4,
+        high_band=0.7,
+        k_min=10,
+        k_max=100,
+        cost_budget_s=100,
+        base_task_cost_s=10,
+        depth_cost_multiplier=2,
+    )
+    state = CurriculumState(active_K=10, frontier_depth=1, ema_solve_rate=0.5)
+    decision = retarget_curriculum(state, solved_slots=10, validator_capacity=100, config=config)
+    receipt = curriculum_retarget_receipt(
+        tempo=7,
+        previous_state=state,
+        solved_slots=10,
+        validator_capacity=100,
+        config=config,
+        decision=decision,
+    )
+
+    assert receipt["next_cost_limited_K"] == 2
+    assert receipt["next_estimated_task_cost_s"] == 40
+    assert receipt["next_active_K"] == 2
 
 
 def test_triviality_budget_retargets_from_public_burn_history() -> None:

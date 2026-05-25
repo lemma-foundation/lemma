@@ -60,6 +60,12 @@ class CurrentProblemsSnapshot(BaseModel):
     active_epoch_randomness_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     active_selection_seed_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     frontier_depth: int = Field(ge=0)
+    validator_capacity: int = Field(default=0, ge=0)
+    cost_budget_s: float = Field(default=0.0, ge=0.0)
+    base_task_cost_s: float = Field(default=0.0, ge=0.0)
+    depth_cost_multiplier: float = Field(default=2.0, ge=1.0)
+    cost_limited_K: int | None = Field(default=None, ge=1)
+    estimated_task_cost_s: float | None = Field(default=None, ge=0.0)
     active_queue_seed: str
     task_count: int = Field(ge=0)
     tasks: tuple[CurrentProblem, ...]
@@ -130,6 +136,7 @@ def build_current_problems_snapshot(
 ) -> CurrentProblemsSnapshot:
     """Build the public active-task snapshot without proof or operator state."""
     from lemma.protocol_invariants import enforce_production_invariants
+    from lemma.supply.controller import CurriculumConfig, cost_limited_k, estimated_task_cost_s
     from lemma.validator import (
         active_epoch_randomness_sha256,
         active_selection_seed_sha256,
@@ -141,6 +148,16 @@ def build_current_problems_snapshot(
 
     active_tempo = current_active_tempo(settings) if tempo is None else tempo
     effective_settings = curriculum_controlled_settings(settings, tempo=active_tempo)
+    curriculum_config = CurriculumConfig(
+        beta=effective_settings.curriculum_beta,
+        low_band=effective_settings.curriculum_low_band,
+        high_band=effective_settings.curriculum_high_band,
+        k_min=effective_settings.curriculum_k_min,
+        k_max=effective_settings.curriculum_k_max,
+        cost_budget_s=effective_settings.curriculum_cost_budget_s,
+        base_task_cost_s=effective_settings.curriculum_base_task_cost_s,
+        depth_cost_multiplier=effective_settings.curriculum_depth_cost_multiplier,
+    )
     task_registry = registry or task_registry_for_validation(effective_settings, tempo=active_tempo)
     epoch_metadata = _chain_epoch_metadata(effective_settings, active_tempo)
     enforce_production_invariants(settings, task_registry)
@@ -180,6 +197,12 @@ def build_current_problems_snapshot(
             else None
         ),
         frontier_depth=effective_settings.frontier_depth,
+        validator_capacity=effective_settings.validator_capacity,
+        cost_budget_s=effective_settings.curriculum_cost_budget_s,
+        base_task_cost_s=effective_settings.curriculum_base_task_cost_s,
+        depth_cost_multiplier=effective_settings.curriculum_depth_cost_multiplier,
+        cost_limited_K=cost_limited_k(effective_settings.frontier_depth, curriculum_config),
+        estimated_task_cost_s=estimated_task_cost_s(effective_settings.frontier_depth, curriculum_config),
         active_queue_seed=effective_settings.active_queue_seed,
         task_count=len(tasks),
         tasks=tasks,

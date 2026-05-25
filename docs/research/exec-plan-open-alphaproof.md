@@ -28,7 +28,7 @@ This plan keeps the Lean verification spine intact and changes the public contra
 - Advance solved slots.
 - Park expired unsolved tasks.
 - Halt frontier advancement and request hard-target variants when solve rate stalls.
-- Keep `frontier_depth` as the difficulty proxy and `active_K` as throughput.
+- Keep `frontier_depth` as the difficulty proxy and `active_K` as cost-capped throughput.
 
 ## Phase 3: Supply Streams
 
