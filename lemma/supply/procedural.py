@@ -233,7 +233,7 @@ def _resolve_generation_workers(generation_workers: int | None) -> int:
         if raw.isdigit() and int(raw) > 0:
             configured = int(raw)
     if configured is None or configured <= 0:
-        return min(8, max(1, os.cpu_count() or 1))
+        return min(2, max(1, os.cpu_count() or 1))
     return max(1, configured)
 
 

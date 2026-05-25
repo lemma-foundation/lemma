@@ -308,7 +308,7 @@ def _resolve_lean_workers(settings: LemmaSettings) -> int:
     generation_workers = int(getattr(settings, "procedural_generation_workers", 0) or 0)
     if generation_workers > 0:
         return generation_workers
-    return min(8, max(1, os.cpu_count() or 1))
+    return min(2, max(1, os.cpu_count() or 1))
 
 
 def _novelty_status(
