@@ -420,6 +420,11 @@ def main() -> int:
         type=Path,
         help="copy tempo registry cache files into the corpus repo by registry hash",
     )
+    parser.add_argument(
+        "--registry-cache-only",
+        action="store_true",
+        help="publish only synced registry cache files and their public index",
+    )
     parser.add_argument("--skip-hippius", action="store_true", help="prepare files but do not upload to Hippius")
     parser.add_argument("--skip-github", action="store_true", help="prepare files but do not create the GitHub release")
     parser.add_argument(
@@ -435,6 +440,39 @@ def main() -> int:
     repo = args.repo.expanduser().resolve()
     if args.pull:
         run(["git", "-C", str(repo), "pull", "--ff-only"], dry_run=args.dry_run)
+
+    if args.registry_cache_only:
+        if args.sync_registry_cache_dir is None:
+            raise SystemExit("--registry-cache-only requires --sync-registry-cache-dir")
+        synced = sync_public_inputs(
+            repo,
+            args.netuid,
+            registry_cache_dir=args.sync_registry_cache_dir.resolve(),
+        )
+        committed_repo = (
+            commit_repo_changes(
+                repo,
+                netuid=args.netuid,
+                snapshot=args.snapshot,
+                push=args.push_repo,
+                dry_run=args.dry_run,
+            )
+            if args.commit_repo or args.push_repo
+            else False
+        )
+        print(
+            json.dumps(
+                {
+                    "netuid": args.netuid,
+                    "repo_committed": committed_repo,
+                    "repo_pushed": bool(committed_repo and args.push_repo),
+                    "synced": synced,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
 
     synced = sync_public_inputs(
         repo,

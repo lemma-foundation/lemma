@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from scripts.publish_corpus_snapshot import (
     github_release_command,
     hippius_commands,
     huggingface_commands,
+    main,
     public_repo_paths,
     release_notes,
     snapshot_id,
@@ -189,3 +191,39 @@ def test_sync_public_inputs_copies_only_publishable_live_outputs(tmp_path: Path)
     assert (repo / f"registries/sn467/{hashlib.sha256(legacy_registry.encode()).hexdigest()}.json").exists()
     index = json.loads((repo / "registries/sn467/index.json").read_text(encoding="utf-8"))
     assert index["registries"]["19958"] == {"path": f"{registry_sha}.json", "sha256": registry_sha}
+
+
+def test_registry_cache_only_skips_snapshot_artifacts(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:  # noqa: ANN001
+    repo = tmp_path / "lemma-corpus"
+    live = tmp_path / "registries"
+    registry_sha = "b" * 64
+    _write(
+        live / "tempo-19987.registry.json",
+        f'{{"schema_version": 1, "sha256": "{registry_sha}", "tasks": []}}\n',
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "publish_corpus_snapshot.py",
+            "--repo",
+            str(repo),
+            "--netuid",
+            "sn467",
+            "--sync-registry-cache-dir",
+            str(live),
+            "--registry-cache-only",
+        ],
+    )
+
+    assert main() == 0
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["synced"] == {"corpus_files": 0, "canonical_files": 0, "registry_files": 1}
+    assert output["repo_committed"] is False
+    assert (repo / f"registries/sn467/{registry_sha}.json").exists()
+    assert (repo / "registries/sn467/index.json").exists()
+    assert not (repo / "MANIFEST.sha256").exists()
+    assert not (repo / "canonical/sn467/storage-index.json").exists()
