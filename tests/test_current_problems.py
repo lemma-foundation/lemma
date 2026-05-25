@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from lemma.chain.epoch_randomness import EpochRandomness
 from lemma.common.config import LemmaSettings
 from lemma.current_problem_server import CurrentProblemService
 from lemma.current_problems import build_current_problems_snapshot, write_current_problems_snapshot
@@ -133,6 +134,44 @@ def test_current_problem_snapshot_reports_curriculum_effective_window(tmp_path: 
     assert snapshot.frontier_depth == 2
     assert snapshot.task_count == 1
     assert {task.frontier_depth for task in snapshot.tasks} == {2}
+
+
+def test_current_problem_snapshot_reports_chain_epoch_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_randomness(settings: LemmaSettings, *, tempo: int) -> EpochRandomness:
+        assert tempo == 3
+        return EpochRandomness(
+            netuid=settings.netuid,
+            tempo=tempo,
+            tempo_length=360,
+            anchor_block=1080,
+            anchor_block_hash="0xabc",
+            anchor_block_timestamp=1767225600,
+            drand_round=1,
+            drand_signature="sig",
+        )
+
+    monkeypatch.setattr("lemma.chain.epoch_randomness.resolve_chain_drand_epoch_randomness", fake_randomness)
+    settings = LemmaSettings(
+        active_task_count=1,
+        active_tempo_source="chain",
+        active_seed_mode="epoch_randomness",
+        active_epoch_randomness_source="chain_drand",
+        active_queue_seed="pytest",
+    )
+
+    snapshot = build_current_problems_snapshot(
+        settings,
+        registry=_registry(),
+        registry_is_active=True,
+        tempo=3,
+        include_randomness_hashes=False,
+    )
+
+    assert snapshot.active_tempo_blocks == 360
+    assert snapshot.epoch_start_block == 1080
+    assert snapshot.next_epoch_start_block == 1440
+    assert snapshot.epoch_started_at == "2026-01-01T00:00:00Z"
+    assert snapshot.estimated_next_epoch_starts_at == "2026-01-01T01:12:00Z"
 
 
 def test_current_problem_snapshot_can_render_active_registry_without_randomness() -> None:

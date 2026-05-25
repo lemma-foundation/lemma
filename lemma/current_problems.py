@@ -50,6 +50,11 @@ class CurrentProblemsSnapshot(BaseModel):
     tempo: int = Field(ge=0)
     active_tempo_source: Literal["wall_clock", "chain"] = "wall_clock"
     active_tempo_seconds: int = Field(ge=1)
+    active_tempo_blocks: int | None = Field(default=None, ge=1)
+    epoch_start_block: int | None = Field(default=None, ge=0)
+    next_epoch_start_block: int | None = Field(default=None, ge=0)
+    epoch_started_at: str | None = None
+    estimated_next_epoch_starts_at: str | None = None
     active_seed_mode: Literal["static", "epoch_randomness"] = "static"
     active_epoch_randomness_source: Literal["manual", "chain_drand"] = "manual"
     active_epoch_randomness_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
@@ -62,6 +67,26 @@ class CurrentProblemsSnapshot(BaseModel):
 
 def _timestamp() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _timestamp_from_unix(timestamp: int) -> str:
+    return datetime.fromtimestamp(timestamp, UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _chain_epoch_metadata(settings: LemmaSettings, tempo: int) -> dict[str, object]:
+    if settings.active_tempo_source != "chain" or settings.active_epoch_randomness_source != "chain_drand":
+        return {}
+    from lemma.chain.epoch_randomness import resolve_chain_drand_epoch_randomness
+
+    randomness = resolve_chain_drand_epoch_randomness(settings, tempo=tempo)
+    estimated_next_timestamp = randomness.anchor_block_timestamp + settings.active_tempo_seconds
+    return {
+        "active_tempo_blocks": randomness.tempo_length,
+        "epoch_start_block": randomness.anchor_block,
+        "next_epoch_start_block": randomness.anchor_block + randomness.tempo_length,
+        "epoch_started_at": _timestamp_from_unix(randomness.anchor_block_timestamp),
+        "estimated_next_epoch_starts_at": _timestamp_from_unix(estimated_next_timestamp),
+    }
 
 
 def _problem(task: LemmaTask) -> CurrentProblem:
@@ -109,6 +134,7 @@ def build_current_problems_snapshot(
     active_tempo = current_active_tempo(settings) if tempo is None else tempo
     effective_settings = curriculum_controlled_settings(settings, tempo=active_tempo)
     task_registry = registry or task_registry_for_validation(effective_settings, tempo=active_tempo)
+    epoch_metadata = _chain_epoch_metadata(effective_settings, active_tempo)
     enforce_production_invariants(settings, task_registry)
     active_tasks = (
         tuple(
@@ -128,6 +154,7 @@ def build_current_problems_snapshot(
         tempo=active_tempo,
         active_tempo_source=effective_settings.active_tempo_source,
         active_tempo_seconds=effective_settings.active_tempo_seconds,
+        **epoch_metadata,
         active_seed_mode=effective_settings.active_seed_mode,
         active_epoch_randomness_source=effective_settings.active_epoch_randomness_source,
         active_epoch_randomness_sha256=(
