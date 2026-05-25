@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, NamedTuple
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -65,6 +65,14 @@ class CurrentProblemsSnapshot(BaseModel):
     tasks: tuple[CurrentProblem, ...]
 
 
+class ChainEpochMetadata(NamedTuple):
+    active_tempo_blocks: int | None = None
+    epoch_start_block: int | None = None
+    next_epoch_start_block: int | None = None
+    epoch_started_at: str | None = None
+    estimated_next_epoch_starts_at: str | None = None
+
+
 def _timestamp() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
@@ -73,20 +81,20 @@ def _timestamp_from_unix(timestamp: int) -> str:
     return datetime.fromtimestamp(timestamp, UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def _chain_epoch_metadata(settings: LemmaSettings, tempo: int) -> dict[str, object]:
+def _chain_epoch_metadata(settings: LemmaSettings, tempo: int) -> ChainEpochMetadata:
     if settings.active_tempo_source != "chain" or settings.active_epoch_randomness_source != "chain_drand":
-        return {}
+        return ChainEpochMetadata()
     from lemma.chain.epoch_randomness import resolve_chain_drand_epoch_randomness
 
     randomness = resolve_chain_drand_epoch_randomness(settings, tempo=tempo)
     estimated_next_timestamp = randomness.anchor_block_timestamp + settings.active_tempo_seconds
-    return {
-        "active_tempo_blocks": randomness.tempo_length,
-        "epoch_start_block": randomness.anchor_block,
-        "next_epoch_start_block": randomness.anchor_block + randomness.tempo_length,
-        "epoch_started_at": _timestamp_from_unix(randomness.anchor_block_timestamp),
-        "estimated_next_epoch_starts_at": _timestamp_from_unix(estimated_next_timestamp),
-    }
+    return ChainEpochMetadata(
+        active_tempo_blocks=randomness.tempo_length,
+        epoch_start_block=randomness.anchor_block,
+        next_epoch_start_block=randomness.anchor_block + randomness.tempo_length,
+        epoch_started_at=_timestamp_from_unix(randomness.anchor_block_timestamp),
+        estimated_next_epoch_starts_at=_timestamp_from_unix(estimated_next_timestamp),
+    )
 
 
 def _problem(task: LemmaTask) -> CurrentProblem:
@@ -154,7 +162,11 @@ def build_current_problems_snapshot(
         tempo=active_tempo,
         active_tempo_source=effective_settings.active_tempo_source,
         active_tempo_seconds=effective_settings.active_tempo_seconds,
-        **epoch_metadata,
+        active_tempo_blocks=epoch_metadata.active_tempo_blocks,
+        epoch_start_block=epoch_metadata.epoch_start_block,
+        next_epoch_start_block=epoch_metadata.next_epoch_start_block,
+        epoch_started_at=epoch_metadata.epoch_started_at,
+        estimated_next_epoch_starts_at=epoch_metadata.estimated_next_epoch_starts_at,
         active_seed_mode=effective_settings.active_seed_mode,
         active_epoch_randomness_source=effective_settings.active_epoch_randomness_source,
         active_epoch_randomness_sha256=(
