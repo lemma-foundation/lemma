@@ -64,6 +64,32 @@ def test_remote_verify_http_success(monkeypatch: pytest.MonkeyPatch, tiny_proble
     assert vr.reason == "ok"
 
 
+def test_remote_verify_reuses_http_client(monkeypatch: pytest.MonkeyPatch, tiny_problem: Problem) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"passed": True, "reason": "ok"})
+
+    transport = httpx.MockTransport(handler)
+    real_client = httpx.Client
+    created = 0
+
+    def _client(**kwargs: object) -> httpx.Client:
+        nonlocal created
+        created += 1
+        kwargs.pop("transport", None)
+        return real_client(transport=transport, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr("lemma.lean.verify_runner.httpx.Client", _client)
+    s = LemmaSettings().model_copy(update={"lean_verify_remote_url": "http://localhost:8787"})
+    proof = "import Mathlib\n\nnamespace Submission\n\ntheorem p : True := by\n  trivial\n\nend Submission\n"
+
+    first = run_lean_verify(s, verify_timeout_s=120, problem=tiny_problem, proof_script=proof)
+    second = run_lean_verify(s, verify_timeout_s=120, problem=tiny_problem, proof_script=proof)
+
+    assert first.passed is True
+    assert second.passed is True
+    assert created == 1
+
+
 def test_remote_verify_transport_error(monkeypatch: pytest.MonkeyPatch, tiny_problem: Problem) -> None:
     transport = httpx.MockTransport(lambda req: httpx.Response(500, text="boom"))
     real_client = httpx.Client

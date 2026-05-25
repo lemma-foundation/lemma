@@ -16,7 +16,7 @@ from typing import Any
 from lemma.license import license_state_for, paid_license_allowed
 from lemma.protocol_invariants import procedural_gate_receipt_sha256, production_supply_rejection_reason
 from lemma.supply.gates import GATE_VERSION, AssumedProceduralGateRunner, ProceduralGateRunner, ProceduralGateVerdict
-from lemma.supply.mutation import PreviewMutationEngine, ProceduralMutationEngine
+from lemma.supply.mutation import MutationResult, MutationStep, PreviewMutationEngine, ProceduralMutationEngine
 from lemma.supply.novelty import statement_hash
 from lemma.supply.operator_bundle import (
     OPERATOR_BUNDLE_VERSION,
@@ -468,17 +468,22 @@ def _candidate_from_source(
     imports = source.imports
     mutation_chain: list[dict[str, object]] = []
     input_hash = _hash_text(type_expr)
+    mutation_steps: list[MutationStep] = []
     for step, operator in enumerate(operator_chain):
         peer = _peer_source(source_pool, source_id=source.id, seed=generation_seed, sequence=sequence, step=step)
         imports = _combined_imports(imports, peer.imports)
-        mutation = mutation_engine.apply(
-            source,
-            type_expr,
-            operator,
-            step=step,
-            param_seed=_hash_text(f"{generation_seed}:{sequence}:{step}:{operator}"),
-            peer=peer,
+        mutation_steps.append(
+            MutationStep(
+                operator=operator,
+                step=step,
+                param_seed=_hash_text(f"{generation_seed}:{sequence}:{step}:{operator}"),
+                peer=peer,
+            )
         )
+    mutations = _apply_mutation_chain(mutation_engine, source=source, type_expr=type_expr, steps=tuple(mutation_steps))
+    for item, mutation in zip(mutation_steps, mutations, strict=True):
+        operator = item.operator
+        step = item.step
         output_hash = _hash_text(mutation.type_expr)
         mutation_chain.append(
             {
@@ -561,6 +566,35 @@ def _candidate_from_source(
         queue_depth=source.queue_depth,
         metadata=metadata,
     )
+
+
+def _apply_mutation_chain(
+    mutation_engine: ProceduralMutationEngine,
+    *,
+    source: TaskCandidate,
+    type_expr: str,
+    steps: tuple[MutationStep, ...],
+) -> tuple[MutationResult, ...]:
+    apply_chain = getattr(mutation_engine, "apply_chain", None)
+    if callable(apply_chain):
+        mutations = tuple(apply_chain(source, type_expr, steps))
+        if len(mutations) != len(steps):
+            raise ValueError("procedural mutation chain returned wrong number of steps")
+        return mutations
+    out: list[MutationResult] = []
+    expr = type_expr
+    for item in steps:
+        mutation = mutation_engine.apply(
+            source,
+            expr,
+            item.operator,
+            step=item.step,
+            param_seed=item.param_seed,
+            peer=item.peer,
+        )
+        out.append(mutation)
+        expr = mutation.type_expr
+    return tuple(out)
 
 
 def _with_gate_receipt(candidate: TaskCandidate, verdict: ProceduralGateVerdict) -> TaskCandidate:

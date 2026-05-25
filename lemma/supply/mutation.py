@@ -21,6 +21,14 @@ class MutationResult:
     params: dict[str, object]
 
 
+@dataclass(frozen=True)
+class MutationStep:
+    operator: str
+    step: int
+    param_seed: str
+    peer: TaskCandidate
+
+
 class ProceduralMutationEngine(Protocol):
     def apply(
         self,
@@ -82,6 +90,27 @@ class PreviewMutationEngine:
             return _preview_weaken(expr)
         raise ValueError(f"unknown procedural operator: {operator}")
 
+    def apply_chain(
+        self,
+        source: TaskCandidate,
+        type_expr: str,
+        steps: tuple[MutationStep, ...],
+    ) -> tuple[MutationResult, ...]:
+        out: list[MutationResult] = []
+        expr = type_expr
+        for item in steps:
+            mutation = self.apply(
+                source,
+                expr,
+                item.operator,
+                step=item.step,
+                param_seed=item.param_seed,
+                peer=item.peer,
+            )
+            out.append(mutation)
+            expr = mutation.type_expr
+        return tuple(out)
+
 
 class LeanAstMutationEngine:
     """Lean parser/elaborator-backed production mutation engine."""
@@ -136,7 +165,55 @@ class LeanAstMutationEngine:
             raise ValueError(f"Lean AST mutation failed for {source.id}:{step}:{operator}: {detail[:800]}")
         return self._parse_result(result.stdout_tail + "\n" + result.stderr_tail)
 
+    def apply_chain(
+        self,
+        source: TaskCandidate,
+        type_expr: str,
+        steps: tuple[MutationStep, ...],
+    ) -> tuple[MutationResult, ...]:
+        if not steps:
+            return ()
+        imports = source.imports
+        for item in steps:
+            imports = _combined_imports(imports, item.peer.imports)
+        first_step = steps[0].step
+        last_step = steps[-1].step
+        problem = Problem(
+            id=f"{source.id}.mutation.{first_step}-{last_step}",
+            theorem_name="lemma_ast_mutation_dummy",
+            type_expr="True",
+            split="procedural_mutation",
+            lean_toolchain=source.lean_toolchain,
+            mathlib_rev=source.mathlib_rev,
+            imports=imports,
+            extra={
+                "challenge_full": _lean_mutator_chain_source(type_expr=type_expr, steps=steps),
+                "lean_build_target": "Challenge",
+                "lean_max_heartbeats": int(self.settings.procedural_gate_max_heartbeats),
+                "lean_eval_commands": ("#eval! LemmaProceduralMutator.emit",),
+                "submission_policy": "strict_envelope",
+            },
+        )
+        result = run_lean_verify(
+            self.settings,
+            verify_timeout_s=self.timeout_s,
+            problem=problem,
+            proof_script=_dummy_submission(problem.imports),
+            submission_policy="strict_envelope",
+        )
+        if not result.passed:
+            detail = result.stderr_tail or result.stdout_tail or result.reason
+            raise ValueError(f"Lean AST mutation failed for {source.id}:{first_step}-{last_step}: {detail[:800]}")
+        return self._parse_results(result.stdout_tail + "\n" + result.stderr_tail)
+
     def _parse_result(self, output: str) -> MutationResult:
+        results = self._parse_results(output)
+        if not results:
+            raise ValueError("Lean AST mutation emitted no result")
+        return results[0]
+
+    def _parse_results(self, output: str) -> tuple[MutationResult, ...]:
+        out: list[MutationResult] = []
         for line in output.splitlines():
             if not line.startswith(self._MARKER):
                 continue
@@ -145,8 +222,8 @@ class LeanAstMutationEngine:
             params = payload.get("params")
             if not isinstance(type_expr, str) or not type_expr.strip() or not isinstance(params, dict):
                 raise ValueError("Lean AST mutation emitted malformed result")
-            return MutationResult(type_expr=type_expr.strip(), params={**params, "engine": "lean_ast_elaborator"})
-        raise ValueError("Lean AST mutation emitted no result")
+            out.append(MutationResult(type_expr=type_expr.strip(), params={**params, "engine": "lean_ast_elaborator"}))
+        return tuple(out)
 
 
 _SAFE_IDENT = re.compile(r"[^A-Za-z0-9_]+")
@@ -266,7 +343,60 @@ def _lean_mutator_source(
     param_seed: str,
     peer: TaskCandidate,
 ) -> str:
-    binder = _safe_binder(step, param_seed)
+    return _lean_mutator_chain_source(
+        type_expr=type_expr,
+        steps=(MutationStep(operator=operator, step=step, param_seed=param_seed, peer=peer),),
+    )
+
+
+def _lean_mutator_chain_source(*, type_expr: str, steps: tuple[MutationStep, ...]) -> str:
+    step_defs = "\n".join(
+        "\n".join(
+            [
+                f"def operatorName{index} : String := {_lean_string(item.operator)}",
+                f"def binderName{index} : String := {_lean_string(_safe_binder(item.step, item.param_seed))}",
+                f"def paramSeed{index} : String := {_lean_string(item.param_seed)}",
+                f"def peerSource{index} : String := {_lean_string(item.peer.type_expr)}",
+                f"def peerSourceId{index} : String := {_lean_string(item.peer.id)}",
+                f"def peerTheoremName{index} : String := {_lean_string(item.peer.theorem_name)}",
+                f"def peerTargetSha256{index} : String := {_lean_string(_hash_text(item.peer.statement))}",
+            ]
+        )
+        for index, item in enumerate(steps)
+    )
+    emit_lines = [
+        "def emit : Elab.Command.CommandElabM Unit := do",
+        "  let input0 ← parseTermOrThrow inputSource",
+        "  requireProp input0",
+    ]
+    expr_name = "input0"
+    for index, _item in enumerate(steps):
+        emit_lines.extend(
+            [
+                f"  let peer{index} ← parseTermOrThrow peerSource{index}",
+                f"  requireProp peer{index}",
+                f"  let (output{index}, params{index}) ← mutate",
+                f"    operatorName{index}",
+                f"    binderName{index}",
+                f"    paramSeed{index}",
+                f"    peerSourceId{index}",
+                f"    peerTheoremName{index}",
+                f"    peerTargetSha256{index}",
+                f"    {expr_name}",
+                f"    peer{index}",
+                f"  requireProp output{index}",
+                f"  let rendered{index} ← ppTerm output{index}",
+                f"  let roundtrip{index} ← parseTermOrThrow rendered{index}",
+                f"  requireProp roundtrip{index}",
+                f"  let payload{index} := jsonObj [",
+                f"    (\"type_expr\", Json.str rendered{index}),",
+                f"    (\"params\", params{index})",
+                "  ]",
+                f"  IO.println <| \"LEMMA_AST_MUTATION \" ++ payload{index}.compress",
+            ]
+        )
+        expr_name = f"roundtrip{index}"
+    emit = "\n".join(emit_lines)
     return f"""import Lean
 
 open Lean
@@ -274,13 +404,7 @@ open Lean
 namespace LemmaProceduralMutator
 
 def inputSource : String := {_lean_string(type_expr)}
-def peerSource : String := {_lean_string(peer.type_expr)}
-def operatorName : String := {_lean_string(operator)}
-def binderName : String := {_lean_string(binder)}
-def paramSeed : String := {_lean_string(param_seed)}
-def peerSourceId : String := {_lean_string(peer.id)}
-def peerTheoremName : String := {_lean_string(peer.theorem_name)}
-def peerTargetSha256 : String := {_lean_string(_hash_text(peer.statement))}
+{step_defs}
 def substitutions : List (String × String) := {_lean_pairs(TYPE_SUBSTITUTIONS)}
 def smallValues : List (String × List String) := {_lean_string_tuple_list(SMALL_VALUES_BY_TYPE)}
 
@@ -306,14 +430,14 @@ partial def replaceIdent (target : Name) (replacement : Syntax) (stx : Syntax) :
   | Syntax.node info kind args => Syntax.node info kind (args.map (replaceIdent target replacement))
   | _ => stx
 
-def smallValueFor (typeText : String) : Option String :=
+def smallValueFor (paramSeed typeText : String) : Option String :=
   (smallValues.lookup typeText).bind fun values =>
     if values.isEmpty then none else some (values.getD (paramSeed.hash.toNat % values.length) "")
 
 def jsonObj (items : List (String × Json)) : Json :=
   Json.mkObj items
 
-def peerParams (key value : String) : Json :=
+def peerParams (peerSourceId peerTheoremName peerTargetSha256 key value : String) : Json :=
   jsonObj [
     (key, Json.str value),
     ("peer_source_id", Json.str peerSourceId),
@@ -344,7 +468,10 @@ partial def substituteFirstType
       else
         pure <| some (output, jsonObj [("from", Json.str fromType), ("to", Json.str toType)])
 
-def mutate (expr peer : TSyntax `term) : Elab.Command.CommandElabM (TSyntax `term × Json) := do
+def mutate
+    (operatorName binderName paramSeed peerSourceId peerTheoremName peerTargetSha256 : String)
+    (expr peer : TSyntax `term)
+    : Elab.Command.CommandElabM (TSyntax `term × Json) := do
   if operatorName == "generalize" then
     let binder := mkIdent (Name.mkSimple binderName)
     let output ← `(term| ∀ $binder:ident : Prop, $binder → ($expr))
@@ -357,7 +484,7 @@ def mutate (expr peer : TSyntax `term) : Elab.Command.CommandElabM (TSyntax `ter
     match expr with
     | `(term| ∀ $x:ident : $ty, $body) =>
         let typeText ← ppTerm ty
-        match smallValueFor typeText with
+        match smallValueFor paramSeed typeText with
         | none =>
             let output ← trueArrow expr
             pure (output, jsonObj [
@@ -377,7 +504,7 @@ def mutate (expr peer : TSyntax `term) : Elab.Command.CommandElabM (TSyntax `ter
         pure (output, jsonObj [("fallback", Json.str "true_premise")])
   else if operatorName == "conjoin" then
     let output ← `(term| ($peer) → ($expr))
-    pure (output, peerParams "mode" "peer_premise")
+    pure (output, peerParams peerSourceId peerTheoremName peerTargetSha256 "mode" "peer_premise")
   else if operatorName == "substitute-type" then
     match ← substituteFirstType expr substitutions with
     | some result => pure result
@@ -386,7 +513,7 @@ def mutate (expr peer : TSyntax `term) : Elab.Command.CommandElabM (TSyntax `ter
         pure (output, jsonObj [("fallback", Json.str "no_supported_type_occurrence")])
   else if operatorName == "strengthen" then
     let output ← `(term| ($expr) ∧ ($peer))
-    pure (output, peerParams "rule" "conjoin_peer_conclusion")
+    pure (output, peerParams peerSourceId peerTheoremName peerTargetSha256 "rule" "conjoin_peer_conclusion")
   else if operatorName == "weaken" then
     match expr with
     | `(term| $premise → $conclusion) =>
@@ -400,20 +527,9 @@ def mutate (expr peer : TSyntax `term) : Elab.Command.CommandElabM (TSyntax `ter
         let output ← falseDisjunct expr
         pure (output, jsonObj [("rule", Json.str "false_disjunct")])
   else
-    throwError "unknown procedural operator: {{operatorName}}"
+    throwError ("unknown procedural operator: " ++ operatorName)
 
-def emit : Elab.Command.CommandElabM Unit := do
-  let expr ← parseTermOrThrow inputSource
-  let peer ← parseTermOrThrow peerSource
-  requireProp expr
-  requireProp peer
-  let (output, params) ← mutate expr peer
-  requireProp output
-  let rendered ← ppTerm output
-  let roundtrip ← parseTermOrThrow rendered
-  requireProp roundtrip
-  let payload := jsonObj [("type_expr", Json.str rendered), ("params", params)]
-  IO.println <| "LEMMA_AST_MUTATION " ++ payload.compress
+{emit}
 
 end LemmaProceduralMutator
 """

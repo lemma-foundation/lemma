@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from pathlib import Path
 from typing import cast
 
@@ -1047,6 +1048,7 @@ def tasks_prebuild_active_procedural_registry_cmd(tempo: int | None, force: bool
         task_registry_for_validation,
     )
 
+    t0 = time.monotonic()
     settings = LemmaSettings()
     if settings.active_registry_json is not None:
         raise click.ClickException("active registry prebuild requires LEMMA_ACTIVE_REGISTRY_CACHE_DIR")
@@ -1091,6 +1093,7 @@ def tasks_prebuild_active_procedural_registry_cmd(tempo: int | None, force: bool
                 "tempo": active_tempo,
                 "registry_sha256": hashlib.sha256(cache_path.read_bytes()).hexdigest(),
                 "tasks": len(registry.tasks),
+                "wall_seconds": round(time.monotonic() - t0, 3),
             },
             indent=2,
             sort_keys=True,

@@ -25,7 +25,6 @@ from lemma.supply.triviality_budget import (
 from lemma.supply.types import TaskCandidate
 
 GATE_VERSION = "lemma-procedural-gates-v3"
-_TYPECHECK_GATE_DECL = "LemmaProceduralGate.typecheck_gate"
 _PROP_GATE_DECL = "LemmaProceduralGate.prop_gate"
 _KERNEL_NORMAL_MARKER = "LEMMA_KERNEL_NORMAL_FORM "
 TRIVIALITY_STACK = (
@@ -139,32 +138,13 @@ class LeanProceduralGateRunner:
         *,
         seen_canonical_hashes: Iterable[str],
     ) -> ProceduralGateVerdict:
-        typecheck = self._compile_gate(
-            candidate,
-            _typecheck_gate_source(candidate),
-            fingerprint_name=_TYPECHECK_GATE_DECL,
-        )
-        if not typecheck.passed:
-            return self._gate_verdict(
-                candidate,
-                seen_canonical_hashes=seen_canonical_hashes,
-                typecheck=typecheck,
-                prop=typecheck,
-                kernel_hash="",
-                novelty="missing_kernel_fingerprint",
-                triviality_checked=False,
-                baseline_solved=False,
-                baseline_solver=None,
-                baseline_reason="not_run",
-            )
-
         statement_novelty = _novelty_status(candidate, seen_canonical_hashes, self.novelty_cache)
         if statement_novelty == "duplicate":
             skipped = VerifyResult(passed=False, reason="compile_error", stderr_tail="statement novelty duplicate")
             return self._gate_verdict(
                 candidate,
                 seen_canonical_hashes=seen_canonical_hashes,
-                typecheck=typecheck,
+                typecheck=skipped,
                 prop=skipped,
                 kernel_hash="",
                 novelty="duplicate",
@@ -175,19 +155,19 @@ class LeanProceduralGateRunner:
                 prop_gate_reason="skipped_statement_duplicate",
             )
 
-        prop = self._compile_gate(
+        gate = self._compile_gate(
             candidate,
-            _prop_gate_source(candidate),
+            _combined_gate_source(candidate),
             fingerprint_name=_PROP_GATE_DECL,
             eval_commands=("#eval! LemmaProceduralGate.emit_kernel_normal",),
         )
-        kernel_hash = _gate_canonical_hash(prop) if prop.passed else ""
+        kernel_hash = _gate_canonical_hash(gate) if gate.passed else ""
         novelty = (
             _novelty_status(candidate, seen_canonical_hashes, self.novelty_cache, canonical_hash=kernel_hash)
             if kernel_hash
             else "missing_kernel_fingerprint"
         )
-        if prop.passed and novelty == "passed":
+        if gate.passed and novelty == "passed":
             triviality_checked, baseline_solved, baseline_solver, baseline_reason = self._run_triviality_stack(
                 candidate
             )
@@ -196,8 +176,8 @@ class LeanProceduralGateRunner:
         return self._gate_verdict(
             candidate,
             seen_canonical_hashes=seen_canonical_hashes,
-            typecheck=typecheck,
-            prop=prop,
+            typecheck=gate,
+            prop=gate,
             kernel_hash=kernel_hash,
             novelty=novelty,
             triviality_checked=triviality_checked,
@@ -388,20 +368,7 @@ def _gate_canonical_hash(result: VerifyResult) -> str:
     return _kernel_normal_hash(result) or result.declaration_fingerprints.get(_PROP_GATE_DECL, "")
 
 
-def _typecheck_gate_source(candidate: TaskCandidate) -> str:
-    return "\n".join(
-        [
-            "namespace LemmaProceduralGate",
-            "",
-            f"def typecheck_gate : ({candidate.type_expr}) := by",
-            "  sorry",
-            "",
-            "end LemmaProceduralGate",
-        ]
-    )
-
-
-def _prop_gate_source(candidate: TaskCandidate) -> str:
+def _combined_gate_source(candidate: TaskCandidate) -> str:
     return "\n".join(
         [
             "import Lean",
@@ -451,6 +418,8 @@ def _prop_gate_source(candidate: TaskCandidate) -> str:
             "  Elab.Command.runTermElabM fun _ => do",
             "    let expr ← Elab.Term.elabType stx.raw",
             "    let expr ← instantiateMVars expr",
+            "    unless (← Meta.isProp expr) do",
+            "      throwError \"procedural gate expected Prop\"",
             "    let normal ← Meta.reduceAll expr",
             "    IO.println <| \"LEMMA_KERNEL_NORMAL_FORM \" ++ exprKey normal",
             "",

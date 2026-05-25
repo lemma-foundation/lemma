@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 
 import httpx
 from loguru import logger
@@ -16,6 +17,8 @@ from lemma.lean.submission_policy import (
     submission_policy_stderr_tail,
 )
 from lemma.problems.base import Problem
+
+_HTTP_CLIENT_LOCAL = threading.local()
 
 
 def lean_sandbox_from_settings(settings: LemmaSettings, verify_timeout_s: int) -> LeanSandbox:
@@ -89,8 +92,7 @@ def _verify_via_http(
         headers["Authorization"] = f"Bearer {tok}"
     url = f"{base_url}/verify"
     try:
-        with httpx.Client(timeout=timeout) as client:
-            r = client.post(url, json=payload, headers=headers)
+        r = _http_client(base_url).post(url, json=payload, headers=headers, timeout=timeout)
     except httpx.HTTPError as e:
         logger.warning("lean remote verify transport failed: {}", e)
         return VerifyResult(
@@ -139,3 +141,19 @@ def _verify_via_http(
             reason="remote_error",
             stderr_tail=f"invalid VerifyResult from worker: {e}"[:8000],
         )
+
+
+def _http_client(base_url: str) -> httpx.Client:
+    key = (base_url, id(httpx.Client))
+    cached = getattr(_HTTP_CLIENT_LOCAL, "cached", None)
+    if cached is not None:
+        cached_key, client = cached
+        if cached_key == key:
+            return client
+        try:
+            client.close()
+        except Exception:  # noqa: BLE001
+            pass
+    client = httpx.Client()
+    _HTTP_CLIENT_LOCAL.cached = (key, client)
+    return client
