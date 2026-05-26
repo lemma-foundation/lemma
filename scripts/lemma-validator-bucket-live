@@ -6,6 +6,19 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 "${LEMMA_CURRICULUM_SYNC_BIN:-$script_dir/lemma-sync-curriculum-state}"
 
+cd "${LEMMA_APP_DIR:-/opt/lemma-sn467/app}"
+
+cache_sync_output="$("${UV_BIN:-uv}" run python "$script_dir/lemma-sync-active-registry-cache")"
+if [[ -n "$cache_sync_output" ]]; then
+  echo "$cache_sync_output"
+fi
+if [[ "${LEMMA_ACTIVE_REGISTRY_ROLE:-builder}" == "auditor" ]]; then
+  if [[ "$cache_sync_output" != *'"cache": "present"'* && "$cache_sync_output" != *'"cache": "hydrated"'* ]]; then
+    echo '{"idle":true,"reason":"auditor mode waits for public active registry cache"}'
+    exit 0
+  fi
+fi
+
 weight_flag="--no-set-weights"
 if [[ "${LEMMA_VALIDATOR_SET_WEIGHTS:-0}" == "1" ]]; then
   weight_flag="--set-weights"
@@ -20,8 +33,6 @@ tempo_flag=()
 if [[ "${LEMMA_VALIDATOR_SET_TEMPO:-0}" == "1" ]]; then
   tempo_flag=(--set-tempo)
 fi
-
-cd "${LEMMA_APP_DIR:-/opt/lemma-sn467/app}"
 
 exec "${UV_BIN:-uv}" run lemma validate \
   --once \

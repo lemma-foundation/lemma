@@ -26,6 +26,10 @@ fi
 if [[ "$cache_sync_output" == *'"cache": "present"'* || "$cache_sync_output" == *'"cache": "hydrated"'* ]]; then
   exit 0
 fi
+if [[ "${LEMMA_ACTIVE_REGISTRY_ROLE:-builder}" == "auditor" ]]; then
+  echo '{"idle":true,"reason":"auditor mode waits for public active registry cache"}'
+  exit 0
+fi
 if [[ -n "${LEMMA_ACTIVE_REGISTRY_CACHE_INDEX_URL:-}" && "$cache_sync_output" == *missing_public_index_row* ]]; then
   echo '{"idle":true,"reason":"public active registry cache not published yet"}'
   exit 0

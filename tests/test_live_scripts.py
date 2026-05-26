@@ -36,10 +36,12 @@ def test_live_wrappers_sync_public_curriculum_state_before_work() -> None:
 
 def test_live_wrappers_hydrate_public_registry_cache_before_work() -> None:
     miner = (ROOT / "scripts" / "lemma-miner-once-to-bucket").read_text(encoding="utf-8")
+    validator = (ROOT / "scripts" / "lemma-validator-bucket-live").read_text(encoding="utf-8")
     prebuild = (ROOT / "scripts" / "lemma-active-registry-prebuild").read_text(encoding="utf-8")
     sync = (ROOT / "scripts" / "lemma-sync-active-registry-cache").read_text(encoding="utf-8")
 
     assert "lemma-sync-active-registry-cache" in miner
+    assert "lemma-sync-active-registry-cache" in validator
     assert "lemma-sync-active-registry-cache" in prebuild
     assert "LEMMA_ACTIVE_REGISTRY_CACHE_INDEX_URL" in sync
     assert "active_registry_cache_stale" in sync
@@ -121,6 +123,17 @@ def test_active_registry_prebuild_idles_until_public_cache_is_published() -> Non
     assert "LEMMA_ACTIVE_REGISTRY_CACHE_INDEX_URL" in prebuild
     assert "missing_public_index_row" in prebuild
     assert "public active registry cache not published yet" in prebuild
+
+
+def test_auditor_registry_wrappers_refuse_local_generation() -> None:
+    validator = (ROOT / "scripts" / "lemma-validator-bucket-live").read_text(encoding="utf-8")
+    prebuild = (ROOT / "scripts" / "lemma-active-registry-prebuild").read_text(encoding="utf-8")
+
+    expected = "auditor mode waits for public active registry cache"
+    assert "LEMMA_ACTIVE_REGISTRY_ROLE:-builder" in validator
+    assert "LEMMA_ACTIVE_REGISTRY_ROLE:-builder" in prebuild
+    assert expected in validator
+    assert expected in prebuild
 
 
 def test_active_registry_prebuild_wrapper_calls_hidden_cli() -> None:

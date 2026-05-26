@@ -207,6 +207,30 @@ def test_prebuild_active_procedural_registry_skips_existing_cache(
     assert payload["tasks"] == 1
 
 
+def test_prebuild_active_procedural_registry_auditor_mode_refuses_rebuild(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    def fail_registry(settings, *, tempo):  # noqa: ANN001
+        raise AssertionError("auditor mode should not generate")
+
+    monkeypatch.setattr("lemma.validator.task_registry_for_validation", fail_registry)
+
+    result = CliRunner().invoke(
+        main,
+        ["tasks", "prebuild-active-procedural-registry", "--tempo", "30"],
+        env={
+            "LEMMA_PREFER_PROCESS_ENV": "1",
+            "LEMMA_TASK_SUPPLY_MODE": "procedural",
+            "LEMMA_ACTIVE_REGISTRY_ROLE": "auditor",
+            "LEMMA_ACTIVE_REGISTRY_CACHE_DIR": str(tmp_path / "cache"),
+            "LEMMA_ACTIVE_K": "1",
+        },
+    )
+
+    assert result.exit_code != 0
+    assert "auditor mode requires a current public/cache registry" in result.output
+
+
 def test_prebuild_active_procedural_registry_refreshes_stale_frontier_cache(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:

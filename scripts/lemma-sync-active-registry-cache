@@ -44,9 +44,6 @@ def _registry_url(index_url: str, row: dict[str, object]) -> str | None:
 
 
 def main() -> None:
-    index_url = os.environ.get("LEMMA_ACTIVE_REGISTRY_CACHE_INDEX_URL", "").strip()
-    if not index_url:
-        return
     settings = LemmaSettings()
     if settings.active_registry_json is not None or settings.active_registry_cache_dir is None:
         return
@@ -60,6 +57,12 @@ def main() -> None:
         if not active_registry_cache_stale(cached, effective):
             print(json.dumps({"cache": "present", "tempo": tempo, "registry_sha256": cached.sha256}))
             return
+
+    index_url = os.environ.get("LEMMA_ACTIVE_REGISTRY_CACHE_INDEX_URL", "").strip()
+    if not index_url:
+        if settings.active_registry_role == "auditor":
+            print(json.dumps({"cache": "missing_public_index_url", "tempo": tempo}))
+        return
 
     index = json.loads(_fetch(index_url).decode("utf-8"))
     registries = index.get("registries") if isinstance(index, dict) else None

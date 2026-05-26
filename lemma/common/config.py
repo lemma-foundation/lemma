@@ -53,6 +53,10 @@ class LemmaSettings(BaseSettings):
         default="registry",
         validation_alias="LEMMA_TASK_SUPPLY_MODE",
     )
+    active_registry_role: Literal["builder", "auditor"] = Field(
+        default="builder",
+        validation_alias="LEMMA_ACTIVE_REGISTRY_ROLE",
+    )
     task_registry_sha256_expected: str | None = Field(
         default=None,
         validation_alias="LEMMA_TASK_REGISTRY_SHA256_EXPECTED",

@@ -1078,6 +1078,10 @@ def _warm_active_procedural_registry(*, tempo: int | None, force: bool) -> None:
     if not needs_rebuild:
         registry = load_task_registry(cache_path.read_bytes())
         needs_rebuild = active_registry_cache_stale(registry, effective_settings)
+    if needs_rebuild and settings.active_registry_role == "auditor":
+        raise click.ClickException(
+            "active registry auditor mode requires a current public/cache registry; refusing local generation"
+        )
     if needs_rebuild:
         rebuild_settings = effective_settings.model_copy(
             update={"active_registry_json": None, "active_registry_cache_dir": None}

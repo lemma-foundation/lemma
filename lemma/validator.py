@@ -192,6 +192,10 @@ def task_registry_for_validation(settings: LemmaSettings, *, tempo: int) -> Task
     cached = cached_active_registry_for_tempo(settings, tempo=tempo)
     if cached is not None:
         return cached
+    if settings.active_registry_role == "auditor":
+        raise RuntimeError(
+            "active registry auditor mode requires a current active-registry cache; refusing local generation"
+        )
     return _procedural_registry_for_tempo(settings, tempo=tempo)
 
 
