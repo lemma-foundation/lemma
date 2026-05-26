@@ -7,6 +7,13 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 export LEMMA_PREFER_PROCESS_ENV="${LEMMA_PREFER_PROCESS_ENV:-1}"
 
+force_requested=0
+for arg in "$@"; do
+  if [[ "$arg" == "--force" ]]; then
+    force_requested=1
+  fi
+done
+
 lock_dir="${LEMMA_ACTIVE_REGISTRY_CACHE_DIR:-${TMPDIR:-/tmp}}"
 mkdir -p "$lock_dir"
 lock_path="${LEMMA_ACTIVE_REGISTRY_PREBUILD_LOCK:-$lock_dir/.prebuild.lock}"
@@ -23,7 +30,7 @@ cache_sync_output="$("$uv_bin" run python "$script_dir/lemma-sync-active-registr
 if [[ -n "$cache_sync_output" ]]; then
   echo "$cache_sync_output"
 fi
-if [[ "$cache_sync_output" == *'"cache": "present"'* || "$cache_sync_output" == *'"cache": "hydrated"'* ]]; then
+if [[ "$force_requested" != "1" && ( "$cache_sync_output" == *'"cache": "present"'* || "$cache_sync_output" == *'"cache": "hydrated"'* ) ]]; then
   exit 0
 fi
 if [[ "${LEMMA_ACTIVE_REGISTRY_ROLE:-builder}" == "auditor" ]]; then

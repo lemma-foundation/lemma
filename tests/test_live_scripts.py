@@ -116,9 +116,12 @@ def test_active_registry_prebuild_wrapper_serializes_builds() -> None:
 def test_active_registry_prebuild_idles_until_public_cache_is_published() -> None:
     prebuild = (ROOT / "scripts" / "lemma-active-registry-prebuild").read_text(encoding="utf-8")
 
+    assert "force_requested=0" in prebuild
+    assert '--force"' in prebuild
     assert "cache_sync_output=" in prebuild
     assert '\'"cache": "present"\'' in prebuild
     assert '\'"cache": "hydrated"\'' in prebuild
+    assert '"$force_requested" != "1"' in prebuild
     assert "LEMMA_ACTIVE_REGISTRY_CACHE_INDEX_URL" in prebuild
     assert "missing_public_index_row" in prebuild
     assert "public active registry cache not published yet" in prebuild
