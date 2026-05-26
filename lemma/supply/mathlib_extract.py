@@ -14,6 +14,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
+from lemma.supply.import_graph import ImportGraph
 from lemma.supply.mathlib_snapshot import MathlibSnapshotRow
 
 _DECL_RE = re.compile(
@@ -39,6 +40,7 @@ class ExtractConfig:
     source_license: str = "Apache-2.0"
     elaborate_types: bool = False
     lake_root: Path | None = None
+    import_graph: ImportGraph | None = None
 
 
 @dataclass(frozen=True)
@@ -54,6 +56,7 @@ def extract_snapshot_rows(config: ExtractConfig) -> tuple[MathlibSnapshotRow, ..
     rows: list[MathlibSnapshotRow] = []
     for path in _source_files(root, config.includes):
         rows.extend(_rows_from_file(root, path, rev, config.source_license))
+    rows = _enrich_with_import_graph(rows, config.import_graph)
     rows = sorted(
         rows,
         key=lambda row: (row.queue_depth, row.topic or "", row.source_path, row.source_line or 0, row.theorem_name),
@@ -392,6 +395,63 @@ def _difficulty_score(type_expr: str, block: str, topic: str) -> int:
 
 def _queue_depth(score: int) -> int:
     return max(0, score - 2)
+
+
+def _enrich_with_import_graph(rows: list[MathlibSnapshotRow], graph: ImportGraph | None) -> list[MathlibSnapshotRow]:
+    if graph is None or graph.entry_count == 0:
+        return rows
+    inbound = _module_inbound_counts(graph)
+    out: list[MathlibSnapshotRow] = []
+    for row in rows:
+        resolved = graph.resolve(row.imports)
+        citation_weight = max(1.0, float(sum(inbound.get(root, 0) for root in resolved.roots)))
+        graph_score = _import_graph_score(
+            direct_count=len(resolved.direct_imports),
+            dependency_depth=resolved.max_depth,
+            transitive_count=len(resolved.transitive_imports),
+            citation_weight=citation_weight,
+        )
+        difficulty_score = int(row.difficulty_score or 0) + graph_score
+        out.append(
+            row.model_copy(
+                update={
+                    "difficulty_score": difficulty_score,
+                    "queue_depth": _queue_depth(difficulty_score),
+                    "citation_weight": citation_weight,
+                    "direct_dependency_count": len(resolved.direct_imports),
+                    "dependency_depth": resolved.max_depth,
+                    "transitive_dependency_hash": resolved.transitive_hash,
+                }
+            )
+        )
+    return out
+
+
+def _module_inbound_counts(graph: ImportGraph) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for imports in graph.edges.values():
+        for module in imports:
+            counts[module] = counts.get(module, 0) + 1
+    return counts
+
+
+def _import_graph_score(
+    *,
+    direct_count: int,
+    dependency_depth: int,
+    transitive_count: int,
+    citation_weight: float,
+) -> int:
+    score = 0
+    score += 1 if direct_count >= 5 else 0
+    score += 1 if direct_count >= 15 else 0
+    score += 1 if dependency_depth >= 4 else 0
+    score += 1 if dependency_depth >= 12 else 0
+    score += 1 if transitive_count >= 25 else 0
+    score += 1 if transitive_count >= 100 else 0
+    score += 1 if citation_weight >= 10 else 0
+    score += 1 if citation_weight >= 50 else 0
+    return min(4, score)
 
 
 def _apply_depth_limits(

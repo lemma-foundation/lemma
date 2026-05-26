@@ -6,6 +6,7 @@ import json
 
 from click.testing import CliRunner
 from lemma.cli.main import main
+from lemma.supply.import_graph import ImportGraphRow, import_graph_from_rows
 from lemma.supply.mathlib_extract import (
     ExtractConfig,
     _erase_universe_levels,
@@ -117,6 +118,39 @@ def test_extract_mathlib_snapshot_can_emit_frontier_depth(tmp_path) -> None:
     assert rows[0].difficulty_score is not None
     assert rows[0].difficulty_score >= 7
     assert rows[0].queue_depth >= 7
+
+
+def test_extract_mathlib_snapshot_uses_import_graph_signals(tmp_path) -> None:
+    _write_fixture_mathlib(tmp_path)
+    root = "Mathlib.Data.Nat.LemmaFixture"
+    direct = tuple(f"Mathlib.Dep.D{i}" for i in range(6))
+    chain = tuple(
+        ImportGraphRow(module=f"Mathlib.Dep.D{i}", imports=(f"Mathlib.Dep.D{i + 1}",)) for i in range(13)
+    )
+    inbound = tuple(ImportGraphRow(module=f"Mathlib.User.U{i}", imports=(root,)) for i in range(10))
+    graph = import_graph_from_rows(
+        (
+            ImportGraphRow(module=root, imports=direct),
+            *chain,
+            ImportGraphRow(module="Mathlib.Dep.D13", imports=()),
+            *inbound,
+        )
+    )
+
+    rows = extract_snapshot_rows(
+        ExtractConfig(
+            mathlib_root=tmp_path,
+            includes=("Mathlib/Data/Nat/*.lean",),
+            mathlib_rev="abc123",
+            import_graph=graph,
+        )
+    )
+
+    assert rows[0].direct_dependency_count == 6
+    assert rows[0].dependency_depth >= 12
+    assert rows[0].citation_weight == 10
+    assert rows[0].transitive_dependency_hash
+    assert max(row.queue_depth for row in rows) >= 3
 
 
 def test_queue_depth_preserves_full_difficulty_ladder() -> None:

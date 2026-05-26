@@ -1176,6 +1176,13 @@ def tasks_build_procedural_registry_cmd(
 @click.option("--source-license", default="Apache-2.0", show_default=True)
 @click.option("--elaborate-types", is_flag=True, help="Use Lean #check output for self-contained theorem types.")
 @click.option(
+    "--import-graph",
+    "import_graph_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Public import graph JSONL from extract-import-graph.",
+)
+@click.option(
     "--lake-root",
     type=click.Path(exists=True, file_okay=False, path_type=Path),
     default=None,
@@ -1192,11 +1199,13 @@ def tasks_extract_mathlib_snapshot_cmd(
     mathlib_rev: str | None,
     source_license: str,
     elaborate_types: bool,
+    import_graph_path: Path | None,
     lake_root: Path | None,
 ) -> None:
     """Extract proof-erased snapshot rows from a pinned Mathlib checkout."""
     from collections import Counter
 
+    from lemma.supply.import_graph import read_import_graph
     from lemma.supply.mathlib_extract import ExtractConfig, extract_snapshot_rows, write_snapshot_jsonl
 
     try:
@@ -1212,6 +1221,7 @@ def tasks_extract_mathlib_snapshot_cmd(
                 source_license=source_license,
                 elaborate_types=elaborate_types,
                 lake_root=lake_root,
+                import_graph=read_import_graph(import_graph_path) if import_graph_path else None,
             )
         )
     except ValueError as e:
