@@ -295,6 +295,38 @@ def test_refresh_site_current_problems_script_writes_site_json(tmp_path: Path) -
     assert payload["schema_version"] == 1
 
 
+def test_export_current_problems_uses_empty_current_snapshot_when_cache_missing(tmp_path: Path) -> None:
+    cache_dir = tmp_path / "registries"
+    cache_dir.mkdir()
+    output = tmp_path / "current-problems.json"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/export_current_problems.py",
+            "--tempo",
+            "7",
+            "--current-cache-dir",
+            str(cache_dir),
+            "--empty-when-current-cache-missing",
+            "--output",
+            str(output),
+        ],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    summary = json.loads(result.stdout)
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert summary["task_count"] == 0
+    assert payload["tempo"] == 7
+    assert payload["task_count"] == 0
+    assert payload["tasks"] == []
+    assert payload["registry_sha256"] == "0" * 64
+
+
 def test_current_problem_service_serves_snapshot() -> None:
     settings = LemmaSettings(active_task_count=1, frontier_depth=0, active_queue_seed="pytest")
 
