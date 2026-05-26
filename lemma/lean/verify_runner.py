@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import threading
+from typing import cast
 
 import httpx
 from loguru import logger
@@ -145,7 +146,7 @@ def _verify_via_http(
 
 def _http_client(base_url: str) -> httpx.Client:
     key = (base_url, id(httpx.Client))
-    cached = getattr(_HTTP_CLIENT_LOCAL, "cached", None)
+    cached = cast(tuple[tuple[str, int], httpx.Client] | None, getattr(_HTTP_CLIENT_LOCAL, "cached", None))
     if cached is not None:
         cached_key, client = cached
         if cached_key == key:
