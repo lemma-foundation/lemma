@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import math
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Literal, Protocol, cast
 
@@ -111,13 +110,8 @@ def resolve_chain_drand_epoch_randomness(
     chain_tempo_length = int(hyperparams.tempo)
     if chain_tempo_length <= 0:
         raise RuntimeError("chain tempo must be positive")
-    active_window_blocks = max(
-        chain_tempo_length,
-        math.ceil(settings.active_window_blocks / chain_tempo_length) * chain_tempo_length,
-    )
     raw_tempo = current_block // chain_tempo_length
-    window_tempos = max(1, active_window_blocks // chain_tempo_length)
-    active_tempo = (raw_tempo // window_tempos) * window_tempos if tempo is None else tempo
+    active_tempo = raw_tempo if tempo is None else tempo
     anchor_block = active_tempo * chain_tempo_length
     if anchor_block > current_block:
         raise RuntimeError("cannot resolve future epoch randomness")
@@ -133,7 +127,7 @@ def resolve_chain_drand_epoch_randomness(
     return EpochRandomness(
         netuid=settings.netuid,
         tempo=active_tempo,
-        tempo_length=active_window_blocks,
+        tempo_length=chain_tempo_length,
         anchor_block=anchor_block,
         anchor_block_hash=anchor_block_hash,
         anchor_block_timestamp=anchor_timestamp,

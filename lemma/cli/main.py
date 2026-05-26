@@ -1622,6 +1622,7 @@ def operator_registry_inspect_cmd() -> None:
 @click.option("--once", is_flag=True, help="Run one validator scoring iteration.")
 @click.option("--set-weights", is_flag=True, help="Submit computed weights to Bittensor.")
 @click.option("--set-commitment", is_flag=True, help="Submit the tempo active/accepted artifact commitment.")
+@click.option("--set-tempo", is_flag=True, help="Submit the next dynamic subnet tempo after retargeting.")
 @click.option("--no-set-weights", is_flag=True, help="Compute weights without submitting them.")
 @click.option("--submissions-jsonl", type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None)
 @click.option("--submission-spool", type=click.Path(file_okay=False, path_type=Path), default=None)
@@ -1640,6 +1641,7 @@ def validate_cmd(
     once: bool,
     set_weights: bool,
     set_commitment: bool,
+    set_tempo: bool,
     no_set_weights: bool,
     submissions_jsonl: Path | None,
     submission_spool: Path | None,
@@ -1678,8 +1680,12 @@ def validate_cmd(
         raise click.ClickException("set LEMMA_ENABLE_SET_WEIGHTS=1 before using --set-weights")
     if set_commitment and not settings.enable_set_commitment:
         raise click.ClickException("set LEMMA_ENABLE_SET_COMMITMENT=1 before using --set-commitment")
+    if set_tempo and not settings.enable_set_tempo:
+        raise click.ClickException("set LEMMA_ENABLE_SET_TEMPO=1 before using --set-tempo")
     if not set_commitment:
         settings = settings.model_copy(update={"enable_set_commitment": False})
+    if not set_tempo:
+        settings = settings.model_copy(update={"enable_set_tempo": False})
     spool_dir = submission_spool or settings.submission_spool_dir
     if settings.protocol_mode == "production" and (submissions_jsonl is not None or spool_dir is not None):
         raise click.ClickException(
@@ -1933,12 +1939,17 @@ def validate_cmd(
         "unearned_policy": result.summary.unearned_policy,
         "unearned_share": result.summary.unearned_share,
         "weights_set": result.weights_set,
+        "tempo_set": result.tempo_set,
         "chain_commitment_set": result.summary.chain_commitment_set,
         "tempo_commitment_payload": result.summary.tempo_commitment_payload,
     }
     if result.weight_submission:
         output["chain_weight_uids"] = list(result.weight_submission.uids)
         output["chain_weight_values"] = list(result.weight_submission.weights)
+    if result.tempo_submission:
+        output["chain_tempo_current_blocks"] = result.tempo_submission.current_tempo
+        output["chain_tempo_target_blocks"] = result.tempo_submission.target_tempo
+        output["chain_tempo_changed"] = result.tempo_submission.changed
     click.echo(json.dumps(output, indent=2, sort_keys=True))
 
 

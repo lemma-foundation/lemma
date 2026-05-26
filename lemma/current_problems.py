@@ -94,7 +94,8 @@ def _chain_epoch_metadata(settings: LemmaSettings, tempo: int) -> ChainEpochMeta
     from lemma.chain.epoch_randomness import resolve_chain_drand_epoch_randomness
 
     randomness = resolve_chain_drand_epoch_randomness(settings, tempo=tempo)
-    estimated_next_timestamp = randomness.anchor_block_timestamp + settings.active_tempo_seconds
+    block_time_seconds = settings.active_tempo_seconds / max(1, settings.active_window_blocks)
+    estimated_next_timestamp = randomness.anchor_block_timestamp + round(randomness.tempo_length * block_time_seconds)
     return ChainEpochMetadata(
         active_tempo_blocks=randomness.tempo_length,
         epoch_start_block=randomness.anchor_block,

@@ -11,6 +11,7 @@ import httpx
 import pytest
 from bittensor_wallet import Keypair
 from lemma.chain.commitments import ChainCommitmentSubmission
+from lemma.chain.tempo import ChainTempoSubmission
 from lemma.chain.weights import ChainWeightSubmission
 from lemma.common.config import LemmaSettings
 from lemma.lean.sandbox import VerifyResult
@@ -56,7 +57,7 @@ def _registry() -> TaskRegistry:
     return TaskRegistry(schema_version=1, tasks=(_task(),), sha256="0" * 64)
 
 
-def test_current_active_tempo_uses_task_window_anchor(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_current_active_tempo_uses_chain_tempo(monkeypatch: pytest.MonkeyPatch) -> None:
     class Hyperparams:
         tempo = 360
 
@@ -81,7 +82,7 @@ def test_current_active_tempo_uses_task_window_anchor(monkeypatch: pytest.Monkey
         active_window_blocks=1440,
     )
 
-    assert current_active_tempo(settings) == 16
+    assert current_active_tempo(settings) == 19
 
 
 def _two_task_registry() -> TaskRegistry:
@@ -999,6 +1000,46 @@ def test_validate_once_retargets_curriculum_state_after_tempo(tmp_path: Path) ->
     validate_once(settings, [], registry=registry, tempo=9, no_set_weights=True)
 
     assert len(read_curriculum_records(state_path)) == 1
+
+
+def test_validate_once_can_submit_retargeted_chain_tempo(tmp_path: Path) -> None:
+    state_path = tmp_path / "curriculum.jsonl"
+    task = _task("lemma.test.tempo")
+    registry = TaskRegistry(schema_version=1, tasks=(task,), sha256="0" * 64)
+    settings = _settings(tmp_path).model_copy(
+        update={
+            "active_task_count": 1,
+            "curriculum_retarget_enabled": True,
+            "curriculum_state_jsonl": state_path,
+            "enable_set_tempo": True,
+        }
+    )
+    targets: list[int] = []
+
+    def submit_tempo(_settings: LemmaSettings, target_tempo: int) -> ChainTempoSubmission:
+        targets.append(target_tempo)
+        return ChainTempoSubmission(
+            success=True,
+            current_tempo=360,
+            target_tempo=target_tempo,
+            changed=True,
+            message="ok",
+        )
+
+    result = validate_once(
+        settings,
+        [build_submission(task, solver_hotkey="hk-a", proof_script=_proof())],
+        registry=registry,
+        verify_submission=lambda task, submission: VerifyResult(passed=True, reason="ok"),
+        tempo=9,
+        no_set_weights=True,
+        submit_tempo=submit_tempo,
+    )
+
+    assert targets == [360]
+    assert result.tempo_set is True
+    assert result.tempo_submission is not None
+    assert result.summary.chain_tempo_target_blocks == 360
 
 
 def test_validate_once_does_not_duplicate_corpus_rows_for_same_tempo(tmp_path: Path) -> None:

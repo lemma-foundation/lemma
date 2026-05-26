@@ -14,7 +14,7 @@ Paid production supply is `procedural`: every paid task must be generated from t
 
 The source pool is `Mathlib_pinned ∪ Lemma_substrate_<t>`. Mathlib rows come from `LEMMA_PROCEDURAL_SOURCE_JSONL`; prior accepted Lemma rows come from `LEMMA_PROCEDURAL_PRIOR_CORPUS_DIR`. At genesis that substrate mirror can be empty, but production mode still requires it so validators do not silently fork into Mathlib-only sampling. Sampling is deterministic and mixes citation-weighted order with uniform order through `LEMMA_PROCEDURAL_CITATION_ALPHA`, `LEMMA_PROCEDURAL_CITATION_WEIGHT_CAP`, and `LEMMA_PROCEDURAL_CITATION_WINDOW_TEMPOS`.
 
-Paid production also uses epoch-derived active selection. Development may keep a static queue seed, but SN467 burn-in and mainnet both require `LEMMA_ACTIVE_SEED_MODE=epoch_randomness` and `LEMMA_ACTIVE_EPOCH_RANDOMNESS_SOURCE=chain_drand`. The internal epoch number is the chain tempo index at the start of the Lemma task window. If the task window spans multiple chain tempos, every chain tempo inside that window keeps using the same anchor tempo and active task set.
+Paid production also uses epoch-derived active selection. Development may keep a static queue seed, but SN467 burn-in and mainnet both require `LEMMA_ACTIVE_SEED_MODE=epoch_randomness` and `LEMMA_ACTIVE_EPOCH_RANDOMNESS_SOURCE=chain_drand`. The internal epoch number is the current chain tempo index.
 
 The task set is generated after that epoch randomness is live. Validators may cache the current active registry once it has been generated, but future paid task sets must not be privately generated before their epoch randomness exists.
 
@@ -28,7 +28,7 @@ epoch_seed = hash(netuid, tempo, LEMMA_ACTIVE_QUEUE_SEED, epoch_randomness)
 active_selection_seed = hash(epoch_seed, registry_sha256, frontier_depth)
 ```
 
-The public curriculum row may also carry `active_window_blocks`. That value is the target length for the next task window: harder or larger sets get more blocks, while easier smaller sets can stay near the base cadence. If `active_window_blocks` is four chain tempos long, the same generated task set remains active for those four chain tempos. This fixes the generation-time pressure without precomputing future paid problems.
+The public curriculum row may also carry `active_window_blocks`. In chain mode that value is the target subnet `tempo` for a future paid set: harder or larger sets can use more blocks, while easier smaller sets stay near the base cadence.
 
 Paid procedural rows must carry that `epoch_seed` as `metadata.generation_seed`. This keeps generation procedural while preventing a static playlist of known tasks: rows generated for a different epoch seed fail production activation.
 

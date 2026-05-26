@@ -295,8 +295,11 @@ class LemmaSettings(BaseSettings):
     wallet_hot: str = Field(default="default", validation_alias="BT_WALLET_HOT")
     netuid: int = Field(default=0, ge=0, validation_alias="BT_NETUID")
     bt_network: str = Field(default="", validation_alias="BT_NETWORK")
+    btcli_command: str = Field(default="btcli", validation_alias="LEMMA_BTCLI_COMMAND")
     enable_set_weights: bool = Field(default=False, validation_alias="LEMMA_ENABLE_SET_WEIGHTS")
     enable_set_commitment: bool = Field(default=False, validation_alias="LEMMA_ENABLE_SET_COMMITMENT")
+    enable_set_tempo: bool = Field(default=False, validation_alias="LEMMA_ENABLE_SET_TEMPO")
+    set_tempo_timeout_s: float = Field(default=120.0, gt=0.0, validation_alias="LEMMA_SET_TEMPO_TIMEOUT_S")
     unearned_allocation_policy: Literal["burn", "recycle", "hold"] = Field(
         default="burn",
         validation_alias="LEMMA_UNEARNED_ALLOCATION_POLICY",

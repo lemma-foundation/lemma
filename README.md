@@ -76,7 +76,7 @@ Release and export tooling is documented in [Corpus](docs/corpus.md).
 
 ## Scoring
 
-Each task window has `K` active paid theorem slots. Harder or larger sets can use longer windows, so generation and proof search are not forced into the same fixed 72-minute cadence. A miner earns credit when their accepted proof is first for a slot under the current scoring rules. Unsolved slots remain unearned by default.
+Each chain tempo has `K` active paid theorem slots. Harder or larger sets can use a longer subnet tempo, so generation and proof search are not forced into the same fixed 72-minute cadence. A miner earns credit when their accepted proof is first for a slot under the current scoring rules. Unsolved slots remain unearned by default.
 
 ```text
 score = sum(winning_slot_weight) / sum(active_slot_weights)

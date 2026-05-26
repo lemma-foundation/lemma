@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -15,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from lemma.chain.commitments import ChainCommitmentSubmission
 from lemma.chain.epoch_randomness import resolve_chain_drand_epoch_randomness
+from lemma.chain.tempo import ChainTempoSubmission
 from lemma.chain.weights import ChainWeightSubmission
 from lemma.common.config import LemmaSettings
 from lemma.corpus import CorpusRow, build_corpus_row, write_corpus_index, write_jsonl
@@ -35,6 +35,7 @@ from lemma.verifiers.registry import get_verifier
 VerifySubmission = Callable[[LemmaTask, LemmaSubmission], VerifyResult]
 SubmitWeights = Callable[[LemmaSettings, dict[str, float]], ChainWeightSubmission]
 SubmitCommitment = Callable[[LemmaSettings, str], ChainCommitmentSubmission]
+SubmitTempo = Callable[[LemmaSettings, int], ChainTempoSubmission]
 ChainAuthenticatedKey = tuple[str, str, str]
 
 
@@ -72,6 +73,10 @@ class ValidatorRunSummary(BaseModel):
     weights_set: bool
     chain_weight_uids: tuple[int, ...] | None = None
     chain_weight_values: tuple[float, ...] | None = None
+    tempo_set: bool = False
+    chain_tempo_current_blocks: int | None = Field(default=None, ge=1)
+    chain_tempo_target_blocks: int | None = Field(default=None, ge=1)
+    chain_tempo_changed: bool = False
 
 
 @dataclass(frozen=True)
@@ -81,6 +86,8 @@ class ValidatorRunResult:
     corpus_rows: tuple[CorpusRow, ...]
     weights_set: bool
     weight_submission: ChainWeightSubmission | None
+    tempo_set: bool
+    tempo_submission: ChainTempoSubmission | None
     commitment_submission: ChainCommitmentSubmission | None
     summary: ValidatorRunSummary
 
@@ -90,7 +97,7 @@ def _now() -> str:
 
 
 def current_active_tempo(settings: LemmaSettings, *, now: datetime | None = None) -> int:
-    """Return the tempo used for the active task window."""
+    """Return the active chain tempo index."""
     if settings.active_tempo_source == "chain":
         import bittensor as bt
 
@@ -100,35 +107,9 @@ def current_active_tempo(settings: LemmaSettings, *, now: datetime | None = None
         chain_tempo_blocks = int(cast(Any, hyperparams).tempo)
         if chain_tempo_blocks <= 0:
             raise RuntimeError("chain tempo must be positive")
-        raw_tempo = block // chain_tempo_blocks
-        active_tempo = _window_anchor_tempo(
-            raw_tempo,
-            chain_tempo_blocks=chain_tempo_blocks,
-            active_window_blocks=settings.active_window_blocks,
-        )
-        if settings.curriculum_retarget_enabled and settings.curriculum_state_jsonl is not None:
-            for _ in range(2):
-                effective = curriculum_controlled_settings(settings, tempo=active_tempo)
-                next_active_tempo = _window_anchor_tempo(
-                    raw_tempo,
-                    chain_tempo_blocks=chain_tempo_blocks,
-                    active_window_blocks=effective.active_window_blocks,
-                )
-                if next_active_tempo == active_tempo:
-                    break
-                active_tempo = next_active_tempo
-        return active_tempo
+        return block // chain_tempo_blocks
     instant = now or datetime.now(UTC)
     return int(instant.timestamp() // settings.active_tempo_seconds)
-
-
-def _window_anchor_tempo(raw_tempo: int, *, chain_tempo_blocks: int, active_window_blocks: int) -> int:
-    if raw_tempo < 0:
-        raise ValueError("raw_tempo must be non-negative")
-    if chain_tempo_blocks <= 0 or active_window_blocks <= 0:
-        raise ValueError("tempo/window block counts must be positive")
-    window_tempos = max(1, math.ceil(active_window_blocks / chain_tempo_blocks))
-    return (raw_tempo // window_tempos) * window_tempos
 
 
 def _hash_payload(payload: dict[str, object]) -> str:
@@ -251,11 +232,16 @@ def active_registry_cache_stale(registry: TaskRegistry, settings: LemmaSettings)
         return True
     if any(task.frontier_depth != settings.frontier_depth for task in registry.tasks):
         return True
+    expected_task_window = settings.active_window_blocks
+    if settings.active_tempo_source == "chain" and settings.active_epoch_randomness_source == "chain_drand":
+        from lemma.chain.tempo import current_chain_tempo_blocks
+
+        expected_task_window = current_chain_tempo_blocks(settings)
     for task in registry.tasks:
         task_window = task.metadata.get("active_window_blocks")
         if task_window is None and settings.active_seed_mode != "epoch_randomness":
             continue
-        if int(task_window or 0) != settings.active_window_blocks:
+        if int(task_window or 0) != expected_task_window:
             return True
     expected_source = (settings.procedural_source_sha256_expected or "").strip().lower().removeprefix("sha256:")
     if expected_source:
@@ -284,9 +270,25 @@ def curriculum_controlled_settings(settings: LemmaSettings, *, tempo: int) -> Le
 
     # Retarget rows are produced after validating a tempo, so they activate with
     # one extra tempo of public replay lag to avoid mid-epoch active-set changes.
-    records = tuple(
-        record for record in read_curriculum_records(settings.curriculum_state_jsonl) if record.tempo < tempo - 1
-    )
+    records = read_curriculum_records(settings.curriculum_state_jsonl)
+    if settings.active_tempo_source == "chain":
+        import bittensor as bt
+
+        subtensor = bt.Subtensor(network=settings.bt_network or None)
+        current_block = int(subtensor.get_current_block())
+        eligible_records = tuple(
+            record
+            for record in records
+            if (
+                record.activation_block is not None
+                and record.activation_block <= current_block
+                or record.activation_block is None
+                and record.tempo < tempo - 1
+            )
+        )
+    else:
+        eligible_records = tuple(record for record in records if record.tempo < tempo - 1)
+    records = eligible_records
     if not records:
         return settings
     latest = records[-1]
@@ -914,11 +916,18 @@ def _retarget_curriculum_after_validation(settings: LemmaSettings, *, tempo: int
         validator_capacity=validator_capacity,
         config=config,
     )
+    activation_block = None
+    if settings.active_tempo_source == "chain":
+        from lemma.chain.tempo import current_chain_tempo_blocks
+
+        chain_tempo_blocks = current_chain_tempo_blocks(settings)
+        activation_block = (tempo + 2) * chain_tempo_blocks
     record = CurriculumTempoRecord(
         tempo=tempo,
         active_K=decision.state.active_K,
         frontier_depth=decision.state.frontier_depth,
         active_window_blocks=decision.state.active_window_blocks,
+        activation_block=activation_block,
         ema_solve_rate=decision.state.ema_solve_rate,
         solved_slots=solved_slots,
         parked_task_ids=(),
@@ -931,6 +940,7 @@ def _retarget_curriculum_after_validation(settings: LemmaSettings, *, tempo: int
             validator_capacity=validator_capacity,
             config=config,
             decision=decision,
+            activation_block=activation_block,
         ),
     )
     append_curriculum_record(settings.curriculum_state_jsonl, record)
@@ -951,6 +961,7 @@ def validate_once(
     require_commit_reveal: bool = False,
     submit_weights: SubmitWeights | None = None,
     submit_commitment: SubmitCommitment | None = None,
+    submit_tempo: SubmitTempo | None = None,
     chain_authenticated_keys: frozenset[ChainAuthenticatedKey] = frozenset(),
 ) -> ValidatorRunResult:
     """Verify submissions, score unique proofs, and write local corpus artifacts."""
@@ -1082,7 +1093,7 @@ def validate_once(
     )
     if score.score_events:
         append_jsonl(settings.operator_data_dir / "score-events.jsonl", score.score_events)
-    _retarget_curriculum_after_validation(
+    retarget_record = _retarget_curriculum_after_validation(
         settings,
         tempo=active_tempo,
         solved_slots=len(score.valid_unique_proofs),
@@ -1180,6 +1191,32 @@ def validate_once(
             message = commitment_submission.message or "unknown set_commitment failure"
             raise RuntimeError(f"set_commitment failed: {message}")
         commitment_set = True
+    tempo_set = False
+    tempo_submission: ChainTempoSubmission | None = None
+    if settings.enable_set_tempo and retarget_record is not None:
+        from lemma.chain.tempo import submit_bittensor_tempo
+
+        writer_tempo = submit_tempo or submit_bittensor_tempo
+        tempo_submission = writer_tempo(settings, retarget_record.active_window_blocks)
+        append_jsonl(
+            settings.operator_data_dir / "tempo-submissions.jsonl",
+            [
+                {
+                    "submitted_at": _now(),
+                    "netuid": settings.netuid,
+                    "tempo": active_tempo,
+                    "current_tempo_blocks": tempo_submission.current_tempo,
+                    "target_tempo_blocks": tempo_submission.target_tempo,
+                    "changed": tempo_submission.changed,
+                    "success": tempo_submission.success,
+                    "message": tempo_submission.message,
+                }
+            ],
+        )
+        if not tempo_submission.success:
+            message = tempo_submission.message or "unknown set_tempo failure"
+            raise RuntimeError(f"set_tempo failed: {message}")
+        tempo_set = tempo_submission.changed
     summary = ValidatorRunSummary(
         schema_version=1,
         run_at=_now(),
@@ -1210,6 +1247,10 @@ def validate_once(
         weights_set=weights_set,
         chain_weight_uids=weight_submission.uids if weight_submission else None,
         chain_weight_values=weight_submission.weights if weight_submission else None,
+        tempo_set=tempo_set,
+        chain_tempo_current_blocks=tempo_submission.current_tempo if tempo_submission else None,
+        chain_tempo_target_blocks=tempo_submission.target_tempo if tempo_submission else None,
+        chain_tempo_changed=tempo_submission.changed if tempo_submission else False,
     )
     append_jsonl(settings.operator_data_dir / "validator-runs.jsonl", [summary])
     return ValidatorRunResult(
@@ -1218,6 +1259,8 @@ def validate_once(
         corpus_rows=tuple(rows),
         weights_set=weights_set,
         weight_submission=weight_submission,
+        tempo_set=tempo_set,
+        tempo_submission=tempo_submission,
         commitment_submission=commitment_submission,
         summary=summary,
     )

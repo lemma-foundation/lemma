@@ -112,7 +112,7 @@ def test_chain_drand_epoch_randomness_uses_active_window_length() -> None:
     )
 
     assert randomness.tempo == 4
-    assert randomness.tempo_length == 1440
+    assert randomness.tempo_length == 360
     assert randomness.anchor_block == 1440
 
 
