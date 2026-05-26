@@ -1150,6 +1150,8 @@ def test_operator_preflight_flags_shallow_source_for_requested_frontier(tmp_path
     checks = {check.name: check for check in payload.checks}
     assert checks["source_snapshot"].ok is False
     assert "max_depth=2" in checks["source_snapshot"].detail
+    assert "depths=0:10,2:1" in checks["source_snapshot"].detail
+    assert "bands=easy:10,medium:1" in checks["source_snapshot"].detail
 
 
 def test_tasks_build_mathlib_snapshot_writes_pinned_registry(tmp_path) -> None:

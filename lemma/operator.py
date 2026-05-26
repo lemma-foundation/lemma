@@ -253,6 +253,8 @@ def _source_snapshot_check(settings: LemmaSettings, *, frontier_depth: int) -> O
     rows = _summary_int(summary.get("rows"))
     max_depth = _summary_int(summary.get("max_queue_depth"))
     frontier_rows = _summary_int(summary.get("frontier_rows"))
+    depth_counts = _summary_counts(summary.get("queue_depth_counts"))
+    band_counts = _summary_counts(summary.get("difficulty_band_counts"))
     coverage = summary["metadata_coverage"]
     dependency_coverage = _summary_int(coverage.get("dependency_depth")) if isinstance(coverage, dict) else 0
     return _check(
@@ -260,6 +262,7 @@ def _source_snapshot_check(settings: LemmaSettings, *, frontier_depth: int) -> O
         rows > 0 and max_depth >= frontier_depth,
         (
             f"rows={rows} max_depth={max_depth} frontier_rows={frontier_rows} "
+            f"depths={_format_counts(depth_counts)} bands={_format_counts(band_counts)} "
             f"dependency_coverage={dependency_coverage}/{rows}"
         ),
     )
@@ -267,6 +270,16 @@ def _source_snapshot_check(settings: LemmaSettings, *, frontier_depth: int) -> O
 
 def _summary_int(value: object) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def _summary_counts(value: object) -> dict[str, int]:
+    if not isinstance(value, dict):
+        return {}
+    return {str(key): item for key, item in value.items() if isinstance(item, int) and not isinstance(item, bool)}
+
+
+def _format_counts(counts: dict[str, int]) -> str:
+    return ",".join(f"{key}:{counts[key]}" for key in sorted(counts)) or "none"
 
 
 def _inspect_registry(
