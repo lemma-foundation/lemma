@@ -250,11 +250,11 @@ def _source_snapshot_check(settings: LemmaSettings, *, frontier_depth: int) -> O
         summary = snapshot_quality_summary(rows_from_jsonl(settings.procedural_source_jsonl))
     except (OSError, ValueError) as e:
         return _check("source_snapshot", False, f"invalid source snapshot: {e.__class__.__name__}")
-    rows = int(summary["rows"])
-    max_depth = int(summary["max_queue_depth"])
-    frontier_rows = int(summary["frontier_rows"])
+    rows = _summary_int(summary.get("rows"))
+    max_depth = _summary_int(summary.get("max_queue_depth"))
+    frontier_rows = _summary_int(summary.get("frontier_rows"))
     coverage = summary["metadata_coverage"]
-    dependency_coverage = int(coverage["dependency_depth"]) if isinstance(coverage, dict) else 0
+    dependency_coverage = _summary_int(coverage.get("dependency_depth")) if isinstance(coverage, dict) else 0
     return _check(
         "source_snapshot",
         rows > 0 and max_depth >= frontier_depth,
@@ -263,6 +263,10 @@ def _source_snapshot_check(settings: LemmaSettings, *, frontier_depth: int) -> O
             f"dependency_coverage={dependency_coverage}/{rows}"
         ),
     )
+
+
+def _summary_int(value: object) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
 
 
 def _inspect_registry(
