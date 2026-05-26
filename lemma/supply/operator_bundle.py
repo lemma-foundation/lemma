@@ -5,19 +5,25 @@ from __future__ import annotations
 import hashlib
 import json
 
-OPERATOR_BUNDLE_VERSION = "lemma-procedural-depth2-v3"
+OPERATOR_BUNDLE_VERSION = "lemma-procedural-depth2-v5"
 OPERATOR_NAMES = ("generalize", "specialize", "conjoin", "substitute-type", "strengthen", "weaken")
 MUTATION_ENGINE = "lean_ast_elaborator"
 TYPE_SUBSTITUTIONS = (
     ("Nat", "Int"),
     ("Int", "Rat"),
     ("Rat", "Real"),
+    ("Complex.re", "Complex.im"),
+    ("Complex.im", "Complex.re"),
 )
 SMALL_VALUES_BY_TYPE = {
     "Nat": ("0", "1", "2", "Nat.zero", "Nat.succ Nat.zero"),
+    "\u2115": ("0", "1", "2", "Nat.zero", "Nat.succ Nat.zero"),
     "Int": ("0", "1", "-1"),
+    "\u2124": ("0", "1", "-1"),
     "Rat": ("0", "1"),
+    "\u211A": ("0", "1"),
     "Real": ("0", "1"),
+    "\u211D": ("0", "1"),
     "Bool": ("true", "false"),
     "Prop": ("True", "False"),
 }

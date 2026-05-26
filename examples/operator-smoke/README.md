@@ -2,7 +2,7 @@
 
 This example runs the public registry-to-validator-to-corpus loop with a tiny proof-erased Mathlib-style snapshot that follows the [Mathlib extraction contract](../../docs/mathlib-extraction.md).
 
-The fixture has 10 active `True` tasks at `queue_depth=0` and one deeper parked task at `queue_depth=2`. With `LEMMA_ACTIVE_K=10`, one accepted proof earns `0.1`, and the remaining `0.9` routes to the default burn rail.
+The fixture has 10 active Nat reflexivity tasks at `queue_depth=0` and one deeper parked task at `queue_depth=2`. One accepted proof earns its verifier-recorded slot weight, and the remaining share routes to the default burn rail.
 
 ## Fast Contract Smoke
 
@@ -55,12 +55,12 @@ Build one task-bound submission:
 
 ```bash
 uv run lemma submit \
-  lemma.mathlib_snapshot.operator_smoke_true_0 \
+  lemma.mathlib_snapshot.operator_smoke_nat_refl_0 \
   --submission examples/operator-smoke/Submission.lean \
   --solver-hotkey miner-active \
   --output "$WORK/submission.json"
 
-uv run python -c 'import json, pathlib; w=pathlib.Path(".lemma-operator-smoke"); w.joinpath("submissions.jsonl").write_text(json.dumps(json.loads(w.joinpath("submission.json").read_text()), sort_keys=True)+"\n")'
+uv run python -c 'import json, pathlib, sys; w=pathlib.Path(sys.argv[1]); w.joinpath("submissions.jsonl").write_text(json.dumps(json.loads(w.joinpath("submission.json").read_text()), sort_keys=True)+"\n")' "$WORK"
 ```
 
 Run one validator pass:
@@ -82,12 +82,13 @@ Expected output fragments:
 ```json
 {
   "accepted_unique": 1,
+  "corpus_rows": 1,
   "scores": {
-    "miner-active": 0.1
+    "miner-active": "<slot weight>"
   },
   "weights": {
-    "burn_uid:0": 0.9,
-    "miner-active": 0.1
+    "burn_uid:0": "<unearned share>",
+    "miner-active": "<slot weight>"
   },
   "weights_set": false
 }

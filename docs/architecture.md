@@ -33,7 +33,7 @@ Lean theorem supply
 
 ## Controllers
 
-`frontier_depth` is the protocol difficulty proxy, `active_K` is the throughput target, and `active_window_blocks` is the target chain tempo for a future task set. In production they come from the latest eligible public curriculum tempo state, with one full tempo of replay lag before a retarget row can affect active selection. Solve rate moves the frontier; validator capacity and the public cost budget cap `K`, so deeper frontiers can run fewer tasks without making validation expensive. The tempo policy gives harder or larger task sets more blocks instead of forcing every set into the same fixed cadence. Validators write that retarget state into canonical public artifacts after each pass, and an operator can submit the target as the subnet `tempo` before the matching set starts. Paid tasks are generated only after the active tempo randomness exists.
+`frontier_depth` is the protocol difficulty proxy and `active_K` is the throughput target. When curriculum retargeting is enabled, production validators load the latest eligible public curriculum state with one full tempo of replay lag before a retarget row can affect active selection. Solve rate moves the frontier; validator capacity and the public cost budget cap `K`, so deeper frontiers can run fewer tasks without making validation expensive. The subnet tempo stays fixed. Paid tasks are generated only after the active tempo randomness exists.
 
 ## Boundaries
 

@@ -26,6 +26,7 @@ _ATTR_RE = re.compile(r"^(?:@\[[^\]]+\]\s*)+")
 _UNIVERSE_APP_RE = re.compile(r"\.\{[^{}]*\}")
 _SORT_LEVEL_RE = re.compile(r"\b(Type|Sort)\s+(?:\([^()]*\)|[A-Za-z_][A-Za-z0-9_]*(?:\s*\+\s*\d+)?)")
 _HARD_TOPICS = {"Algebra", "Analysis", "CategoryTheory", "Geometry", "MeasureTheory", "Topology"}
+_ELABORATION_BATCH_SIZE = 500
 
 
 @dataclass(frozen=True)
@@ -228,6 +229,13 @@ def _default_lake_root(mathlib_root: Path) -> Path:
 
 
 def _elaborate_types(rows: list[MathlibSnapshotRow], lake_root: Path) -> list[MathlibSnapshotRow]:
+    out: list[MathlibSnapshotRow] = []
+    for index in range(0, len(rows), _ELABORATION_BATCH_SIZE):
+        out.extend(_elaborate_type_batch(rows[index : index + _ELABORATION_BATCH_SIZE], lake_root))
+    return out
+
+
+def _elaborate_type_batch(rows: list[MathlibSnapshotRow], lake_root: Path) -> list[MathlibSnapshotRow]:
     checks = "\n".join(f"#check {row.theorem_name}" for row in rows)
     with tempfile.NamedTemporaryFile("w", suffix=".lean", encoding="utf-8", delete=False) as handle:
         handle.write("import Mathlib\n")
@@ -306,12 +314,10 @@ def _type_from_check_line(name: str, line: str) -> str | None:
 
 
 def _merge_elaborated_binders(source_type: str, elaborated_type: str) -> str:
-    """Keep source target text, but prepend Lean-elaborated section binders."""
+    """Use Lean's elaborated type so extracted rows stay self-contained."""
 
-    source_binders, source_target = _split_forall_type(source_type)
-    elaborated_binders, _ = _split_forall_type(elaborated_type)
-    binders = elaborated_binders or source_binders
-    return f"∀ {binders}, {source_target}" if binders else source_target
+    _ = source_type
+    return elaborated_type.strip()
 
 
 def _supported_snapshot_type(type_expr: str) -> bool:

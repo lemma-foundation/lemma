@@ -256,26 +256,6 @@ class LemmaSettings(BaseSettings):
         ge=1.0,
         validation_alias="LEMMA_CURRICULUM_DEPTH_COST_MULTIPLIER",
     )
-    curriculum_window_base_blocks: int = Field(
-        default=360,
-        ge=1,
-        validation_alias="LEMMA_CURRICULUM_WINDOW_BASE_BLOCKS",
-    )
-    curriculum_window_max_blocks: int = Field(
-        default=7200,
-        ge=1,
-        validation_alias="LEMMA_CURRICULUM_WINDOW_MAX_BLOCKS",
-    )
-    curriculum_window_depth_multiplier: float = Field(
-        default=2.0,
-        ge=1.0,
-        validation_alias="LEMMA_CURRICULUM_WINDOW_DEPTH_MULTIPLIER",
-    )
-    curriculum_window_k_reference: int = Field(
-        default=4,
-        ge=1,
-        validation_alias="LEMMA_CURRICULUM_WINDOW_K_REFERENCE",
-    )
     schema_version: str = Field(default="v2", validation_alias="LEMMA_SCHEMA_VERSION")
     enabled_domains: tuple[str, ...] = Field(default=("lean",), validation_alias="LEMMA_ENABLED_DOMAINS")
     experimental_domains: tuple[str, ...] = Field(default=(), validation_alias="LEMMA_EXPERIMENTAL_DOMAINS")
@@ -302,8 +282,6 @@ class LemmaSettings(BaseSettings):
     btcli_command: str = Field(default="btcli", validation_alias="LEMMA_BTCLI_COMMAND")
     enable_set_weights: bool = Field(default=False, validation_alias="LEMMA_ENABLE_SET_WEIGHTS")
     enable_set_commitment: bool = Field(default=False, validation_alias="LEMMA_ENABLE_SET_COMMITMENT")
-    enable_set_tempo: bool = Field(default=False, validation_alias="LEMMA_ENABLE_SET_TEMPO")
-    set_tempo_timeout_s: float = Field(default=120.0, gt=0.0, validation_alias="LEMMA_SET_TEMPO_TIMEOUT_S")
     unearned_allocation_policy: Literal["burn", "recycle", "hold"] = Field(
         default="burn",
         validation_alias="LEMMA_UNEARNED_ALLOCATION_POLICY",

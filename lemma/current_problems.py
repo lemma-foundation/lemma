@@ -144,10 +144,6 @@ def _curriculum_metadata(settings: LemmaSettings) -> CurrentProblemsMetadata:
         cost_budget_s=settings.curriculum_cost_budget_s,
         base_task_cost_s=settings.curriculum_base_task_cost_s,
         depth_cost_multiplier=settings.curriculum_depth_cost_multiplier,
-        window_base_blocks=settings.curriculum_window_base_blocks,
-        window_max_blocks=settings.curriculum_window_max_blocks,
-        window_depth_multiplier=settings.curriculum_window_depth_multiplier,
-        window_k_reference=settings.curriculum_window_k_reference,
     )
     return CurrentProblemsMetadata(
         cost_limited_K=cost_limited_k(settings.frontier_depth, config),

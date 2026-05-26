@@ -55,7 +55,22 @@ def test_mathlib_snapshot_row_allows_lean_apostrophe_names() -> None:
     candidate = candidate_from_row(row)
 
     assert candidate.theorem_name == "LinearCombination'.target"
+    assert candidate.id.startswith("lemma.mathlib_snapshot.LinearCombination_.target_")
     assert candidate.imports == ("Mathlib.Tactic.LinearCombination'",)
+
+
+def test_mathlib_snapshot_ids_distinguish_apostrophe_names() -> None:
+    base = MathlibSnapshotRow(
+        theorem_name="MeasureTheory.Measure.InnerRegularWRT.map",
+        type_expr="True",
+        imports=("Mathlib.MeasureTheory.Measure.Regular",),
+        mathlib_rev="abc123",
+        source_path="Mathlib/MeasureTheory/Measure/Regular.lean",
+        source_license="Apache-2.0",
+    )
+    apostrophe = base.model_copy(update={"theorem_name": "MeasureTheory.Measure.InnerRegularWRT.map'"})
+
+    assert candidate_from_row(base).id != candidate_from_row(apostrophe).id
 
 
 def test_mathlib_snapshot_jsonl_loader_is_deterministic(tmp_path) -> None:

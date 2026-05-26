@@ -7,6 +7,7 @@ without running extraction or model inference in the scoring path.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from collections import Counter
@@ -118,9 +119,12 @@ class MathlibSnapshotRow(BaseModel):
 
 
 def _task_id(theorem_name: str) -> str:
-    slug = _SAFE_ID.sub("_", theorem_name.strip()).strip("._-")
+    raw = theorem_name.strip()
+    slug = _SAFE_ID.sub("_", raw).strip("._-")
     if not slug:
         raise ValueError("theorem_name does not contain a safe task id slug")
+    if slug != raw:
+        slug = f"{slug}_{hashlib.sha256(raw.encode()).hexdigest()[:12]}"
     return f"lemma.mathlib_snapshot.{slug}"
 
 

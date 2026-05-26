@@ -120,7 +120,7 @@ class LeanAstMutationEngine:
                 ),
                 "lean_build_target": "Challenge",
                 "lean_max_heartbeats": int(self.settings.procedural_gate_max_heartbeats),
-                "lean_eval_commands": ("#eval! LemmaProceduralMutator.emit",),
+                "lean_eval_commands": ("#lemma_emit_mutation",),
                 "submission_policy": "strict_envelope",
             },
         )
@@ -299,11 +299,26 @@ def requireProp (stx : TSyntax `term) : Elab.Command.CommandElabM Unit := do
     unless (← Meta.isProp expr) do
       throwError "mutated statement did not elaborate to Prop"
 
+def elabTypeExpr (stx : TSyntax `term) : Elab.Command.CommandElabM Expr := do
+  Elab.Command.runTermElabM fun _ => do
+    Elab.Term.elabType stx.raw
+
+def ppExprTerm (expr : Expr) : Elab.Command.CommandElabM String := do
+  Elab.Command.runTermElabM fun _ => do
+    pure ((← Meta.ppExpr (← instantiateMVars expr)).pretty)
+
 partial def replaceIdent (target : Name) (replacement : Syntax) (stx : Syntax) : Syntax :=
   match stx with
   | Syntax.ident info raw value preresolved =>
       if value == target then replacement else Syntax.ident info raw value preresolved
   | Syntax.node info kind args => Syntax.node info kind (args.map (replaceIdent target replacement))
+  | _ => stx
+
+partial def replaceIdentText (target : String) (replacement : Syntax) (stx : Syntax) : Syntax :=
+  match stx with
+  | Syntax.ident info raw value preresolved =>
+      if value.toString == target then replacement else Syntax.ident info raw value preresolved
+  | Syntax.node info kind args => Syntax.node info kind (args.map (replaceIdentText target replacement))
   | _ => stx
 
 def smallValueFor (typeText : String) : Option String :=
@@ -324,6 +339,11 @@ def peerParams (key value : String) : Json :=
 def typedValueTerm (binderType value : String) : Elab.Command.CommandElabM (TSyntax `term) := do
   parseTermOrThrow <| if binderType == "Prop" then value else "(" ++ value ++ " : " ++ binderType ++ ")"
 
+def typedValueExpr (binderType value : String) (expectedType : Expr) : Elab.Command.CommandElabM Expr := do
+  let valueTerm ← typedValueTerm binderType value
+  Elab.Command.runTermElabM fun _ => do
+    Elab.Term.elabTerm valueTerm.raw (some expectedType)
+
 def trueArrow (expr : TSyntax `term) : Elab.Command.CommandElabM (TSyntax `term) := do
   parseTermOrThrow <| "True → (" ++ (← ppTerm expr) ++ ")"
 
@@ -338,7 +358,7 @@ partial def substituteFirstType
   | [] => pure none
   | (fromType, toType) :: rest =>
       let replacement ← parseTermOrThrow toType
-      let output : TSyntax `term := ⟨replaceIdent (Name.mkSimple fromType) replacement.raw expr.raw⟩
+      let output : TSyntax `term := ⟨replaceIdentText fromType replacement.raw expr.raw⟩
       if toString output.raw == toString expr.raw then
         substituteFirstType expr rest
       else
@@ -354,9 +374,9 @@ def mutate (expr peer : TSyntax `term) : Elab.Command.CommandElabM (TSyntax `ter
       ("binder_type", Json.str "Prop")
     ])
   else if operatorName == "specialize" then
-    match expr with
-    | `(term| ∀ $x:ident : $ty, $body) =>
-        let typeText ← ppTerm ty
+    match ← elabTypeExpr expr with
+    | Expr.forallE name domain body _ =>
+        let typeText ← ppExprTerm domain
         match smallValueFor typeText with
         | none =>
             let output ← trueArrow expr
@@ -365,10 +385,10 @@ def mutate (expr peer : TSyntax `term) : Elab.Command.CommandElabM (TSyntax `ter
               ("binder_type", Json.str typeText)
             ])
         | some value =>
-            let replacement ← typedValueTerm typeText value
-            let output : TSyntax `term := ⟨replaceIdent x.getId replacement.raw body.raw⟩
+            let replacement ← typedValueExpr typeText value domain
+            let output ← parseTermOrThrow (← ppExprTerm (body.instantiate1 replacement))
             pure (output, jsonObj [
-              ("binder", Json.str x.getId.toString),
+              ("binder", Json.str name.toString),
               ("binder_type", Json.str typeText),
               ("value", Json.str value)
             ])
@@ -414,6 +434,8 @@ def emit : Elab.Command.CommandElabM Unit := do
   requireProp roundtrip
   let payload := jsonObj [("type_expr", Json.str rendered), ("params", params)]
   IO.println <| "LEMMA_AST_MUTATION " ++ payload.compress
+
+elab "#lemma_emit_mutation" : command => emit
 
 end LemmaProceduralMutator
 """

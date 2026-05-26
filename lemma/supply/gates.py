@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import threading
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -28,9 +29,11 @@ GATE_VERSION = "lemma-procedural-gates-v3"
 _TYPECHECK_GATE_DECL = "LemmaProceduralGate.typecheck_gate"
 _PROP_GATE_DECL = "LemmaProceduralGate.prop_gate"
 _KERNEL_NORMAL_MARKER = "LEMMA_KERNEL_NORMAL_FORM "
+_LEAN_DECL_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_']*(?:\.[A-Za-z_][A-Za-z0-9_']*)*$")
 TRIVIALITY_STACK = (
     ("decide", "  decide"),
     ("simp_all", "  simp_all"),
+    ("tauto", "  tauto"),
     ("omega", "  omega"),
     ("norm_num", "  norm_num"),
     ("ring", "  ring"),
@@ -102,7 +105,7 @@ class AssumedProceduralGateRunner:
             slot_weight=slot_weight.weight,
             metadata={
                 "gate_runner": "assumed",
-                "triviality_stack": [name for name, _body in TRIVIALITY_STACK],
+                "triviality_stack": _triviality_stack_names(candidate),
                 **self.novelty_cache.metadata(),
                 **budget.metadata(),
                 **slot_weight.metadata(),
@@ -179,7 +182,7 @@ class LeanProceduralGateRunner:
             candidate,
             _prop_gate_source(candidate),
             fingerprint_name=_PROP_GATE_DECL,
-            eval_commands=("#eval! LemmaProceduralGate.emit_kernel_normal",),
+            eval_commands=("#lemma_emit_kernel_normal",),
         )
         kernel_hash = _gate_canonical_hash(prop) if prop.passed else ""
         novelty = (
@@ -237,7 +240,7 @@ class LeanProceduralGateRunner:
                 "kernel_canonical_hash": kernel_hash,
                 "kernel_canonical_name": "LemmaProceduralGate.kernel_normal_form",
                 "canonical_hash": kernel_hash or candidate.metadata.get("canonical_hash"),
-                "triviality_stack": [name for name, _body in TRIVIALITY_STACK],
+                "triviality_stack": _triviality_stack_names(candidate),
                 "triviality_reason": baseline_reason,
                 "baseline_solver": baseline_solver,
                 **self.novelty_cache.metadata(),
@@ -266,6 +269,14 @@ class LeanProceduralGateRunner:
             )
 
     def _run_triviality_stack(self, candidate: TaskCandidate) -> tuple[bool, bool, str | None, str]:
+        ancestor_baseline = _ancestor_baseline_body(candidate)
+        if ancestor_baseline is not None:
+            passed, reason = self._run_triviality_tactic(candidate, "source_theorem", ancestor_baseline)
+            if passed:
+                return True, True, "source_theorem", "baseline_solved"
+            if reason in _INFRA_FAILURES:
+                return False, False, None, reason
+
         if len(TRIVIALITY_STACK) <= 1 or self.lean_workers <= 1:
             return self._run_triviality_stack_sequential(candidate)
 
@@ -319,6 +330,54 @@ class LeanProceduralGateRunner:
         if result.passed:
             return True, None
         return False, result.reason
+
+
+def _triviality_stack_names(candidate: TaskCandidate) -> list[str]:
+    names = [name for name, _body in TRIVIALITY_STACK]
+    if _ancestor_baseline_body(candidate) is not None:
+        return ["source_theorem", *names]
+    return names
+
+
+def _ancestor_baseline_body(candidate: TaskCandidate) -> str | None:
+    names = _ancestor_theorem_names(candidate)
+    if not names:
+        return None
+    alternatives = _ancestor_baseline_alternatives(names)
+    return "\n".join(("  repeat intro", "  first", *alternatives))
+
+
+def _ancestor_baseline_alternatives(names: tuple[str, ...]) -> tuple[str, ...]:
+    lines: list[str] = []
+    if len(names) > 1:
+        lines.append("  | constructor <;> first")
+        for name in names:
+            lines.append(f"    | apply {name} <;> assumption")
+            lines.append(f"    | exact {name}")
+            lines.append(f"    | simpa using {name}")
+    for name in names:
+        lines.append(f"  | apply {name} <;> assumption")
+        lines.append(f"  | exact {name}")
+        lines.append(f"  | simpa using {name}")
+    return tuple(lines)
+
+
+def _ancestor_theorem_names(candidate: TaskCandidate) -> tuple[str, ...]:
+    names: list[str] = []
+    _append_lean_decl_name(names, candidate.metadata.get("source_theorem_name"))
+    for step in candidate.metadata.get("mutation_chain") or ():
+        if not isinstance(step, dict):
+            continue
+        params = step.get("params")
+        if isinstance(params, dict):
+            _append_lean_decl_name(names, params.get("peer_theorem_name"))
+    return tuple(names)
+
+
+def _append_lean_decl_name(names: list[str], value: object) -> None:
+    if not isinstance(value, str) or not _LEAN_DECL_RE.fullmatch(value) or value in names:
+        return
+    names.append(value)
 
 
 def _resolve_lean_workers(settings: LemmaSettings) -> int:
@@ -453,6 +512,8 @@ def _prop_gate_source(candidate: TaskCandidate) -> str:
             "    let expr ← instantiateMVars expr",
             "    let normal ← Meta.reduceAll expr",
             "    IO.println <| \"LEMMA_KERNEL_NORMAL_FORM \" ++ exprKey normal",
+            "",
+            "elab \"#lemma_emit_kernel_normal\" : command => emit_kernel_normal",
             "",
             f"theorem prop_gate : ({candidate.type_expr}) := by",
             "  sorry",

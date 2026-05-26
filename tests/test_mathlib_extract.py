@@ -210,13 +210,13 @@ def test_check_output_parser_handles_wrapped_lines() -> None:
     assert parsed["Finset.disjoint_filter"].endswith("∀ x ∈ s, p x → ¬q x")
 
 
-def test_elaborated_type_keeps_source_target_named_args() -> None:
+def test_elaborated_type_uses_self_contained_lean_type() -> None:
     merged = _merge_elaborated_binders(
         "associator (R := R) = 0",
-        "∀ {R : Type _} [NonUnitalRing R], associator = 0",
+        "∀ {R : Type _} [NonUnitalRing R], Algebra.associator = 0",
     )
 
-    assert merged == "∀ {R : Type _} [NonUnitalRing R], associator (R := R) = 0"
+    assert merged == "∀ {R : Type _} [NonUnitalRing R], Algebra.associator = 0"
 
 
 def test_supported_snapshot_type_rejects_unparseable_elaborated_binders() -> None:

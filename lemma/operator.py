@@ -109,10 +109,6 @@ class OperatorCurriculumSummary(BaseModel):
     cost_budget_s: float = Field(ge=0.0)
     base_task_cost_s: float = Field(ge=0.0)
     depth_cost_multiplier: float = Field(ge=1.0)
-    window_base_blocks: int = Field(ge=1)
-    window_max_blocks: int = Field(ge=1)
-    window_depth_multiplier: float = Field(ge=1.0)
-    window_k_reference: int = Field(ge=1)
     current_cost_limited_K: int | None = Field(default=None, ge=1)
     current_active_K: int = Field(ge=1)
     current_active_window_blocks: int = Field(ge=1)
@@ -120,7 +116,6 @@ class OperatorCurriculumSummary(BaseModel):
     latest_tempo: int | None = Field(default=None, ge=0)
     latest_active_K: int | None = Field(default=None, ge=1)
     latest_frontier_depth: int | None = Field(default=None, ge=0)
-    latest_active_window_blocks: int | None = Field(default=None, ge=1)
     latest_ema_solve_rate: float | None = Field(default=None, ge=0.0, le=1.0)
     latest_solved_slots: int | None = Field(default=None, ge=0)
     latest_action: str | None = None
@@ -185,7 +180,7 @@ def _summarize_curriculum(
 
         records = read_curriculum_records(settings.curriculum_state_jsonl)
         latest = records[-1] if records else None
-    from lemma.supply.controller import CurriculumConfig, cost_limited_k, target_active_k, target_window_blocks
+    from lemma.supply.controller import CurriculumConfig, cost_limited_k, target_active_k
 
     config = CurriculumConfig(
         beta=settings.curriculum_beta,
@@ -196,19 +191,10 @@ def _summarize_curriculum(
         cost_budget_s=settings.curriculum_cost_budget_s,
         base_task_cost_s=settings.curriculum_base_task_cost_s,
         depth_cost_multiplier=settings.curriculum_depth_cost_multiplier,
-        window_base_blocks=settings.curriculum_window_base_blocks,
-        window_max_blocks=settings.curriculum_window_max_blocks,
-        window_depth_multiplier=settings.curriculum_window_depth_multiplier,
-        window_k_reference=settings.curriculum_window_k_reference,
     )
     current_cost_cap = cost_limited_k(current_frontier_depth, config)
     validator_capacity = settings.validator_capacity or current_active_K
     target_k = target_active_k(validator_capacity, frontier_depth=current_frontier_depth, config=config)
-    current_window_blocks = target_window_blocks(
-        frontier_depth=current_frontier_depth,
-        active_k=current_active_K,
-        config=config,
-    )
     return OperatorCurriculumSummary(
         schema_version=1,
         enabled=settings.curriculum_retarget_enabled,
@@ -219,13 +205,9 @@ def _summarize_curriculum(
         cost_budget_s=settings.curriculum_cost_budget_s,
         base_task_cost_s=settings.curriculum_base_task_cost_s,
         depth_cost_multiplier=settings.curriculum_depth_cost_multiplier,
-        window_base_blocks=settings.curriculum_window_base_blocks,
-        window_max_blocks=settings.curriculum_window_max_blocks,
-        window_depth_multiplier=settings.curriculum_window_depth_multiplier,
-        window_k_reference=settings.curriculum_window_k_reference,
         current_cost_limited_K=current_cost_cap,
         current_active_K=current_active_K,
-        current_active_window_blocks=current_window_blocks,
+        current_active_window_blocks=settings.active_window_blocks,
         can_increase_K=(
             settings.curriculum_retarget_enabled
             and target_k > current_active_K
@@ -233,7 +215,6 @@ def _summarize_curriculum(
         latest_tempo=latest.tempo if latest is not None else None,
         latest_active_K=latest.active_K if latest is not None else None,
         latest_frontier_depth=latest.frontier_depth if latest is not None else None,
-        latest_active_window_blocks=latest.active_window_blocks if latest is not None else None,
         latest_ema_solve_rate=latest.ema_solve_rate if latest is not None else None,
         latest_solved_slots=latest.solved_slots if latest is not None else None,
         latest_action=latest.action if latest is not None else None,

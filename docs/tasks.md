@@ -28,8 +28,6 @@ epoch_seed = hash(netuid, tempo, LEMMA_ACTIVE_QUEUE_SEED, epoch_randomness)
 active_selection_seed = hash(epoch_seed, registry_sha256, frontier_depth)
 ```
 
-The public curriculum row may also carry `active_window_blocks`. In chain mode that value is the target subnet `tempo` for a future paid set: harder or larger sets can use more blocks, while easier smaller sets stay near the base cadence.
-
 Paid procedural rows must carry that `epoch_seed` as `metadata.generation_seed`. This keeps generation procedural while preventing a static playlist of known tasks: rows generated for a different epoch seed fail production activation.
 
 Development and curriculum interfaces cover these streams:

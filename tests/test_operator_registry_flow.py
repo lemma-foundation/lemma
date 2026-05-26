@@ -42,14 +42,14 @@ class _PreviewMutationEngineForProduction:
         return result.__class__(result.type_expr, {**result.params, "engine": "lean_ast_elaborator"})
 
 
-def _proof_for(theorem_name: str) -> str:
+def _proof_for(theorem_name: str, type_expr: str) -> str:
     return "\n".join(
         [
             "import Mathlib",
             "",
             "namespace Submission",
             "",
-            f"theorem {theorem_name} : True := by",
+            f"theorem {theorem_name} : {type_expr} := by",
             "  trivial",
             "",
             "end Submission",
@@ -124,8 +124,8 @@ def test_operator_registry_flow_smoke(monkeypatch: pytest.MonkeyPatch, tmp_path:
     assert build.exit_code == 0, build.output
     registry_sha256 = json.loads(build.output)["registry_sha256"]
     registry = load_task_registry(registry_path.read_bytes(), registry_sha256)
-    active_task = registry.get("lemma.mathlib_snapshot.operator_smoke_true_0")
-    inactive_task = registry.get("lemma.mathlib_snapshot.operator_smoke_deep_true")
+    active_task = registry.get("lemma.mathlib_snapshot.operator_smoke_nat_refl_0")
+    inactive_task = registry.get("lemma.mathlib_snapshot.operator_smoke_deep_nat_refl")
 
     env = {
         "LEMMA_PREFER_PROCESS_ENV": "1",
@@ -215,7 +215,7 @@ def test_operator_registry_flow_smoke(monkeypatch: pytest.MonkeyPatch, tmp_path:
     inactive_submission = build_submission(
         inactive_task,
         solver_hotkey="miner-inactive",
-        proof_script=_proof_for(inactive_task.theorem_name),
+        proof_script=_proof_for(inactive_task.theorem_name, inactive_task.type_expr),
     ).model_dump(mode="json", exclude_none=True)
     submissions_jsonl = tmp_path / "submissions.jsonl"
     submissions_jsonl.write_text(
@@ -420,7 +420,7 @@ def test_production_like_procedural_submission_smoke(monkeypatch: pytest.MonkeyP
     active_task = active_tasks_for_validation(registry, base_settings, tempo=reveal_tempo)[0]
 
     miner_keypair = Keypair.create_from_uri("//LemmaMainnetReadinessMiner")
-    proof_script = _proof_for(active_task.theorem_name)
+    proof_script = _proof_for(active_task.theorem_name, active_task.type_expr)
     ciphertext = "cipher-mainnet-readiness"
     merkle_root = miner_submission_merkle_root(((0, ciphertext_sha256(ciphertext.encode("utf-8"))),))
     bucket_reveals_jsonl = tmp_path / "bucket-reveals.jsonl"

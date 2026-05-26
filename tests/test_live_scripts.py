@@ -98,12 +98,11 @@ def test_validator_bucket_wrapper_requires_explicit_commitment_write_flag() -> N
     assert '"${commitment_flag[@]}"' in validator
 
 
-def test_validator_bucket_wrapper_requires_explicit_tempo_write_flag() -> None:
+def test_validator_bucket_wrapper_does_not_write_subnet_tempo() -> None:
     validator = (ROOT / "scripts" / "lemma-validator-bucket-live").read_text(encoding="utf-8")
 
-    assert "tempo_flag=()" in validator
-    assert "LEMMA_VALIDATOR_SET_TEMPO:-0" in validator
-    assert '"${tempo_flag[@]}"' in validator
+    assert "--set-tempo" not in validator
+    assert "LEMMA_VALIDATOR_SET_TEMPO" not in validator
 
 
 def test_active_registry_prebuild_wrapper_serializes_builds() -> None:

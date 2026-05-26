@@ -24,7 +24,7 @@ from lemma.supply.import_graph import ImportGraphRow, extract_import_graph_rows,
 from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
 from lemma.supply.mutation import LeanAstMutationEngine, MutationResult, PreviewMutationEngine
 from lemma.supply.novelty import novelty_cache_from_hashes, read_novelty_cache, statement_hash
-from lemma.supply.operator_bundle import OPERATOR_BUNDLE_VERSION, OPERATOR_NAMES
+from lemma.supply.operator_bundle import OPERATOR_BUNDLE_VERSION, OPERATOR_NAMES, SMALL_VALUES_BY_TYPE
 from lemma.supply.procedural import (
     _candidate_from_source,
     build_procedural_registry_tasks,
@@ -38,6 +38,13 @@ from lemma.supply.triviality_budget import TrivialityRetargetConfig, triviality_
 from lemma.supply.types import fixture_candidate
 from lemma.task_supply import make_task, write_registry
 from lemma.validator import active_epoch_seed, active_tasks_for_validation, task_registry_for_validation
+
+
+def test_operator_bundle_includes_lean_pretty_type_aliases() -> None:
+    assert SMALL_VALUES_BY_TYPE["\u2115"] == SMALL_VALUES_BY_TYPE["Nat"]
+    assert SMALL_VALUES_BY_TYPE["\u2124"] == SMALL_VALUES_BY_TYPE["Int"]
+    assert SMALL_VALUES_BY_TYPE["\u211A"] == SMALL_VALUES_BY_TYPE["Rat"]
+    assert SMALL_VALUES_BY_TYPE["\u211D"] == SMALL_VALUES_BY_TYPE["Real"]
 
 
 class _PreviewMutationEngineForProduction:
@@ -192,7 +199,8 @@ def test_lean_ast_mutation_engine_uses_lean_eval_output(monkeypatch: pytest.Monk
     assert "replaceIdent" in captured["problem"].extra["challenge_full"]
     assert "let roundtrip ← parseTermOrThrow rendered" in captured["problem"].extra["challenge_full"]
     assert captured["problem"].extra["lean_max_heartbeats"] == 400_000
-    assert captured["problem"].extra["lean_eval_commands"] == ("#eval! LemmaProceduralMutator.emit",)
+    assert captured["problem"].extra["lean_eval_commands"] == ("#lemma_emit_mutation",)
+    assert 'elab "#lemma_emit_mutation" : command => emit' in captured["problem"].extra["challenge_full"]
     assert "theorem lemma_ast_mutation_dummy : True" in captured["proof_script"]
 
 
@@ -276,7 +284,61 @@ def test_depth2_generation_skips_failed_mutations(tmp_path: Path) -> None:
     assert engine.calls >= 3
 
 
+@pytest.mark.parametrize(
+    "params",
+    (
+        {"fallback": "true_premise"},
+        {"fallback": "unsupported_binder_type"},
+        {"fallback": "no_supported_type_occurrence"},
+        {"mode": "peer_premise"},
+        {"rule": "conjoin_peer_conclusion"},
+        {"rule": "false_disjunct"},
+        {"target": "fresh_prop_hypothesis"},
+    ),
+)
+def test_candidate_from_source_rejects_low_value_mutation(params: dict[str, object]) -> None:
+    class LowValueMutationEngine:
+        def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001, ARG002
+            return MutationResult(f"True → ({type_expr})", params)
+
+    source = fixture_candidate(
+        slug="source",
+        source_stream="mathlib_snapshot",
+        source_name="snapshot",
+        theorem_name="source",
+        type_expr="True",
+        queue_depth=0,
+    )
+
+    with pytest.raises(ValueError, match="low-value procedural mutation"):
+        _candidate_from_source(
+            source,
+            source_pool=(source,),
+            generation_seed="epoch-a",
+            epoch_fields={},
+            operator_chain=("specialize", "weaken"),
+            mutation_engine=LowValueMutationEngine(),
+            source_pool_hash_value="a" * 64,
+            source_pool_receipt_value={
+                "version": "test",
+                "source_count": 1,
+                "source_stream_counts": {"mathlib_snapshot": 1},
+                "sampling_version": "test",
+                "citation_alpha_basis_points": 5000,
+                "citation_weight_cap_micros": 64_000_000,
+                "citation_window_tempos": 2000,
+            },
+            operator_bundle_hash="b" * 64,
+            tempo=3,
+            sequence=0,
+        )
+
+
 def test_depth2_generation_attempt_limit_scales_with_requested_count() -> None:
+    class AlwaysGoodMutationEngine:
+        def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001, ARG002
+            return MutationResult(f"∀ p{step} : Prop, p{step} → ({type_expr})", {"target": "pytest"})
+
     class RejectingGate:
         def __init__(self) -> None:
             self.calls = 0
@@ -298,7 +360,7 @@ def test_depth2_generation_attempt_limit_scales_with_requested_count() -> None:
             source_stream="mathlib_snapshot",
             source_name="snapshot",
             theorem_name=f"source_{index}",
-            type_expr="True",
+            type_expr="∀ n : Nat, n = n",
             queue_depth=0,
         )
         for index in range(100)
@@ -313,6 +375,7 @@ def test_depth2_generation_attempt_limit_scales_with_requested_count() -> None:
             count=1,
             tempo=3,
             gate_runner=gate,
+            mutation_engine=AlwaysGoodMutationEngine(),
         )
 
     assert gate.calls == 50
@@ -441,7 +504,10 @@ def test_lean_gate_runner_records_generation_time_gates(monkeypatch: pytest.Monk
             gate_source = str(problem.extra["challenge_full"])
             is_typecheck = "def typecheck_gate" in gate_source
             if not is_typecheck:
-                assert problem.extra["lean_eval_commands"] == ("#eval! LemmaProceduralGate.emit_kernel_normal",)
+                assert problem.extra["lean_eval_commands"] == ("#lemma_emit_kernel_normal",)
+                assert 'elab "#lemma_emit_kernel_normal" : command => emit_kernel_normal' in problem.extra[
+                    "challenge_full"
+                ]
             calls.append("typecheck" if is_typecheck else "prop")
             return VerifyResult(
                 passed=True,
@@ -528,8 +594,49 @@ def test_lean_gate_runner_caps_parallel_verify_jobs(monkeypatch: pytest.MonkeyPa
 
     assert verdict.accepted is True
     assert calls[:2] == ["typecheck", "prop"]
-    assert calls.count("triviality") == len(TRIVIALITY_STACK)
+    assert calls.count("triviality") == len(TRIVIALITY_STACK) + 1
     assert max_active == 2
+
+
+def test_lean_gate_runner_rejects_source_theorem_wrappers(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    snapshot = tmp_path / "snapshot.jsonl"
+    _write_snapshot(snapshot)
+    candidate = generate_depth2_candidates(
+        mathlib_candidates_from_jsonl(snapshot),
+        generation_seed="epoch-a",
+        epoch_randomness=json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
+        count=1,
+        tempo=3,
+    )[0]
+    proof_scripts: list[str] = []
+
+    def fake_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001, ARG001
+        if problem.id.endswith(".gate"):
+            gate_source = str(problem.extra["challenge_full"])
+            is_typecheck = "def typecheck_gate" in gate_source
+            return VerifyResult(
+                passed=True,
+                reason="ok",
+                stdout_tail=""
+                if is_typecheck
+                else "LEMMA_KERNEL_NORMAL_FORM (forall default const:True:[] const:True:[])",
+                declaration_fingerprints={str(problem.extra["lean_fingerprint_names"][0]): "8" * 64},
+            )
+        proof_scripts.append(proof_script)
+        return VerifyResult(passed="apply " in proof_script, reason="ok")
+
+    monkeypatch.setattr("lemma.supply.gates.run_lean_verify", fake_verify)
+    verdict = LeanProceduralGateRunner(
+        LemmaSettings(_env_file=None, lean_use_docker=False, procedural_gate_timeout_s=5)
+    )(candidate, seen_canonical_hashes=())
+
+    assert verdict.accepted is False
+    assert verdict.baseline_solved is True
+    assert verdict.metadata["baseline_solver"] == "source_theorem"
+    assert len(proof_scripts) == 1
+    assert "apply " in proof_scripts[0]
 
 
 def test_lean_gate_runner_skips_triviality_when_compile_gate_fails(
@@ -629,12 +736,16 @@ def test_public_novelty_cache_can_be_built_from_type_expr_rows(tmp_path: Path) -
 
 
 def test_procedural_slot_weight_receipt_uses_dependency_metadata(tmp_path: Path) -> None:
+    class SlotWeightMutationEngine:
+        def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001, ARG002
+            return MutationResult(f"∀ p{step} : Prop, p{step} → ({type_expr})", {"target": "pytest"})
+
     snapshot = tmp_path / "snapshot.jsonl"
     snapshot.write_text(
         json.dumps(
             {
                 "theorem_name": "Deep.weight",
-                "type_expr": "True",
+                "type_expr": "∀ n : Nat, n = n",
                 "imports": ["Mathlib.Data.Nat.Basic", "Mathlib.Algebra.Group.Basic"],
                 "mathlib_rev": "abc123",
                 "source_path": "Mathlib/Deep.lean",
@@ -657,6 +768,7 @@ def test_procedural_slot_weight_receipt_uses_dependency_metadata(tmp_path: Path)
         epoch_randomness=json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
         count=1,
         tempo=3,
+        mutation_engine=SlotWeightMutationEngine(),
     )[0]
     inputs = candidate.metadata["slot_weight_inputs"]
 

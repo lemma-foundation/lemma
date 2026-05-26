@@ -126,7 +126,6 @@ def test_current_problem_snapshot_reports_curriculum_effective_window(tmp_path: 
     )
     settings = LemmaSettings(
         active_task_count=20,
-        active_tempo_source="chain",
         frontier_depth=0,
         active_queue_seed="pytest",
         curriculum_retarget_enabled=True,
@@ -137,32 +136,35 @@ def test_current_problem_snapshot_reports_curriculum_effective_window(tmp_path: 
     snapshot = build_current_problems_snapshot(settings, registry=_registry(), tempo=3)
 
     assert snapshot.active_K == 1
-    assert snapshot.active_tempo_source == "chain"
+    assert snapshot.active_tempo_source == "wall_clock"
     assert snapshot.active_window_blocks == 360
     assert snapshot.frontier_depth == 2
     assert snapshot.task_count == 1
     assert {task.frontier_depth for task in snapshot.tasks} == {2}
 
 
-def test_current_problem_snapshot_reports_curriculum_task_window(tmp_path: Path) -> None:
+def test_current_problem_snapshot_uses_fixed_active_window(tmp_path: Path) -> None:
     curriculum = tmp_path / "curriculum.jsonl"
-    append_curriculum_record(
-        curriculum,
-        CurriculumTempoRecord(
-            tempo=1,
-            active_K=1,
-            frontier_depth=2,
-            active_window_blocks=1440,
-            ema_solve_rate=0.58,
-            solved_slots=1,
-            parked_task_ids=(),
-            action="hold",
-            variant_stream_requested=False,
-        ),
+    curriculum.write_text(
+        json.dumps(
+            {
+                "tempo": 1,
+                "active_K": 1,
+                "frontier_depth": 2,
+                "active_window_blocks": 1440,
+                "ema_solve_rate": 0.58,
+                "solved_slots": 1,
+                "parked_task_ids": [],
+                "action": "hold",
+                "variant_stream_requested": False,
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
     )
     settings = LemmaSettings(
         active_task_count=20,
-        active_tempo_source="chain",
         frontier_depth=0,
         active_queue_seed="pytest",
         curriculum_retarget_enabled=True,
@@ -172,8 +174,8 @@ def test_current_problem_snapshot_reports_curriculum_task_window(tmp_path: Path)
 
     snapshot = build_current_problems_snapshot(settings, registry=_registry(), tempo=3)
 
-    assert snapshot.active_window_blocks == 1440
-    assert snapshot.active_tempo_seconds == 17280
+    assert snapshot.active_window_blocks == 360
+    assert snapshot.active_tempo_seconds == 4320
 
 
 def test_current_problem_snapshot_reports_cost_cap() -> None:

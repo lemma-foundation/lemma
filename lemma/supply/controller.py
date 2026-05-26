@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,10 +19,6 @@ class CurriculumConfig:
     cost_budget_s: float = 0.0
     base_task_cost_s: float = 0.0
     depth_cost_multiplier: float = 2.0
-    window_base_blocks: int = 360
-    window_max_blocks: int = 7200
-    window_depth_multiplier: float = 2.0
-    window_k_reference: int = 4
 
 
 @dataclass(frozen=True)
@@ -31,7 +26,6 @@ class CurriculumState:
     active_K: int
     frontier_depth: int = 0
     ema_solve_rate: float = 0.50
-    active_window_blocks: int = 360
 
 
 @dataclass(frozen=True)
@@ -51,7 +45,6 @@ class CurriculumTempoRecord:
     parked_task_ids: tuple[str, ...]
     action: str
     variant_stream_requested: bool
-    active_window_blocks: int = 360
     activation_block: int | None = None
     retarget_receipt: dict[str, object] | None = None
 
@@ -60,7 +53,6 @@ class CurriculumTempoRecord:
             "tempo": self.tempo,
             "active_K": self.active_K,
             "frontier_depth": self.frontier_depth,
-            "active_window_blocks": self.active_window_blocks,
             "ema_solve_rate": self.ema_solve_rate,
             "solved_slots": self.solved_slots,
             "parked_task_ids": list(self.parked_task_ids),
@@ -80,7 +72,6 @@ class CurriculumTempoRecord:
             tempo=int(data["tempo"]),
             active_K=int(data["active_K"]),
             frontier_depth=int(data["frontier_depth"]),
-            active_window_blocks=int(data.get("active_window_blocks", 360)),
             ema_solve_rate=float(data["ema_solve_rate"]),
             solved_slots=int(data["solved_slots"]),
             parked_task_ids=tuple(str(item) for item in data.get("parked_task_ids", [])),
@@ -127,10 +118,6 @@ def retarget_curriculum(
         raise ValueError("cost budget and base task cost must be non-negative")
     if config.depth_cost_multiplier < 1:
         raise ValueError("depth cost multiplier must be at least 1")
-    if config.window_base_blocks <= 0 or config.window_max_blocks < config.window_base_blocks:
-        raise ValueError("window block bounds are invalid")
-    if config.window_depth_multiplier < 1 or config.window_k_reference <= 0:
-        raise ValueError("window scaling config is invalid")
 
     solve_rate = min(1.0, solved_slots / state.active_K)
     ema = config.beta * state.ema_solve_rate + (1 - config.beta) * solve_rate
@@ -161,7 +148,6 @@ def retarget_curriculum(
             active_K=active_k,
             frontier_depth=frontier,
             ema_solve_rate=ema,
-            active_window_blocks=target_window_blocks(frontier_depth=frontier, active_k=active_k, config=config),
         ),
         action=action,
         variant_stream_requested=variants,
@@ -187,24 +173,6 @@ def target_active_k(validator_capacity: int, *, frontier_depth: int, config: Cur
     if cost_cap is not None:
         target = min(target, cost_cap)
     return max(1, target)
-
-
-def target_window_blocks(*, frontier_depth: int, active_k: int, config: CurriculumConfig) -> int:
-    """Return the deterministic block window for the next paid task set."""
-    if frontier_depth < 0:
-        raise ValueError("frontier_depth must be non-negative")
-    if active_k <= 0:
-        raise ValueError("active_k must be positive")
-    if config.window_base_blocks <= 0 or config.window_max_blocks < config.window_base_blocks:
-        raise ValueError("window block bounds are invalid")
-    if config.window_depth_multiplier < 1 or config.window_k_reference <= 0:
-        raise ValueError("window scaling config is invalid")
-
-    depth_factor = config.window_depth_multiplier**frontier_depth
-    k_factor = max(1, math.ceil(active_k / config.window_k_reference))
-    raw_blocks = math.ceil(config.window_base_blocks * depth_factor * k_factor)
-    rounded_blocks = math.ceil(raw_blocks / config.window_base_blocks) * config.window_base_blocks
-    return min(config.window_max_blocks, max(config.window_base_blocks, rounded_blocks))
 
 
 def curriculum_retarget_receipt(
@@ -240,14 +208,9 @@ def curriculum_retarget_receipt(
             "cost_budget_s": config.cost_budget_s,
             "base_task_cost_s": config.base_task_cost_s,
             "depth_cost_multiplier": config.depth_cost_multiplier,
-            "window_base_blocks": config.window_base_blocks,
-            "window_max_blocks": config.window_max_blocks,
-            "window_depth_multiplier": config.window_depth_multiplier,
-            "window_k_reference": config.window_k_reference,
         },
         "next_active_K": decision.state.active_K,
         "next_frontier_depth": decision.state.frontier_depth,
-        "next_active_window_blocks": decision.state.active_window_blocks,
         "next_ema_solve_rate": decision.state.ema_solve_rate,
     }
     if activation_block is not None:

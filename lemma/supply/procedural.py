@@ -20,7 +20,8 @@ from lemma.supply.mutation import PreviewMutationEngine, ProceduralMutationEngin
 from lemma.supply.novelty import statement_hash
 from lemma.supply.operator_bundle import (
     OPERATOR_BUNDLE_VERSION,
-    OPERATOR_NAMES,
+    SMALL_VALUES_BY_TYPE,
+    TYPE_SUBSTITUTIONS,
     procedural_operator_bundle_hash,
 )
 from lemma.supply.source_pool import source_pool_receipt, source_pool_receipt_sha256
@@ -62,6 +63,17 @@ class _Depth2Attempt:
 
 
 _SAFE_IDENT = re.compile(r"[^A-Za-z0-9_]+")
+_LOW_VALUE_MUTATION_FALLBACKS = frozenset(
+    {
+        "true_premise",
+        "unsupported_binder_type",
+        "no_supported_type_occurrence",
+    }
+)
+_LOW_VALUE_MUTATION_MODES = frozenset({"peer_premise"})
+_LOW_VALUE_MUTATION_RULES = frozenset({"conjoin_peer_conclusion", "false_disjunct"})
+_LOW_VALUE_MUTATION_TARGETS = frozenset({"fresh_prop_hypothesis"})
+_PRODUCTIVE_OPERATOR_NAMES = ("specialize", "substitute-type", "weaken")
 
 
 def candidates_from_jsonl(path: Path) -> tuple[TaskCandidate, ...]:
@@ -263,9 +275,7 @@ def generate_depth2_candidates(
         raise ValueError("count must be positive")
     if not sources:
         raise ValueError("source pool must not be empty")
-    eligible_sources = tuple(
-        source for source in sources if max_queue_depth is None or source.queue_depth <= max_queue_depth
-    )
+    eligible_sources = _eligible_depth2_sources(sources, max_queue_depth=max_queue_depth)
     if not eligible_sources:
         raise ValueError(f"source pool has no candidates at max_queue_depth={max_queue_depth}")
 
@@ -377,14 +387,12 @@ def _attempt_depth2_candidate(
     seen_canonical_hashes: frozenset[str],
 ) -> _Depth2Attempt:
     source = ctx.ordered[cursor % len(ctx.ordered)]
-    chain = _operator_chain(ctx.generation_seed, cursor)
     try:
         candidate = _candidate_from_source(
             source,
             source_pool=ctx.ordered,
             generation_seed=ctx.generation_seed,
             epoch_fields=ctx.epoch_fields,
-            operator_chain=chain,
             mutation_engine=ctx.mutation_engine,
             source_pool_hash_value=ctx.pool_hash,
             source_pool_receipt_value=ctx.pool_receipt,
@@ -456,19 +464,26 @@ def _candidate_from_source(
     source_pool: tuple[TaskCandidate, ...],
     generation_seed: str,
     epoch_fields: dict[str, Any],
-    operator_chain: tuple[str, str],
     mutation_engine: ProceduralMutationEngine,
     source_pool_hash_value: str,
     source_pool_receipt_value: dict[str, object],
     operator_bundle_hash: str,
     tempo: int,
     sequence: int,
+    operator_chain: tuple[str, ...] | None = None,
 ) -> TaskCandidate:
     type_expr = source.type_expr.strip()
     imports = source.imports
     mutation_chain: list[dict[str, object]] = []
     input_hash = _hash_text(type_expr)
-    for step, operator in enumerate(operator_chain):
+    for step in range(2):
+        operator = (
+            operator_chain[step]
+            if operator_chain is not None and step < len(operator_chain)
+            else _operator_for_step(generation_seed, sequence, step, type_expr)
+        )
+        if operator is None:
+            raise ValueError("no productive procedural operator for current type")
         peer = _peer_source(source_pool, source_id=source.id, seed=generation_seed, sequence=sequence, step=step)
         imports = _combined_imports(imports, peer.imports)
         mutation = mutation_engine.apply(
@@ -479,6 +494,7 @@ def _candidate_from_source(
             param_seed=_hash_text(f"{generation_seed}:{sequence}:{step}:{operator}"),
             peer=peer,
         )
+        _reject_low_value_mutation(mutation.params)
         output_hash = _hash_text(mutation.type_expr)
         mutation_chain.append(
             {
@@ -565,6 +581,21 @@ def _candidate_from_source(
     )
 
 
+def _reject_low_value_mutation(params: dict[str, object]) -> None:
+    fallback = params.get("fallback")
+    mode = params.get("mode")
+    rule = params.get("rule")
+    target = params.get("target")
+    if fallback in _LOW_VALUE_MUTATION_FALLBACKS:
+        raise ValueError(f"low-value procedural mutation fallback: {fallback}")
+    if mode in _LOW_VALUE_MUTATION_MODES:
+        raise ValueError(f"low-value procedural mutation mode: {mode}")
+    if rule in _LOW_VALUE_MUTATION_RULES:
+        raise ValueError(f"low-value procedural mutation rule: {rule}")
+    if target in _LOW_VALUE_MUTATION_TARGETS:
+        raise ValueError(f"low-value procedural mutation target: {target}")
+
+
 def _with_gate_receipt(candidate: TaskCandidate, verdict: ProceduralGateVerdict) -> TaskCandidate:
     metadata = {
         **candidate.metadata,
@@ -582,11 +613,76 @@ def _with_gate_receipt(candidate: TaskCandidate, verdict: ProceduralGateVerdict)
     return candidate.model_copy(update={"metadata": metadata})
 
 
-def _operator_chain(seed: str, sequence: int) -> tuple[str, str]:
+def _operator_chain(seed: str, sequence: int, type_expr: str) -> tuple[str, ...]:
+    operators = _productive_operators_for(type_expr)
+    if not operators:
+        return ()
     return (
-        OPERATOR_NAMES[_hash_int(f"{seed}:{sequence}:0") % len(OPERATOR_NAMES)],
-        OPERATOR_NAMES[_hash_int(f"{seed}:{sequence}:1") % len(OPERATOR_NAMES)],
+        operators[_hash_int(f"{seed}:{sequence}:0") % len(operators)],
+        operators[_hash_int(f"{seed}:{sequence}:1") % len(operators)],
     )
+
+
+def _operator_for_step(seed: str, sequence: int, step: int, type_expr: str) -> str | None:
+    operators = _productive_operators_for(type_expr)
+    if not operators:
+        return None
+    return operators[_hash_int(f"{seed}:{sequence}:{step}") % len(operators)]
+
+
+def _eligible_depth2_sources(
+    sources: tuple[TaskCandidate, ...],
+    *,
+    max_queue_depth: int | None,
+) -> tuple[TaskCandidate, ...]:
+    return tuple(
+        source
+        for source in sources
+        if (max_queue_depth is None or source.queue_depth <= max_queue_depth)
+        and _productive_operators_for(source.type_expr)
+    )
+
+
+def _productive_operators_for(type_expr: str) -> tuple[str, ...]:
+    out: list[str] = []
+    if _has_small_specialization_target(type_expr):
+        out.append("specialize")
+    if any(_lean_token_present(type_expr, source) for source, _replacement in TYPE_SUBSTITUTIONS):
+        out.append("substitute-type")
+    if _has_top_level_arrow(type_expr):
+        out.append("weaken")
+    return tuple(operator for operator in _PRODUCTIVE_OPERATOR_NAMES if operator in out)
+
+
+def _has_small_specialization_target(type_expr: str) -> bool:
+    return "∀ " in type_expr and any(
+        _lean_token_present(type_expr, binder_type)
+        for binder_type in SMALL_VALUES_BY_TYPE
+        if binder_type != "Prop"
+    )
+
+
+def _lean_token_present(value: str, token: str) -> bool:
+    return re.search(rf"(?<![A-Za-z0-9_'.]){re.escape(token)}(?![A-Za-z0-9_'.])", value) is not None
+
+
+def _has_top_level_arrow(value: str) -> bool:
+    return _top_level_index(value, "→") is not None or _top_level_index(value, "->") is not None
+
+
+def _top_level_index(value: str, marker: str) -> int | None:
+    depth = 0
+    i = 0
+    while i < len(value):
+        char = value[i]
+        if char in "([{":
+            depth += 1
+        elif char in ")]}" and depth > 0:
+            depth -= 1
+        elif depth == 0 and value.startswith(marker, i):
+            return i
+        i += 1
+    return None
 
 
 def _peer_source(
