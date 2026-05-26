@@ -73,7 +73,7 @@ uv run lemma tasks extract-mathlib-snapshot \
   --output snapshot.jsonl
 ```
 
-The extractor reads theorem and lemma declarations, erases proofs to hashes, derives topic labels from source paths, and assigns `queue_depth` from statement shape, import topic, and proof-block span. Use `--elaborate-types` for live batches so Lean `#check` output supplies self-contained theorem types instead of relying on source text that may reference file-local variables. It is an off-chain operator tool. Validators still consume only pinned snapshot and registry artifacts.
+The extractor reads theorem and lemma declarations, erases proofs to hashes, derives topic labels from source paths, and assigns `queue_depth` from statement shape, import topic, and proof-block span. Simple launch rows still land at depth `0`, but higher deterministic scores now continue into medium, hard, and frontier buckets instead of being collapsed into a shallow launch-only scale. `--depth2-limit` limits all rows with `queue_depth >= 2`; use it as a broad deep-row cap when building small smoke snapshots. Use `--elaborate-types` for live batches so Lean `#check` output supplies self-contained theorem types instead of relying on source text that may reference file-local variables. It is an off-chain operator tool. Validators still consume only pinned snapshot and registry artifacts.
 
 ## Registry Build
 

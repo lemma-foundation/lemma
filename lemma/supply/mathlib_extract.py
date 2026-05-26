@@ -391,11 +391,7 @@ def _difficulty_score(type_expr: str, block: str, topic: str) -> int:
 
 
 def _queue_depth(score: int) -> int:
-    if score <= 2:
-        return 0
-    if score <= 5:
-        return 1
-    return 2
+    return max(0, score - 2)
 
 
 def _apply_depth_limits(

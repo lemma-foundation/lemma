@@ -11,6 +11,7 @@ from lemma.supply.mathlib_extract import (
     _erase_universe_levels,
     _merge_elaborated_binders,
     _parse_check_output,
+    _queue_depth,
     _supported_snapshot_type,
     _type_from_check_line,
     extract_snapshot_rows,
@@ -47,6 +48,35 @@ def _write_fixture_mathlib(root) -> None:
     )
 
 
+def _write_frontier_fixture_mathlib(root) -> None:
+    path = root / "Mathlib" / "Algebra" / "LemmaFixture.lean"
+    path.parent.mkdir(parents=True)
+    proof_lines = [f"  have h{i} : True := by trivial" for i in range(26)]
+    path.write_text(
+        "\n".join(
+            [
+                "import Mathlib",
+                "",
+                "namespace AlgebraFixture",
+                "",
+                "theorem fixture_frontier {A B C D E F : Type}",
+                "    [Semiring A] [Semiring B] [Semiring C]",
+                "    (f : A -> B) (g : B -> C) (h : C -> D) (i : D -> E) (j : E -> F)",
+                "    (x : A) :",
+                "    ((f x = f x) ∧ (g (f x) = g (f x))) ∧",
+                "      ((h (g (f x)) = h (g (f x))) ∧",
+                "      (True ∧ True ∧ True ∧ True ∧ True ∧ True ∧ True ∧ True)) := by",
+                *proof_lines,
+                "  exact ⟨⟨rfl, rfl⟩, ⟨rfl, trivial⟩⟩",
+                "",
+                "end AlgebraFixture",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
 def test_extract_mathlib_snapshot_rows_are_deterministic(tmp_path) -> None:
     _write_fixture_mathlib(tmp_path)
 
@@ -70,6 +100,30 @@ def test_extract_mathlib_snapshot_rows_are_deterministic(tmp_path) -> None:
     assert rows[0].proof_sha256
     assert rows[2].type_expr == "associator (R := Nat) = 0 ↔ True"
     assert rows[1].type_expr == "∀ (n : Nat), 1 + n = n + 1"
+
+
+def test_extract_mathlib_snapshot_can_emit_frontier_depth(tmp_path) -> None:
+    _write_frontier_fixture_mathlib(tmp_path)
+
+    rows = extract_snapshot_rows(
+        ExtractConfig(
+            mathlib_root=tmp_path,
+            includes=("Mathlib/Algebra/*.lean",),
+            mathlib_rev="abc123",
+        )
+    )
+
+    assert len(rows) == 1
+    assert rows[0].difficulty_score is not None
+    assert rows[0].difficulty_score >= 7
+    assert rows[0].queue_depth >= 7
+
+
+def test_queue_depth_preserves_full_difficulty_ladder() -> None:
+    assert _queue_depth(0) == 0
+    assert _queue_depth(2) == 0
+    assert _queue_depth(3) == 1
+    assert _queue_depth(9) == 7
 
 
 def test_extract_mathlib_snapshot_cli_writes_jsonl(tmp_path) -> None:
