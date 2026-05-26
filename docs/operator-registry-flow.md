@@ -96,6 +96,17 @@ LEMMA_CURRICULUM_DEPTH_COST_MULTIPLIER=2
 
 The retarget loop records one row per tempo. Later tempos load the latest prior row: solve rate moves `frontier_depth`, and `K` is capped by validator capacity plus the configured cost budget. A frontier increase never grows `K` in the same retarget step; if the estimated cost at the new frontier is too high, the cost cap lowers `K` immediately. Production mode accepts retargeting only when `LEMMA_CURRICULUM_STATE_PUBLIC=1`; operators should set `LEMMA_CURRICULUM_STATE_JSONL` to a state file synced from the canonical public corpus artifacts, not a private scratch log.
 
+Plain difficulty rules:
+
+- `frontier_depth` is the difficulty dial for the active set.
+- `queue_depth` is the difficulty score on each generated task.
+- `queue_depth <= 1` is easy, `<= 3` is medium, `<= 6` is hard, and `>= 7` is frontier.
+- The validator only generates from source rows with `queue_depth <= frontier_depth`.
+- The generator targets `LEMMA_PROCEDURAL_CANDIDATE_COUNT`, or `LEMMA_ACTIVE_K` when the candidate count is unset.
+- Generation gets at most 50 attempts per target task. If it cannot fill the target count, it fails closed instead of filling slots with weaker tasks.
+- If miners solve enough slots, the next public retarget row can raise `frontier_depth`. If no slots are solved, frontier advancement stops and the system asks for variants.
+- `K` is paid throughput. It is capped by validator capacity and the public cost budget so harder task sets can automatically become smaller.
+
 Warm the current live tempo cache before miners run:
 
 ```bash
