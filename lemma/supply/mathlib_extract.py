@@ -18,10 +18,10 @@ from lemma.supply.import_graph import ImportGraph
 from lemma.supply.mathlib_snapshot import MathlibSnapshotRow
 
 _DECL_RE = re.compile(
-    r"^(?:protected\s+)?(?:theorem|lemma)\s+([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?)(?=\s|:|\(|\{|\[)(.*)$"
+    r"^(?:protected\s+)?(?:theorem|lemma)\s+([A-Za-z_][A-Za-z0-9_']*(?:\.[A-Za-z_][A-Za-z0-9_']*)?)(?=\s|:|\(|\{|\[)(.*)$"
 )
 _BOUNDARY_RE = re.compile(r"^(?:protected\s+)?(?:theorem|lemma|def|abbrev|instance)\b")
-_LEAN_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*")
+_LEAN_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_']*(?:\.[A-Za-z_][A-Za-z0-9_']*)*")
 _ATTR_RE = re.compile(r"^(?:@\[[^\]]+\]\s*)+")
 _UNIVERSE_APP_RE = re.compile(r"\.\{[^{}]*\}")
 _SORT_LEVEL_RE = re.compile(r"\b(Type|Sort)\s+(?:\([^()]*\)|[A-Za-z_][A-Za-z0-9_]*(?:\s*\+\s*\d+)?)")

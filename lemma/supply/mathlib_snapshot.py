@@ -20,7 +20,7 @@ from lemma.task_supply import DEFAULT_TOOLCHAIN
 from lemma.tasks import SourceRef
 
 _SAFE_ID = re.compile(r"[^A-Za-z0-9_.-]+")
-_LEAN_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*")
+_LEAN_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_']*(?:\.[A-Za-z_][A-Za-z0-9_']*)*")
 _HEX_SHA256 = re.compile(r"[0-9a-fA-F]{64}")
 
 

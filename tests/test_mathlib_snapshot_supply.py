@@ -42,6 +42,22 @@ def test_mathlib_snapshot_row_becomes_proof_erased_candidate() -> None:
     assert task.queue_depth == 2
 
 
+def test_mathlib_snapshot_row_allows_lean_apostrophe_names() -> None:
+    row = MathlibSnapshotRow(
+        theorem_name="LinearCombination'.target",
+        type_expr="True",
+        imports=("Mathlib.Tactic.LinearCombination'",),
+        mathlib_rev="abc123",
+        source_path="Mathlib/Tactic/LinearCombination'.lean",
+        source_license="Apache-2.0",
+    )
+
+    candidate = candidate_from_row(row)
+
+    assert candidate.theorem_name == "LinearCombination'.target"
+    assert candidate.imports == ("Mathlib.Tactic.LinearCombination'",)
+
+
 def test_mathlib_snapshot_jsonl_loader_is_deterministic(tmp_path) -> None:
     path = tmp_path / "snapshot.jsonl"
     rows = [
