@@ -102,6 +102,8 @@ LEMMA_CANONICAL_OUTPUT_DIR=canonical
 LEAN_SANDBOX_NETWORK=none
 ```
 
+`lemma operator preflight` checks the pinned source snapshot against the requested `frontier_depth`. If the snapshot only contains shallow rows, preflight fails before the operator can accidentally ask for frontier tasks from a shallow source pool.
+
 Rebuild a launch registry cache from deterministic procedural depth-2 candidates:
 
 ```bash

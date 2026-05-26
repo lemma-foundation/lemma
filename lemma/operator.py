@@ -29,6 +29,7 @@ PreflightCheckName = Literal[
     "strong_proof_identity",
     "epoch_randomness",
     "curriculum_controller",
+    "source_snapshot",
     "import_graph",
     "procedural_supply",
 ]
@@ -240,6 +241,30 @@ def _summarize_curriculum(
     )
 
 
+def _source_snapshot_check(settings: LemmaSettings, *, frontier_depth: int) -> OperatorPreflightCheck:
+    if settings.procedural_source_jsonl is None:
+        return _check("source_snapshot", False, "missing LEMMA_PROCEDURAL_SOURCE_JSONL")
+    try:
+        from lemma.supply.mathlib_snapshot import rows_from_jsonl, snapshot_quality_summary
+
+        summary = snapshot_quality_summary(rows_from_jsonl(settings.procedural_source_jsonl))
+    except (OSError, ValueError) as e:
+        return _check("source_snapshot", False, f"invalid source snapshot: {e.__class__.__name__}")
+    rows = int(summary["rows"])
+    max_depth = int(summary["max_queue_depth"])
+    frontier_rows = int(summary["frontier_rows"])
+    coverage = summary["metadata_coverage"]
+    dependency_coverage = int(coverage["dependency_depth"]) if isinstance(coverage, dict) else 0
+    return _check(
+        "source_snapshot",
+        rows > 0 and max_depth >= frontier_depth,
+        (
+            f"rows={rows} max_depth={max_depth} frontier_rows={frontier_rows} "
+            f"dependency_coverage={dependency_coverage}/{rows}"
+        ),
+    )
+
+
 def _inspect_registry(
     registry: TaskRegistry,
     settings: LemmaSettings,
@@ -310,6 +335,8 @@ def _build_operator_state(
             ),
         )
     )
+    if production_or_procedural:
+        checks.append(_source_snapshot_check(settings, frontier_depth=active_window_settings.frontier_depth))
 
     if registry is not None:
         signature_ok = registry.signature_status == "verified" if settings.protocol_mode == "production" else True

@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import sys
+from pathlib import Path
 
 import pytest
 from bittensor_wallet import Keypair
@@ -1098,6 +1099,57 @@ def test_operator_registry_inspect_counts_active_waiting_and_parked(tmp_path) ->
     assert payload.parked_task_count == 1
     assert payload.max_queue_depth == 2
     assert payload.queue_depth_counts == {"0": 3, "2": 1}
+
+
+def test_operator_preflight_flags_shallow_source_for_requested_frontier(tmp_path) -> None:
+    from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
+    from lemma.supply.procedural import source_pool_hash
+
+    runner = CliRunner()
+    fixture_dir = Path("examples/operator-smoke")
+    snapshot_path = fixture_dir / "snapshot.jsonl"
+    registry_path = tmp_path / "tasks" / "registry.json"
+    build = runner.invoke(
+        main,
+        [
+            "tasks",
+            "build-mathlib-snapshot",
+            "--input",
+            str(snapshot_path),
+            "--output",
+            str(registry_path),
+            "--seed",
+            "operator-smoke",
+            "--frontier-depth",
+            "7",
+        ],
+        env={"LEMMA_PREFER_PROCESS_ENV": "1"},
+    )
+    registry_sha256 = json.loads(build.output)["registry_sha256"]
+    source_hash = source_pool_hash(mathlib_candidates_from_jsonl(snapshot_path))
+    env = {
+        "LEMMA_PREFER_PROCESS_ENV": "1",
+        "LEMMA_TASK_SUPPLY_MODE": "procedural",
+        "LEMMA_ACTIVE_REGISTRY_JSON": str(registry_path),
+        "LEMMA_PROCEDURAL_SOURCE_JSONL": str(snapshot_path),
+        "LEMMA_PROCEDURAL_SOURCE_SHA256_EXPECTED": source_hash,
+        "LEMMA_TASK_REGISTRY_SHA256_EXPECTED": registry_sha256,
+        "LEMMA_ACTIVE_K": "1",
+        "LEMMA_FRONTIER_DEPTH": "7",
+        "LEMMA_ACTIVE_QUEUE_SEED": "operator-smoke",
+        "LEMMA_CORPUS_OUTPUT_DIR": str(tmp_path / "corpus"),
+        "LEMMA_OPERATOR_DATA_DIR": str(tmp_path / "operator"),
+        "LEMMA_USE_DOCKER": "0",
+        "LEMMA_ALLOW_HOST_LEAN": "1",
+    }
+
+    preflight = runner.invoke(main, ["operator", "preflight"], env=env)
+
+    assert preflight.exit_code == 1
+    payload = OperatorPreflightReport.model_validate_json(preflight.output)
+    checks = {check.name: check for check in payload.checks}
+    assert checks["source_snapshot"].ok is False
+    assert "max_depth=2" in checks["source_snapshot"].detail
 
 
 def test_tasks_build_mathlib_snapshot_writes_pinned_registry(tmp_path) -> None:
