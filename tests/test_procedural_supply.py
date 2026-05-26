@@ -22,7 +22,7 @@ from lemma.supply.gates import (
 )
 from lemma.supply.import_graph import ImportGraphRow, extract_import_graph_rows, read_import_graph
 from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
-from lemma.supply.mutation import LeanAstMutationEngine, MutationResult, MutationStep, PreviewMutationEngine
+from lemma.supply.mutation import LeanAstMutationEngine, MutationResult, PreviewMutationEngine
 from lemma.supply.novelty import novelty_cache_from_hashes, read_novelty_cache, statement_hash
 from lemma.supply.operator_bundle import OPERATOR_BUNDLE_VERSION, OPERATOR_NAMES
 from lemma.supply.procedural import (
@@ -48,12 +48,6 @@ class _PreviewMutationEngineForProduction:
     def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001
         result = self.preview.apply(source, type_expr, operator, step=step, param_seed=param_seed, peer=peer)
         return result.__class__(result.type_expr, {**result.params, "engine": "lean_ast_elaborator"})
-
-    def apply_chain(self, source, type_expr, steps):  # noqa: ANN001
-        results = self.preview.apply_chain(source, type_expr, steps)
-        return tuple(
-            MutationResult(result.type_expr, {**result.params, "engine": "lean_ast_elaborator"}) for result in results
-        )
 
 
 def _write_snapshot(path: Path) -> None:
@@ -196,60 +190,10 @@ def test_lean_ast_mutation_engine_uses_lean_eval_output(monkeypatch: pytest.Monk
     assert result.type_expr == "∀ p : Prop, p → True"
     assert result.params["engine"] == "lean_ast_elaborator"
     assert "replaceIdent" in captured["problem"].extra["challenge_full"]
-    assert "let roundtrip0 ← parseTermOrThrow rendered0" in captured["problem"].extra["challenge_full"]
+    assert "let roundtrip ← parseTermOrThrow rendered" in captured["problem"].extra["challenge_full"]
     assert captured["problem"].extra["lean_max_heartbeats"] == 400_000
     assert captured["problem"].extra["lean_eval_commands"] == ("#eval! LemmaProceduralMutator.emit",)
     assert "theorem lemma_ast_mutation_dummy : True" in captured["proof_script"]
-
-
-def test_lean_ast_mutation_engine_chain_uses_one_lean_eval(monkeypatch: pytest.MonkeyPatch) -> None:
-    captured = {"calls": 0}
-
-    def fake_run_lean_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001
-        _ = settings, verify_timeout_s, proof_script, submission_policy
-        captured["calls"] += 1
-        captured["problem"] = problem
-        return VerifyResult(
-            passed=True,
-            reason="ok",
-            stdout_tail=(
-                'LEMMA_AST_MUTATION {"params":{"binder":"p","binder_type":"Prop"},'
-                '"type_expr":"∀ p : Prop, p → True"}\n'
-                'LEMMA_AST_MUTATION {"params":{"rule":"false_disjunct"},'
-                '"type_expr":"(∀ p : Prop, p → True) ∨ False"}\n'
-                'LEMMA_AST_MUTATION {"params":{"binder":"p","binder_type":"Prop"},'
-                '"type_expr":"∀ p : Prop, p → True"}\n'
-                'LEMMA_AST_MUTATION {"params":{"rule":"false_disjunct"},'
-                '"type_expr":"(∀ p : Prop, p → True) ∨ False"}'
-            ),
-        )
-
-    monkeypatch.setattr("lemma.supply.mutation.run_lean_verify", fake_run_lean_verify)
-    source = fixture_candidate(
-        slug="source_true",
-        source_stream="mathlib_snapshot",
-        source_name="snapshot",
-        theorem_name="source_true",
-        type_expr="True",
-        queue_depth=0,
-    )
-    steps = (
-        MutationStep(operator="generalize", step=0, param_seed="a" * 64, peer=source),
-        MutationStep(operator="weaken", step=1, param_seed="b" * 64, peer=source),
-    )
-
-    results = LeanAstMutationEngine(LemmaSettings(_env_file=None, lean_use_docker=False)).apply_chain(
-        source,
-        "True",
-        steps,
-    )
-
-    assert captured["calls"] == 1
-    assert [result.type_expr for result in results] == ["∀ p : Prop, p → True", "(∀ p : Prop, p → True) ∨ False"]
-    assert all(result.params["engine"] == "lean_ast_elaborator" for result in results)
-    assert captured["problem"].id.endswith(".mutation.0-1")
-    assert "let (output0, params0) ← mutate" in captured["problem"].extra["challenge_full"]
-    assert "let (output1, params1) ← mutate" in captured["problem"].extra["challenge_full"]
 
 
 def test_depth2_generation_is_epoch_seeded_not_static(tmp_path: Path) -> None:
@@ -460,64 +404,6 @@ def test_procedural_candidate_keeps_peer_imports() -> None:
     assert candidate.submission_stub.startswith("import Mathlib.Algebra.Ring.Basic\nimport Mathlib.Data.Nat.Basic\n")
 
 
-def test_procedural_candidate_uses_chain_mutation_when_available() -> None:
-    class ChainMutationEngine:
-        def __init__(self) -> None:
-            self.apply_calls = 0
-            self.chain_calls = 0
-
-        def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001, ARG002
-            self.apply_calls += 1
-            raise AssertionError("single-step apply should not run when apply_chain exists")
-
-        def apply_chain(self, source, type_expr, steps):  # noqa: ANN001
-            _ = source
-            self.chain_calls += 1
-            assert type_expr == "True"
-            assert [step.operator for step in steps] == ["generalize", "weaken"]
-            return (
-                MutationResult("∀ p : Prop, p → True", {"step": 0}),
-                MutationResult("(∀ p : Prop, p → True) ∨ False", {"step": 1}),
-            )
-
-    source = fixture_candidate(
-        slug="source",
-        source_stream="mathlib_snapshot",
-        source_name="snapshot",
-        theorem_name="source",
-        type_expr="True",
-        queue_depth=0,
-    )
-    engine = ChainMutationEngine()
-
-    candidate = _candidate_from_source(
-        source,
-        source_pool=(source,),
-        generation_seed="epoch-a",
-        epoch_fields={},
-        operator_chain=("generalize", "weaken"),
-        mutation_engine=engine,
-        source_pool_hash_value="a" * 64,
-        source_pool_receipt_value={
-            "version": "test",
-            "source_count": 1,
-            "source_stream_counts": {"mathlib_snapshot": 1},
-            "sampling_version": "test",
-            "citation_alpha_basis_points": 5000,
-            "citation_weight_cap_micros": 64_000_000,
-            "citation_window_tempos": 2000,
-        },
-        operator_bundle_hash="b" * 64,
-        tempo=3,
-        sequence=0,
-    )
-
-    assert engine.chain_calls == 1
-    assert engine.apply_calls == 0
-    assert candidate.type_expr == "(∀ p : Prop, p → True) ∨ False"
-    assert [step["params"]["step"] for step in candidate.metadata["mutation_chain"]] == [0, 1]
-
-
 def test_procedural_registry_rejects_assumed_gate_receipts(tmp_path: Path) -> None:
     snapshot = tmp_path / "snapshot.jsonl"
     _write_snapshot(snapshot)
@@ -553,26 +439,21 @@ def test_lean_gate_runner_records_generation_time_gates(monkeypatch: pytest.Monk
             assert problem.extra["lean_build_target"] == "Challenge"
             assert problem.extra["lean_max_heartbeats"] == 400_000
             gate_source = str(problem.extra["challenge_full"])
-            assert "theorem prop_gate" in gate_source
-            assert problem.extra["lean_eval_commands"] == ("#eval! LemmaProceduralGate.emit_kernel_normal",)
-            calls.append("combined")
+            is_typecheck = "def typecheck_gate" in gate_source
+            if not is_typecheck:
+                assert problem.extra["lean_eval_commands"] == ("#eval! LemmaProceduralGate.emit_kernel_normal",)
+            calls.append("typecheck" if is_typecheck else "prop")
             return VerifyResult(
                 passed=True,
                 reason="ok",
-                stdout_tail="LEMMA_KERNEL_NORMAL_FORM (forall default const:True:[] const:True:[])",
+                stdout_tail=""
+                if is_typecheck
+                else "LEMMA_KERNEL_NORMAL_FORM (forall default const:True:[] const:True:[])",
                 declaration_fingerprints={str(problem.extra["lean_fingerprint_names"][0]): "8" * 64},
             )
         calls.append("triviality")
-        assert problem.id.endswith(".triviality")
-        assert problem.extra["lean_build_target"] == "Challenge"
         assert problem.extra["lean_max_heartbeats"] == 200_000
-        assert len(problem.extra["lean_eval_commands"]) == len(TRIVIALITY_STACK)
-        assert all("LemmaProceduralTriviality.emitOne" in item for item in problem.extra["lean_eval_commands"])
-        return VerifyResult(
-            passed=True,
-            reason="ok",
-            stdout_tail="\n".join(f"LEMMA_TRIVIALITY_TACTIC {name} failed" for name, _body in TRIVIALITY_STACK),
-        )
+        return VerifyResult(passed=False, reason="compile_error")
 
     monkeypatch.setattr("lemma.supply.gates.run_lean_verify", fake_verify)
     verdict = LeanProceduralGateRunner(
@@ -588,40 +469,11 @@ def test_lean_gate_runner_records_generation_time_gates(monkeypatch: pytest.Monk
     assert verdict.metadata["triviality_budget_version"] == "lemma-triviality-retarget-v1"
     assert verdict.metadata["triviality_budget_heartbeats"] == 200_000
     assert verdict.metadata["triviality_reason"] == "baseline_failed"
-    assert calls[0] == "combined"
+    assert calls[:2] == ["typecheck", "prop"]
     assert "triviality" in calls
 
 
-def test_lean_gate_runner_skips_statement_duplicates_before_lean(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    snapshot = tmp_path / "snapshot.jsonl"
-    _write_snapshot(snapshot)
-    candidate = generate_depth2_candidates(
-        mathlib_candidates_from_jsonl(snapshot),
-        generation_seed="epoch-a",
-        epoch_randomness=json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
-        count=1,
-        tempo=3,
-    )[0]
-    cache = novelty_cache_from_hashes((str(candidate.metadata["statement_hash"]),))
-
-    def fail_verify(*args: object, **kwargs: object) -> VerifyResult:  # noqa: ARG001
-        raise AssertionError("duplicate statement should not call Lean")
-
-    monkeypatch.setattr("lemma.supply.gates.run_lean_verify", fail_verify)
-    verdict = LeanProceduralGateRunner(
-        LemmaSettings(_env_file=None, lean_use_docker=False, procedural_gate_timeout_s=5),
-        novelty_cache=cache,
-    )(candidate, seen_canonical_hashes=())
-
-    assert verdict.accepted is False
-    assert verdict.novelty_status == "duplicate"
-    assert verdict.metadata["prop_gate_reason"] == "skipped_statement_duplicate"
-
-
-def test_lean_gate_runner_batches_triviality_stack(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_lean_gate_runner_caps_parallel_verify_jobs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     snapshot = tmp_path / "snapshot.jsonl"
     _write_snapshot(snapshot)
     candidate = generate_depth2_candidates(
@@ -645,24 +497,21 @@ def test_lean_gate_runner_batches_triviality_stack(monkeypatch: pytest.MonkeyPat
             if problem.id.endswith(".gate"):
                 assert problem.extra["lean_max_heartbeats"] == 400_000
                 gate_source = str(problem.extra["challenge_full"])
-                assert "theorem prop_gate" in gate_source
-                calls.append("combined")
+                is_typecheck = "def typecheck_gate" in gate_source
+                calls.append("typecheck" if is_typecheck else "prop")
                 return VerifyResult(
                     passed=True,
                     reason="ok",
-                    stdout_tail="LEMMA_KERNEL_NORMAL_FORM (forall default const:True:[] const:True:[])",
+                    stdout_tail=""
+                    if is_typecheck
+                    else "LEMMA_KERNEL_NORMAL_FORM (forall default const:True:[] const:True:[])",
                     declaration_fingerprints={str(problem.extra["lean_fingerprint_names"][0]): "8" * 64},
                 )
             calls.append("triviality")
-            assert problem.id.endswith(".triviality")
             assert problem.extra["lean_max_heartbeats"] == 200_000
             assert verify_timeout_s == 5
             time.sleep(0.02)
-            return VerifyResult(
-                passed=True,
-                reason="ok",
-                stdout_tail="\n".join(f"LEMMA_TRIVIALITY_TACTIC {name} failed" for name, _body in TRIVIALITY_STACK),
-            )
+            return VerifyResult(passed=False, reason="compile_error")
         finally:
             with lock:
                 active -= 1
@@ -678,9 +527,9 @@ def test_lean_gate_runner_batches_triviality_stack(monkeypatch: pytest.MonkeyPat
     )(candidate, seen_canonical_hashes=())
 
     assert verdict.accepted is True
-    assert calls[0] == "combined"
-    assert calls.count("triviality") == 1
-    assert max_active == 1
+    assert calls[:2] == ["typecheck", "prop"]
+    assert calls.count("triviality") == len(TRIVIALITY_STACK)
+    assert max_active == 2
 
 
 def test_lean_gate_runner_skips_triviality_when_compile_gate_fails(

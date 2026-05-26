@@ -16,6 +16,8 @@ The source pool is `Mathlib_pinned ∪ Lemma_substrate_<t>`. Mathlib rows come f
 
 Paid production also uses epoch-derived active selection. Development may keep a static queue seed, but SN467 burn-in and mainnet both require `LEMMA_ACTIVE_SEED_MODE=epoch_randomness` and `LEMMA_ACTIVE_EPOCH_RANDOMNESS_SOURCE=chain_drand`. The internal epoch number is the chain tempo index; it can be displayed as 1-based in UI, but validators use the same 0-based integer from `block // tempo`.
 
+The task set is generated after that epoch randomness is live. Validators may cache the current active registry once it has been generated, but future paid task sets must not be privately generated before their epoch randomness exists.
+
 The chain/drand source is deterministic: validators take the epoch's first chain block, read that block's hash and timestamp, map the timestamp to the Drand Quicknet round, fetch that round's signature, and hash those public fields into the epoch seed. A validator that resolves different public fields lands on a different active-set manifest and should fail closed.
 
 For each production epoch, validators derive:
@@ -25,6 +27,8 @@ epoch_randomness = hash(anchor_block_hash, anchor_block_timestamp, drand_round, 
 epoch_seed = hash(netuid, tempo, LEMMA_ACTIVE_QUEUE_SEED, epoch_randomness)
 active_selection_seed = hash(epoch_seed, registry_sha256, frontier_depth)
 ```
+
+The public curriculum row may also carry `active_window_blocks`. That value is the target length for the next task window: harder or larger sets get more blocks, while easier smaller sets can stay near the base cadence. This fixes the generation-time pressure without precomputing future paid problems.
 
 Paid procedural rows must carry that `epoch_seed` as `metadata.generation_seed`. This keeps generation procedural while preventing a static playlist of known tasks: rows generated for a different epoch seed fail production activation.
 

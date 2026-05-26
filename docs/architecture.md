@@ -33,7 +33,7 @@ Lean theorem supply
 
 ## Controllers
 
-`frontier_depth` is the protocol difficulty proxy and `active_K` is the throughput target. In production they come from the latest eligible public curriculum tempo state, with one full tempo of replay lag before a retarget row can affect the active chain tempo. Solve rate moves the frontier; validator capacity and the public cost budget cap `K`, so deeper frontiers can run fewer tasks without making validation expensive. Validators write that retarget state into canonical public artifacts after each pass, and miners/validators replay the same state before prebuilding the next active registry. Tempo is the chain tempo; on SN467 that is currently 360 blocks.
+`frontier_depth` is the protocol difficulty proxy, `active_K` is the throughput target, and `active_window_blocks` is the target length for the next task window. In production they come from the latest eligible public curriculum tempo state, with one full tempo of replay lag before a retarget row can affect the active chain tempo. Solve rate moves the frontier; validator capacity and the public cost budget cap `K`, so deeper frontiers can run fewer tasks without making validation expensive. The window policy gives harder or larger task sets more blocks instead of forcing every set into the same fixed 72-minute window. Validators write that retarget state into canonical public artifacts after each pass, and miners/validators replay the same state before warming the current active registry cache. Paid tasks are generated only after the active tempo randomness exists.
 
 ## Boundaries
 

@@ -16,6 +16,7 @@ from lemma.supply.controller import (
     curriculum_retarget_receipt,
     read_curriculum_records,
     retarget_curriculum,
+    target_window_blocks,
 )
 from lemma.supply.gates import GATE_VERSION
 from lemma.supply.import_graph import ImportGraphRow, import_graph_from_rows
@@ -111,9 +112,14 @@ def test_curriculum_retarget_receipt_replays_public_state() -> None:
             "cost_budget_s": 0.0,
             "base_task_cost_s": 0.0,
             "depth_cost_multiplier": 2.0,
+            "window_base_blocks": 360,
+            "window_max_blocks": 7200,
+            "window_depth_multiplier": 2.0,
+            "window_k_reference": 4,
         },
         "next_active_K": 20,
         "next_frontier_depth": 4,
+        "next_active_window_blocks": 7200,
         "next_ema_solve_rate": 0.32000000000000006,
     }
 
@@ -310,6 +316,15 @@ def test_curriculum_cost_budget_hard_caps_k_at_higher_frontier() -> None:
     assert decision.state.active_K == 2
 
 
+def test_curriculum_window_scales_with_frontier_and_k() -> None:
+    config = CurriculumConfig(window_base_blocks=360, window_max_blocks=7200, window_k_reference=4)
+
+    assert target_window_blocks(frontier_depth=0, active_k=1, config=config) == 360
+    assert target_window_blocks(frontier_depth=1, active_k=4, config=config) == 720
+    assert target_window_blocks(frontier_depth=2, active_k=5, config=config) == 2880
+    assert target_window_blocks(frontier_depth=8, active_k=20, config=config) == 7200
+
+
 def test_curriculum_retarget_receipt_exposes_cost_cap_for_replay() -> None:
     config = CurriculumConfig(
         beta=0.0,
@@ -335,6 +350,7 @@ def test_curriculum_retarget_receipt_exposes_cost_cap_for_replay() -> None:
     assert receipt["next_cost_limited_K"] == 2
     assert receipt["next_estimated_task_cost_s"] == 40
     assert receipt["next_active_K"] == 2
+    assert receipt["next_active_window_blocks"] == 1440
 
 
 def test_triviality_budget_retargets_from_public_burn_history() -> None:

@@ -119,4 +119,4 @@ def test_active_registry_prebuild_wrapper_calls_hidden_cli() -> None:
     prebuild = (ROOT / "scripts" / "lemma-active-registry-prebuild").read_text(encoding="utf-8")
 
     assert 'workdir="${LEMMA_APP_DIR:-/opt/lemma-sn467/app}"' in prebuild
-    assert 'exec "$uv_bin" run lemma tasks prebuild-active-procedural-registry "$@"' in prebuild
+    assert 'exec "$uv_bin" run lemma tasks warm-active-procedural-registry "$@"' in prebuild

@@ -41,7 +41,7 @@ Also run a second-validator parity pass from a clean operator data directory. Bo
 For each live tempo, keep protocol evidence separate from operator strategy:
 
 - chain state, not wall-clock time, defines the active tempo;
-- active registry prebuild runs before miners need the tempo cache;
+- active registry cache warming runs after the tempo randomness is live and before miners need the cache;
 - the miner publishes at most one bucket reveal for the chain tempo;
 - the validator reveal inbox contains the expected tempo reveal before the validation pass;
 - the validator pass reports `bucket_reveals_consumed > 0`, `verified_count > 0`, `accepted_unique_count > 0`, `corpus_row_count > 0`, and a non-empty tempo commitment payload;
@@ -80,7 +80,7 @@ print(
 PY
 ```
 
-Systemd timers, cron jobs, and local reminders are only wakeups. On every wakeup, the operator should read the chain block and derive the active tempo before deciding whether to prebuild, mine, validate, publish, or wait.
+Systemd timers, cron jobs, and local reminders are only wakeups. On every wakeup, the operator should read the chain block and derive the active tempo before deciding whether to warm the current registry cache, mine, validate, publish, or wait.
 For burn-in, prefer short wakeups such as 5-10 minutes plus once-per-tempo miner state over epoch-length timers. Epoch-length timers can drift into a validator-before-miner ordering and delay reveal consumption until the next epoch-sized wakeup.
 
 For SN467 burn-in, keep service timeouts long enough for slow Lean gates and

@@ -227,6 +227,7 @@ class LemmaSettings(BaseSettings):
     )
     active_epoch_randomness: str = Field(default="", validation_alias="LEMMA_ACTIVE_EPOCH_RANDOMNESS")
     active_tempo_seconds: int = Field(default=4320, ge=1, validation_alias="LEMMA_ACTIVE_TEMPO_SECONDS")
+    active_window_blocks: int = Field(default=360, ge=1, validation_alias="LEMMA_ACTIVE_WINDOW_BLOCKS")
     active_tempo_source: Literal["wall_clock", "chain"] = Field(
         default="wall_clock",
         validation_alias="LEMMA_ACTIVE_TEMPO_SOURCE",
@@ -250,6 +251,26 @@ class LemmaSettings(BaseSettings):
         default=2.0,
         ge=1.0,
         validation_alias="LEMMA_CURRICULUM_DEPTH_COST_MULTIPLIER",
+    )
+    curriculum_window_base_blocks: int = Field(
+        default=360,
+        ge=1,
+        validation_alias="LEMMA_CURRICULUM_WINDOW_BASE_BLOCKS",
+    )
+    curriculum_window_max_blocks: int = Field(
+        default=7200,
+        ge=1,
+        validation_alias="LEMMA_CURRICULUM_WINDOW_MAX_BLOCKS",
+    )
+    curriculum_window_depth_multiplier: float = Field(
+        default=2.0,
+        ge=1.0,
+        validation_alias="LEMMA_CURRICULUM_WINDOW_DEPTH_MULTIPLIER",
+    )
+    curriculum_window_k_reference: int = Field(
+        default=4,
+        ge=1,
+        validation_alias="LEMMA_CURRICULUM_WINDOW_K_REFERENCE",
     )
     schema_version: str = Field(default="v2", validation_alias="LEMMA_SCHEMA_VERSION")
     enabled_domains: tuple[str, ...] = Field(default=("lean",), validation_alias="LEMMA_ENABLED_DOMAINS")

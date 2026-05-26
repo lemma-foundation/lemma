@@ -24,12 +24,12 @@ The launch gate sequence is tracked in [Mainnet Readiness](mainnet-readiness.md)
 ## Production Readiness Gates
 
 The chain is the authority for epoch correctness. Timers are only wakeups: each
-prebuild, miner, and validator pass must recompute the active tempo from chain
+registry-cache warmer, miner, and validator pass must recompute the active tempo from chain
 state, then exit idempotently when there is nothing new to do. Bucket intake
 timers should poll often enough that miner/validator ordering jitter costs
 minutes, not an epoch. Weight writes stay block-gated; on commit-reveal subnets,
 the writer waits for the final weight window before submitting.
-Active-registry prebuild services must allow slow Lean gates to finish; miners
+Active-registry cache warmers must allow slow Lean gates to finish; miners
 should idle on missing cache rather than rebuilding the same registry in
 parallel.
 
@@ -49,7 +49,7 @@ validation itself only requires the protocol path above.
 
 Before calling SN467 production-ready, prove:
 
-- one full natural tempo with no manual starts: registry prebuild, miner bucket
+- one full natural tempo with no manual starts: registry cache warming, miner bucket
   delivery, validator intake, Lean verification, weight write, and commitment
   readback;
 - a 24- to 72-hour burn-in with repeated natural tempos and no operator nudges;
@@ -129,16 +129,16 @@ kernel-canonical novelty, pre-proof import-graph slot estimate, and triviality-s
 before the candidate can enter the active paid pool. Accepted proof verification records actual
 Lean kernel dependencies, and rewarded slot weights are recomputed from that recorded dependency set.
 
-For a live loop, pin the active tempo registry that miners and validators share:
+For a live loop, warm the current active tempo registry that miners and validators share:
 
 ```bash
-uv run lemma tasks prebuild-active-procedural-registry
+uv run lemma tasks warm-active-procedural-registry
 ```
 
-`LEMMA_ACTIVE_REGISTRY_JSON` pins one exact active registry file and fails closed if the file is missing. `LEMMA_ACTIVE_REGISTRY_CACHE_DIR` loads `tempo-<tempo>.registry.json` when present, and otherwise lets the procedural path rebuild from the pinned public inputs. The prebuild command writes the current tempo cache if it is missing and skips it when already present. Use `--force` to refresh an existing cache. The lower-level rebuild command ignores active-cache settings so it can write a manually chosen output file.
-If `LEMMA_ACTIVE_REGISTRY_CACHE_INDEX_URL` points at a public corpus `registries/<netuid>/index.json`, miners and prebuild workers hydrate the tempo cache from that public mirror before falling back to local generation. The downloaded registry is still treated only as a cache: it must match the published SHA256 and the effective public curriculum state before it is written locally.
+`LEMMA_ACTIVE_REGISTRY_JSON` pins one exact active registry file and fails closed if the file is missing. `LEMMA_ACTIVE_REGISTRY_CACHE_DIR` loads `tempo-<tempo>.registry.json` when present, and otherwise lets the procedural path rebuild from the pinned public inputs. The warm command writes only the current tempo cache after that tempo's randomness is available, then skips it when already present. Use `--force` to refresh an existing current cache. Future paid task sets must not be generated privately before their tempo randomness exists. The lower-level rebuild command ignores active-cache settings so it can write a manually chosen output file.
+If `LEMMA_ACTIVE_REGISTRY_CACHE_INDEX_URL` points at a public corpus `registries/<netuid>/index.json`, miners and cache warmers hydrate the tempo cache from that public mirror before falling back to local generation. The downloaded registry is still treated only as a cache: it must match the published SHA256 and the effective public curriculum state before it is written locally.
 
-`LEMMA_CURRICULUM_RETARGET=1` makes `K` and frontier depth dynamic. Solve-rate history moves frontier depth. Validator capacity and the optional curriculum cost budget cap `K`, so harder frontiers can automatically run fewer tasks. Each validator pass writes the next retarget row into the canonical public curriculum artifacts. Later active windows use the latest eligible public row where `record.tempo < active_tempo - 1`, giving the row one full tempo of public replay lag before it can affect the active set. In production, `LEMMA_CURRICULUM_STATE_PUBLIC=1` is required and `LEMMA_CURRICULUM_STATE_JSONL` must point at a replay cache synced from the public corpus artifacts, outside `LEMMA_CANONICAL_OUTPUT_DIR`/`LEMMA_OPERATOR_DATA_DIR/canonical`; a private local row or a replay path inside canonical publish output can make miners and validators drift.
+`LEMMA_CURRICULUM_RETARGET=1` makes `K`, frontier depth, and the target task-window length dynamic. Solve-rate history moves frontier depth. Validator capacity and the optional curriculum cost budget cap `K`, so harder frontiers can automatically run fewer tasks. The window policy then gives harder or larger sets more blocks instead of forcing every set into the same fixed cadence. Each validator pass writes the next retarget row into the canonical public curriculum artifacts, including `active_window_blocks`. Later active windows use the latest eligible public row where `record.tempo < active_tempo - 1`, giving the row one full tempo of public replay lag before it can affect the active set. In production, `LEMMA_CURRICULUM_STATE_PUBLIC=1` is required and `LEMMA_CURRICULUM_STATE_JSONL` must point at a replay cache synced from the public corpus artifacts, outside `LEMMA_CANONICAL_OUTPUT_DIR`/`LEMMA_OPERATOR_DATA_DIR/canonical`; a private local row or a replay path inside canonical publish output can make miners and validators drift.
 
 Corpus deltas are written under `LEMMA_CORPUS_OUTPUT_DIR`. Canonical active-pool and accepted-entry directories are written under `LEMMA_CANONICAL_OUTPUT_DIR` when set, otherwise under `LEMMA_OPERATOR_DATA_DIR/canonical`. Local receipts are written under `LEMMA_OPERATOR_DATA_DIR`. If `LEMMA_SUBMISSION_SPOOL_DIR` is set, validators consume pending `.json` or `.jsonl` submission files from that directory and move them to `processed/` after a successful pass. These paths should remain ignored unless an operator intentionally publishes sanitized artifacts.
 The file spool remains a local/operator-smoke path. The production adapters are `--bucket-reveals-dir` for a live reveal inbox and `--bucket-reveals-jsonl` for a fixture file. Each reveal row carries miner hotkey, tempo, drand round, drand signature, commit block, committed Merkle root, and revealed bucket blobs. One validation pass scores one tempo: directory intake picks the newest top-level reveal tempo, archives processed files under `processed/`, and moves older reveal files to `stale/`. Binary ciphertexts should be encoded as `base64:<payload>` or `0x<hex>`. The validator recomputes the Merkle root over decoded ciphertext bytes, confirms the miner's on-chain bucket commitment in production, decrypts bucket ciphertexts in production, requires the decrypted proof to match the reveal, and ranks winners by commit block. A live miner can publish ciphertexts with `uv run lemma miner bucket publish --submission submission.json --tempo <tempo> --drand-round <round> --miner-hotkey <hotkey> --output-dir validator-data/miner-bucket --s3-uri s3://<bucket>/<miner-prefix> --verify-upload --submit-commitment`. A live validator can then pass `--miner-buckets-json miner-buckets.json --bucket-drand-round <round> --bucket-drand-signature <signature>` to poll public bucket objects directly before converting them into the same reveal path.

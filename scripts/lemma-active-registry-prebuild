@@ -30,4 +30,4 @@ if [[ -n "${LEMMA_ACTIVE_REGISTRY_CACHE_INDEX_URL:-}" && "$cache_sync_output" ==
   echo '{"idle":true,"reason":"public active registry cache not published yet"}'
   exit 0
 fi
-exec "$uv_bin" run lemma tasks prebuild-active-procedural-registry "$@"
+exec "$uv_bin" run lemma tasks warm-active-procedural-registry "$@"

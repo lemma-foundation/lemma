@@ -96,11 +96,13 @@ LEMMA_CURRICULUM_DEPTH_COST_MULTIPLIER=2
 
 The retarget loop records one row per tempo. Later tempos load the latest prior row: solve rate moves `frontier_depth`, and `K` is capped by validator capacity plus the configured cost budget. A frontier increase never grows `K` in the same retarget step; if the estimated cost at the new frontier is too high, the cost cap lowers `K` immediately. Production mode accepts retargeting only when `LEMMA_CURRICULUM_STATE_PUBLIC=1`; operators should set `LEMMA_CURRICULUM_STATE_JSONL` to a state file synced from the canonical public corpus artifacts, not a private scratch log.
 
-Prebuild the live tempo cache before miners run:
+Warm the current live tempo cache before miners run:
 
 ```bash
-uv run lemma tasks prebuild-active-procedural-registry
+uv run lemma tasks warm-active-procedural-registry
 ```
+
+This command is a current-tempo cache warmer. It must run only after that tempo's chain/drand randomness is available. It is not a future-task prebuild path.
 
 Inspect registry depth before accepting submissions:
 

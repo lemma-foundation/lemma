@@ -257,7 +257,13 @@ def curriculum_controlled_settings(settings: LemmaSettings, *, tempo: int) -> Le
     if not records:
         return settings
     latest = records[-1]
-    return settings.model_copy(update={"active_task_count": latest.active_K, "frontier_depth": latest.frontier_depth})
+    return settings.model_copy(
+        update={
+            "active_task_count": latest.active_K,
+            "frontier_depth": latest.frontier_depth,
+            "active_window_blocks": latest.active_window_blocks,
+        }
+    )
 
 
 def _procedural_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> TaskRegistry:
@@ -848,6 +854,10 @@ def _retarget_curriculum_after_validation(settings: LemmaSettings, *, tempo: int
         cost_budget_s=settings.curriculum_cost_budget_s,
         base_task_cost_s=settings.curriculum_base_task_cost_s,
         depth_cost_multiplier=settings.curriculum_depth_cost_multiplier,
+        window_base_blocks=settings.curriculum_window_base_blocks,
+        window_max_blocks=settings.curriculum_window_max_blocks,
+        window_depth_multiplier=settings.curriculum_window_depth_multiplier,
+        window_k_reference=settings.curriculum_window_k_reference,
     )
     previous_state = CurriculumState(
         active_K=active_k,
@@ -864,6 +874,7 @@ def _retarget_curriculum_after_validation(settings: LemmaSettings, *, tempo: int
         tempo=tempo,
         active_K=decision.state.active_K,
         frontier_depth=decision.state.frontier_depth,
+        active_window_blocks=decision.state.active_window_blocks,
         ema_solve_rate=decision.state.ema_solve_rate,
         solved_slots=solved_slots,
         parked_task_ids=(),

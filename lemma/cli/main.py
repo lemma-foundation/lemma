@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import time
 from pathlib import Path
 from typing import cast
 
@@ -1037,7 +1036,19 @@ def tasks_rebuild_active_procedural_registry_cmd(output_path: Path, tempo: int |
 @click.option("--tempo", type=click.IntRange(min=0), default=None)
 @click.option("--force", is_flag=True)
 def tasks_prebuild_active_procedural_registry_cmd(tempo: int | None, force: bool) -> None:
-    """Ensure the configured active procedural registry cache exists."""
+    """Legacy alias for warming the current active procedural registry cache."""
+    _warm_active_procedural_registry(tempo=tempo, force=force)
+
+
+@tasks_cmd.command("warm-active-procedural-registry", hidden=True)
+@click.option("--tempo", type=click.IntRange(min=0), default=None)
+@click.option("--force", is_flag=True)
+def tasks_warm_active_procedural_registry_cmd(tempo: int | None, force: bool) -> None:
+    """Ensure the configured current active procedural registry cache exists."""
+    _warm_active_procedural_registry(tempo=tempo, force=force)
+
+
+def _warm_active_procedural_registry(*, tempo: int | None, force: bool) -> None:
     from lemma.task_supply import write_registry
     from lemma.tasks import load_task_registry
     from lemma.validator import (
@@ -1048,16 +1059,17 @@ def tasks_prebuild_active_procedural_registry_cmd(tempo: int | None, force: bool
         task_registry_for_validation,
     )
 
-    t0 = time.monotonic()
     settings = LemmaSettings()
     if settings.active_registry_json is not None:
-        raise click.ClickException("active registry prebuild requires LEMMA_ACTIVE_REGISTRY_CACHE_DIR")
+        raise click.ClickException("active registry cache warming requires LEMMA_ACTIVE_REGISTRY_CACHE_DIR")
     if tempo is None and settings.active_tempo_source != "chain":
-        raise click.ClickException("active registry prebuild requires --tempo unless LEMMA_ACTIVE_TEMPO_SOURCE=chain")
+        raise click.ClickException(
+            "active registry cache warming requires --tempo unless LEMMA_ACTIVE_TEMPO_SOURCE=chain"
+        )
     active_tempo = current_active_tempo(settings) if tempo is None else tempo
     cache_path = active_registry_cache_path(settings, tempo=active_tempo)
     if cache_path is None:
-        raise click.ClickException("set LEMMA_ACTIVE_REGISTRY_CACHE_DIR before prebuilding")
+        raise click.ClickException("set LEMMA_ACTIVE_REGISTRY_CACHE_DIR before warming the active registry cache")
 
     built = False
     effective_settings = curriculum_controlled_settings(settings, tempo=active_tempo)
@@ -1083,7 +1095,7 @@ def tasks_prebuild_active_procedural_registry_cmd(tempo: int | None, force: bool
         tmp_path.replace(cache_path)
         built = True
     if registry is None:
-        raise click.ClickException("active registry prebuild failed to load or build registry")
+        raise click.ClickException("active registry cache warming failed to load or build registry")
 
     click.echo(
         json.dumps(
@@ -1093,7 +1105,6 @@ def tasks_prebuild_active_procedural_registry_cmd(tempo: int | None, force: bool
                 "tempo": active_tempo,
                 "registry_sha256": hashlib.sha256(cache_path.read_bytes()).hexdigest(),
                 "tasks": len(registry.tasks),
-                "wall_seconds": round(time.monotonic() - t0, 3),
             },
             indent=2,
             sort_keys=True,

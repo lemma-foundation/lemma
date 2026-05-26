@@ -69,6 +69,7 @@ def test_current_problem_snapshot_is_public_safe() -> None:
     assert payload["tempo"] == 0
     assert payload["active_tempo_source"] == "wall_clock"
     assert payload["active_tempo_seconds"] == 4320
+    assert payload["active_window_blocks"] == 360
     assert payload["validator_capacity"] == 0
     assert payload["cost_budget_s"] == 0.0
     assert payload["base_task_cost_s"] == 0.0
@@ -137,6 +138,7 @@ def test_current_problem_snapshot_reports_curriculum_effective_window(tmp_path: 
 
     assert snapshot.active_K == 1
     assert snapshot.active_tempo_source == "chain"
+    assert snapshot.active_window_blocks == 360
     assert snapshot.frontier_depth == 2
     assert snapshot.task_count == 1
     assert {task.frontier_depth for task in snapshot.tasks} == {2}

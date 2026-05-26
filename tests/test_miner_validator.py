@@ -948,9 +948,14 @@ def test_validate_once_retargets_curriculum_state_after_tempo(tmp_path: Path) ->
             "cost_budget_s": 0.0,
             "base_task_cost_s": 0.0,
             "depth_cost_multiplier": 2.0,
+            "window_base_blocks": 360,
+            "window_max_blocks": 7200,
+            "window_depth_multiplier": 2.0,
+            "window_k_reference": 4,
         },
         "next_active_K": 3,
         "next_frontier_depth": 0,
+        "next_active_window_blocks": 360,
         "next_ema_solve_rate": 0.5,
     }
     curriculum_dir = tmp_path / "operator" / "canonical" / "sn0" / "curriculum"
