@@ -78,6 +78,14 @@ The extractor reads theorem and lemma declarations, erases proofs to hashes, der
 
 Use `--import-graph` for production snapshots. It fills `citation_weight`, `direct_dependency_count`, `dependency_depth`, and `transitive_dependency_hash` from the same pinned Mathlib checkout, and those signals feed both source sampling and queue depth. `--depth2-limit` limits all rows with `queue_depth >= 2`; use it as a broad deep-row cap when building small smoke snapshots. Use `--elaborate-types` for live batches so Lean `#check` output supplies self-contained theorem types instead of relying on source text that may reference file-local variables. It is an off-chain operator tool. Validators still consume only pinned snapshot and registry artifacts.
 
+Inspect the finished snapshot before pinning it:
+
+```bash
+uv run lemma tasks inspect-mathlib-snapshot --input snapshot.jsonl
+```
+
+The quality report prints row count, queue-depth counts, difficulty-band counts, frontier row count, max depth/signal values, and metadata coverage. A production snapshot should have real rows beyond the shallow launch depths and full import-graph coverage.
+
 ## Registry Build
 
 Build a deterministic registry from a snapshot:

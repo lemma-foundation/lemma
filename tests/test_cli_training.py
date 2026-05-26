@@ -1152,6 +1152,37 @@ def test_tasks_build_mathlib_snapshot_writes_pinned_registry(tmp_path) -> None:
     assert task["frontier_depth"] == 4
 
 
+def test_tasks_inspect_mathlib_snapshot_reports_source_quality(tmp_path) -> None:
+    manifest = tmp_path / "snapshot.jsonl"
+    manifest.write_text(
+        json.dumps(
+            {
+                "theorem_name": "Frontier.target",
+                "type_expr": "True",
+                "mathlib_rev": "abc123",
+                "source_path": "Mathlib/Frontier.lean",
+                "source_license": "Apache-2.0",
+                "queue_depth": 7,
+                "difficulty_score": 9,
+                "citation_weight": 12,
+                "direct_dependency_count": 8,
+                "dependency_depth": 14,
+                "transitive_dependency_hash": "b" * 64,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(main, ["tasks", "inspect-mathlib-snapshot", "--input", str(manifest)])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["frontier_rows"] == 1
+    assert payload["metadata_coverage"]["dependency_depth"] == 1
+    assert payload["max_signal"]["citation_weight"] == 12.0
+
+
 def test_corpus_benchmark_export_cli_writes_jsonl_and_index(tmp_path) -> None:
     task = make_task(
         task_id="lemma.test.cli_benchmark",

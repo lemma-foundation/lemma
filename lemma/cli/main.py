@@ -638,6 +638,26 @@ def tasks_build_mathlib_snapshot_cmd(
     )
 
 
+@tasks_cmd.command("inspect-mathlib-snapshot")
+@click.option(
+    "--input",
+    "input_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    required=True,
+    help="Mathlib snapshot JSONL manifest.",
+)
+@click.option("--limit", type=click.IntRange(min=1), default=None)
+def tasks_inspect_mathlib_snapshot_cmd(input_path: Path, limit: int | None) -> None:
+    """Print source-depth and metadata coverage for proof-erased Mathlib rows."""
+    from lemma.supply.mathlib_snapshot import rows_from_jsonl, snapshot_quality_summary
+
+    try:
+        rows = rows_from_jsonl(input_path, limit=limit)
+    except ValueError as e:
+        raise click.ClickException(str(e)) from e
+    click.echo(json.dumps(snapshot_quality_summary(rows), indent=2, sort_keys=True))
+
+
 @tasks_cmd.command("sign-registry")
 @click.option(
     "--input",
@@ -1203,10 +1223,9 @@ def tasks_extract_mathlib_snapshot_cmd(
     lake_root: Path | None,
 ) -> None:
     """Extract proof-erased snapshot rows from a pinned Mathlib checkout."""
-    from collections import Counter
-
     from lemma.supply.import_graph import read_import_graph
     from lemma.supply.mathlib_extract import ExtractConfig, extract_snapshot_rows, write_snapshot_jsonl
+    from lemma.supply.mathlib_snapshot import snapshot_quality_summary
 
     try:
         rows = extract_snapshot_rows(
@@ -1230,9 +1249,8 @@ def tasks_extract_mathlib_snapshot_cmd(
     click.echo(
         json.dumps(
             {
+                **snapshot_quality_summary(rows),
                 "output": str(output_path),
-                "queue_depth_counts": dict(sorted(Counter(str(row.queue_depth) for row in rows).items())),
-                "rows": len(rows),
             },
             indent=2,
             sort_keys=True,

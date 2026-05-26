@@ -60,12 +60,21 @@ uv run lemma tasks extract-mathlib-snapshot \
   --mathlib-root /path/to/mathlib \
   --lake-root /path/to/lake-project \
   --elaborate-types \
+  --import-graph public-import-graph.jsonl \
   --include 'Mathlib/Data/Nat/*.lean' \
   --depth0-limit 10 \
   --depth1-limit 20 \
   --depth2-limit 20 \
   --output snapshot.jsonl
 ```
+
+Inspect the source pool before using it:
+
+```bash
+uv run lemma tasks inspect-mathlib-snapshot --input snapshot.jsonl
+```
+
+The report shows depth counts, frontier row count, and metadata coverage for import-graph signals such as citation weight and dependency depth.
 
 Build a pinned registry artifact from those rows with:
 

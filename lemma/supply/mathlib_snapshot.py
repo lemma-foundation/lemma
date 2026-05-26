@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections import Counter
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -178,8 +179,8 @@ def candidates_from_rows(rows: Iterable[MathlibSnapshotRow]) -> tuple[TaskCandid
     return tuple(candidate_from_row(row) for row in rows)
 
 
-def candidates_from_jsonl(path: Path, *, limit: int | None = None) -> tuple[TaskCandidate, ...]:
-    out: list[TaskCandidate] = []
+def rows_from_jsonl(path: Path, *, limit: int | None = None) -> tuple[MathlibSnapshotRow, ...]:
+    out: list[MathlibSnapshotRow] = []
     for no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         if not line.strip():
             continue
@@ -187,10 +188,54 @@ def candidates_from_jsonl(path: Path, *, limit: int | None = None) -> tuple[Task
             row = MathlibSnapshotRow.model_validate(json.loads(line))
         except (json.JSONDecodeError, ValueError) as e:
             raise ValueError(f"{path}:{no}: invalid Mathlib snapshot row: {e}") from e
-        out.append(candidate_from_row(row))
+        out.append(row)
         if limit is not None and len(out) >= limit:
             break
     return tuple(out)
+
+
+def candidates_from_jsonl(path: Path, *, limit: int | None = None) -> tuple[TaskCandidate, ...]:
+    return candidates_from_rows(rows_from_jsonl(path, limit=limit))
+
+
+def snapshot_quality_summary(rows: Iterable[MathlibSnapshotRow]) -> dict[str, object]:
+    materialized = tuple(rows)
+    bands = Counter(_difficulty_band(row.queue_depth) for row in materialized)
+    depth_counts = Counter(str(row.queue_depth) for row in materialized)
+    scores = [int(row.difficulty_score or 0) for row in materialized]
+    citation_weights = [float(row.citation_weight or 0.0) for row in materialized]
+    direct_counts = [int(row.direct_dependency_count or 0) for row in materialized]
+    dependency_depths = [int(row.dependency_depth or 0) for row in materialized]
+    return {
+        "rows": len(materialized),
+        "queue_depth_counts": dict(sorted(depth_counts.items(), key=lambda item: int(item[0]))),
+        "difficulty_band_counts": dict(sorted(bands.items())),
+        "max_queue_depth": max((row.queue_depth for row in materialized), default=0),
+        "max_difficulty_score": max(scores, default=0),
+        "frontier_rows": sum(1 for row in materialized if row.queue_depth >= 7),
+        "metadata_coverage": {
+            "citation_weight": sum(1 for row in materialized if row.citation_weight is not None),
+            "direct_dependency_count": sum(1 for row in materialized if row.direct_dependency_count is not None),
+            "dependency_depth": sum(1 for row in materialized if row.dependency_depth is not None),
+            "transitive_dependency_hash": sum(1 for row in materialized if row.transitive_dependency_hash is not None),
+            "baseline_solved": sum(1 for row in materialized if row.baseline_solved is not None),
+        },
+        "max_signal": {
+            "citation_weight": max(citation_weights, default=0.0),
+            "direct_dependency_count": max(direct_counts, default=0),
+            "dependency_depth": max(dependency_depths, default=0),
+        },
+    }
+
+
+def _difficulty_band(queue_depth: int) -> str:
+    if queue_depth <= 1:
+        return "easy"
+    if queue_depth <= 3:
+        return "medium"
+    if queue_depth <= 6:
+        return "hard"
+    return "frontier"
 
 
 def fixture_candidates() -> tuple[TaskCandidate, ...]:
