@@ -16,6 +16,11 @@ if [[ "${LEMMA_VALIDATOR_SET_COMMITMENT:-0}" == "1" ]]; then
   commitment_flag=(--set-commitment)
 fi
 
+tempo_flag=()
+if [[ "${LEMMA_VALIDATOR_SET_TEMPO:-0}" == "1" ]]; then
+  tempo_flag=(--set-tempo)
+fi
+
 cd "${LEMMA_APP_DIR:-/opt/lemma-sn467/app}"
 
 exec "${UV_BIN:-uv}" run lemma validate \
@@ -23,4 +28,5 @@ exec "${UV_BIN:-uv}" run lemma validate \
   --bucket-reveals-dir "${LEMMA_BUCKET_REVEALS_DIR:-/var/lib/lemma/bucket-reveals}" \
   --verify-chain-commitments \
   "${commitment_flag[@]}" \
+  "${tempo_flag[@]}" \
   "$weight_flag"
