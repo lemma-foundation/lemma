@@ -83,6 +83,39 @@ def test_chain_drand_epoch_randomness_anchors_to_tempo_boundary() -> None:
     assert randomness.seed_material() == randomness.seed_material()
 
 
+def test_chain_drand_epoch_randomness_uses_active_window_length() -> None:
+    class Hyperparams:
+        tempo = 360
+
+    class BlockInfo:
+        timestamp = DRAND_QUICKNET_GENESIS_TIME + 30
+
+    class Subtensor:
+        def get_current_block(self) -> int:
+            return 1450
+
+        def get_subnet_hyperparameters(self, netuid: int, block: int | None = None) -> Hyperparams:
+            return Hyperparams()
+
+        def get_block_hash(self, block: int | None = None) -> str:
+            assert block == 1440
+            return "0xanchor"
+
+        def get_block_info(self, block: int | None = None, block_hash: str | None = None) -> BlockInfo:
+            assert block == 1440
+            return BlockInfo()
+
+    randomness = resolve_chain_drand_epoch_randomness(
+        LemmaSettings(_env_file=None, netuid=467, active_window_blocks=1440),
+        subtensor=Subtensor(),
+        drand_signature_for_round=lambda _round_no: "0xsig",
+    )
+
+    assert randomness.tempo == 4
+    assert randomness.tempo_length == 1440
+    assert randomness.anchor_block == 1440
+
+
 def test_chain_drand_epoch_randomness_accepts_millisecond_chain_timestamps() -> None:
     class Hyperparams:
         tempo = 360

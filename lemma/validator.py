@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -96,12 +97,38 @@ def current_active_tempo(settings: LemmaSettings, *, now: datetime | None = None
         subtensor = bt.Subtensor(network=settings.bt_network or None)
         block = int(subtensor.get_current_block())
         hyperparams = subtensor.get_subnet_hyperparameters(settings.netuid, block=block)
-        tempo = int(cast(Any, hyperparams).tempo)
-        if tempo <= 0:
+        chain_tempo_blocks = int(cast(Any, hyperparams).tempo)
+        if chain_tempo_blocks <= 0:
             raise RuntimeError("chain tempo must be positive")
-        return block // tempo
+        raw_tempo = block // chain_tempo_blocks
+        active_tempo = _window_anchor_tempo(
+            raw_tempo,
+            chain_tempo_blocks=chain_tempo_blocks,
+            active_window_blocks=settings.active_window_blocks,
+        )
+        if settings.curriculum_retarget_enabled and settings.curriculum_state_jsonl is not None:
+            for _ in range(2):
+                effective = curriculum_controlled_settings(settings, tempo=active_tempo)
+                next_active_tempo = _window_anchor_tempo(
+                    raw_tempo,
+                    chain_tempo_blocks=chain_tempo_blocks,
+                    active_window_blocks=effective.active_window_blocks,
+                )
+                if next_active_tempo == active_tempo:
+                    break
+                active_tempo = next_active_tempo
+        return active_tempo
     instant = now or datetime.now(UTC)
     return int(instant.timestamp() // settings.active_tempo_seconds)
+
+
+def _window_anchor_tempo(raw_tempo: int, *, chain_tempo_blocks: int, active_window_blocks: int) -> int:
+    if raw_tempo < 0:
+        raise ValueError("raw_tempo must be non-negative")
+    if chain_tempo_blocks <= 0 or active_window_blocks <= 0:
+        raise ValueError("tempo/window block counts must be positive")
+    window_tempos = max(1, math.ceil(active_window_blocks / chain_tempo_blocks))
+    return (raw_tempo // window_tempos) * window_tempos
 
 
 def _hash_payload(payload: dict[str, object]) -> str:
@@ -224,6 +251,12 @@ def active_registry_cache_stale(registry: TaskRegistry, settings: LemmaSettings)
         return True
     if any(task.frontier_depth != settings.frontier_depth for task in registry.tasks):
         return True
+    for task in registry.tasks:
+        task_window = task.metadata.get("active_window_blocks")
+        if task_window is None and settings.active_seed_mode != "epoch_randomness":
+            continue
+        if int(task_window or 0) != settings.active_window_blocks:
+            return True
     expected_source = (settings.procedural_source_sha256_expected or "").strip().lower().removeprefix("sha256:")
     if expected_source:
         return {str(task.metadata.get("source_pool_hash") or "") for task in registry.tasks} != {expected_source}
@@ -257,11 +290,16 @@ def curriculum_controlled_settings(settings: LemmaSettings, *, tempo: int) -> Le
     if not records:
         return settings
     latest = records[-1]
+    active_tempo_seconds = max(
+        1,
+        round(settings.active_tempo_seconds * latest.active_window_blocks / settings.active_window_blocks),
+    )
     return settings.model_copy(
         update={
             "active_task_count": latest.active_K,
             "frontier_depth": latest.frontier_depth,
             "active_window_blocks": latest.active_window_blocks,
+            "active_tempo_seconds": active_tempo_seconds,
         }
     )
 
@@ -364,6 +402,7 @@ def _enforce_epoch_generated_paid_tasks(
         epoch_fields = {}
     expected_anchor_block = epoch_fields.get("anchor_block") if isinstance(epoch_fields, dict) else None
     expected_drand_round = epoch_fields.get("drand_round") if isinstance(epoch_fields, dict) else None
+    expected_active_window_blocks = epoch_fields.get("tempo_length") if isinstance(epoch_fields, dict) else None
     mismatches: list[str] = []
     for task in tasks:
         if not task_reward_eligibility(task).eligible:
@@ -375,6 +414,11 @@ def _enforce_epoch_generated_paid_tasks(
             mismatches.append(f"{task.id}:anchor_block")
         if isinstance(expected_drand_round, int) and metadata.get("drand_round") != expected_drand_round:
             mismatches.append(f"{task.id}:drand_round")
+        if (
+            isinstance(expected_active_window_blocks, int)
+            and metadata.get("active_window_blocks") != expected_active_window_blocks
+        ):
+            mismatches.append(f"{task.id}:active_window_blocks")
     if mismatches:
         detail = ", ".join(mismatches[:5])
         raise RuntimeError(f"production paid tasks must use active epoch randomness: {detail}")

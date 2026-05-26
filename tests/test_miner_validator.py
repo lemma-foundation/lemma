@@ -34,6 +34,7 @@ from lemma.validator import (
     ValidatorRunSummary,
     active_tasks_for_validation,
     cached_active_registry_for_tempo,
+    current_active_tempo,
     curriculum_controlled_settings,
     validate_once,
 )
@@ -53,6 +54,34 @@ def _task(task_id: str = "lemma.test.true", queue_depth: int = 0):
 
 def _registry() -> TaskRegistry:
     return TaskRegistry(schema_version=1, tasks=(_task(),), sha256="0" * 64)
+
+
+def test_current_active_tempo_uses_task_window_anchor(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Hyperparams:
+        tempo = 360
+
+    class Subtensor:
+        def __init__(self, network: str | None = None) -> None:
+            self.network = network
+
+        def get_current_block(self) -> int:
+            return 7199
+
+        def get_subnet_hyperparameters(self, netuid: int, block: int | None = None) -> Hyperparams:
+            assert netuid == 467
+            assert block == 7199
+            return Hyperparams()
+
+    monkeypatch.setitem(sys.modules, "bittensor", type("FakeBittensor", (), {"Subtensor": Subtensor})())
+
+    settings = LemmaSettings(
+        _env_file=None,
+        netuid=467,
+        active_tempo_source="chain",
+        active_window_blocks=1440,
+    )
+
+    assert current_active_tempo(settings) == 16
 
 
 def _two_task_registry() -> TaskRegistry:

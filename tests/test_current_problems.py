@@ -144,6 +144,38 @@ def test_current_problem_snapshot_reports_curriculum_effective_window(tmp_path: 
     assert {task.frontier_depth for task in snapshot.tasks} == {2}
 
 
+def test_current_problem_snapshot_reports_curriculum_task_window(tmp_path: Path) -> None:
+    curriculum = tmp_path / "curriculum.jsonl"
+    append_curriculum_record(
+        curriculum,
+        CurriculumTempoRecord(
+            tempo=1,
+            active_K=1,
+            frontier_depth=2,
+            active_window_blocks=1440,
+            ema_solve_rate=0.58,
+            solved_slots=1,
+            parked_task_ids=(),
+            action="hold",
+            variant_stream_requested=False,
+        ),
+    )
+    settings = LemmaSettings(
+        active_task_count=20,
+        active_tempo_source="chain",
+        frontier_depth=0,
+        active_queue_seed="pytest",
+        curriculum_retarget_enabled=True,
+        curriculum_state_jsonl=curriculum,
+        curriculum_state_public=True,
+    )
+
+    snapshot = build_current_problems_snapshot(settings, registry=_registry(), tempo=3)
+
+    assert snapshot.active_window_blocks == 1440
+    assert snapshot.active_tempo_seconds == 17280
+
+
 def test_current_problem_snapshot_reports_cost_cap() -> None:
     settings = LemmaSettings(
         active_task_count=2,

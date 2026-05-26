@@ -534,6 +534,8 @@ def _candidate_from_source(
         "source_theorem_name": source.theorem_name,
         "source_target_sha256": _hash_text(source.statement),
     }
+    if "tempo_length" in epoch_fields:
+        metadata["active_window_blocks"] = _nonnegative_int(epoch_fields.get("tempo_length"))
     for key in (
         "citation_weight",
         "direct_dependency_count",
