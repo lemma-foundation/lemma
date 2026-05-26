@@ -7,12 +7,11 @@ import json
 import os
 import threading
 from collections.abc import Iterable
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field, replace
 from typing import Protocol
 
 from lemma.common.config import LemmaSettings
-from lemma.lean.sandbox import VerifyReason, VerifyResult
+from lemma.lean.sandbox import VerifyResult
 from lemma.lean.verify_runner import run_lean_verify
 from lemma.problems.base import Problem
 from lemma.supply.import_graph import ImportGraph, empty_import_graph
@@ -27,6 +26,7 @@ from lemma.supply.types import TaskCandidate
 GATE_VERSION = "lemma-procedural-gates-v3"
 _PROP_GATE_DECL = "LemmaProceduralGate.prop_gate"
 _KERNEL_NORMAL_MARKER = "LEMMA_KERNEL_NORMAL_FORM "
+_TRIVIALITY_MARKER = "LEMMA_TRIVIALITY_TACTIC "
 TRIVIALITY_STACK = (
     ("decide", "  decide"),
     ("simp_all", "  simp_all"),
@@ -37,7 +37,6 @@ TRIVIALITY_STACK = (
     ("nlinarith", "  nlinarith"),
     ("aesop", "  aesop"),
 )
-_INFRA_FAILURES: frozenset[VerifyReason] = frozenset({"timeout", "oom", "docker_error", "remote_error"})
 
 
 @dataclass(frozen=True)
@@ -246,45 +245,8 @@ class LeanProceduralGateRunner:
             )
 
     def _run_triviality_stack(self, candidate: TaskCandidate) -> tuple[bool, bool, str | None, str]:
-        if len(TRIVIALITY_STACK) <= 1 or self.lean_workers <= 1:
-            return self._run_triviality_stack_sequential(candidate)
-
-        results: dict[str, tuple[bool, VerifyReason | None]] = {}
-        with ThreadPoolExecutor(max_workers=len(TRIVIALITY_STACK)) as pool:
-            futures = {
-                pool.submit(self._run_triviality_tactic, candidate, name, body): name
-                for name, body in TRIVIALITY_STACK
-            }
-            for future in as_completed(futures):
-                name = futures[future]
-                passed, reason = future.result()
-                results[name] = (passed, reason)
-
-        for name, _body in TRIVIALITY_STACK:
-            passed, reason = results[name]
-            if passed:
-                return True, True, name, "baseline_solved"
-            if reason in _INFRA_FAILURES:
-                return False, False, None, reason
-        return True, False, None, "baseline_failed"
-
-    def _run_triviality_stack_sequential(self, candidate: TaskCandidate) -> tuple[bool, bool, str | None, str]:
-        for name, body in TRIVIALITY_STACK:
-            passed, reason = self._run_triviality_tactic(candidate, name, body)
-            if passed:
-                return True, True, name, "baseline_solved"
-            if reason in _INFRA_FAILURES:
-                return False, False, None, reason
-        return True, False, None, "baseline_failed"
-
-    def _run_triviality_tactic(
-        self,
-        candidate: TaskCandidate,
-        name: str,
-        body: str,
-    ) -> tuple[bool, VerifyReason | None]:
         with self._lean_slots:
-            problem = candidate.to_task().to_problem()
+            problem = _triviality_problem(candidate)
             problem = replace(
                 problem,
                 extra={**problem.extra, "lean_max_heartbeats": self.triviality_budget_heartbeats},
@@ -293,12 +255,15 @@ class LeanProceduralGateRunner:
                 self.settings,
                 verify_timeout_s=self.gate_timeout_s,
                 problem=problem,
-                proof_script=_candidate_submission(candidate, body),
-                submission_policy=candidate.policy,
+                proof_script=_dummy_submission(candidate),
+                submission_policy="strict_envelope",
             )
-        if result.passed:
-            return True, None
-        return False, result.reason
+        if not result.passed:
+            return False, False, None, result.reason
+        solver = _triviality_solver_from_output(result.stdout_tail + "\n" + result.stderr_tail)
+        if solver is None:
+            return True, False, None, "baseline_failed"
+        return True, True, solver, "baseline_solved"
 
 
 def _resolve_lean_workers(settings: LemmaSettings) -> int:
@@ -328,6 +293,47 @@ def _novelty_status(
     if statement_hash in seen or canonical in seen:
         return "duplicate"
     return "duplicate" if novelty_cache.contains(statement_hash) or novelty_cache.contains(canonical) else "passed"
+
+
+def _triviality_problem(candidate: TaskCandidate) -> Problem:
+    return Problem(
+        id=f"{candidate.id}.triviality",
+        theorem_name="lemma_gate_dummy",
+        type_expr="True",
+        split="procedural_triviality",
+        lean_toolchain=candidate.lean_toolchain,
+        mathlib_rev=candidate.mathlib_rev,
+        imports=candidate.imports,
+        extra={
+            "challenge_full": _triviality_source(candidate),
+            "lean_build_target": "Challenge",
+            "lean_eval_commands": _triviality_eval_commands(),
+            "submission_policy": "strict_envelope",
+        },
+    )
+
+
+def _triviality_eval_commands() -> tuple[str, ...]:
+    return tuple(
+        "#eval! LemmaProceduralTriviality.emitOne "
+        f"{_json_string(name)} {_json_string(body.strip())}"
+        for name, body in TRIVIALITY_STACK
+    )
+
+
+def _triviality_solver_from_output(output: str) -> str | None:
+    passed: set[str] = set()
+    for line in output.splitlines():
+        if not line.startswith(_TRIVIALITY_MARKER):
+            continue
+        payload = line.removeprefix(_TRIVIALITY_MARKER).strip()
+        name, _, status = payload.partition(" ")
+        if status == "passed":
+            passed.add(name)
+    for name, _body in TRIVIALITY_STACK:
+        if name in passed:
+            return name
+    return None
 
 
 def _gate_problem(
@@ -431,6 +437,56 @@ def _combined_gate_source(candidate: TaskCandidate) -> str:
     )
 
 
+def _triviality_source(candidate: TaskCandidate) -> str:
+    return "\n".join(
+        [
+            "import Lean",
+            "",
+            "open Lean",
+            "",
+            "namespace LemmaProceduralTriviality",
+            "",
+            f"def targetSource : String := {_json_string(candidate.type_expr)}",
+            "",
+            "def parseTermOrThrow (source : String) : Elab.Command.CommandElabM (TSyntax `term) := do",
+            "  let env ← getEnv",
+            "  match Parser.runParserCategory env `term source with",
+            "  | Except.ok stx => pure ⟨stx⟩",
+            "  | Except.error e => throwError e",
+            "",
+            "def parseTacticOrThrow (source : String) : Elab.Command.CommandElabM (TSyntax `tactic) := do",
+            "  let env ← getEnv",
+            "  match Parser.runParserCategory env `tactic source with",
+            "  | Except.ok stx => pure ⟨stx⟩",
+            "  | Except.error e => throwError e",
+            "",
+            "def tacticCloses (targetSource tacticSource : String) : Elab.Command.CommandElabM Bool := do",
+            "  try",
+            "    let targetStx ← parseTermOrThrow targetSource",
+            "    let tacticStx ← parseTacticOrThrow tacticSource",
+            "    Elab.Command.runTermElabM fun _ => do",
+            "      let target ← Elab.Term.elabType targetStx.raw",
+            "      let target ← instantiateMVars target",
+            "      let goalExpr ← Meta.mkFreshExprMVar (some target)",
+            "      try",
+            "        let goals ← Elab.Tactic.run goalExpr.mvarId! do",
+            "          Elab.Tactic.evalTactic tacticStx.raw",
+            "        return goals.isEmpty",
+            "      catch _ =>",
+            "        return false",
+            "  catch _ =>",
+            "    return false",
+            "",
+            "def emitOne (name tacticSource : String) : Elab.Command.CommandElabM Unit := do",
+            "  let ok ← tacticCloses targetSource tacticSource",
+            f"  IO.println <| {_json_string(_TRIVIALITY_MARKER)} ++ name ++ \" \" ++ "
+            "(if ok then \"passed\" else \"failed\")",
+            "",
+            "end LemmaProceduralTriviality",
+        ]
+    )
+
+
 def _json_string(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
@@ -444,22 +500,6 @@ def _dummy_submission(candidate: TaskCandidate) -> str:
             "",
             "theorem lemma_gate_dummy : True := by",
             "  trivial",
-            "",
-            "end Submission",
-            "",
-        ]
-    )
-
-
-def _candidate_submission(candidate: TaskCandidate, body: str) -> str:
-    return "\n".join(
-        [
-            *(f"import {module}" for module in candidate.imports),
-            "",
-            "namespace Submission",
-            "",
-            f"theorem {candidate.theorem_name} : {candidate.type_expr} := by",
-            body,
             "",
             "end Submission",
             "",

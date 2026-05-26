@@ -563,8 +563,16 @@ def test_lean_gate_runner_records_generation_time_gates(monkeypatch: pytest.Monk
                 declaration_fingerprints={str(problem.extra["lean_fingerprint_names"][0]): "8" * 64},
             )
         calls.append("triviality")
+        assert problem.id.endswith(".triviality")
+        assert problem.extra["lean_build_target"] == "Challenge"
         assert problem.extra["lean_max_heartbeats"] == 200_000
-        return VerifyResult(passed=False, reason="compile_error")
+        assert len(problem.extra["lean_eval_commands"]) == len(TRIVIALITY_STACK)
+        assert all("LemmaProceduralTriviality.emitOne" in item for item in problem.extra["lean_eval_commands"])
+        return VerifyResult(
+            passed=True,
+            reason="ok",
+            stdout_tail="\n".join(f"LEMMA_TRIVIALITY_TACTIC {name} failed" for name, _body in TRIVIALITY_STACK),
+        )
 
     monkeypatch.setattr("lemma.supply.gates.run_lean_verify", fake_verify)
     verdict = LeanProceduralGateRunner(
@@ -613,7 +621,7 @@ def test_lean_gate_runner_skips_statement_duplicates_before_lean(
     assert verdict.metadata["prop_gate_reason"] == "skipped_statement_duplicate"
 
 
-def test_lean_gate_runner_caps_parallel_verify_jobs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_lean_gate_runner_batches_triviality_stack(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     snapshot = tmp_path / "snapshot.jsonl"
     _write_snapshot(snapshot)
     candidate = generate_depth2_candidates(
@@ -646,10 +654,15 @@ def test_lean_gate_runner_caps_parallel_verify_jobs(monkeypatch: pytest.MonkeyPa
                     declaration_fingerprints={str(problem.extra["lean_fingerprint_names"][0]): "8" * 64},
                 )
             calls.append("triviality")
+            assert problem.id.endswith(".triviality")
             assert problem.extra["lean_max_heartbeats"] == 200_000
             assert verify_timeout_s == 5
             time.sleep(0.02)
-            return VerifyResult(passed=False, reason="compile_error")
+            return VerifyResult(
+                passed=True,
+                reason="ok",
+                stdout_tail="\n".join(f"LEMMA_TRIVIALITY_TACTIC {name} failed" for name, _body in TRIVIALITY_STACK),
+            )
         finally:
             with lock:
                 active -= 1
@@ -666,8 +679,8 @@ def test_lean_gate_runner_caps_parallel_verify_jobs(monkeypatch: pytest.MonkeyPa
 
     assert verdict.accepted is True
     assert calls[0] == "combined"
-    assert calls.count("triviality") == len(TRIVIALITY_STACK)
-    assert max_active == 2
+    assert calls.count("triviality") == 1
+    assert max_active == 1
 
 
 def test_lean_gate_runner_skips_triviality_when_compile_gate_fails(
