@@ -7,11 +7,14 @@ import json
 import math
 import os
 import re
+from collections import Counter
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from loguru import logger
 
 from lemma.license import license_state_for, paid_license_allowed
 from lemma.protocol_invariants import procedural_gate_receipt_sha256, production_supply_rejection_reason
@@ -58,6 +61,14 @@ class _Depth2Attempt:
     cursor: int
     candidate: TaskCandidate | None
     verdict: ProceduralGateVerdict | None
+    rejection_reason: str | None = None
+
+
+@dataclass
+class _Depth2Telemetry:
+    attempts: int = 0
+    accepted: int = 0
+    rejected: Counter[str] = field(default_factory=Counter)
 
 
 _SAFE_IDENT = re.compile(r"[^A-Za-z0-9_]+")
@@ -331,12 +342,16 @@ def _generate_depth2_candidates_sequential(
 ) -> tuple[TaskCandidate, ...]:
     out: list[TaskCandidate] = []
     seen: set[str] = set()
+    telemetry = _Depth2Telemetry()
     cursor = 0
     while len(out) < count and cursor < attempt_limit:
         attempt = _attempt_depth2_candidate(ctx, cursor=cursor, seen_canonical_hashes=frozenset(seen))
+        accepted = False
         if attempt.candidate is not None and attempt.verdict is not None:
-            _maybe_accept_depth2_attempt(out, seen, attempt.candidate, attempt.verdict)
+            accepted = _maybe_accept_depth2_attempt(out, seen, attempt.candidate, attempt.verdict)
+        _record_depth2_attempt(telemetry, attempt, accepted=accepted)
         cursor += 1
+    _log_depth2_telemetry(telemetry, count=count, attempt_limit=attempt_limit)
     if len(out) < count:
         raise ValueError(f"procedural gates accepted {len(out)} candidates, needed {count}")
     return tuple(out)
@@ -351,6 +366,7 @@ def _generate_depth2_candidates_parallel(
 ) -> tuple[TaskCandidate, ...]:
     out: list[TaskCandidate] = []
     seen: set[str] = set()
+    telemetry = _Depth2Telemetry()
     cursor = 0
     while len(out) < count and cursor < attempt_limit:
         batch_end = min(cursor + workers, attempt_limit)
@@ -358,12 +374,15 @@ def _generate_depth2_candidates_parallel(
         batch_cursors = range(cursor, batch_end)
         attempts = _attempt_depth2_candidates_parallel(ctx, batch_cursors, seen_snapshot, workers=workers)
         for attempt in sorted(attempts, key=lambda item: item.cursor):
-            if len(out) >= count:
-                break
+            accepted = False
             if attempt.candidate is None or attempt.verdict is None:
+                _record_depth2_attempt(telemetry, attempt, accepted=False)
                 continue
-            _maybe_accept_depth2_attempt(out, seen, attempt.candidate, attempt.verdict)
+            if len(out) < count:
+                accepted = _maybe_accept_depth2_attempt(out, seen, attempt.candidate, attempt.verdict)
+            _record_depth2_attempt(telemetry, attempt, accepted=accepted)
         cursor = batch_end
+    _log_depth2_telemetry(telemetry, count=count, attempt_limit=attempt_limit)
     if len(out) < count:
         raise ValueError(f"procedural gates accepted {len(out)} candidates, needed {count}")
     return tuple(out)
@@ -410,8 +429,8 @@ def _attempt_depth2_candidate(
             tempo=ctx.tempo,
             sequence=cursor,
         )
-    except ValueError:
-        return _Depth2Attempt(cursor=cursor, candidate=None, verdict=None)
+    except ValueError as exc:
+        return _Depth2Attempt(cursor=cursor, candidate=None, verdict=None, rejection_reason=_mutation_rejection(exc))
     verdict = ctx.gate_runner(candidate, seen_canonical_hashes=seen_canonical_hashes)
     return _Depth2Attempt(cursor=cursor, candidate=candidate, verdict=verdict)
 
@@ -421,13 +440,64 @@ def _maybe_accept_depth2_attempt(
     seen: set[str],
     candidate: TaskCandidate,
     verdict: ProceduralGateVerdict,
-) -> None:
+) -> bool:
     candidate = _with_gate_receipt(candidate, verdict)
     canonical_hash = str(candidate.metadata["canonical_hash"])
     if not verdict.accepted or canonical_hash in seen:
-        return
+        return False
     seen.add(canonical_hash)
     out.append(candidate)
+    return True
+
+
+def _record_depth2_attempt(telemetry: _Depth2Telemetry, attempt: _Depth2Attempt, *, accepted: bool) -> None:
+    telemetry.attempts += 1
+    if accepted:
+        telemetry.accepted += 1
+        return
+    telemetry.rejected[_depth2_rejection_reason(attempt)] += 1
+
+
+def _depth2_rejection_reason(attempt: _Depth2Attempt) -> str:
+    if attempt.candidate is None or attempt.verdict is None:
+        return attempt.rejection_reason or "mutation_failed"
+    verdict = attempt.verdict
+    if verdict.novelty_status != "passed":
+        return f"novelty:{verdict.novelty_status}"
+    if not verdict.typechecked:
+        return f"typecheck:{verdict.metadata.get('typecheck_reason') or 'failed'}"
+    if not verdict.prop_gate_passed:
+        return f"prop_gate:{verdict.metadata.get('prop_gate_reason') or 'failed'}"
+    if not verdict.triviality_checked:
+        return f"triviality:{verdict.metadata.get('triviality_reason') or 'not_checked'}"
+    if verdict.baseline_solved:
+        return f"baseline:{verdict.metadata.get('baseline_solver') or 'solved'}"
+    return "not_accepted"
+
+
+def _mutation_rejection(exc: ValueError) -> str:
+    message = str(exc)
+    if ":" in message:
+        message = message.split(":", 1)[0]
+    return f"mutation:{message or 'failed'}"
+
+
+def _log_depth2_telemetry(telemetry: _Depth2Telemetry, *, count: int, attempt_limit: int) -> None:
+    if os.environ.get("LEMMA_PROCEDURAL_GENERATION_TELEMETRY", "").strip().lower() not in {"1", "true", "yes"}:
+        return
+    logger.info(
+        "procedural_generation_attempts {}",
+        json.dumps(
+            {
+                "accepted": telemetry.accepted,
+                "attempt_limit": attempt_limit,
+                "attempts": telemetry.attempts,
+                "needed": count,
+                "rejected": dict(sorted(telemetry.rejected.items())),
+            },
+            sort_keys=True,
+        ),
+    )
 
 
 def build_procedural_registry_tasks(
