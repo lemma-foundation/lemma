@@ -462,12 +462,12 @@ def _depth2_rejection_reason(attempt: _Depth2Attempt) -> str:
     if attempt.candidate is None or attempt.verdict is None:
         return attempt.rejection_reason or "mutation_failed"
     verdict = attempt.verdict
-    if verdict.novelty_status != "passed":
-        return f"novelty:{verdict.novelty_status}"
     if not verdict.typechecked:
         return f"typecheck:{verdict.metadata.get('typecheck_reason') or 'failed'}"
     if not verdict.prop_gate_passed:
         return f"prop_gate:{verdict.metadata.get('prop_gate_reason') or 'failed'}"
+    if verdict.novelty_status != "passed":
+        return f"novelty:{verdict.novelty_status}"
     if not verdict.triviality_checked:
         return f"triviality:{verdict.metadata.get('triviality_reason') or 'not_checked'}"
     if verdict.baseline_solved:
