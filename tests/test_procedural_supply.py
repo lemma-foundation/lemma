@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import threading
 import time
 from pathlib import Path
 
@@ -840,23 +839,32 @@ def test_lean_gate_runner_records_generation_time_gates(monkeypatch: pytest.Monk
                 "LemmaProceduralGate.typecheck_gate",
                 "LemmaProceduralGate.prop_gate",
             )
-            assert problem.extra["lean_eval_commands"] == ("#lemma_emit_kernel_normal",)
+            assert problem.extra["lean_eval_commands"] == (
+                "#lemma_emit_kernel_normal",
+                "set_option maxHeartbeats 200000",
+                "#lemma_emit_triviality",
+            )
             assert 'elab "#lemma_emit_kernel_normal" : command => emit_kernel_normal' in problem.extra[
                 "challenge_full"
             ]
+            assert 'elab "#lemma_emit_triviality" : command => emit_triviality' in problem.extra["challenge_full"]
+            assert "def proofSourceSucceeds" in problem.extra["challenge_full"]
             calls.append("gate")
             return VerifyResult(
                 passed=True,
                 reason="ok",
-                stdout_tail="LEMMA_KERNEL_NORMAL_FORM (forall default const:True:[] const:True:[])",
+                stdout_tail=(
+                    "LEMMA_KERNEL_NORMAL_FORM (forall default const:True:[] const:True:[])\n"
+                    'LEMMA_TRIVIALITY {"checked":true,"baseline_solved":false,'
+                    '"baseline_solver":null,"triviality_reason":"baseline_failed"}'
+                ),
+                build_seconds=1.25,
                 declaration_fingerprints={
                     "LemmaProceduralGate.typecheck_gate": "7" * 64,
                     "LemmaProceduralGate.prop_gate": "8" * 64,
                 },
             )
-        calls.append("triviality")
-        assert problem.extra["lean_max_heartbeats"] == 200_000
-        return VerifyResult(passed=False, reason="compile_error")
+        raise AssertionError("triviality should be embedded in the gate build")
 
     monkeypatch.setattr("lemma.supply.gates.run_lean_verify", fake_verify)
     verdict = LeanProceduralGateRunner(
@@ -872,11 +880,13 @@ def test_lean_gate_runner_records_generation_time_gates(monkeypatch: pytest.Monk
     assert verdict.metadata["triviality_budget_version"] == "lemma-triviality-retarget-v1"
     assert verdict.metadata["triviality_budget_heartbeats"] == 200_000
     assert verdict.metadata["triviality_reason"] == "baseline_failed"
-    assert calls[:1] == ["gate"]
-    assert "triviality" in calls
+    assert verdict.metadata["lean_gate_mode"] == "combined_prop_triviality"
+    assert verdict.metadata["lean_gate_invocations"] == 1
+    assert verdict.metadata["lean_gate_build_seconds"] == 1.25
+    assert calls == ["gate"]
 
 
-def test_lean_gate_runner_batches_triviality_stack(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_lean_gate_runner_embeds_triviality_stack(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     snapshot = tmp_path / "snapshot.jsonl"
     _write_snapshot(snapshot)
     candidate = generate_depth2_candidates(
@@ -886,43 +896,33 @@ def test_lean_gate_runner_batches_triviality_stack(monkeypatch: pytest.MonkeyPat
         count=1,
         tempo=3,
     )[0]
-    lock = threading.Lock()
-    active = 0
-    max_active = 0
     calls: list[str] = []
-    proof_scripts: list[str] = []
 
     def fake_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001, ARG001
-        nonlocal active, max_active
-        with lock:
-            active += 1
-            max_active = max(max_active, active)
-        try:
-            if problem.id.endswith(".gate"):
-                assert problem.extra["lean_max_heartbeats"] == 400_000
-                assert problem.extra["lean_skip_submission_axiom_check"] is True
-                gate_source = str(problem.extra["challenge_full"])
-                assert "def typecheck_gate" in gate_source
-                assert "theorem prop_gate" in gate_source
-                calls.append("gate")
-                return VerifyResult(
-                    passed=True,
-                    reason="ok",
-                    stdout_tail="LEMMA_KERNEL_NORMAL_FORM (forall default const:True:[] const:True:[])",
-                    declaration_fingerprints={
-                        "LemmaProceduralGate.typecheck_gate": "7" * 64,
-                        "LemmaProceduralGate.prop_gate": "8" * 64,
-                    },
-                )
-            calls.append("triviality")
-            proof_scripts.append(proof_script)
-            assert problem.extra["lean_max_heartbeats"] == 200_000
-            assert verify_timeout_s == 5
-            time.sleep(0.02)
-            return VerifyResult(passed=False, reason="compile_error")
-        finally:
-            with lock:
-                active -= 1
+        assert problem.id.endswith(".gate")
+        assert problem.extra["lean_max_heartbeats"] == 400_000
+        assert problem.extra["lean_skip_submission_axiom_check"] is True
+        assert verify_timeout_s == 5
+        gate_source = str(problem.extra["challenge_full"])
+        assert "def typecheck_gate" in gate_source
+        assert "theorem prop_gate" in gate_source
+        assert "def combinedTrivialitySource" in gate_source
+        assert "by\\n  first\\n  | decide" in gate_source
+        assert "  | aesop" in gate_source
+        calls.append("gate")
+        return VerifyResult(
+            passed=True,
+            reason="ok",
+            stdout_tail=(
+                "LEMMA_KERNEL_NORMAL_FORM (forall default const:True:[] const:True:[])\n"
+                'LEMMA_TRIVIALITY {"checked":true,"baseline_solved":false,'
+                '"baseline_solver":null,"triviality_reason":"baseline_failed"}'
+            ),
+            declaration_fingerprints={
+                "LemmaProceduralGate.typecheck_gate": "7" * 64,
+                "LemmaProceduralGate.prop_gate": "8" * 64,
+            },
+        )
 
     monkeypatch.setattr("lemma.supply.gates.run_lean_verify", fake_verify)
     verdict = LeanProceduralGateRunner(
@@ -935,13 +935,7 @@ def test_lean_gate_runner_batches_triviality_stack(monkeypatch: pytest.MonkeyPat
     )(candidate, seen_canonical_hashes=())
 
     assert verdict.accepted is True
-    assert calls[:1] == ["gate"]
-    assert calls.count("triviality") == 2
-    assert "source_theorem" not in proof_scripts[-1]
-    assert "  first\n" in proof_scripts[-1]
-    assert "  | decide" in proof_scripts[-1]
-    assert "  | aesop" in proof_scripts[-1]
-    assert max_active == 1
+    assert calls == ["gate"]
 
 
 def test_lean_gate_runner_rejects_source_theorem_wrappers(
@@ -956,21 +950,23 @@ def test_lean_gate_runner_rejects_source_theorem_wrappers(
         count=1,
         tempo=3,
     )[0]
-    proof_scripts: list[str] = []
-
     def fake_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001, ARG001
-        if problem.id.endswith(".gate"):
-            return VerifyResult(
-                passed=True,
-                reason="ok",
-                stdout_tail="LEMMA_KERNEL_NORMAL_FORM (forall default const:True:[] const:True:[])",
-                declaration_fingerprints={
-                    "LemmaProceduralGate.typecheck_gate": "7" * 64,
-                    "LemmaProceduralGate.prop_gate": "8" * 64,
-                },
-            )
-        proof_scripts.append(proof_script)
-        return VerifyResult(passed="apply " in proof_script, reason="ok")
+        assert problem.id.endswith(".gate")
+        assert "def ancestorBaselineSource" in str(problem.extra["challenge_full"])
+        assert "apply " in str(problem.extra["challenge_full"])
+        return VerifyResult(
+            passed=True,
+            reason="ok",
+            stdout_tail=(
+                "LEMMA_KERNEL_NORMAL_FORM (forall default const:True:[] const:True:[])\n"
+                'LEMMA_TRIVIALITY {"checked":true,"baseline_solved":true,'
+                '"baseline_solver":"source_theorem","triviality_reason":"baseline_solved"}'
+            ),
+            declaration_fingerprints={
+                "LemmaProceduralGate.typecheck_gate": "7" * 64,
+                "LemmaProceduralGate.prop_gate": "8" * 64,
+            },
+        )
 
     monkeypatch.setattr("lemma.supply.gates.run_lean_verify", fake_verify)
     verdict = LeanProceduralGateRunner(
@@ -980,8 +976,6 @@ def test_lean_gate_runner_rejects_source_theorem_wrappers(
     assert verdict.accepted is False
     assert verdict.baseline_solved is True
     assert verdict.metadata["baseline_solver"] == "source_theorem"
-    assert len(proof_scripts) == 1
-    assert "apply " in proof_scripts[0]
 
 
 def test_lean_gate_runner_skips_triviality_when_compile_gate_fails(

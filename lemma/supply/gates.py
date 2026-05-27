@@ -12,7 +12,7 @@ from dataclasses import dataclass, field, replace
 from typing import Protocol
 
 from lemma.common.config import LemmaSettings
-from lemma.lean.sandbox import VerifyReason, VerifyResult
+from lemma.lean.sandbox import VerifyResult
 from lemma.lean.verify_runner import run_lean_verify
 from lemma.problems.base import Problem
 from lemma.supply.import_graph import ImportGraph, empty_import_graph
@@ -28,6 +28,7 @@ GATE_VERSION = "lemma-procedural-gates-v3"
 _TYPECHECK_GATE_DECL = "LemmaProceduralGate.typecheck_gate"
 _PROP_GATE_DECL = "LemmaProceduralGate.prop_gate"
 _KERNEL_NORMAL_MARKER = "LEMMA_KERNEL_NORMAL_FORM "
+_TRIVIALITY_MARKER = "LEMMA_TRIVIALITY "
 _LEAN_DECL_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_']*(?:\.[A-Za-z_][A-Za-z0-9_']*)*$")
 TRIVIALITY_STACK = (
     ("decide", "  decide"),
@@ -40,9 +41,6 @@ TRIVIALITY_STACK = (
     ("nlinarith", "  nlinarith"),
     ("aesop", "  aesop"),
 )
-_INFRA_FAILURES: frozenset[VerifyReason] = frozenset({"timeout", "oom", "docker_error", "remote_error"})
-
-
 @dataclass(frozen=True)
 class ProceduralGateVerdict:
     typechecked: bool
@@ -156,13 +154,18 @@ class LeanProceduralGateRunner:
                 baseline_solver=None,
                 baseline_reason="not_run",
                 prop_gate_reason="skipped_statement_duplicate",
+                lean_gate_invocations=0,
             )
 
         prop = self._compile_gate(
             candidate,
             _prop_gate_source(candidate),
             fingerprint_names=(_TYPECHECK_GATE_DECL, _PROP_GATE_DECL),
-            eval_commands=("#lemma_emit_kernel_normal",),
+            eval_commands=(
+                "#lemma_emit_kernel_normal",
+                f"set_option maxHeartbeats {self.triviality_budget_heartbeats}",
+                "#lemma_emit_triviality",
+            ),
         )
         kernel_hash = _gate_canonical_hash(prop) if prop.passed else ""
         novelty = (
@@ -171,9 +174,7 @@ class LeanProceduralGateRunner:
             else "missing_kernel_fingerprint"
         )
         if prop.passed and novelty == "passed":
-            triviality_checked, baseline_solved, baseline_solver, baseline_reason = self._run_triviality_stack(
-                candidate
-            )
+            triviality_checked, baseline_solved, baseline_solver, baseline_reason = _triviality_result(prop)
         else:
             triviality_checked, baseline_solved, baseline_solver, baseline_reason = False, False, None, "not_run"
         return self._gate_verdict(
@@ -203,6 +204,7 @@ class LeanProceduralGateRunner:
         baseline_solver: str | None,
         baseline_reason: str,
         prop_gate_reason: str | None = None,
+        lean_gate_invocations: int = 1,
     ) -> ProceduralGateVerdict:
         _ = seen_canonical_hashes
         slot_weight = slot_weight_receipt_for_candidate(candidate, import_graph=self.import_graph)
@@ -223,6 +225,9 @@ class LeanProceduralGateRunner:
                 "triviality_stack": _triviality_stack_names(candidate),
                 "triviality_reason": baseline_reason,
                 "baseline_solver": baseline_solver,
+                "lean_gate_mode": "combined_prop_triviality",
+                "lean_gate_build_seconds": round(typecheck.build_seconds, 3),
+                "lean_gate_invocations": lean_gate_invocations,
                 **self.novelty_cache.metadata(),
                 **self.triviality_budget_receipt.metadata(),
                 **slot_weight.metadata(),
@@ -253,44 +258,6 @@ class LeanProceduralGateRunner:
                 submission_policy="strict_envelope",
             )
 
-    def _run_triviality_stack(self, candidate: TaskCandidate) -> tuple[bool, bool, str | None, str]:
-        ancestor_baseline = _ancestor_baseline_body(candidate)
-        if ancestor_baseline is not None:
-            passed, reason = self._run_triviality_tactic(candidate, ancestor_baseline)
-            if passed:
-                return True, True, "source_theorem", "baseline_solved"
-            if reason in _INFRA_FAILURES:
-                return False, False, None, reason
-
-        passed, reason = self._run_triviality_tactic(candidate, _combined_triviality_body())
-        if passed:
-            return True, True, "triviality_stack", "baseline_solved"
-        if reason in _INFRA_FAILURES:
-            return False, False, None, reason
-        return True, False, None, "baseline_failed"
-
-    def _run_triviality_tactic(
-        self,
-        candidate: TaskCandidate,
-        body: str,
-    ) -> tuple[bool, VerifyReason | None]:
-        with self._lean_slots:
-            problem = candidate.to_task().to_problem()
-            problem = replace(
-                problem,
-                extra={**problem.extra, "lean_max_heartbeats": self.triviality_budget_heartbeats},
-            )
-            result = run_lean_verify(
-                self.settings,
-                verify_timeout_s=self.gate_timeout_s,
-                problem=problem,
-                proof_script=_candidate_submission(candidate, body),
-                submission_policy=candidate.policy,
-            )
-        if result.passed:
-            return True, None
-        return False, result.reason
-
 
 def _triviality_stack_names(candidate: TaskCandidate) -> list[str]:
     names = [name for name, _body in TRIVIALITY_STACK]
@@ -301,6 +268,10 @@ def _triviality_stack_names(candidate: TaskCandidate) -> list[str]:
 
 def _combined_triviality_body() -> str:
     return "\n".join(["  first", *(f"  | {body.strip()}" for _name, body in TRIVIALITY_STACK)])
+
+
+def _proof_term_source(body: str | None) -> str:
+    return "" if body is None else f"by\n{body}"
 
 
 def _ancestor_baseline_body(candidate: TaskCandidate) -> str | None:
@@ -412,7 +383,28 @@ def _gate_canonical_hash(result: VerifyResult) -> str:
     return _kernel_normal_hash(result) or result.declaration_fingerprints.get(_PROP_GATE_DECL, "")
 
 
+def _triviality_result(result: VerifyResult) -> tuple[bool, bool, str | None, str]:
+    for line in (result.stdout_tail + "\n" + result.stderr_tail).splitlines():
+        if not line.startswith(_TRIVIALITY_MARKER):
+            continue
+        try:
+            payload = json.loads(line.removeprefix(_TRIVIALITY_MARKER))
+        except json.JSONDecodeError:
+            break
+        if not isinstance(payload, dict):
+            break
+        solver = payload.get("baseline_solver")
+        return (
+            payload.get("checked") is True,
+            payload.get("baseline_solved") is True,
+            solver if isinstance(solver, str) and solver else None,
+            str(payload.get("triviality_reason") or "baseline_failed"),
+        )
+    return False, False, None, "missing_triviality_marker"
+
+
 def _prop_gate_source(candidate: TaskCandidate) -> str:
+    ancestor_baseline = _ancestor_baseline_body(candidate)
     return "\n".join(
         [
             "import Lean",
@@ -422,6 +414,8 @@ def _prop_gate_source(candidate: TaskCandidate) -> str:
             "namespace LemmaProceduralGate",
             "",
             f"def canonicalSource : String := {_json_string(candidate.type_expr)}",
+            f"def ancestorBaselineSource : String := {_json_string(_proof_term_source(ancestor_baseline))}",
+            f"def combinedTrivialitySource : String := {_json_string(_proof_term_source(_combined_triviality_body()))}",
             "",
             f"def typecheck_gate : ({candidate.type_expr}) := by",
             "  sorry",
@@ -431,6 +425,45 @@ def _prop_gate_source(candidate: TaskCandidate) -> str:
             "  match Parser.runParserCategory env `term source with",
             "  | Except.ok stx => pure ⟨stx⟩",
             "  | Except.error e => throwError e",
+            "",
+            "def proofSourceSucceeds (proofSource : String) : Elab.Command.CommandElabM Bool := do",
+            "  if proofSource == \"\" then",
+            "    pure false",
+            "  else",
+            "    try",
+            "      let typeStx ← parseTermOrThrow canonicalSource",
+            "      let proofStx ← parseTermOrThrow proofSource",
+            "      Elab.Command.runTermElabM fun _ => do",
+            "        let expected ← Elab.Term.elabType typeStx.raw",
+            "        let _ ← Elab.Term.elabTermEnsuringType proofStx.raw (some expected)",
+            "        Elab.Term.synthesizeSyntheticMVarsNoPostponing",
+            "        pure true",
+            "    catch _ =>",
+            "      pure false",
+            "",
+            "def nullableString : Option String → Json",
+            "  | none => Json.null",
+            "  | some value => Json.str value",
+            "",
+            "def emit_triviality : Elab.Command.CommandElabM Unit := do",
+            "  let ancestorSolved ← proofSourceSucceeds ancestorBaselineSource",
+            "  let stackSolved ← if ancestorSolved then pure false else proofSourceSucceeds combinedTrivialitySource",
+            "  let baselineSolved := ancestorSolved || stackSolved",
+            "  let solver : Option String :=",
+            "    if ancestorSolved then",
+            "      some \"source_theorem\"",
+            "    else if stackSolved then",
+            "      some \"triviality_stack\"",
+            "    else",
+            "      none",
+            "  let reason := if baselineSolved then \"baseline_solved\" else \"baseline_failed\"",
+            "  let payload := Json.mkObj [",
+            "    (\"checked\", Json.bool true),",
+            "    (\"baseline_solved\", Json.bool baselineSolved),",
+            "    (\"baseline_solver\", nullableString solver),",
+            "    (\"triviality_reason\", Json.str reason)",
+            "  ]",
+            f"  IO.println <| {_json_string(_TRIVIALITY_MARKER)} ++ payload.compress",
             "",
             "def binderInfoKey : BinderInfo → String",
             "  | BinderInfo.default => \"default\"",
@@ -469,6 +502,7 @@ def _prop_gate_source(candidate: TaskCandidate) -> str:
             "    IO.println <| \"LEMMA_KERNEL_NORMAL_FORM \" ++ exprKey normal",
             "",
             "elab \"#lemma_emit_kernel_normal\" : command => emit_kernel_normal",
+            "elab \"#lemma_emit_triviality\" : command => emit_triviality",
             "",
             f"theorem prop_gate : ({candidate.type_expr}) := by",
             "  sorry",
@@ -491,22 +525,6 @@ def _dummy_submission(candidate: TaskCandidate) -> str:
             "",
             "theorem lemma_gate_dummy : True := by",
             "  trivial",
-            "",
-            "end Submission",
-            "",
-        ]
-    )
-
-
-def _candidate_submission(candidate: TaskCandidate, body: str) -> str:
-    return "\n".join(
-        [
-            *(f"import {module}" for module in candidate.imports),
-            "",
-            "namespace Submission",
-            "",
-            f"theorem {candidate.theorem_name} : {candidate.type_expr} := by",
-            body,
             "",
             "end Submission",
             "",
