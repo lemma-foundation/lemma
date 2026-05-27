@@ -284,7 +284,8 @@ def run_openai_compatible_prover(
                             "replacing only the sorry proof. Do not use sorry, admit, axioms, unsafe features, "
                             "or extra imports. "
                             "If source_theorem_name is present and the target only wraps that theorem in extra binders "
-                            "or trivial premises, introduce the wrappers and reuse source_theorem_name directly."
+                            "or trivial premises, introduce the wrappers and reuse source_theorem_name directly. "
+                            "For Nat primality mismatches, convert `pp : Prime p` with `Nat.prime_iff.mpr pp`."
                         ),
                     },
                     {"role": "user", "content": json.dumps(user_payload)},

@@ -257,6 +257,8 @@ def test_openai_compatible_repair_prompt_includes_verifier_failure(
         failed_verification=VerifyResult(passed=False, reason="compile_error", stderr_tail="unsolved goals"),
     )
 
+    system_prompt = captured["json"]["messages"][0]["content"]
+    assert "Nat.prime_iff.mpr pp" in system_prompt
     user_payload = json.loads(captured["json"]["messages"][1]["content"])
     assert user_payload["failed_attempt"]["proof_script"] == "bad proof"
     assert user_payload["failed_attempt"]["reason"] == "compile_error"
