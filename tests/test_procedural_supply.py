@@ -999,8 +999,8 @@ def test_procedural_slot_weight_receipt_uses_dependency_metadata(tmp_path: Path)
                 "source_license": "Apache-2.0",
                 "queue_depth": 2,
                 "citation_weight": 7.5,
-                "direct_dependency_count": 11,
-                "dependency_depth": 5,
+                "direct_dependency_count": 0,
+                "dependency_depth": 0,
                 "transitive_dependency_hash": "a" * 64,
             },
             sort_keys=True,
@@ -1020,8 +1020,8 @@ def test_procedural_slot_weight_receipt_uses_dependency_metadata(tmp_path: Path)
     inputs = candidate.metadata["slot_weight_inputs"]
 
     assert candidate.metadata["slot_weight_version"] == "lemma-slot-weight-v3"
-    assert inputs["direct_dependency_count"] == 11
-    assert inputs["dependency_depth"] == 5
+    assert inputs["direct_dependency_count"] == 0
+    assert inputs["dependency_depth"] == 2
     assert inputs["import_breadth"] == 2
     assert candidate.metadata["slot_weight_basis_points"] > 1000
 

@@ -72,6 +72,18 @@ _LOW_VALUE_MUTATION_MODES = frozenset({"peer_premise"})
 _LOW_VALUE_MUTATION_RULES = frozenset({"conjoin_peer_conclusion", "false_disjunct"})
 _LOW_VALUE_MUTATION_TARGETS: frozenset[str] = frozenset()
 _PRODUCTIVE_OPERATOR_NAMES = ("conjoin-self",)
+_MAX_SOURCE_DIFFICULTY_SCORE = 2
+_MAX_DIRECT_DEPENDENCY_COUNT = 0
+_MAX_DEPENDENCY_DEPTH = 0
+_LIGHTWEIGHT_IMPORT_PREFIXES = (
+    "Mathlib.Data.Bool.",
+    "Mathlib.Data.Fin.",
+    "Mathlib.Data.List.",
+    "Mathlib.Data.Nat.",
+    "Mathlib.Data.Option.",
+    "Mathlib.Data.Set.",
+    "Mathlib.Logic.",
+)
 
 
 def candidates_from_jsonl(path: Path) -> tuple[TaskCandidate, ...]:
@@ -483,7 +495,6 @@ def _candidate_from_source(
         if operator is None:
             raise ValueError("no productive procedural operator for current type")
         peer = _peer_source(source_pool, source_id=source.id, seed=generation_seed, sequence=sequence, step=step)
-        imports = _combined_imports(imports, peer.imports)
         mutation = mutation_engine.apply(
             source,
             type_expr,
@@ -492,6 +503,8 @@ def _candidate_from_source(
             param_seed=_hash_text(f"{generation_seed}:{sequence}:{step}:{operator}"),
             peer=peer,
         )
+        if _mutation_uses_peer(mutation.params):
+            imports = _combined_imports(imports, peer.imports)
         _reject_low_value_mutation(mutation.params)
         if "sorry" in mutation.type_expr or "?_" in mutation.type_expr:
             raise ValueError("invalid procedural mutation output: placeholder")
@@ -599,6 +612,10 @@ def _reject_low_value_mutation(params: dict[str, object]) -> None:
         raise ValueError(f"low-value procedural mutation target: {target}")
 
 
+def _mutation_uses_peer(params: dict[str, object]) -> bool:
+    return any(key in params for key in ("peer_source_id", "peer_theorem_name", "peer_target_sha256"))
+
+
 def _with_gate_receipt(candidate: TaskCandidate, verdict: ProceduralGateVerdict) -> TaskCandidate:
     metadata = {
         **candidate.metadata,
@@ -635,11 +652,36 @@ def _eligible_depth2_sources(
         for source in sources
         if (max_queue_depth is None or source.queue_depth <= max_queue_depth)
         and _productive_operators_for(source.type_expr)
+        and _lightweight_source(source)
     )
 
 
 def _productive_operators_for(type_expr: str) -> tuple[str, ...]:
     return _PRODUCTIVE_OPERATOR_NAMES if type_expr.strip() else ()
+
+
+def _lightweight_source(source: TaskCandidate) -> bool:
+    return (
+        _metadata_leq(source.metadata, "difficulty_score", _MAX_SOURCE_DIFFICULTY_SCORE)
+        and _metadata_leq(source.metadata, "direct_dependency_count", _MAX_DIRECT_DEPENDENCY_COUNT)
+        and _metadata_leq(source.metadata, "dependency_depth", _MAX_DEPENDENCY_DEPTH)
+        and _lightweight_imports(source)
+    )
+
+
+def _metadata_leq(metadata: dict[str, object], key: str, limit: int) -> bool:
+    value = metadata.get(key)
+    if isinstance(value, bool):
+        return True
+    if isinstance(value, (int, float)):
+        return value <= limit
+    return True
+
+
+def _lightweight_imports(source: TaskCandidate) -> bool:
+    if not all(key in source.metadata for key in ("difficulty_score", "direct_dependency_count", "dependency_depth")):
+        return True
+    return any(module.startswith(_LIGHTWEIGHT_IMPORT_PREFIXES) for module in source.imports)
 
 
 def _peer_source(
