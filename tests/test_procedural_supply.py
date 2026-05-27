@@ -77,6 +77,15 @@ def _write_snapshot(path: Path) -> None:
             "source_license": "Apache-2.0",
             "queue_depth": 0,
         },
+        {
+            "theorem_name": "Int.add_zero",
+            "type_expr": "∀ z : Int, z + 0 = z",
+            "imports": ["Mathlib"],
+            "mathlib_rev": "abc123",
+            "source_path": "Mathlib/Init.lean",
+            "source_license": "Apache-2.0",
+            "queue_depth": 0,
+        },
     ]
     path.write_text("".join(json.dumps(row, sort_keys=True) + "\n" for row in rows), encoding="utf-8")
 
@@ -197,6 +206,8 @@ def test_lean_ast_mutation_engine_uses_lean_eval_output(monkeypatch: pytest.Monk
     assert result.type_expr == "∀ p : Prop, p → True"
     assert result.params["engine"] == "lean_ast_elaborator"
     assert "replaceIdent" in captured["problem"].extra["challenge_full"]
+    assert 'def sourceTheoremName : String := "source_true"' in captured["problem"].extra["challenge_full"]
+    assert "def sourceTermOrDecl" in captured["problem"].extra["challenge_full"]
     assert "let roundtrip ← parseTermOrThrow rendered" in captured["problem"].extra["challenge_full"]
     assert captured["problem"].extra["lean_max_heartbeats"] == 400_000
     assert captured["problem"].extra["lean_eval_commands"] == ("#lemma_emit_mutation",)
@@ -250,7 +261,7 @@ def test_depth2_generation_is_epoch_seeded_not_static(tmp_path: Path) -> None:
         candidate.metadata["source_pool_receipt_version"] == "lemma-source-pool-receipt-v1" for candidate in first
     )
     assert all(candidate.metadata["source_sampling_version"] == "lemma-source-sampling-v1" for candidate in first)
-    assert all(candidate.metadata["source_pool_stream_counts"] == {"mathlib_snapshot": 2} for candidate in first)
+    assert all(candidate.metadata["source_pool_stream_counts"] == {"mathlib_snapshot": 3} for candidate in first)
     assert all(candidate.metadata["citation_alpha_basis_points"] == 5000 for candidate in first)
     assert all(candidate.metadata["citation_window_tempos"] == 2000 for candidate in first)
 
@@ -318,6 +329,44 @@ def test_candidate_from_source_rejects_low_value_mutation(params: dict[str, obje
             epoch_fields={},
             operator_chain=("specialize", "weaken"),
             mutation_engine=LowValueMutationEngine(),
+            source_pool_hash_value="a" * 64,
+            source_pool_receipt_value={
+                "version": "test",
+                "source_count": 1,
+                "source_stream_counts": {"mathlib_snapshot": 1},
+                "sampling_version": "test",
+                "citation_alpha_basis_points": 5000,
+                "citation_weight_cap_micros": 64_000_000,
+                "citation_window_tempos": 2000,
+            },
+            operator_bundle_hash="b" * 64,
+            tempo=3,
+            sequence=0,
+        )
+
+
+def test_candidate_from_source_rejects_all_specialize_chain() -> None:
+    class SpecializeOnlyMutationEngine:
+        def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001, ARG002
+            return MutationResult("True", {"binder": "n", "binder_type": "Nat", "value": "0"})
+
+    source = fixture_candidate(
+        slug="source",
+        source_stream="mathlib_snapshot",
+        source_name="snapshot",
+        theorem_name="source",
+        type_expr="∀ n : Nat, n = n",
+        queue_depth=0,
+    )
+
+    with pytest.raises(ValueError, match="specialize_only"):
+        _candidate_from_source(
+            source,
+            source_pool=(source,),
+            generation_seed="epoch-a",
+            epoch_fields={},
+            operator_chain=("specialize", "specialize"),
+            mutation_engine=SpecializeOnlyMutationEngine(),
             source_pool_hash_value="a" * 64,
             source_pool_receipt_value={
                 "version": "test",
@@ -909,7 +958,7 @@ def test_procedural_supply_filters_sources_to_frontier_depth(monkeypatch, tmp_pa
         task_registry_for_validation(settings, tempo=3)
 
     assert captured_max_queue_depth == 0
-    assert captured_depths == [0, 0, 1]
+    assert captured_depths == [0, 0, 0, 1]
 
 
 def test_depth2_generation_filters_ordering_without_changing_source_hash(tmp_path: Path) -> None:
@@ -1081,7 +1130,7 @@ def test_procedural_source_pool_includes_prior_accepted_corpus(
     assert {task.metadata["source_pool_hash"] for task in registry.tasks} == {source_hash}
     assert {
         tuple(sorted(task.metadata["source_pool_stream_counts"].items())) for task in registry.tasks
-    } == {(("lemma_substrate", 1), ("mathlib_snapshot", 2))}
+    } == {(("lemma_substrate", 1), ("mathlib_snapshot", 3))}
     assert {task.metadata["citation_window_tempos"] for task in registry.tasks} == {2000}
 
 

@@ -113,6 +113,7 @@ class LeanAstMutationEngine:
             extra={
                 "challenge_full": _lean_mutator_source(
                     type_expr=type_expr,
+                    source_theorem_name=source.theorem_name,
                     operator=operator,
                     step=step,
                     param_seed=param_seed,
@@ -261,19 +262,24 @@ def _replace_type_name(expr: str, source_type: str, replacement_type: str) -> st
 def _lean_mutator_source(
     *,
     type_expr: str,
+    source_theorem_name: str,
     operator: str,
     step: int,
     param_seed: str,
     peer: TaskCandidate,
 ) -> str:
     binder = _safe_binder(step, param_seed)
+    namespace_lines = _open_namespace_lines(source_theorem_name, peer.theorem_name)
     return f"""import Lean
 
 open Lean
+{namespace_lines}
+universe u v w u_1 u_2 u_3 u_4 u_5 u_6 u_7 u_8 u_9
 
 namespace LemmaProceduralMutator
 
 def inputSource : String := {_lean_string(type_expr)}
+def sourceTheoremName : String := {_lean_string(source_theorem_name)}
 def peerSource : String := {_lean_string(peer.type_expr)}
 def operatorName : String := {_lean_string(operator)}
 def binderName : String := {_lean_string(binder)}
@@ -290,6 +296,27 @@ def parseTermOrThrow (source : String) : Elab.Command.CommandElabM (TSyntax `ter
   | Except.ok stx => pure ⟨stx⟩
   | Except.error e => throwError e
 
+def ppExprFull (expr : Expr) : Elab.Command.CommandElabM String := do
+  Elab.Command.runTermElabM fun _ => do
+    withOptions (fun opts => (opts.setBool `pp.fullNames true).setBool `pp.universes false) do
+      pure ((← Meta.ppExpr (← instantiateMVars expr)).pretty)
+
+def nameFromString (source : String) : Name :=
+  source.splitOn "." |>.foldl
+    (fun acc part => if part.isEmpty then acc else acc.str part)
+    Name.anonymous
+
+def declTypeTermOrThrow (nameText : String) : Elab.Command.CommandElabM (TSyntax `term) := do
+  let expr ← Elab.Command.runTermElabM fun _ => do
+    let env ← getEnv
+    let name := nameFromString nameText
+    let info ← match env.find? name with
+    | some info => pure info
+    | none => throwError s!"unknown theorem declaration {{nameText}}"
+    pure info.type
+  let rendered ← ppExprFull expr
+  parseTermOrThrow rendered
+
 def ppTerm (stx : TSyntax `term) : Elab.Command.CommandElabM String := do
   pure ((← Elab.Command.liftCoreM <| PrettyPrinter.ppCategory `term stx.raw).pretty)
 
@@ -299,13 +326,20 @@ def requireProp (stx : TSyntax `term) : Elab.Command.CommandElabM Unit := do
     unless (← Meta.isProp expr) do
       throwError "mutated statement did not elaborate to Prop"
 
+def sourceTermOrDecl (source theoremName : String) : Elab.Command.CommandElabM (TSyntax `term) := do
+  try
+    declTypeTermOrThrow theoremName
+  catch _ =>
+    let stx ← parseTermOrThrow source
+    requireProp stx
+    pure stx
+
 def elabTypeExpr (stx : TSyntax `term) : Elab.Command.CommandElabM Expr := do
   Elab.Command.runTermElabM fun _ => do
     Elab.Term.elabType stx.raw
 
 def ppExprTerm (expr : Expr) : Elab.Command.CommandElabM String := do
-  Elab.Command.runTermElabM fun _ => do
-    pure ((← Meta.ppExpr (← instantiateMVars expr)).pretty)
+  ppExprFull expr
 
 partial def replaceIdent (target : Name) (replacement : Syntax) (stx : Syntax) : Syntax :=
   match stx with
@@ -423,10 +457,8 @@ def mutate (expr peer : TSyntax `term) : Elab.Command.CommandElabM (TSyntax `ter
     throwError "unknown procedural operator: {{operatorName}}"
 
 def emit : Elab.Command.CommandElabM Unit := do
-  let expr ← parseTermOrThrow inputSource
-  let peer ← parseTermOrThrow peerSource
-  requireProp expr
-  requireProp peer
+  let expr ← sourceTermOrDecl inputSource sourceTheoremName
+  let peer ← sourceTermOrDecl peerSource peerTheoremName
   let (output, params) ← mutate expr peer
   requireProp output
   let rendered ← ppTerm output
@@ -450,6 +482,17 @@ def _safe_binder(step: int, seed: str) -> str:
 
 def _lean_string(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
+
+
+def _open_namespace_lines(*theorem_names: str) -> str:
+    namespaces: list[str] = []
+    for theorem_name in theorem_names:
+        parts = [part for part in theorem_name.split(".")[:-1] if _LEAN_IDENT.fullmatch(part)]
+        for end in range(1, len(parts) + 1):
+            namespace = ".".join(parts[:end])
+            if namespace not in namespaces:
+                namespaces.append(namespace)
+    return "\n".join(f"open {namespace}" for namespace in namespaces)
 
 
 def _lean_pairs(values: tuple[tuple[str, str], ...]) -> str:

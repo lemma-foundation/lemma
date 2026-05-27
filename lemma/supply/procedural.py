@@ -73,7 +73,7 @@ _LOW_VALUE_MUTATION_FALLBACKS = frozenset(
 _LOW_VALUE_MUTATION_MODES = frozenset({"peer_premise"})
 _LOW_VALUE_MUTATION_RULES = frozenset({"conjoin_peer_conclusion", "false_disjunct"})
 _LOW_VALUE_MUTATION_TARGETS = frozenset({"fresh_prop_hypothesis"})
-_PRODUCTIVE_OPERATOR_NAMES = ("specialize", "substitute-type", "weaken")
+_PRODUCTIVE_OPERATOR_NAMES = ("substitute-type",)
 
 
 def candidates_from_jsonl(path: Path) -> tuple[TaskCandidate, ...]:
@@ -506,6 +506,9 @@ def _candidate_from_source(
         )
         type_expr = mutation.type_expr
         input_hash = output_hash
+
+    if all(step["operator"] == "specialize" for step in mutation_chain):
+        raise ValueError("low-value procedural mutation chain: specialize_only")
 
     canonical_hash = _hash_json(
         {

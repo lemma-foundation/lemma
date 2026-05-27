@@ -76,19 +76,18 @@ def _procedural_metadata(
         "mutation_depth": mutation_depth,
         "mutation_chain": [
             {
-                "operator": "generalize",
+                "operator": "substitute-type",
                 "params": {
-                    "target": "fresh_prop_hypothesis",
-                    "binder": "p",
-                    "binder_type": "Prop",
+                    "from": "Nat",
+                    "to": "Int",
                     "engine": "lean_ast_elaborator",
                 },
                 "input_hash": "1" * 64,
                 "output_hash": "2" * 64,
             },
             {
-                "operator": "specialize",
-                "params": {"binder": "p", "binder_type": "Prop", "value": "True", "engine": "lean_ast_elaborator"},
+                "operator": "substitute-type",
+                "params": {"from": "Int", "to": "Rat", "engine": "lean_ast_elaborator"},
                 "input_hash": "2" * 64,
                 "output_hash": "3" * 64,
             },

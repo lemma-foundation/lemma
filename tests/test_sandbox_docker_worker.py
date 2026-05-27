@@ -66,3 +66,32 @@ def test_docker_worker_exec_uses_workdir_argv(tmp_path: Path, monkeypatch) -> No
     assert calls == [
         ["docker", "exec", "--workdir", "/lemma-workspace/template", "worker-1", "bash", ".lemma_verify.sh"],
     ]
+
+
+def test_docker_worker_exec_does_not_truncate_before_parse(tmp_path: Path, monkeypatch) -> None:
+    early_markers = "depends on axioms: []\nLEMMA_AST_MUTATION {\"ok\":true}\n"
+    stdout = early_markers + ("x" * 70_000)
+
+    def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:  # noqa: ARG001
+        return subprocess.CompletedProcess(argv, 0, stdout=stdout, stderr="")
+
+    def fake_parse(
+        self: LeanSandbox,
+        text: str,
+        exit_status: int,
+        elapsed: float,
+        work: Path,
+        log_tail: int,
+    ) -> VerifyResult:
+        assert "depends on axioms: []" in text
+        assert 'LEMMA_AST_MUTATION {"ok":true}' in text
+        assert len(text) > 64_000
+        return VerifyResult(passed=True, reason="ok")
+
+    monkeypatch.setattr("lemma.lean.sandbox.subprocess.run", fake_run)
+    monkeypatch.setattr("lemma.lean.sandbox.LeanSandbox._verify_docker_parse_logs", fake_parse)
+
+    sb = LeanSandbox(use_docker=True)
+    vr = sb._verify_docker_cli_exec("worker-1", "/lemma-workspace/template", ".lemma_verify.sh", tmp_path, 123)
+
+    assert vr.passed is True

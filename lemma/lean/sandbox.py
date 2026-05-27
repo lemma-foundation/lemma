@@ -599,7 +599,7 @@ class LeanSandbox:
                 worker,
                 _lean_num_threads_value(),
             )
-        text = ((r.stderr or "") + "\n" + (r.stdout or ""))[-64_000:]
+        text = (r.stderr or "") + "\n" + (r.stdout or "")
         rc = r.returncode
         if rc is None:
             rc = -1
