@@ -15,7 +15,6 @@ from lemma.problems.base import Problem
 from lemma.protocol_invariants import enforce_production_invariants
 from lemma.submissions import build_submission
 from lemma.supply.gates import (
-    TRIVIALITY_STACK,
     AssumedProceduralGateRunner,
     LeanProceduralGateRunner,
     ProceduralGateVerdict,
@@ -805,7 +804,7 @@ def test_lean_gate_runner_records_generation_time_gates(monkeypatch: pytest.Monk
     assert "triviality" in calls
 
 
-def test_lean_gate_runner_caps_parallel_verify_jobs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_lean_gate_runner_batches_triviality_stack(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     snapshot = tmp_path / "snapshot.jsonl"
     _write_snapshot(snapshot)
     candidate = generate_depth2_candidates(
@@ -819,6 +818,7 @@ def test_lean_gate_runner_caps_parallel_verify_jobs(monkeypatch: pytest.MonkeyPa
     active = 0
     max_active = 0
     calls: list[str] = []
+    proof_scripts: list[str] = []
 
     def fake_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001, ARG001
         nonlocal active, max_active
@@ -843,6 +843,7 @@ def test_lean_gate_runner_caps_parallel_verify_jobs(monkeypatch: pytest.MonkeyPa
                     },
                 )
             calls.append("triviality")
+            proof_scripts.append(proof_script)
             assert problem.extra["lean_max_heartbeats"] == 200_000
             assert verify_timeout_s == 5
             time.sleep(0.02)
@@ -863,8 +864,12 @@ def test_lean_gate_runner_caps_parallel_verify_jobs(monkeypatch: pytest.MonkeyPa
 
     assert verdict.accepted is True
     assert calls[:1] == ["gate"]
-    assert calls.count("triviality") == len(TRIVIALITY_STACK) + 1
-    assert max_active == 2
+    assert calls.count("triviality") == 2
+    assert "source_theorem" not in proof_scripts[-1]
+    assert "  first\n" in proof_scripts[-1]
+    assert "  | decide" in proof_scripts[-1]
+    assert "  | aesop" in proof_scripts[-1]
+    assert max_active == 1
 
 
 def test_lean_gate_runner_rejects_source_theorem_wrappers(

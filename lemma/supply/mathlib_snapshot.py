@@ -8,10 +8,9 @@ without running extraction or model inference in the scoring path.
 from __future__ import annotations
 
 import hashlib
-import json
 import re
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
@@ -183,23 +182,30 @@ def candidates_from_rows(rows: Iterable[MathlibSnapshotRow]) -> tuple[TaskCandid
     return tuple(candidate_from_row(row) for row in rows)
 
 
+def _iter_rows_from_jsonl(path: Path, *, limit: int | None = None) -> Iterator[MathlibSnapshotRow]:
+    count = 0
+    with path.open(encoding="utf-8") as fh:
+        for no, line in enumerate(fh, start=1):
+            if not line.strip():
+                continue
+            try:
+                yield MathlibSnapshotRow.model_validate_json(line)
+            except ValueError as e:
+                raise ValueError(f"{path}:{no}: invalid Mathlib snapshot row: {e}") from e
+            count += 1
+            if limit is not None and count >= limit:
+                break
+
+
 def rows_from_jsonl(path: Path, *, limit: int | None = None) -> tuple[MathlibSnapshotRow, ...]:
-    out: list[MathlibSnapshotRow] = []
-    for no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-        if not line.strip():
-            continue
-        try:
-            row = MathlibSnapshotRow.model_validate(json.loads(line))
-        except (json.JSONDecodeError, ValueError) as e:
-            raise ValueError(f"{path}:{no}: invalid Mathlib snapshot row: {e}") from e
-        out.append(row)
-        if limit is not None and len(out) >= limit:
-            break
-    return tuple(out)
+    return tuple(_iter_rows_from_jsonl(path, limit=limit))
 
 
 def candidates_from_jsonl(path: Path, *, limit: int | None = None) -> tuple[TaskCandidate, ...]:
-    return candidates_from_rows(rows_from_jsonl(path, limit=limit))
+    out: list[TaskCandidate] = []
+    for row in _iter_rows_from_jsonl(path, limit=limit):
+        out.append(candidate_from_row(row))
+    return tuple(out)
 
 
 def snapshot_quality_summary(rows: Iterable[MathlibSnapshotRow]) -> dict[str, object]:

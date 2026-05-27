@@ -8,7 +8,6 @@ import os
 import re
 import threading
 from collections.abc import Iterable
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field, replace
 from typing import Protocol
 
@@ -257,47 +256,22 @@ class LeanProceduralGateRunner:
     def _run_triviality_stack(self, candidate: TaskCandidate) -> tuple[bool, bool, str | None, str]:
         ancestor_baseline = _ancestor_baseline_body(candidate)
         if ancestor_baseline is not None:
-            passed, reason = self._run_triviality_tactic(candidate, "source_theorem", ancestor_baseline)
+            passed, reason = self._run_triviality_tactic(candidate, ancestor_baseline)
             if passed:
                 return True, True, "source_theorem", "baseline_solved"
             if reason in _INFRA_FAILURES:
                 return False, False, None, reason
 
-        if len(TRIVIALITY_STACK) <= 1 or self.lean_workers <= 1:
-            return self._run_triviality_stack_sequential(candidate)
-
-        results: dict[str, tuple[bool, VerifyReason | None]] = {}
-        with ThreadPoolExecutor(max_workers=len(TRIVIALITY_STACK)) as pool:
-            futures = {
-                pool.submit(self._run_triviality_tactic, candidate, name, body): name
-                for name, body in TRIVIALITY_STACK
-            }
-            for future in as_completed(futures):
-                name = futures[future]
-                passed, reason = future.result()
-                results[name] = (passed, reason)
-
-        for name, _body in TRIVIALITY_STACK:
-            passed, reason = results[name]
-            if passed:
-                return True, True, name, "baseline_solved"
-            if reason in _INFRA_FAILURES:
-                return False, False, None, reason
-        return True, False, None, "baseline_failed"
-
-    def _run_triviality_stack_sequential(self, candidate: TaskCandidate) -> tuple[bool, bool, str | None, str]:
-        for name, body in TRIVIALITY_STACK:
-            passed, reason = self._run_triviality_tactic(candidate, name, body)
-            if passed:
-                return True, True, name, "baseline_solved"
-            if reason in _INFRA_FAILURES:
-                return False, False, None, reason
+        passed, reason = self._run_triviality_tactic(candidate, _combined_triviality_body())
+        if passed:
+            return True, True, "triviality_stack", "baseline_solved"
+        if reason in _INFRA_FAILURES:
+            return False, False, None, reason
         return True, False, None, "baseline_failed"
 
     def _run_triviality_tactic(
         self,
         candidate: TaskCandidate,
-        name: str,
         body: str,
     ) -> tuple[bool, VerifyReason | None]:
         with self._lean_slots:
@@ -323,6 +297,10 @@ def _triviality_stack_names(candidate: TaskCandidate) -> list[str]:
     if _ancestor_baseline_body(candidate) is not None:
         return ["source_theorem", *names]
     return names
+
+
+def _combined_triviality_body() -> str:
+    return "\n".join(["  first", *(f"  | {body.strip()}" for _name, body in TRIVIALITY_STACK)])
 
 
 def _ancestor_baseline_body(candidate: TaskCandidate) -> str | None:
