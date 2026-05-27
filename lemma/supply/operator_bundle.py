@@ -5,13 +5,10 @@ from __future__ import annotations
 import hashlib
 import json
 
-OPERATOR_BUNDLE_VERSION = "lemma-procedural-depth2-v7"
-OPERATOR_NAMES = ("substitute-type",)
+OPERATOR_BUNDLE_VERSION = "lemma-procedural-depth2-v11"
+OPERATOR_NAMES = ("substitute-type", "generalize")
 MUTATION_ENGINE = "lean_ast_elaborator"
 TYPE_SUBSTITUTIONS = (
-    ("Nat", "Int"),
-    ("Int", "Rat"),
-    ("Rat", "Real"),
     ("Complex.re", "Complex.im"),
     ("Complex.im", "Complex.re"),
 )

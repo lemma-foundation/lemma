@@ -231,7 +231,6 @@ class LemmaSettings(BaseSettings):
     )
     active_epoch_randomness: str = Field(default="", validation_alias="LEMMA_ACTIVE_EPOCH_RANDOMNESS")
     active_tempo_seconds: int = Field(default=4320, ge=1, validation_alias="LEMMA_ACTIVE_TEMPO_SECONDS")
-    active_window_blocks: int = Field(default=360, ge=1, validation_alias="LEMMA_ACTIVE_WINDOW_BLOCKS")
     active_tempo_source: Literal["wall_clock", "chain"] = Field(
         default="wall_clock",
         validation_alias="LEMMA_ACTIVE_TEMPO_SOURCE",

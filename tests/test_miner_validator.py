@@ -78,7 +78,6 @@ def test_current_active_tempo_uses_chain_tempo(monkeypatch: pytest.MonkeyPatch) 
         _env_file=None,
         netuid=467,
         active_tempo_source="chain",
-        active_window_blocks=1440,
     )
 
     assert current_active_tempo(settings) == 19

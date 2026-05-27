@@ -132,10 +132,14 @@ class LeanAstMutationEngine:
             proof_script=_dummy_submission(problem.imports),
             submission_policy="strict_envelope",
         )
-        if not result.passed:
+        output = result.stdout_tail + "\n" + result.stderr_tail
+        try:
+            return self._parse_result(output)
+        except ValueError as exc:
+            if result.passed:
+                raise
             detail = result.stderr_tail or result.stdout_tail or result.reason
-            raise ValueError(f"Lean AST mutation failed for {source.id}:{step}:{operator}: {detail[:800]}")
-        return self._parse_result(result.stdout_tail + "\n" + result.stderr_tail)
+            raise ValueError(f"Lean AST mutation failed for {source.id}:{step}:{operator}: {detail[:800]}") from exc
 
     def _parse_result(self, output: str) -> MutationResult:
         for line in output.splitlines():
@@ -282,7 +286,6 @@ universe u v w u_1 u_2 u_3 u_4 u_5 u_6 u_7 u_8 u_9
 namespace LemmaProceduralMutator
 
 def inputSource : String := {_lean_string(type_expr)}
-def sourceTheoremName : String := {_lean_string(source_theorem_name)}
 def peerSource : String := {_lean_string(peer.type_expr)}
 def operatorName : String := {_lean_string(operator)}
 def binderName : String := {_lean_string(binder)}
@@ -299,26 +302,10 @@ def parseTermOrThrow (source : String) : Elab.Command.CommandElabM (TSyntax `ter
   | Except.ok stx => pure ⟨stx⟩
   | Except.error e => throwError e
 
-def ppExprFull (expr : Expr) : Elab.Command.CommandElabM String := do
-  Elab.Command.runTermElabM fun _ => do
-    withOptions (fun opts => (opts.setBool `pp.fullNames true).setBool `pp.universes false) do
-      pure ((← Meta.ppExpr (← instantiateMVars expr)).pretty)
-
 def nameFromString (source : String) : Name :=
   source.splitOn "." |>.foldl
     (fun acc part => if part.isEmpty then acc else acc.str part)
     Name.anonymous
-
-def declTypeTermOrThrow (nameText : String) : Elab.Command.CommandElabM (TSyntax `term) := do
-  let expr ← Elab.Command.runTermElabM fun _ => do
-    let env ← getEnv
-    let name := nameFromString nameText
-    let info ← match env.find? name with
-    | some info => pure info
-    | none => throwError s!"unknown theorem declaration {{nameText}}"
-    pure info.type
-  let rendered ← ppExprFull expr
-  parseTermOrThrow rendered
 
 def ppTerm (stx : TSyntax `term) : Elab.Command.CommandElabM String := do
   pure ((← Elab.Command.liftCoreM <| PrettyPrinter.ppCategory `term stx.raw).pretty)
@@ -329,34 +316,46 @@ def requireProp (stx : TSyntax `term) : Elab.Command.CommandElabM Unit := do
     unless (← Meta.isProp expr) do
       throwError "mutated statement did not elaborate to Prop"
 
-def sourceTermOrDecl (source theoremName : String) : Elab.Command.CommandElabM (TSyntax `term) := do
-  try
-    declTypeTermOrThrow theoremName
-  catch _ =>
-    let stx ← parseTermOrThrow source
-    requireProp stx
-    pure stx
+def sourceTermOrThrow (source : String) : Elab.Command.CommandElabM (TSyntax `term) := do
+  let stx ← parseTermOrThrow source
+  requireProp stx
+  pure stx
 
 def elabTypeExpr (stx : TSyntax `term) : Elab.Command.CommandElabM Expr := do
   Elab.Command.runTermElabM fun _ => do
     Elab.Term.elabType stx.raw
 
 def ppExprTerm (expr : Expr) : Elab.Command.CommandElabM String := do
-  ppExprFull expr
+  Elab.Command.runTermElabM fun _ => do
+    withOptions (fun opts => (opts.setBool `pp.fullNames true).setBool `pp.universes false) do
+      pure ((← Meta.ppExpr (← instantiateMVars expr)).pretty)
 
-partial def replaceIdent (target : Name) (replacement : Syntax) (stx : Syntax) : Syntax :=
-  match stx with
-  | Syntax.ident info raw value preresolved =>
-      if value == target then replacement else Syntax.ident info raw value preresolved
-  | Syntax.node info kind args => Syntax.node info kind (args.map (replaceIdent target replacement))
-  | _ => stx
+def typeConstName (source : String) : Name :=
+  match source with
+  | "ℕ" => `Nat
+  | "ℤ" => `Int
+  | "ℚ" => `Rat
+  | "ℝ" => `Real
+  | other => nameFromString other
 
-partial def replaceIdentText (target : String) (replacement : Syntax) (stx : Syntax) : Syntax :=
-  match stx with
-  | Syntax.ident info raw value preresolved =>
-      if value.toString == target then replacement else Syntax.ident info raw value preresolved
-  | Syntax.node info kind args => Syntax.node info kind (args.map (replaceIdentText target replacement))
-  | _ => stx
+partial def replaceConst (target replacement : Name) : Expr → Expr
+  | Expr.const name levels =>
+      if name == target then Expr.const replacement levels else Expr.const name levels
+  | Expr.app fn arg => Expr.app (replaceConst target replacement fn) (replaceConst target replacement arg)
+  | Expr.lam name type body info =>
+      Expr.lam name (replaceConst target replacement type) (replaceConst target replacement body) info
+  | Expr.forallE name type body info =>
+      Expr.forallE name (replaceConst target replacement type) (replaceConst target replacement body) info
+  | Expr.letE name type value body nondep =>
+      Expr.letE
+        name
+        (replaceConst target replacement type)
+        (replaceConst target replacement value)
+        (replaceConst target replacement body)
+        nondep
+  | Expr.mdata data body => Expr.mdata data (replaceConst target replacement body)
+  | Expr.proj typeName idx body => Expr.proj typeName idx (replaceConst target replacement body)
+  | other => other
 
 def smallValueFor (typeText : String) : Option String :=
   (smallValues.lookup typeText).bind fun values =>
@@ -391,15 +390,21 @@ partial def substituteFirstType
     (expr : TSyntax `term)
     (choices : List (String × String))
     : Elab.Command.CommandElabM (Option (TSyntax `term × Json)) := do
+  let input ← elabTypeExpr expr
   match choices with
   | [] => pure none
   | (fromType, toType) :: rest =>
-      let replacement ← parseTermOrThrow toType
-      let output : TSyntax `term := ⟨replaceIdentText fromType replacement.raw expr.raw⟩
-      if toString output.raw == toString expr.raw then
+      let outputExpr := replaceConst (typeConstName fromType) (typeConstName toType) input
+      if outputExpr == input then
         substituteFirstType expr rest
       else
-        pure <| some (output, jsonObj [("from", Json.str fromType), ("to", Json.str toType)])
+        let rendered ← ppExprTerm outputExpr
+        try
+          let output ← parseTermOrThrow rendered
+          requireProp output
+          pure <| some (output, jsonObj [("from", Json.str fromType), ("to", Json.str toType)])
+        catch _ =>
+          substituteFirstType expr rest
 
 def mutate (expr peer : TSyntax `term) : Elab.Command.CommandElabM (TSyntax `term × Json) := do
   if operatorName == "generalize" then
@@ -460,8 +465,8 @@ def mutate (expr peer : TSyntax `term) : Elab.Command.CommandElabM (TSyntax `ter
     throwError "unknown procedural operator: {{operatorName}}"
 
 def emit : Elab.Command.CommandElabM Unit := do
-  let expr ← sourceTermOrDecl inputSource sourceTheoremName
-  let peer ← sourceTermOrDecl peerSource peerTheoremName
+  let expr ← sourceTermOrThrow inputSource
+  let peer ← sourceTermOrThrow peerSource
   let (output, params) ← mutate expr peer
   requireProp output
   let rendered ← ppTerm output

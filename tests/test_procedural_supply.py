@@ -24,7 +24,11 @@ from lemma.supply.import_graph import ImportGraphRow, extract_import_graph_rows,
 from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
 from lemma.supply.mutation import LeanAstMutationEngine, MutationResult, PreviewMutationEngine
 from lemma.supply.novelty import novelty_cache_from_hashes, read_novelty_cache, statement_hash
-from lemma.supply.operator_bundle import OPERATOR_BUNDLE_VERSION, OPERATOR_NAMES, SMALL_VALUES_BY_TYPE
+from lemma.supply.operator_bundle import (
+    OPERATOR_BUNDLE_VERSION,
+    OPERATOR_NAMES,
+    SMALL_VALUES_BY_TYPE,
+)
 from lemma.supply.procedural import (
     _candidate_from_source,
     build_procedural_registry_tasks,
@@ -40,7 +44,7 @@ from lemma.task_supply import make_task, write_registry
 from lemma.validator import active_epoch_seed, active_tasks_for_validation, task_registry_for_validation
 
 
-def test_operator_bundle_includes_lean_pretty_type_aliases() -> None:
+def test_operator_bundle_includes_lean_pretty_value_aliases() -> None:
     assert SMALL_VALUES_BY_TYPE["\u2115"] == SMALL_VALUES_BY_TYPE["Nat"]
     assert SMALL_VALUES_BY_TYPE["\u2124"] == SMALL_VALUES_BY_TYPE["Int"]
     assert SMALL_VALUES_BY_TYPE["\u211A"] == SMALL_VALUES_BY_TYPE["Rat"]
@@ -69,20 +73,20 @@ def _write_snapshot(path: Path) -> None:
             "queue_depth": 0,
         },
         {
-            "theorem_name": "Eq.refl",
-            "type_expr": "∀ n : Nat, n = n",
+            "theorem_name": "Complex.re_self",
+            "type_expr": "∀ x : ℂ, Complex.re x = Complex.re x",
             "imports": ["Mathlib"],
             "mathlib_rev": "abc123",
-            "source_path": "Mathlib/Init.lean",
+            "source_path": "Mathlib/Analysis/Complex/Basic.lean",
             "source_license": "Apache-2.0",
             "queue_depth": 0,
         },
         {
-            "theorem_name": "Int.add_zero",
-            "type_expr": "∀ z : Int, z + 0 = z",
+            "theorem_name": "Complex.im_self",
+            "type_expr": "∀ x : ℂ, Complex.im x = Complex.im x",
             "imports": ["Mathlib"],
             "mathlib_rev": "abc123",
-            "source_path": "Mathlib/Init.lean",
+            "source_path": "Mathlib/Analysis/Complex/Basic.lean",
             "source_license": "Apache-2.0",
             "queue_depth": 0,
         },
@@ -205,14 +209,83 @@ def test_lean_ast_mutation_engine_uses_lean_eval_output(monkeypatch: pytest.Monk
 
     assert result.type_expr == "∀ p : Prop, p → True"
     assert result.params["engine"] == "lean_ast_elaborator"
-    assert "replaceIdent" in captured["problem"].extra["challenge_full"]
-    assert 'def sourceTheoremName : String := "source_true"' in captured["problem"].extra["challenge_full"]
-    assert "def sourceTermOrDecl" in captured["problem"].extra["challenge_full"]
+    assert "replaceConst" in captured["problem"].extra["challenge_full"]
+    assert 'def inputSource : String := "True"' in captured["problem"].extra["challenge_full"]
+    assert "def sourceTermOrThrow" in captured["problem"].extra["challenge_full"]
     assert "let roundtrip ← parseTermOrThrow rendered" in captured["problem"].extra["challenge_full"]
     assert captured["problem"].extra["lean_max_heartbeats"] == 400_000
     assert captured["problem"].extra["lean_eval_commands"] == ("#lemma_emit_mutation",)
     assert 'elab "#lemma_emit_mutation" : command => emit' in captured["problem"].extra["challenge_full"]
     assert "theorem lemma_ast_mutation_dummy : True" in captured["proof_script"]
+
+
+def test_lean_ast_mutation_engine_chains_from_prior_output(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured = {}
+
+    def fake_run_lean_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001, ARG001
+        captured["problem"] = problem
+        return VerifyResult(
+            passed=True,
+            reason="ok",
+            stdout_tail='LEMMA_AST_MUTATION {"params":{"from":"Nat","to":"Int"},"type_expr":"Int = Int"}',
+        )
+
+    monkeypatch.setattr("lemma.supply.mutation.run_lean_verify", fake_run_lean_verify)
+    source = fixture_candidate(
+        slug="source_nat",
+        source_stream="mathlib_snapshot",
+        source_name="snapshot",
+        theorem_name="source_nat",
+        type_expr="Nat = Nat",
+        queue_depth=0,
+    )
+
+    result = LeanAstMutationEngine(LemmaSettings(_env_file=None, lean_use_docker=False)).apply(
+        source,
+        "Int = Int",
+        "substitute-type",
+        step=1,
+        param_seed="b" * 64,
+        peer=source,
+    )
+
+    assert result.type_expr == "Int = Int"
+    challenge = captured["problem"].extra["challenge_full"]
+    assert 'def inputSource : String := "Int = Int"' in challenge
+    assert "sourceTheoremName" not in challenge
+
+
+def test_lean_ast_mutation_engine_accepts_marker_before_postcheck_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_run_lean_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001, ARG001
+        return VerifyResult(
+            passed=False,
+            reason="compile_error",
+            stdout_tail='LEMMA_AST_MUTATION {"params":{"from":"ℕ","to":"ℤ"},"type_expr":"ℤ = ℤ"}',
+            stderr_tail="AxiomCheck.lean:2:7: error: unknown universe level `u_1`",
+        )
+
+    monkeypatch.setattr("lemma.supply.mutation.run_lean_verify", fake_run_lean_verify)
+    source = fixture_candidate(
+        slug="source_nat",
+        source_stream="mathlib_snapshot",
+        source_name="snapshot",
+        theorem_name="source_nat",
+        type_expr="Nat = Nat",
+        queue_depth=0,
+    )
+
+    result = LeanAstMutationEngine(LemmaSettings(_env_file=None, lean_use_docker=False)).apply(
+        source,
+        "ℕ = ℕ",
+        "substitute-type",
+        step=0,
+        param_seed="c" * 64,
+        peer=source,
+    )
+
+    assert result.type_expr == "ℤ = ℤ"
 
 
 def test_depth2_generation_is_epoch_seeded_not_static(tmp_path: Path) -> None:
@@ -304,7 +377,6 @@ def test_depth2_generation_skips_failed_mutations(tmp_path: Path) -> None:
         {"mode": "peer_premise"},
         {"rule": "conjoin_peer_conclusion"},
         {"rule": "false_disjunct"},
-        {"target": "fresh_prop_hypothesis"},
     ),
 )
 def test_candidate_from_source_rejects_low_value_mutation(params: dict[str, object]) -> None:
@@ -345,10 +417,136 @@ def test_candidate_from_source_rejects_low_value_mutation(params: dict[str, obje
         )
 
 
+def test_candidate_from_source_falls_back_to_second_step_generalize() -> None:
+    operators = []
+
+    class FallbackMutationEngine:
+        def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001, ARG002
+            operators.append(operator)
+            if step == 0:
+                return MutationResult(
+                    "∀ x : ℂ, Complex.im x = Complex.im x",
+                    {"from": "Complex.re", "to": "Complex.im"},
+                )
+            return MutationResult(
+                f"∀ p : Prop, p → ({type_expr})",
+                {"target": "fresh_prop_hypothesis", "binder": "p", "binder_type": "Prop"},
+            )
+
+    source = fixture_candidate(
+        slug="source",
+        source_stream="mathlib_snapshot",
+        source_name="snapshot",
+        theorem_name="source",
+        type_expr="∀ x : ℂ, Complex.re x = Complex.re x",
+        queue_depth=0,
+    )
+
+    candidate = _candidate_from_source(
+        source,
+        source_pool=(source,),
+        generation_seed="epoch-a",
+        epoch_fields={},
+        mutation_engine=FallbackMutationEngine(),
+        source_pool_hash_value="a" * 64,
+        source_pool_receipt_value={
+            "version": "test",
+            "source_count": 1,
+            "source_stream_counts": {"mathlib_snapshot": 1},
+            "sampling_version": "test",
+            "citation_alpha_basis_points": 5000,
+            "citation_weight_cap_micros": 64_000_000,
+            "citation_window_tempos": 2000,
+        },
+        operator_bundle_hash="b" * 64,
+        tempo=3,
+        sequence=0,
+    )
+
+    assert operators == ["substitute-type", "generalize"]
+    assert [step["operator"] for step in candidate.metadata["mutation_chain"]] == operators
+
+
+def test_candidate_from_source_rejects_placeholder_mutation() -> None:
+    class PlaceholderMutationEngine:
+        def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001, ARG002
+            return MutationResult("∀ n : Nat, ?_mvar.1 n = sorry", {"engine": "pytest"})
+
+    source = fixture_candidate(
+        slug="source",
+        source_stream="mathlib_snapshot",
+        source_name="snapshot",
+        theorem_name="source",
+        type_expr="Nat = Nat",
+        queue_depth=0,
+    )
+
+    with pytest.raises(ValueError, match="placeholder"):
+        _candidate_from_source(
+            source,
+            source_pool=(source,),
+            generation_seed="epoch-a",
+            epoch_fields={},
+            operator_chain=("substitute-type", "generalize"),
+            mutation_engine=PlaceholderMutationEngine(),
+            source_pool_hash_value="a" * 64,
+            source_pool_receipt_value={
+                "version": "test",
+                "source_count": 1,
+                "source_stream_counts": {"mathlib_snapshot": 1},
+                "sampling_version": "test",
+                "citation_alpha_basis_points": 5000,
+                "citation_weight_cap_micros": 64_000_000,
+                "citation_window_tempos": 2000,
+            },
+            operator_bundle_hash="b" * 64,
+            tempo=3,
+            sequence=0,
+        )
+
+
+def test_candidate_from_source_rejects_noop_mutation() -> None:
+    class NoopMutationEngine:
+        def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001, ARG002
+            return MutationResult(type_expr, {"engine": "pytest"})
+
+    source = fixture_candidate(
+        slug="source",
+        source_stream="mathlib_snapshot",
+        source_name="snapshot",
+        theorem_name="source",
+        type_expr="Nat = Nat",
+        queue_depth=0,
+    )
+
+    with pytest.raises(ValueError, match="no-op"):
+        _candidate_from_source(
+            source,
+            source_pool=(source,),
+            generation_seed="epoch-a",
+            epoch_fields={},
+            operator_chain=("substitute-type", "substitute-type"),
+            mutation_engine=NoopMutationEngine(),
+            source_pool_hash_value="a" * 64,
+            source_pool_receipt_value={
+                "version": "test",
+                "source_count": 1,
+                "source_stream_counts": {"mathlib_snapshot": 1},
+                "sampling_version": "test",
+                "citation_alpha_basis_points": 5000,
+                "citation_weight_cap_micros": 64_000_000,
+                "citation_window_tempos": 2000,
+            },
+            operator_bundle_hash="b" * 64,
+            tempo=3,
+            sequence=0,
+        )
+
+
 def test_candidate_from_source_rejects_all_specialize_chain() -> None:
     class SpecializeOnlyMutationEngine:
         def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001, ARG002
-            return MutationResult("True", {"binder": "n", "binder_type": "Nat", "value": "0"})
+            return MutationResult("True" if step == 0 else "False", {"binder": "n", "binder_type": "Nat", "value": "0"})
 
     source = fixture_candidate(
         slug="source",
@@ -409,7 +607,7 @@ def test_depth2_generation_attempt_limit_scales_with_requested_count() -> None:
             source_stream="mathlib_snapshot",
             source_name="snapshot",
             theorem_name=f"source_{index}",
-            type_expr="∀ n : Nat, n = n",
+            type_expr="∀ x : ℂ, Complex.re x = Complex.re x",
             queue_depth=0,
         )
         for index in range(100)
@@ -794,7 +992,7 @@ def test_procedural_slot_weight_receipt_uses_dependency_metadata(tmp_path: Path)
         json.dumps(
             {
                 "theorem_name": "Deep.weight",
-                "type_expr": "∀ n : Nat, n = n",
+                "type_expr": "∀ x : ℂ, Complex.re x = Complex.re x",
                 "imports": ["Mathlib.Data.Nat.Basic", "Mathlib.Algebra.Group.Basic"],
                 "mathlib_rev": "abc123",
                 "source_path": "Mathlib/Deep.lean",
@@ -919,7 +1117,7 @@ def test_procedural_supply_filters_sources_to_frontier_depth(monkeypatch, tmp_pa
             json.dumps(
                 {
                     "theorem_name": "Hard.depth_one",
-                    "type_expr": "∀ n : Nat, n = n",
+                    "type_expr": "∀ x : ℂ, Complex.re x = Complex.re x",
                     "imports": ["Mathlib"],
                     "mathlib_rev": "abc123",
                     "source_path": "Mathlib/Hard.lean",
@@ -969,7 +1167,7 @@ def test_depth2_generation_filters_ordering_without_changing_source_hash(tmp_pat
             json.dumps(
                 {
                     "theorem_name": "Hard.depth_one",
-                    "type_expr": "∀ n : Nat, n = n",
+                    "type_expr": "∀ x : ℂ, Complex.re x = Complex.re x",
                     "imports": ["Mathlib"],
                     "mathlib_rev": "abc123",
                     "source_path": "Mathlib/Hard.lean",

@@ -494,19 +494,20 @@ class LeanSandbox:
         log_tail: int,
     ) -> VerifyResult:
         """Shared exit-code / log interpretation for one-shot containers and ``docker exec`` workers."""
+        diagnostic_tail = _verification_stdout_tail(text, limit=log_tail)
         if exit_status != 0:
             if exit_status == 137:
                 return VerifyResult(
                     passed=False,
                     reason="oom",
-                    stderr_tail=text[-log_tail:],
+                    stderr_tail=diagnostic_tail,
                     build_seconds=elapsed,
                 )
             if lake_build_environment_failed(text):
                 return VerifyResult(
                     passed=False,
                     reason="compile_error",
-                    stderr_tail=text[-log_tail:],
+                    stderr_tail=diagnostic_tail,
                     build_seconds=elapsed,
                 )
             ok_ax, found_ax = axiom_scan_ok(text)
@@ -515,20 +516,20 @@ class LeanSandbox:
                     return VerifyResult(
                         passed=False,
                         reason="compile_error",
-                        stderr_tail=text[-log_tail:],
+                        stderr_tail=diagnostic_tail,
                         build_seconds=elapsed,
                     )
                 extra_ax = f" axioms={found_ax}"
                 return VerifyResult(
                     passed=False,
                     reason="axiom_violation",
-                    stderr_tail=text[-log_tail:] + extra_ax,
+                    stderr_tail=diagnostic_tail + extra_ax,
                     build_seconds=elapsed,
                 )
             return VerifyResult(
                 passed=False,
                 reason="compile_error",
-                stderr_tail=text[-log_tail:],
+                stderr_tail=diagnostic_tail,
                 build_seconds=elapsed,
             )
 
@@ -536,7 +537,7 @@ class LeanSandbox:
             return VerifyResult(
                 passed=False,
                 reason="compile_error",
-                stderr_tail=text[-log_tail:],
+                stderr_tail=diagnostic_tail,
                 build_seconds=elapsed,
             )
         ok, found = axiom_scan_ok(text)
@@ -546,13 +547,13 @@ class LeanSandbox:
                 return VerifyResult(
                     passed=False,
                     reason="compile_error",
-                    stderr_tail=text[-log_tail:] + extra,
+                    stderr_tail=diagnostic_tail + extra,
                     build_seconds=elapsed,
                 )
             return VerifyResult(
                 passed=False,
                 reason="axiom_violation",
-                stdout_tail=text[-4000:] + extra,
+                stdout_tail=_verification_stdout_tail(text, limit=4000) + extra,
                 build_seconds=elapsed,
             )
         return VerifyResult(

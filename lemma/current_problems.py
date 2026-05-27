@@ -50,7 +50,6 @@ class CurrentProblemsSnapshot(BaseModel):
     tempo: int = Field(ge=0)
     active_tempo_source: Literal["wall_clock", "chain"] = "wall_clock"
     active_tempo_seconds: int = Field(ge=1)
-    active_window_blocks: int = Field(ge=1)
     active_tempo_blocks: int | None = Field(default=None, ge=1)
     epoch_start_block: int | None = Field(default=None, ge=0)
     next_epoch_start_block: int | None = Field(default=None, ge=0)
@@ -99,8 +98,7 @@ def _chain_epoch_metadata(settings: LemmaSettings, tempo: int) -> ChainEpochMeta
     from lemma.chain.epoch_randomness import resolve_chain_drand_epoch_randomness
 
     randomness = resolve_chain_drand_epoch_randomness(settings, tempo=tempo)
-    block_time_seconds = settings.active_tempo_seconds / max(1, settings.active_window_blocks)
-    estimated_next_timestamp = randomness.anchor_block_timestamp + round(randomness.tempo_length * block_time_seconds)
+    estimated_next_timestamp = randomness.anchor_block_timestamp + settings.active_tempo_seconds
     return ChainEpochMetadata(
         active_tempo_blocks=randomness.tempo_length,
         epoch_start_block=randomness.anchor_block,
@@ -173,7 +171,6 @@ def build_empty_current_problems_snapshot(
         tempo=active_tempo,
         active_tempo_source=effective_settings.active_tempo_source,
         active_tempo_seconds=effective_settings.active_tempo_seconds,
-        active_window_blocks=effective_settings.active_window_blocks,
         active_tempo_blocks=epoch_metadata.active_tempo_blocks,
         epoch_start_block=epoch_metadata.epoch_start_block,
         next_epoch_start_block=epoch_metadata.next_epoch_start_block,
@@ -238,7 +235,6 @@ def build_current_problems_snapshot(
         tempo=active_tempo,
         active_tempo_source=effective_settings.active_tempo_source,
         active_tempo_seconds=effective_settings.active_tempo_seconds,
-        active_window_blocks=effective_settings.active_window_blocks,
         active_tempo_blocks=epoch_metadata.active_tempo_blocks,
         epoch_start_block=epoch_metadata.epoch_start_block,
         next_epoch_start_block=epoch_metadata.next_epoch_start_block,

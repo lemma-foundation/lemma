@@ -72,7 +72,7 @@ _LOW_VALUE_MUTATION_FALLBACKS = frozenset(
 )
 _LOW_VALUE_MUTATION_MODES = frozenset({"peer_premise"})
 _LOW_VALUE_MUTATION_RULES = frozenset({"conjoin_peer_conclusion", "false_disjunct"})
-_LOW_VALUE_MUTATION_TARGETS = frozenset({"fresh_prop_hypothesis"})
+_LOW_VALUE_MUTATION_TARGETS = frozenset()
 _PRODUCTIVE_OPERATOR_NAMES = ("substitute-type",)
 
 
@@ -495,7 +495,11 @@ def _candidate_from_source(
             peer=peer,
         )
         _reject_low_value_mutation(mutation.params)
+        if "sorry" in mutation.type_expr or "?_" in mutation.type_expr:
+            raise ValueError("invalid procedural mutation output: placeholder")
         output_hash = _hash_text(mutation.type_expr)
+        if output_hash == input_hash:
+            raise ValueError("low-value procedural mutation: no-op")
         mutation_chain.append(
             {
                 "operator": operator,
@@ -553,8 +557,6 @@ def _candidate_from_source(
         "source_theorem_name": source.theorem_name,
         "source_target_sha256": _hash_text(source.statement),
     }
-    if "tempo_length" in epoch_fields:
-        metadata["active_window_blocks"] = _nonnegative_int(epoch_fields.get("tempo_length"))
     for key in (
         "citation_weight",
         "direct_dependency_count",
@@ -616,17 +618,9 @@ def _with_gate_receipt(candidate: TaskCandidate, verdict: ProceduralGateVerdict)
     return candidate.model_copy(update={"metadata": metadata})
 
 
-def _operator_chain(seed: str, sequence: int, type_expr: str) -> tuple[str, ...]:
-    operators = _productive_operators_for(type_expr)
-    if not operators:
-        return ()
-    return (
-        operators[_hash_int(f"{seed}:{sequence}:0") % len(operators)],
-        operators[_hash_int(f"{seed}:{sequence}:1") % len(operators)],
-    )
-
-
 def _operator_for_step(seed: str, sequence: int, step: int, type_expr: str) -> str | None:
+    if step > 0:
+        return "generalize"
     operators = _productive_operators_for(type_expr)
     if not operators:
         return None

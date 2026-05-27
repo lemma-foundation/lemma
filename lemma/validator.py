@@ -228,17 +228,6 @@ def active_registry_cache_stale(registry: TaskRegistry, settings: LemmaSettings)
         return True
     if any(task.frontier_depth != settings.frontier_depth for task in registry.tasks):
         return True
-    expected_task_window = settings.active_window_blocks
-    if settings.active_tempo_source == "chain" and settings.active_epoch_randomness_source == "chain_drand":
-        from lemma.chain.tempo import current_chain_tempo_blocks
-
-        expected_task_window = current_chain_tempo_blocks(settings)
-    for task in registry.tasks:
-        task_window = task.metadata.get("active_window_blocks")
-        if task_window is None and settings.active_seed_mode != "epoch_randomness":
-            continue
-        if int(task_window or 0) != expected_task_window:
-            return True
     expected_source = (settings.procedural_source_sha256_expected or "").strip().lower().removeprefix("sha256:")
     if expected_source:
         return {str(task.metadata.get("source_pool_hash") or "") for task in registry.tasks} != {expected_source}
@@ -394,7 +383,6 @@ def _enforce_epoch_generated_paid_tasks(
         epoch_fields = {}
     expected_anchor_block = epoch_fields.get("anchor_block") if isinstance(epoch_fields, dict) else None
     expected_drand_round = epoch_fields.get("drand_round") if isinstance(epoch_fields, dict) else None
-    expected_active_window_blocks = epoch_fields.get("tempo_length") if isinstance(epoch_fields, dict) else None
     mismatches: list[str] = []
     for task in tasks:
         if not task_reward_eligibility(task).eligible:
@@ -406,11 +394,6 @@ def _enforce_epoch_generated_paid_tasks(
             mismatches.append(f"{task.id}:anchor_block")
         if isinstance(expected_drand_round, int) and metadata.get("drand_round") != expected_drand_round:
             mismatches.append(f"{task.id}:drand_round")
-        if (
-            isinstance(expected_active_window_blocks, int)
-            and metadata.get("active_window_blocks") != expected_active_window_blocks
-        ):
-            mismatches.append(f"{task.id}:active_window_blocks")
     if mismatches:
         detail = ", ".join(mismatches[:5])
         raise RuntimeError(f"production paid tasks must use active epoch randomness: {detail}")

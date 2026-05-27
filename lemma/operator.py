@@ -111,7 +111,6 @@ class OperatorCurriculumSummary(BaseModel):
     depth_cost_multiplier: float = Field(ge=1.0)
     current_cost_limited_K: int | None = Field(default=None, ge=1)
     current_active_K: int = Field(ge=1)
-    current_active_window_blocks: int = Field(ge=1)
     can_increase_K: bool
     latest_tempo: int | None = Field(default=None, ge=0)
     latest_active_K: int | None = Field(default=None, ge=1)
@@ -207,7 +206,6 @@ def _summarize_curriculum(
         depth_cost_multiplier=settings.curriculum_depth_cost_multiplier,
         current_cost_limited_K=current_cost_cap,
         current_active_K=current_active_K,
-        current_active_window_blocks=settings.active_window_blocks,
         can_increase_K=(
             settings.curriculum_retarget_enabled
             and target_k > current_active_K

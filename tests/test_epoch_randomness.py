@@ -83,7 +83,7 @@ def test_chain_drand_epoch_randomness_anchors_to_tempo_boundary() -> None:
     assert randomness.seed_material() == randomness.seed_material()
 
 
-def test_chain_drand_epoch_randomness_uses_active_window_length() -> None:
+def test_chain_drand_epoch_randomness_uses_chain_tempo_length() -> None:
     class Hyperparams:
         tempo = 360
 
@@ -106,7 +106,7 @@ def test_chain_drand_epoch_randomness_uses_active_window_length() -> None:
             return BlockInfo()
 
     randomness = resolve_chain_drand_epoch_randomness(
-        LemmaSettings(_env_file=None, netuid=467, active_window_blocks=1440),
+        LemmaSettings(_env_file=None, netuid=467),
         subtensor=Subtensor(),
         drand_signature_for_round=lambda _round_no: "0xsig",
     )

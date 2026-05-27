@@ -95,3 +95,18 @@ def test_docker_worker_exec_does_not_truncate_before_parse(tmp_path: Path, monke
     vr = sb._verify_docker_cli_exec("worker-1", "/lemma-workspace/template", ".lemma_verify.sh", tmp_path, 123)
 
     assert vr.passed is True
+
+
+def test_docker_failure_tail_preserves_lemma_markers(tmp_path: Path) -> None:
+    text = 'LEMMA_AST_MUTATION {"ok":true}\n' + ("x" * 70_000) + "\nerror: boom"
+
+    vr = LeanSandbox(use_docker=True)._verify_docker_parse_logs(
+        text,
+        1,
+        0.0,
+        tmp_path,
+        123,
+    )
+
+    assert vr.passed is False
+    assert 'LEMMA_AST_MUTATION {"ok":true}' in vr.stderr_tail

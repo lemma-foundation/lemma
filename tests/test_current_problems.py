@@ -69,7 +69,6 @@ def test_current_problem_snapshot_is_public_safe() -> None:
     assert payload["tempo"] == 0
     assert payload["active_tempo_source"] == "wall_clock"
     assert payload["active_tempo_seconds"] == 4320
-    assert payload["active_window_blocks"] == 360
     assert payload["validator_capacity"] == 0
     assert payload["cost_budget_s"] == 0.0
     assert payload["base_task_cost_s"] == 0.0
@@ -137,13 +136,12 @@ def test_current_problem_snapshot_reports_curriculum_effective_window(tmp_path: 
 
     assert snapshot.active_K == 1
     assert snapshot.active_tempo_source == "wall_clock"
-    assert snapshot.active_window_blocks == 360
     assert snapshot.frontier_depth == 2
     assert snapshot.task_count == 1
     assert {task.frontier_depth for task in snapshot.tasks} == {2}
 
 
-def test_current_problem_snapshot_uses_fixed_active_window(tmp_path: Path) -> None:
+def test_current_problem_snapshot_ignores_legacy_active_window_blocks(tmp_path: Path) -> None:
     curriculum = tmp_path / "curriculum.jsonl"
     curriculum.write_text(
         json.dumps(
@@ -173,9 +171,10 @@ def test_current_problem_snapshot_uses_fixed_active_window(tmp_path: Path) -> No
     )
 
     snapshot = build_current_problems_snapshot(settings, registry=_registry(), tempo=3)
+    payload = snapshot.model_dump(mode="json", exclude_none=True)
 
-    assert snapshot.active_window_blocks == 360
     assert snapshot.active_tempo_seconds == 4320
+    assert "active_window_blocks" not in payload
 
 
 def test_current_problem_snapshot_reports_cost_cap() -> None:
