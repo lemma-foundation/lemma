@@ -749,20 +749,25 @@ def test_lean_gate_runner_records_generation_time_gates(monkeypatch: pytest.Monk
             assert problem.extra["lean_build_target"] == "Challenge"
             assert problem.extra["lean_max_heartbeats"] == 400_000
             gate_source = str(problem.extra["challenge_full"])
-            is_typecheck = "def typecheck_gate" in gate_source
-            if not is_typecheck:
-                assert problem.extra["lean_eval_commands"] == ("#lemma_emit_kernel_normal",)
-                assert 'elab "#lemma_emit_kernel_normal" : command => emit_kernel_normal' in problem.extra[
-                    "challenge_full"
-                ]
-            calls.append("typecheck" if is_typecheck else "prop")
+            assert "def typecheck_gate" in gate_source
+            assert "theorem prop_gate" in gate_source
+            assert problem.extra["lean_fingerprint_names"] == (
+                "LemmaProceduralGate.typecheck_gate",
+                "LemmaProceduralGate.prop_gate",
+            )
+            assert problem.extra["lean_eval_commands"] == ("#lemma_emit_kernel_normal",)
+            assert 'elab "#lemma_emit_kernel_normal" : command => emit_kernel_normal' in problem.extra[
+                "challenge_full"
+            ]
+            calls.append("gate")
             return VerifyResult(
                 passed=True,
                 reason="ok",
-                stdout_tail=""
-                if is_typecheck
-                else "LEMMA_KERNEL_NORMAL_FORM (forall default const:True:[] const:True:[])",
-                declaration_fingerprints={str(problem.extra["lean_fingerprint_names"][0]): "8" * 64},
+                stdout_tail="LEMMA_KERNEL_NORMAL_FORM (forall default const:True:[] const:True:[])",
+                declaration_fingerprints={
+                    "LemmaProceduralGate.typecheck_gate": "7" * 64,
+                    "LemmaProceduralGate.prop_gate": "8" * 64,
+                },
             )
         calls.append("triviality")
         assert problem.extra["lean_max_heartbeats"] == 200_000
@@ -782,7 +787,7 @@ def test_lean_gate_runner_records_generation_time_gates(monkeypatch: pytest.Monk
     assert verdict.metadata["triviality_budget_version"] == "lemma-triviality-retarget-v1"
     assert verdict.metadata["triviality_budget_heartbeats"] == 200_000
     assert verdict.metadata["triviality_reason"] == "baseline_failed"
-    assert calls[:2] == ["typecheck", "prop"]
+    assert calls[:1] == ["gate"]
     assert "triviality" in calls
 
 
@@ -810,15 +815,17 @@ def test_lean_gate_runner_caps_parallel_verify_jobs(monkeypatch: pytest.MonkeyPa
             if problem.id.endswith(".gate"):
                 assert problem.extra["lean_max_heartbeats"] == 400_000
                 gate_source = str(problem.extra["challenge_full"])
-                is_typecheck = "def typecheck_gate" in gate_source
-                calls.append("typecheck" if is_typecheck else "prop")
+                assert "def typecheck_gate" in gate_source
+                assert "theorem prop_gate" in gate_source
+                calls.append("gate")
                 return VerifyResult(
                     passed=True,
                     reason="ok",
-                    stdout_tail=""
-                    if is_typecheck
-                    else "LEMMA_KERNEL_NORMAL_FORM (forall default const:True:[] const:True:[])",
-                    declaration_fingerprints={str(problem.extra["lean_fingerprint_names"][0]): "8" * 64},
+                    stdout_tail="LEMMA_KERNEL_NORMAL_FORM (forall default const:True:[] const:True:[])",
+                    declaration_fingerprints={
+                        "LemmaProceduralGate.typecheck_gate": "7" * 64,
+                        "LemmaProceduralGate.prop_gate": "8" * 64,
+                    },
                 )
             calls.append("triviality")
             assert problem.extra["lean_max_heartbeats"] == 200_000
@@ -840,7 +847,7 @@ def test_lean_gate_runner_caps_parallel_verify_jobs(monkeypatch: pytest.MonkeyPa
     )(candidate, seen_canonical_hashes=())
 
     assert verdict.accepted is True
-    assert calls[:2] == ["typecheck", "prop"]
+    assert calls[:1] == ["gate"]
     assert calls.count("triviality") == len(TRIVIALITY_STACK) + 1
     assert max_active == 2
 
@@ -861,15 +868,14 @@ def test_lean_gate_runner_rejects_source_theorem_wrappers(
 
     def fake_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001, ARG001
         if problem.id.endswith(".gate"):
-            gate_source = str(problem.extra["challenge_full"])
-            is_typecheck = "def typecheck_gate" in gate_source
             return VerifyResult(
                 passed=True,
                 reason="ok",
-                stdout_tail=""
-                if is_typecheck
-                else "LEMMA_KERNEL_NORMAL_FORM (forall default const:True:[] const:True:[])",
-                declaration_fingerprints={str(problem.extra["lean_fingerprint_names"][0]): "8" * 64},
+                stdout_tail="LEMMA_KERNEL_NORMAL_FORM (forall default const:True:[] const:True:[])",
+                declaration_fingerprints={
+                    "LemmaProceduralGate.typecheck_gate": "7" * 64,
+                    "LemmaProceduralGate.prop_gate": "8" * 64,
+                },
             )
         proof_scripts.append(proof_script)
         return VerifyResult(passed="apply " in proof_script, reason="ok")
@@ -941,7 +947,7 @@ def test_lean_gate_runner_uses_prop_fingerprint_when_kernel_marker_is_missing(
                 passed=True,
                 reason="ok",
                 stdout_tail="",
-                declaration_fingerprints={str(problem.extra["lean_fingerprint_names"][0]): fallback_hash},
+                declaration_fingerprints={"LemmaProceduralGate.prop_gate": fallback_hash},
             )
         return VerifyResult(passed=False, reason="compile_error")
 
@@ -971,6 +977,33 @@ def test_public_novelty_cache_marks_known_statement_duplicate(tmp_path: Path) ->
 
     assert verdict.novelty_status == "duplicate"
     assert verdict.accepted is False
+
+
+def test_lean_gate_runner_skips_lean_when_statement_duplicate(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    snapshot = tmp_path / "snapshot.jsonl"
+    _write_snapshot(snapshot)
+    candidate = generate_depth2_candidates(
+        mathlib_candidates_from_jsonl(snapshot),
+        generation_seed="epoch-a",
+        epoch_randomness=json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
+        count=1,
+        tempo=3,
+    )[0]
+    cache = novelty_cache_from_hashes((str(candidate.metadata["statement_hash"]),))
+
+    def fake_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001, ARG001
+        raise AssertionError("duplicate statements should be rejected before Lean runs")
+
+    monkeypatch.setattr("lemma.supply.gates.run_lean_verify", fake_verify)
+    verdict = LeanProceduralGateRunner(
+        LemmaSettings(_env_file=None, lean_use_docker=False, procedural_gate_timeout_s=5),
+        novelty_cache=cache,
+    )(candidate, seen_canonical_hashes=())
+
+    assert verdict.accepted is False
+    assert verdict.novelty_status == "duplicate"
 
 
 def test_public_novelty_cache_can_be_built_from_type_expr_rows(tmp_path: Path) -> None:

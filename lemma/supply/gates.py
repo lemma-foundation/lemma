@@ -142,32 +142,13 @@ class LeanProceduralGateRunner:
         *,
         seen_canonical_hashes: Iterable[str],
     ) -> ProceduralGateVerdict:
-        typecheck = self._compile_gate(
-            candidate,
-            _typecheck_gate_source(candidate),
-            fingerprint_name=_TYPECHECK_GATE_DECL,
-        )
-        if not typecheck.passed:
-            return self._gate_verdict(
-                candidate,
-                seen_canonical_hashes=seen_canonical_hashes,
-                typecheck=typecheck,
-                prop=typecheck,
-                kernel_hash="",
-                novelty="missing_kernel_fingerprint",
-                triviality_checked=False,
-                baseline_solved=False,
-                baseline_solver=None,
-                baseline_reason="not_run",
-            )
-
         statement_novelty = _novelty_status(candidate, seen_canonical_hashes, self.novelty_cache)
         if statement_novelty == "duplicate":
             skipped = VerifyResult(passed=False, reason="compile_error", stderr_tail="statement novelty duplicate")
             return self._gate_verdict(
                 candidate,
                 seen_canonical_hashes=seen_canonical_hashes,
-                typecheck=typecheck,
+                typecheck=skipped,
                 prop=skipped,
                 kernel_hash="",
                 novelty="duplicate",
@@ -181,7 +162,7 @@ class LeanProceduralGateRunner:
         prop = self._compile_gate(
             candidate,
             _prop_gate_source(candidate),
-            fingerprint_name=_PROP_GATE_DECL,
+            fingerprint_names=(_TYPECHECK_GATE_DECL, _PROP_GATE_DECL),
             eval_commands=("#lemma_emit_kernel_normal",),
         )
         kernel_hash = _gate_canonical_hash(prop) if prop.passed else ""
@@ -199,7 +180,7 @@ class LeanProceduralGateRunner:
         return self._gate_verdict(
             candidate,
             seen_canonical_hashes=seen_canonical_hashes,
-            typecheck=typecheck,
+            typecheck=prop,
             prop=prop,
             kernel_hash=kernel_hash,
             novelty=novelty,
@@ -254,10 +235,15 @@ class LeanProceduralGateRunner:
         candidate: TaskCandidate,
         gate_source: str,
         *,
-        fingerprint_name: str,
+        fingerprint_names: tuple[str, ...],
         eval_commands: tuple[str, ...] = (),
     ) -> VerifyResult:
-        problem = _gate_problem(candidate, gate_source, fingerprint_name=fingerprint_name, eval_commands=eval_commands)
+        problem = _gate_problem(
+            candidate,
+            gate_source,
+            fingerprint_names=fingerprint_names,
+            eval_commands=eval_commands,
+        )
         problem = replace(problem, extra={**problem.extra, "lean_max_heartbeats": self.gate_heartbeats})
         with self._lean_slots:
             return run_lean_verify(
@@ -413,7 +399,7 @@ def _gate_problem(
     candidate: TaskCandidate,
     gate_source: str,
     *,
-    fingerprint_name: str,
+    fingerprint_names: tuple[str, ...],
     eval_commands: tuple[str, ...] = (),
 ) -> Problem:
     return Problem(
@@ -427,7 +413,7 @@ def _gate_problem(
         extra={
             "challenge_full": gate_source,
             "lean_build_target": "Challenge",
-            "lean_fingerprint_names": (fingerprint_name,),
+            "lean_fingerprint_names": fingerprint_names,
             "lean_eval_commands": eval_commands,
             "submission_policy": "strict_envelope",
         },
@@ -447,19 +433,6 @@ def _gate_canonical_hash(result: VerifyResult) -> str:
     return _kernel_normal_hash(result) or result.declaration_fingerprints.get(_PROP_GATE_DECL, "")
 
 
-def _typecheck_gate_source(candidate: TaskCandidate) -> str:
-    return "\n".join(
-        [
-            "namespace LemmaProceduralGate",
-            "",
-            f"def typecheck_gate : ({candidate.type_expr}) := by",
-            "  sorry",
-            "",
-            "end LemmaProceduralGate",
-        ]
-    )
-
-
 def _prop_gate_source(candidate: TaskCandidate) -> str:
     return "\n".join(
         [
@@ -470,6 +443,9 @@ def _prop_gate_source(candidate: TaskCandidate) -> str:
             "namespace LemmaProceduralGate",
             "",
             f"def canonicalSource : String := {_json_string(candidate.type_expr)}",
+            "",
+            f"def typecheck_gate : ({candidate.type_expr}) := by",
+            "  sorry",
             "",
             "def parseTermOrThrow (source : String) : Elab.Command.CommandElabM (TSyntax `term) := do",
             "  let env ← getEnv",
