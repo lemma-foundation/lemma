@@ -72,7 +72,7 @@ _LOW_VALUE_MUTATION_FALLBACKS = frozenset(
 )
 _LOW_VALUE_MUTATION_MODES = frozenset({"peer_premise"})
 _LOW_VALUE_MUTATION_RULES = frozenset({"conjoin_peer_conclusion", "false_disjunct"})
-_LOW_VALUE_MUTATION_TARGETS = frozenset()
+_LOW_VALUE_MUTATION_TARGETS: frozenset[str] = frozenset()
 _PRODUCTIVE_OPERATOR_NAMES = ("substitute-type",)
 
 
