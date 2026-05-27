@@ -52,18 +52,18 @@ def test_operator_bundle_includes_lean_pretty_value_aliases() -> None:
 
 def test_structural_mutation_engine_marks_current_bundle_engine() -> None:
     source = fixture_candidate(
-        slug="source_true",
+        slug="source_bool",
         source_stream="mathlib_snapshot",
         source_name="snapshot",
-        theorem_name="source_true",
-        type_expr="True",
+        theorem_name="source_bool",
+        type_expr="true = false",
         queue_depth=0,
     )
 
     first = StructuralMutationEngine().apply(
         source,
-        "True",
-        "conjoin-self",
+        "true = false",
+        "symm",
         step=0,
         param_seed="a" * 64,
         peer=source,
@@ -77,10 +77,20 @@ def test_structural_mutation_engine_marks_current_bundle_engine() -> None:
         peer=source,
     )
 
-    assert first.type_expr == "(True) ∧ (True)"
-    assert first.params["engine"] == "structural_syntax_v1"
-    assert second.type_expr == "∀ lemma_p1_bbbbbb : Prop, lemma_p1_bbbbbb → ((True) ∧ (True))"
-    assert second.params["engine"] == "structural_syntax_v1"
+    assert first.type_expr == "false = true"
+    assert first.params["engine"] == "structural_reversible_v2"
+    assert second.type_expr == "∀ lemma_p1_bbbbbb : Prop, lemma_p1_bbbbbb → (false = true)"
+    assert second.params["engine"] == "structural_reversible_v2"
+
+    implication = StructuralMutationEngine().apply(
+        source,
+        "¬b = false → b = true",
+        "symm",
+        step=0,
+        param_seed="c" * 64,
+        peer=source,
+    )
+    assert implication.type_expr == "¬b = false → true = b"
 
 
 def _write_snapshot(path: Path) -> None:
@@ -95,20 +105,20 @@ def _write_snapshot(path: Path) -> None:
             "queue_depth": 0,
         },
         {
-            "theorem_name": "Complex.re_self",
-            "type_expr": "∀ x : ℂ, Complex.re x = Complex.re x",
+            "theorem_name": "Bool.eq_false_eq_not_eq_true",
+            "type_expr": "∀ (b : Bool), (¬(b = true)) = (b = false)",
             "imports": ["Mathlib"],
             "mathlib_rev": "abc123",
-            "source_path": "Mathlib/Analysis/Complex/Basic.lean",
+            "source_path": "Mathlib/Data/Bool/Basic.lean",
             "source_license": "Apache-2.0",
             "queue_depth": 0,
         },
         {
-            "theorem_name": "Complex.im_self",
-            "type_expr": "∀ x : ℂ, Complex.im x = Complex.im x",
+            "theorem_name": "Bool.eq_true_eq_not_eq_false",
+            "type_expr": "∀ (b : Bool), (¬(b = false)) = (b = true)",
             "imports": ["Mathlib"],
             "mathlib_rev": "abc123",
-            "source_path": "Mathlib/Analysis/Complex/Basic.lean",
+            "source_path": "Mathlib/Data/Bool/Basic.lean",
             "source_license": "Apache-2.0",
             "queue_depth": 0,
         },
@@ -461,8 +471,8 @@ def test_candidate_from_source_falls_back_to_second_step_generalize() -> None:
             operators.append(operator)
             if step == 0:
                 return MutationResult(
-                    f"({type_expr}) ∧ ({type_expr})",
-                    {"rule": "conjoin_self"},
+                    "false = true",
+                    {"rule": "reverse_relation"},
                 )
             return MutationResult(
                 f"∀ p : Prop, p → ({type_expr})",
@@ -474,7 +484,7 @@ def test_candidate_from_source_falls_back_to_second_step_generalize() -> None:
         source_stream="mathlib_snapshot",
         source_name="snapshot",
         theorem_name="source",
-        type_expr="∀ x : ℂ, Complex.re x = Complex.re x",
+        type_expr="true = false",
         queue_depth=0,
     )
 
@@ -499,7 +509,7 @@ def test_candidate_from_source_falls_back_to_second_step_generalize() -> None:
         sequence=0,
     )
 
-    assert operators == ["conjoin-self", "generalize"]
+    assert operators == ["symm", "generalize"]
     assert [step["operator"] for step in candidate.metadata["mutation_chain"]] == operators
 
 

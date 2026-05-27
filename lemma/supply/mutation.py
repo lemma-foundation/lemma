@@ -50,6 +50,8 @@ class StructuralMutationEngine:
     ) -> MutationResult:
         _ = source
         expr = type_expr.strip()
+        if operator == "symm":
+            return _preview_symm(expr)
         if operator == "generalize":
             binder = f"lemma_p{step}_{param_seed[:6]}"
             return MutationResult(
@@ -217,6 +219,64 @@ def _preview_weaken(expr: str) -> MutationResult:
             {"rule": "replace_first_premise_with_true", "premise_sha256": _hash_text(premise)},
         )
     return MutationResult(f"({expr}) ∨ False", {"rule": "false_disjunct"})
+
+
+def _preview_symm(expr: str) -> MutationResult:
+    prefix, body = _split_forall_prefix(expr)
+    implication = _split_top_level_arrow(body)
+    if implication is not None:
+        premise, conclusion = implication
+        relation = _split_top_level_relation(conclusion)
+        if relation is None:
+            raise ValueError("no reversible top-level relation")
+        left, operator, right = relation
+        return MutationResult(
+            f"{prefix}{premise} → {right} {operator} {left}",
+            {"rule": "reverse_relation", "relation": operator, "engine": MUTATION_ENGINE},
+        )
+    relation = _split_top_level_relation(body)
+    if relation is None:
+        raise ValueError("no reversible top-level relation")
+    left, operator, right = relation
+    return MutationResult(
+        f"{prefix}{right} {operator} {left}",
+        {"rule": "reverse_relation", "relation": operator, "engine": MUTATION_ENGINE},
+    )
+
+
+def _split_forall_prefix(expr: str) -> tuple[str, str]:
+    text = expr.strip()
+    if not text.startswith("∀"):
+        return "", text
+    depth = 0
+    for index, char in enumerate(text):
+        depth += char in "([{"
+        depth -= char in ")]}"
+        if char == "," and depth == 0:
+            return f"{text[: index + 1]} ", text[index + 1 :].strip()
+    return "", text
+
+
+def _split_top_level_relation(expr: str) -> tuple[str, str, str] | None:
+    for operator in ("↔", "="):
+        split = _split_top_level_token(expr, operator)
+        if split is not None:
+            left, right = split
+            return left, operator, right
+    return None
+
+
+def _split_top_level_token(expr: str, token: str) -> tuple[str, str] | None:
+    depth = 0
+    for index, char in enumerate(expr):
+        depth += char in "([{"
+        depth -= char in ")]}"
+        if char == token and depth == 0:
+            left = expr[:index].strip()
+            right = expr[index + len(token) :].strip()
+            if left and right:
+                return left, right
+    return None
 
 
 def _split_forall(expr: str) -> tuple[str, str, str] | None:

@@ -2,8 +2,8 @@ import Mathlib
 
 namespace Submission
 
-theorem operator_smoke_nat_refl_0 : ∀ n : Nat, n = n := by
-  intro n
-  rfl
+theorem operator_smoke_bool_0 : ∀ (b : Bool), (¬(b = true)) = (b = false) := by
+  intro b
+  cases b <;> simp
 
 end Submission

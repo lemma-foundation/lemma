@@ -113,8 +113,8 @@ def test_operator_registry_flow_smoke(monkeypatch: pytest.MonkeyPatch, tmp_path:
     assert build.exit_code == 0, build.output
     registry_sha256 = json.loads(build.output)["registry_sha256"]
     registry = load_task_registry(registry_path.read_bytes(), registry_sha256)
-    active_task = registry.get("lemma.mathlib_snapshot.operator_smoke_complex_re_0")
-    inactive_task = registry.get("lemma.mathlib_snapshot.operator_smoke_deep_complex_re")
+    active_task = registry.get("lemma.mathlib_snapshot.operator_smoke_bool_0")
+    inactive_task = registry.get("lemma.mathlib_snapshot.operator_smoke_deep_bool")
 
     env = {
         "LEMMA_PREFER_PROCESS_ENV": "1",

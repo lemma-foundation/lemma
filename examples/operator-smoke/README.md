@@ -55,7 +55,7 @@ Build one task-bound submission:
 
 ```bash
 uv run lemma submit \
-  lemma.mathlib_snapshot.operator_smoke_nat_refl_0 \
+  lemma.mathlib_snapshot.operator_smoke_bool_0 \
   --submission examples/operator-smoke/Submission.lean \
   --solver-hotkey miner-active \
   --output "$WORK/submission.json"

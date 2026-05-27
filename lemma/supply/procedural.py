@@ -82,7 +82,7 @@ _LOW_VALUE_MUTATION_FALLBACKS = frozenset(
 _LOW_VALUE_MUTATION_MODES = frozenset({"peer_premise"})
 _LOW_VALUE_MUTATION_RULES = frozenset({"conjoin_peer_conclusion", "false_disjunct"})
 _LOW_VALUE_MUTATION_TARGETS: frozenset[str] = frozenset()
-_PRODUCTIVE_OPERATOR_NAMES = ("conjoin-self",)
+_PRODUCTIVE_OPERATOR_NAMES = ("symm",)
 _MAX_SOURCE_DIFFICULTY_SCORE = 2
 _MAX_DIRECT_DEPENDENCY_COUNT = 0
 _MAX_DEPENDENCY_DEPTH = 0
@@ -95,6 +95,8 @@ _LIGHTWEIGHT_IMPORT_PREFIXES = (
     "Mathlib.Data.Set.",
     "Mathlib.Logic.",
 )
+_STANDALONE_IMPORT_MODULES = frozenset({"Mathlib.Data.Bool.Basic"})
+_STANDALONE_FORBIDDEN_TOKENS = ("ofNat", "‹", "›", "ᶜ", "!", "₀", "₁", "₂", "₃", "₄", "₅", "₆", "₇", "₈", "₉")
 
 
 def candidates_from_jsonl(path: Path) -> tuple[TaskCandidate, ...]:
@@ -723,11 +725,15 @@ def _eligible_depth2_sources(
         if (max_queue_depth is None or source.queue_depth <= max_queue_depth)
         and _productive_operators_for(source.type_expr)
         and _lightweight_source(source)
+        and _standalone_source(source)
     )
 
 
 def _productive_operators_for(type_expr: str) -> tuple[str, ...]:
-    return _PRODUCTIVE_OPERATOR_NAMES if type_expr.strip() else ()
+    from lemma.supply.mutation import _split_forall_prefix, _split_top_level_relation
+
+    _prefix, body = _split_forall_prefix(type_expr)
+    return _PRODUCTIVE_OPERATOR_NAMES if _split_top_level_relation(body) is not None else ()
 
 
 def _lightweight_source(source: TaskCandidate) -> bool:
@@ -752,6 +758,16 @@ def _lightweight_imports(source: TaskCandidate) -> bool:
     if not all(key in source.metadata for key in ("difficulty_score", "direct_dependency_count", "dependency_depth")):
         return True
     return any(module.startswith(_LIGHTWEIGHT_IMPORT_PREFIXES) for module in source.imports)
+
+
+def _standalone_source(source: TaskCandidate) -> bool:
+    if source.source_stream != "mathlib_snapshot":
+        return True
+    if not all(key in source.metadata for key in ("difficulty_score", "direct_dependency_count", "dependency_depth")):
+        return True
+    return any(module in _STANDALONE_IMPORT_MODULES for module in source.imports) and not any(
+        token in source.type_expr for token in _STANDALONE_FORBIDDEN_TOKENS
+    )
 
 
 def _peer_source(

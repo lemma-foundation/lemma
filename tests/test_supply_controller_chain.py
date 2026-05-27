@@ -201,9 +201,10 @@ def test_procedural_registry_requires_depth_two_metadata() -> None:
         "mutation_depth": 2,
         "mutation_chain": [
             {
-                "operator": "conjoin-self",
+                "operator": "symm",
                 "params": {
-                    "rule": "conjoin_self",
+                    "rule": "reverse_relation",
+                    "relation": "=",
                     "engine": MUTATION_ENGINE,
                 },
                 "input_hash": "1" * 64,
