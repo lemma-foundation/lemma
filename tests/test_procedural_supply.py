@@ -33,6 +33,7 @@ from lemma.supply.procedural import (
     corpus_sources_from_dir,
     generate_depth2_candidates,
     procedural_operator_bundle_hash,
+    read_yield_history,
     source_pool_hash,
 )
 from lemma.supply.slot_weight import slot_weight_receipt_for_candidate
@@ -674,7 +675,8 @@ def test_candidate_from_source_rejects_all_specialize_chain() -> None:
 def test_depth2_generation_attempt_limit_scales_with_requested_count() -> None:
     class AlwaysGoodMutationEngine:
         def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001, ARG002
-            return MutationResult(f"∀ p{step} : Prop, p{step} → ({type_expr})", {"target": "pytest"})
+            binder = f"p{step}_{source.theorem_name}"
+            return MutationResult(f"∀ {binder} : Prop, {binder} → ({type_expr})", {"target": "pytest"})
 
     class RejectingGate:
         def __init__(self) -> None:
@@ -721,7 +723,8 @@ def test_depth2_generation_attempt_limit_scales_with_requested_count() -> None:
 def test_depth2_generation_batches_lean_gate_attempts() -> None:
     class AlwaysGoodMutationEngine:
         def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001, ARG002
-            return MutationResult(f"∀ p{step} : Prop, p{step} → ({type_expr})", {"target": "pytest"})
+            binder = f"p{step}_{source.theorem_name}"
+            return MutationResult(f"∀ {binder} : Prop, {binder} → ({type_expr})", {"target": "pytest"})
 
     class BatchRejectingGate:
         def __init__(self) -> None:
@@ -770,6 +773,46 @@ def test_depth2_generation_batches_lean_gate_attempts() -> None:
         )
 
     assert gate.batch_sizes == [50]
+
+
+def test_depth2_generation_rejects_mismatched_mutation_engine_before_lean() -> None:
+    class DriftedMutationEngine:
+        def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001, ARG002
+            return MutationResult(
+                f"∀ p{step} : Prop, p{step} → ({type_expr})",
+                {"target": "pytest", "engine": "old-engine"},
+            )
+
+    class NoLeanGate:
+        def __call__(self, candidate, *, seen_canonical_hashes):  # noqa: ANN001, ARG002
+            raise AssertionError("pre-Lean candidate checks should reject this mutation chain")
+
+        def batch(self, candidates, *, seen_canonical_hashes):  # noqa: ANN001, ARG002
+            raise AssertionError("pre-Lean candidate checks should reject this mutation chain")
+
+    sources = tuple(
+        fixture_candidate(
+            slug=f"source_{index}",
+            source_stream="mathlib_snapshot",
+            source_name="snapshot",
+            theorem_name=f"source_{index}",
+            type_expr="∀ x : ℂ, Complex.re x = Complex.re x",
+            queue_depth=0,
+        )
+        for index in range(100)
+    )
+
+    with pytest.raises(ValueError, match="procedural gates accepted 0 candidates, needed 1"):
+        generate_depth2_candidates(
+            sources,
+            generation_seed="epoch-a",
+            epoch_randomness=json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
+            count=1,
+            tempo=3,
+            gate_runner=NoLeanGate(),
+            generation_workers=2,
+            mutation_engine=DriftedMutationEngine(),
+        )
 
 
 def test_depth2_generation_parallel_matches_sequential(tmp_path: Path) -> None:
@@ -1012,7 +1055,9 @@ def test_lean_gate_runner_does_not_embed_source_theorem_baseline(
     )[0]
     def fake_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001, ARG001
         assert problem.id.endswith(".gate")
-        assert 'def ancestorBaselineSource : String := ""' in str(problem.extra["challenge_full"])
+        gate_source = str(problem.extra["challenge_full"])
+        assert "ancestorBaselineSource" not in gate_source
+        assert "source_theorem" not in gate_source
         return VerifyResult(
             passed=True,
             reason="ok",
@@ -1053,7 +1098,8 @@ def test_lean_gate_runner_batches_gate_results(monkeypatch: pytest.MonkeyPatch, 
         assert problem.id.endswith(".gate.batch")
         gate_source = str(problem.extra["challenge_full"])
         assert "#lemma_emit_gate_results" in problem.extra["lean_eval_commands"]
-        assert 'ancestorBaselineSource := ""' in gate_source
+        assert "ancestorBaselineSource" not in gate_source
+        assert "source_theorem" not in gate_source
         calls.append("batch")
         return VerifyResult(
             passed=True,
@@ -1085,6 +1131,179 @@ def test_lean_gate_runner_batches_gate_results(monkeypatch: pytest.MonkeyPatch, 
     assert verdicts[0].metadata["lean_gate_mode"] == "batched_prop_triviality"
     assert verdicts[0].metadata["lean_gate_batch_size"] == 2
     assert verdicts[0].metadata["lean_gate_batch_seconds"] == 2.5
+
+
+def test_lean_gate_runner_splits_failed_batch_to_salvage_candidates(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    snapshot = tmp_path / "snapshot.jsonl"
+    _write_snapshot(snapshot)
+    candidates = generate_depth2_candidates(
+        mathlib_candidates_from_jsonl(snapshot),
+        generation_seed="epoch-a",
+        epoch_randomness=json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
+        count=2,
+        tempo=3,
+    )
+    batch_sizes: list[int] = []
+
+    def fake_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001, ARG001
+        gate_source = str(problem.extra["challenge_full"])
+        batch_size = gate_source.count("canonicalSource :=")
+        batch_sizes.append(batch_size)
+        if batch_size > 1:
+            return VerifyResult(passed=False, reason="timeout", build_seconds=3.0)
+        return VerifyResult(
+            passed=True,
+            reason="ok",
+            build_seconds=1.0,
+            stdout_tail=(
+                'LEMMA_GATE_RESULT {"id":"0","typechecked":true,"kernel_normal_form":"single",'
+                '"triviality_checked":true,"baseline_solved":false,"baseline_solver":null,'
+                '"triviality_reason":"baseline_failed"}'
+            ),
+        )
+
+    monkeypatch.setattr("lemma.supply.gates.run_lean_verify", fake_verify)
+    verdicts = LeanProceduralGateRunner(
+        LemmaSettings(_env_file=None, lean_use_docker=False, procedural_gate_timeout_s=5)
+    ).batch(candidates, seen_canonical_hashes=())
+
+    assert batch_sizes == [2, 1, 1]
+    assert [verdict.accepted for verdict in verdicts] == [True, True]
+    assert [verdict.metadata["lean_gate_batch_size"] for verdict in verdicts] == [1, 1]
+
+
+def test_lean_gate_runner_splits_compile_error_batch_with_budget(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    snapshot = tmp_path / "snapshot.jsonl"
+    _write_snapshot(snapshot)
+    candidates = generate_depth2_candidates(
+        mathlib_candidates_from_jsonl(snapshot),
+        generation_seed="epoch-a",
+        epoch_randomness=json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
+        count=2,
+        tempo=3,
+    )
+    batch_sizes: list[int] = []
+
+    def fake_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001, ARG001
+        batch_size = str(problem.extra["challenge_full"]).count("canonicalSource :=")
+        batch_sizes.append(batch_size)
+        if batch_size > 1:
+            return VerifyResult(passed=False, reason="compile_error", build_seconds=3.0)
+        return VerifyResult(
+            passed=True,
+            reason="ok",
+            build_seconds=1.0,
+            stdout_tail=(
+                'LEMMA_GATE_RESULT {"id":"0","typechecked":true,"kernel_normal_form":"single",'
+                '"triviality_checked":true,"baseline_solved":false,"baseline_solver":null,'
+                '"triviality_reason":"baseline_failed"}'
+            ),
+        )
+
+    monkeypatch.setattr("lemma.supply.gates.run_lean_verify", fake_verify)
+    verdicts = LeanProceduralGateRunner(
+        LemmaSettings(_env_file=None, lean_use_docker=False, procedural_gate_timeout_s=5)
+    ).batch(candidates, seen_canonical_hashes=())
+
+    assert batch_sizes == [2, 1, 1]
+    assert [verdict.accepted for verdict in verdicts] == [True, True]
+    assert [verdict.metadata["lean_gate_batch_size"] for verdict in verdicts] == [1, 1]
+
+
+def test_lean_gate_runner_compile_error_split_budget_can_stop_salvage(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    snapshot = tmp_path / "snapshot.jsonl"
+    _write_snapshot(snapshot)
+    candidates = generate_depth2_candidates(
+        mathlib_candidates_from_jsonl(snapshot),
+        generation_seed="epoch-a",
+        epoch_randomness=json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
+        count=2,
+        tempo=3,
+    )
+    batch_sizes: list[int] = []
+
+    def fake_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001, ARG001
+        batch_sizes.append(str(problem.extra["challenge_full"]).count("canonicalSource :="))
+        return VerifyResult(passed=False, reason="compile_error", build_seconds=3.0)
+
+    monkeypatch.setattr("lemma.supply.gates.run_lean_verify", fake_verify)
+    verdicts = LeanProceduralGateRunner(
+        LemmaSettings(
+            _env_file=None,
+            lean_use_docker=False,
+            procedural_gate_timeout_s=5,
+            procedural_lean_compile_error_split_limit=0,
+        )
+    ).batch(candidates, seen_canonical_hashes=())
+
+    assert batch_sizes == [2]
+    assert [verdict.accepted for verdict in verdicts] == [False, False]
+    assert [verdict.metadata["lean_gate_batch_size"] for verdict in verdicts] == [2, 2]
+
+
+def test_lean_gate_runner_uses_configured_batch_capacity() -> None:
+    default_runner = LeanProceduralGateRunner(LemmaSettings(_env_file=None, lean_use_docker=False))
+    assert default_runner.batch_capacity(2) == 96
+
+    runner = LeanProceduralGateRunner(
+        LemmaSettings(
+            _env_file=None,
+            lean_use_docker=False,
+            procedural_lean_batch_size=32,
+            procedural_lean_batch_parallelism=3,
+        )
+    )
+
+    assert runner.batch_capacity(2) == 96
+
+
+def test_lean_gate_runner_uses_configured_parallel_batches(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    snapshot = tmp_path / "snapshot.jsonl"
+    _write_snapshot(snapshot)
+    candidates = generate_depth2_candidates(
+        mathlib_candidates_from_jsonl(snapshot),
+        generation_seed="epoch-a",
+        epoch_randomness=json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
+        count=2,
+        tempo=3,
+    )
+    batch_sizes: list[int] = []
+
+    def fake_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001, ARG001
+        gate_source = str(problem.extra["challenge_full"])
+        batch_sizes.append(gate_source.count("canonicalSource :="))
+        return VerifyResult(
+            passed=True,
+            reason="ok",
+            build_seconds=1.0,
+            stdout_tail=(
+                'LEMMA_GATE_RESULT {"id":"0","typechecked":true,"kernel_normal_form":"single",'
+                '"triviality_checked":true,"baseline_solved":false,"baseline_solver":null,'
+                '"triviality_reason":"baseline_failed"}'
+            ),
+        )
+
+    monkeypatch.setattr("lemma.supply.gates.run_lean_verify", fake_verify)
+    verdicts = LeanProceduralGateRunner(
+        LemmaSettings(
+            _env_file=None,
+            lean_use_docker=False,
+            procedural_gate_timeout_s=5,
+            procedural_lean_batch_size=1,
+            procedural_lean_batch_parallelism=2,
+        )
+    ).batch(candidates, seen_canonical_hashes=())
+
+    assert sorted(batch_sizes) == [1, 1]
+    assert [verdict.accepted for verdict in verdicts] == [True, True]
 
 
 def test_lean_gate_runner_skips_triviality_when_compile_gate_fails(
@@ -1420,6 +1639,121 @@ def test_depth2_generation_filters_ordering_without_changing_source_hash(tmp_pat
 
     assert candidates[0].queue_depth == 0
     assert candidates[0].metadata["source_pool_hash"] == full_source_hash
+
+
+def test_depth2_generation_uses_public_yield_history_for_source_order(tmp_path: Path) -> None:
+    snapshot = tmp_path / "snapshot.jsonl"
+    snapshot.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "theorem_name": "Yield.low",
+                        "type_expr": "true = false",
+                        "imports": ["Mathlib.Data.Bool.Basic"],
+                        "mathlib_rev": "abc123",
+                        "source_path": "Mathlib/Low.lean",
+                        "source_license": "Apache-2.0",
+                        "queue_depth": 0,
+                    },
+                    sort_keys=True,
+                ),
+                json.dumps(
+                    {
+                        "theorem_name": "Yield.high",
+                        "type_expr": "true = false",
+                        "imports": ["Mathlib.Data.Bool.Basic"],
+                        "mathlib_rev": "abc123",
+                        "source_path": "Mathlib/High.lean",
+                        "source_license": "Apache-2.0",
+                        "queue_depth": 0,
+                    },
+                    sort_keys=True,
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    history_path = tmp_path / "yield-history.jsonl"
+    history_path.write_text(
+        json.dumps(
+            {
+                "accepted_operator_chains": {"symm,generalize": 2},
+                "accepted_source_families": {"Mathlib/High.lean": 5},
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    history = read_yield_history(history_path)
+
+    candidates = generate_depth2_candidates(
+        mathlib_candidates_from_jsonl(snapshot),
+        generation_seed="yield-order",
+        epoch_randomness=json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
+        count=1,
+        tempo=3,
+        citation_alpha=0.0,
+        yield_history=history,
+        mutation_engine=StructuralMutationEngine(),
+    )
+
+    assert candidates[0].metadata["source_theorem_name"] == "Yield.high"
+    assert candidates[0].metadata["yield_history_version"] == "lemma-procedural-yield-history-v1"
+    assert candidates[0].metadata["yield_history_sha256"] == history.sha256
+    assert candidates[0].metadata["yield_history_entries"] == 1
+
+
+def test_depth2_generation_skips_alpha_equivalent_duplicates_before_lean(tmp_path: Path) -> None:
+    snapshot = tmp_path / "snapshot.jsonl"
+    snapshot.write_text(
+        json.dumps(
+            {
+                "theorem_name": "Duplicate.bool",
+                "type_expr": "true = false",
+                "imports": ["Mathlib.Data.Bool.Basic"],
+                "mathlib_rev": "abc123",
+                "source_path": "Mathlib/Duplicate.lean",
+                "source_license": "Apache-2.0",
+                "queue_depth": 0,
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    class CountingBatchGate(AssumedProceduralGateRunner):
+        def __init__(self) -> None:
+            super().__init__()
+            self.batch_sizes: list[int] = []
+
+        def batch(
+            self,
+            candidates,  # noqa: ANN001
+            *,
+            seen_canonical_hashes,  # noqa: ANN001
+        ) -> tuple[ProceduralGateVerdict, ...]:
+            self.batch_sizes.append(len(candidates))
+            return tuple(self(candidate, seen_canonical_hashes=seen_canonical_hashes) for candidate in candidates)
+
+    gate = CountingBatchGate()
+    with pytest.raises(ValueError, match="procedural gates accepted 1 candidates, needed 2"):
+        generate_depth2_candidates(
+            mathlib_candidates_from_jsonl(snapshot),
+            generation_seed="dedupe",
+            epoch_randomness=json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
+            count=2,
+            tempo=3,
+            citation_alpha=0.0,
+            gate_runner=gate,
+            mutation_engine=StructuralMutationEngine(),
+            generation_workers=4,
+        )
+
+    assert gate.batch_sizes == [1]
 
 
 def test_procedural_supply_mode_uses_explicit_active_registry_cache(tmp_path: Path) -> None:

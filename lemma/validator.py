@@ -241,6 +241,23 @@ def active_registry_cache_stale(registry: TaskRegistry, settings: LemmaSettings)
         expected_operator
     }:
         return True
+    history_hashes = {
+        str(task.metadata.get("yield_history_sha256") or "")
+        for task in registry.tasks
+        if "yield_history_sha256" in task.metadata
+    }
+    if settings.procedural_yield_history_jsonl is not None:
+        from lemma.supply.procedural import read_yield_history
+
+        history = read_yield_history(settings.procedural_yield_history_jsonl)
+        expected_history = (
+            settings.procedural_yield_history_sha256_expected.strip().lower().removeprefix("sha256:")
+            or history.sha256
+        )
+        if history_hashes != {expected_history}:
+            return True
+    elif history_hashes:
+        return True
     gate_versions = {
         str(task.metadata.get("gate_version")) for task in registry.tasks if "gate_version" in task.metadata
     }
@@ -341,6 +358,19 @@ def _procedural_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> Ta
         if settings.procedural_import_graph_jsonl is not None
         else empty_import_graph()
     )
+    yield_history = None
+    if settings.procedural_yield_history_jsonl is not None:
+        from lemma.supply.procedural import read_yield_history
+
+        yield_history = read_yield_history(settings.procedural_yield_history_jsonl)
+        expected_yield_history = (
+            settings.procedural_yield_history_sha256_expected.strip().lower().removeprefix("sha256:")
+        )
+        if expected_yield_history and yield_history.sha256 != expected_yield_history:
+            raise RuntimeError(
+                f"procedural yield history sha256 mismatch: got {yield_history.sha256}, "
+                f"expected {expected_yield_history}"
+            )
     candidates = generate_depth2_candidates(
         sources,
         generation_seed=generation_seed,
@@ -351,6 +381,7 @@ def _procedural_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> Ta
         citation_alpha=settings.procedural_citation_alpha,
         citation_weight_cap=settings.procedural_citation_weight_cap,
         citation_window_tempos=settings.procedural_citation_window_tempos,
+        yield_history=yield_history,
         mutation_engine=StructuralMutationEngine() if settings.protocol_mode == "production" else None,
         gate_runner=(
             LeanProceduralGateRunner(

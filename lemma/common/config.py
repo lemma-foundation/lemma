@@ -84,6 +84,14 @@ class LemmaSettings(BaseSettings):
         default=None,
         validation_alias="LEMMA_PROCEDURAL_IMPORT_GRAPH_JSONL",
     )
+    procedural_yield_history_jsonl: Path | None = Field(
+        default=None,
+        validation_alias="LEMMA_PROCEDURAL_YIELD_HISTORY_JSONL",
+    )
+    procedural_yield_history_sha256_expected: str = Field(
+        default="",
+        validation_alias="LEMMA_PROCEDURAL_YIELD_HISTORY_SHA256_EXPECTED",
+    )
     procedural_source_limit: int = Field(default=0, ge=0, validation_alias="LEMMA_PROCEDURAL_SOURCE_LIMIT")
     procedural_candidate_count: int = Field(default=0, ge=0, validation_alias="LEMMA_PROCEDURAL_CANDIDATE_COUNT")
     procedural_citation_alpha: float = Field(
@@ -178,6 +186,21 @@ class LemmaSettings(BaseSettings):
         default=0,
         ge=0,
         validation_alias="LEMMA_PROCEDURAL_LEAN_WORKERS",
+    )
+    procedural_lean_batch_size: int = Field(
+        default=96,
+        ge=1,
+        validation_alias="LEMMA_PROCEDURAL_LEAN_BATCH_SIZE",
+    )
+    procedural_lean_batch_parallelism: int = Field(
+        default=0,
+        ge=0,
+        validation_alias="LEMMA_PROCEDURAL_LEAN_BATCH_PARALLELISM",
+    )
+    procedural_lean_compile_error_split_limit: int = Field(
+        default=16,
+        ge=0,
+        validation_alias="LEMMA_PROCEDURAL_LEAN_COMPILE_ERROR_SPLIT_LIMIT",
     )
     verify_registry_signatures: bool = Field(
         default=False,

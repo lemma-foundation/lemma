@@ -96,6 +96,11 @@ LEMMA_CURRICULUM_BASE_TASK_COST_S=180
 LEMMA_CURRICULUM_DEPTH_COST_MULTIPLIER=2
 LEMMA_PROCEDURAL_GATE_TIMEOUT_S=120
 LEMMA_PROCEDURAL_TRIVIALITY_BUDGET_S=120
+LEMMA_PROCEDURAL_LEAN_BATCH_SIZE=96
+LEMMA_PROCEDURAL_LEAN_BATCH_PARALLELISM=1
+LEMMA_PROCEDURAL_LEAN_COMPILE_ERROR_SPLIT_LIMIT=16
+LEMMA_PROCEDURAL_YIELD_HISTORY_JSONL=procedural-yield-history.jsonl
+LEMMA_PROCEDURAL_YIELD_HISTORY_SHA256_EXPECTED=<yield-history-sha256>
 LEMMA_PROCEDURAL_NOVELTY_CACHE_JSONL=public-entry-cache.jsonl
 LEMMA_PROCEDURAL_IMPORT_GRAPH_JSONL=public-import-graph.jsonl
 LEMMA_CANONICAL_OUTPUT_DIR=canonical
@@ -136,6 +141,38 @@ For a live loop, warm the current active tempo registry that miners and validato
 ```bash
 uv run lemma tasks warm-active-procedural-registry
 ```
+
+For faster procedural generation, keep the Lean verifier warm instead of paying
+per-check container startup. Start a long-lived Docker worker with
+`scripts/start_lean_docker_worker.sh`, set `LEMMA_LEAN_DOCKER_WORKER` in the
+service environment, and keep `LEMMA_LEAN_VERIFY_WORKSPACE_CACHE_DIR` mounted at
+the same worker path. The procedural gate also supports explicit parallel Lean
+batches with `LEMMA_PROCEDURAL_LEAN_BATCH_PARALLELISM`; leave it at `1` unless a
+host has enough Lean worker capacity to run multiple batch modules at once.
+On the local warm Docker worker, a synthetic 96-candidate gate probe accepted
+all 96 candidates in one batch at roughly half the wall time of the 50-wide
+configuration, so `96` is the default batch size.
+`LEMMA_PROCEDURAL_YIELD_HISTORY_JSONL` is optional public telemetry from prior
+generation attempts. When set, validators hash it and use accepted source-family
+and operator-chain counts only to order current-epoch candidates; it does not
+generate future task sets.
+
+Procedural speed checklist:
+
+- [x] Keep the source-theorem baseline out of the procedural acceptance gate.
+- [x] Batch Lean gate checks so one Lean module can evaluate many candidates.
+- [x] Make Lean gate batch size configurable with the current live default preserved.
+- [x] Split an oversized Lean batch on timeout/OOM and salvage smaller valid batches.
+- [x] Split a compile-error batch with a bounded salvage budget.
+- [x] Add cheap pre-Lean rejection for mutation-chain drift that would fail production invariants later.
+- [x] Emit operator-chain and source-family yield telemetry when procedural telemetry is enabled.
+- [x] Run procedural gate batches in parallel when `LEMMA_PROCEDURAL_LEAN_BATCH_PARALLELISM` is explicitly set.
+- [x] Document the long-lived Lean verifier worker as the preferred live path when available.
+- [x] Keep future-epoch prebuild out of scope; warm only the current tempo after public randomness exists.
+- [x] Remove generated source-theorem baseline code that does not affect the proof/triviality decision.
+- [x] Use public yield telemetry to promote high-yield source families and operator chains deterministically.
+- [x] Reject alpha-equivalent generated duplicates before paying the Lean gate cost.
+- [x] Measure whether batch sizes above 50 improve the live worker without lowering yield.
 
 `LEMMA_ACTIVE_REGISTRY_JSON` pins one exact active registry file and fails closed if the file is missing. `LEMMA_ACTIVE_REGISTRY_CACHE_DIR` loads `tempo-<tempo>.registry.json` when present, and otherwise lets builder validators rebuild from the pinned public inputs. The warm command writes only the current tempo cache after that tempo's randomness is available, then skips it when already present. Use `--force` to refresh an existing current cache. Future paid task sets must not be generated privately before their tempo randomness exists. The lower-level rebuild command ignores active-cache settings so it can write a manually chosen output file.
 If `LEMMA_ACTIVE_REGISTRY_CACHE_INDEX_URL` points at a public corpus `registries/<netuid>/index.json`, miners, validators, and cache warmers hydrate the tempo cache from that public mirror before falling back to local generation. The downloaded registry is still treated only as a cache: it must match the published SHA256 and the effective public curriculum state before it is written locally. In production, prefer one designated builder validator to generate and publish the current registry, and run ordinary validators as auditors with `LEMMA_ACTIVE_REGISTRY_ROLE=auditor`. Auditor validators use the current public/cache registry, verify it, and idle/fail closed if the current cache is unavailable instead of spending Lean compute. Keep extra builder validators only when intentionally cross-checking generation capacity.

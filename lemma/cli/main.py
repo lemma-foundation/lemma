@@ -806,6 +806,12 @@ def tasks_build_mixed_registry_cmd(
     default=None,
     help="Public Lean import graph JSONL used by procedural slot-weight receipts.",
 )
+@click.option(
+    "--yield-history-jsonl",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Public procedural yield telemetry JSONL used to order source families.",
+)
 @click.option("--assume-gates", is_flag=True, help="Dev-only: skip Lean gate execution.")
 def tasks_generate_procedural_depth2_cmd(
     snapshot_path: Path,
@@ -822,6 +828,7 @@ def tasks_generate_procedural_depth2_cmd(
     triviality_retarget_jsonl: Path | None,
     novelty_cache_jsonl: Path | None,
     import_graph_jsonl: Path | None,
+    yield_history_jsonl: Path | None,
     assume_gates: bool,
 ) -> None:
     """Generate depth-2 procedural task candidates from public epoch inputs."""
@@ -830,7 +837,12 @@ def tasks_generate_procedural_depth2_cmd(
     from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
     from lemma.supply.mutation import StructuralMutationEngine
     from lemma.supply.novelty import empty_novelty_cache, read_novelty_cache
-    from lemma.supply.procedural import corpus_sources_from_dir, generate_depth2_candidates, source_pool_hash
+    from lemma.supply.procedural import (
+        corpus_sources_from_dir,
+        generate_depth2_candidates,
+        read_yield_history,
+        source_pool_hash,
+    )
     from lemma.supply.triviality_budget import triviality_budget_receipt_for_settings
 
     settings = LemmaSettings()
@@ -848,6 +860,8 @@ def tasks_generate_procedural_depth2_cmd(
         read_novelty_cache(novelty_cache_jsonl) if novelty_cache_jsonl is not None else empty_novelty_cache()
     )
     import_graph = read_import_graph(import_graph_jsonl) if import_graph_jsonl is not None else empty_import_graph()
+    yield_history_path = yield_history_jsonl or settings.procedural_yield_history_jsonl
+    yield_history = read_yield_history(yield_history_path) if yield_history_path is not None else None
     candidates = generate_depth2_candidates(
         sources,
         generation_seed=generation_seed,
@@ -857,6 +871,7 @@ def tasks_generate_procedural_depth2_cmd(
         citation_alpha=citation_alpha,
         citation_weight_cap=citation_weight_cap,
         citation_window_tempos=citation_window_tempos,
+        yield_history=yield_history,
         mutation_engine=None if assume_gates else StructuralMutationEngine(),
         gate_runner=AssumedProceduralGateRunner(novelty_cache=novelty_cache, import_graph=import_graph)
         if assume_gates
@@ -878,6 +893,8 @@ def tasks_generate_procedural_depth2_cmd(
                 "output": str(output_path),
                 "source_pool_sha256": source_pool_hash(sources),
                 "source_pool_receipt_sha256": candidates[0].metadata["source_pool_receipt_sha256"],
+                "yield_history_sha256": yield_history.sha256 if yield_history is not None else None,
+                "yield_history_entries": yield_history.entries if yield_history is not None else 0,
                 "triviality_budget_heartbeats": triviality_budget.budget_s,
                 "triviality_retarget_sha256": hashlib.sha256(
                     json.dumps(triviality_budget.inputs, sort_keys=True, separators=(",", ":")).encode()
@@ -931,6 +948,12 @@ def tasks_generate_procedural_depth2_cmd(
     default=None,
     help="Public Lean import graph JSONL used by procedural slot-weight receipts.",
 )
+@click.option(
+    "--yield-history-jsonl",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Public procedural yield telemetry JSONL used to order source families.",
+)
 def tasks_rebuild_procedural_registry_cmd(
     snapshot_path: Path,
     output_path: Path,
@@ -947,6 +970,7 @@ def tasks_rebuild_procedural_registry_cmd(
     triviality_retarget_jsonl: Path | None,
     novelty_cache_jsonl: Path | None,
     import_graph_jsonl: Path | None,
+    yield_history_jsonl: Path | None,
 ) -> None:
     """Rebuild the production procedural registry from public inputs."""
     from lemma.supply.gates import LeanProceduralGateRunner
@@ -958,6 +982,7 @@ def tasks_rebuild_procedural_registry_cmd(
         build_procedural_registry_tasks,
         corpus_sources_from_dir,
         generate_depth2_candidates,
+        read_yield_history,
         source_pool_hash,
     )
     from lemma.supply.triviality_budget import triviality_budget_receipt_for_settings
@@ -978,6 +1003,8 @@ def tasks_rebuild_procedural_registry_cmd(
         read_novelty_cache(novelty_cache_jsonl) if novelty_cache_jsonl is not None else empty_novelty_cache()
     )
     import_graph = read_import_graph(import_graph_jsonl) if import_graph_jsonl is not None else empty_import_graph()
+    yield_history_path = yield_history_jsonl or settings.procedural_yield_history_jsonl
+    yield_history = read_yield_history(yield_history_path) if yield_history_path is not None else None
     candidates = generate_depth2_candidates(
         sources,
         generation_seed=generation_seed,
@@ -987,6 +1014,7 @@ def tasks_rebuild_procedural_registry_cmd(
         citation_alpha=citation_alpha,
         citation_weight_cap=citation_weight_cap,
         citation_window_tempos=citation_window_tempos,
+        yield_history=yield_history,
         mutation_engine=StructuralMutationEngine(),
         gate_runner=LeanProceduralGateRunner(
             settings,
@@ -1010,6 +1038,8 @@ def tasks_rebuild_procedural_registry_cmd(
                 "registry_sha256": hashlib.sha256(output_path.read_bytes()).hexdigest(),
                 "source_pool_sha256": source_pool_hash(sources),
                 "source_pool_receipt_sha256": candidates[0].metadata["source_pool_receipt_sha256"],
+                "yield_history_sha256": yield_history.sha256 if yield_history is not None else None,
+                "yield_history_entries": yield_history.entries if yield_history is not None else 0,
                 "triviality_budget_heartbeats": triviality_budget.budget_s,
                 "triviality_retarget_sha256": hashlib.sha256(
                     json.dumps(triviality_budget.inputs, sort_keys=True, separators=(",", ":")).encode()

@@ -22,7 +22,9 @@ from lemma.supply.gates import GATE_VERSION, AssumedProceduralGateRunner, Proced
 from lemma.supply.mutation import PreviewMutationEngine, ProceduralMutationEngine
 from lemma.supply.novelty import statement_hash
 from lemma.supply.operator_bundle import (
+    MUTATION_ENGINE,
     OPERATOR_BUNDLE_VERSION,
+    OPERATOR_NAMES,
     procedural_operator_bundle_hash,
 )
 from lemma.supply.source_pool import source_pool_receipt, source_pool_receipt_sha256
@@ -50,6 +52,7 @@ class _Depth2GenerationContext:
     epoch_fields: dict[str, Any]
     pool_hash: str
     pool_receipt: dict[str, object]
+    yield_history_metadata: dict[str, object]
     operator_hash: str
     tempo: int
     mutation_engine: ProceduralMutationEngine
@@ -69,9 +72,34 @@ class _Depth2Telemetry:
     attempts: int = 0
     accepted: int = 0
     rejected: Counter[str] = field(default_factory=Counter)
+    operator_chains: Counter[str] = field(default_factory=Counter)
+    accepted_operator_chains: Counter[str] = field(default_factory=Counter)
+    source_families: Counter[str] = field(default_factory=Counter)
+    accepted_source_families: Counter[str] = field(default_factory=Counter)
+
+
+@dataclass(frozen=True)
+class ProceduralYieldHistory:
+    sha256: str
+    entries: int
+    accepted_source_families: dict[str, int]
+    accepted_operator_chains: dict[str, int]
+
+    def metadata(self) -> dict[str, object]:
+        return {
+            "yield_history_version": YIELD_HISTORY_VERSION,
+            "yield_history_sha256": self.sha256,
+            "yield_history_entries": self.entries,
+        }
 
 
 _SAFE_IDENT = re.compile(r"[^A-Za-z0-9_]+")
+_HEX64 = re.compile(r"^[0-9a-f]{64}$")
+_LEAN_MODULE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
+_GENERATED_PROP_BINDER = re.compile(
+    r"^∀\s+(lemma_p\d+_[A-Za-z0-9_]+)\s*:\s*Prop,\s*\1\s*→\s*\((.*)\)$"
+)
+YIELD_HISTORY_VERSION = "lemma-procedural-yield-history-v1"
 _LOW_VALUE_MUTATION_FALLBACKS = frozenset(
     {
         "true_premise",
@@ -111,6 +139,50 @@ def candidates_from_jsonl(path: Path) -> tuple[TaskCandidate, ...]:
         except (json.JSONDecodeError, ValueError) as e:
             raise ValueError(f"{path}:{no}: invalid task candidate: {e}") from e
     return tuple(out)
+
+
+def read_yield_history(path: Path) -> ProceduralYieldHistory:
+    raw = path.read_bytes()
+    source_families: Counter[str] = Counter()
+    operator_chains: Counter[str] = Counter()
+    entries = 0
+    for no, line in enumerate(raw.decode("utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"{path}:{no}: invalid procedural yield history row: {exc}") from exc
+        if not isinstance(payload, dict):
+            raise ValueError(f"{path}:{no}: procedural yield history row must be an object")
+        entries += 1
+        _add_counter_map(source_families, payload.get("accepted_source_families"))
+        _add_counter_map(operator_chains, payload.get("accepted_operator_chains"))
+        if payload.get("accepted") is True:
+            source_family = str(payload.get("source_family") or "").strip()
+            operator_chain = str(payload.get("operator_chain") or "").strip()
+            if source_family:
+                source_families[source_family] += 1
+            if operator_chain:
+                operator_chains[operator_chain] += 1
+    return ProceduralYieldHistory(
+        sha256=hashlib.sha256(raw).hexdigest(),
+        entries=entries,
+        accepted_source_families=dict(source_families),
+        accepted_operator_chains=dict(operator_chains),
+    )
+
+
+def _add_counter_map(counter: Counter[str], raw: object) -> None:
+    if not isinstance(raw, dict):
+        return
+    for key, value in raw.items():
+        if not isinstance(key, str) or not key.strip():
+            continue
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, int) and value > 0:
+            counter[key] += value
 
 
 def corpus_sources_from_dir(
@@ -285,6 +357,7 @@ def generate_depth2_candidates(
     citation_alpha: float = 0.5,
     citation_weight_cap: float = 64.0,
     citation_window_tempos: int = 2000,
+    yield_history: ProceduralYieldHistory | None = None,
     gate_runner: ProceduralGateRunner | None = None,
     mutation_engine: ProceduralMutationEngine | None = None,
     generation_workers: int | None = None,
@@ -319,6 +392,7 @@ def generate_depth2_candidates(
         seed=generation_seed,
         citation_alpha=citation_alpha,
         citation_weight_cap=citation_weight_cap,
+        yield_history=yield_history,
     )
     ctx = _Depth2GenerationContext(
         ordered=ordered,
@@ -326,6 +400,7 @@ def generate_depth2_candidates(
         epoch_fields=epoch_fields,
         pool_hash=pool_hash,
         pool_receipt=pool_receipt,
+        yield_history_metadata=yield_history.metadata() if yield_history is not None else {},
         operator_hash=operator_hash,
         tempo=tempo,
         mutation_engine=mutation_engine or PreviewMutationEngine(),
@@ -346,10 +421,16 @@ def _generate_depth2_candidates_sequential(
 ) -> tuple[TaskCandidate, ...]:
     out: list[TaskCandidate] = []
     seen: set[str] = set()
+    seen_prelean: set[str] = set()
     telemetry = _Depth2Telemetry()
     cursor = 0
     while len(out) < count and cursor < attempt_limit:
-        attempt = _attempt_depth2_candidate(ctx, cursor=cursor, seen_canonical_hashes=frozenset(seen))
+        attempt = _attempt_depth2_candidate(
+            ctx,
+            cursor=cursor,
+            seen_canonical_hashes=frozenset(seen),
+            seen_prelean_keys=seen_prelean,
+        )
         accepted = False
         if attempt.candidate is not None and attempt.verdict is not None:
             accepted = _maybe_accept_depth2_attempt(out, seen, attempt.candidate, attempt.verdict)
@@ -370,6 +451,7 @@ def _generate_depth2_candidates_parallel(
 ) -> tuple[TaskCandidate, ...]:
     out: list[TaskCandidate] = []
     seen: set[str] = set()
+    seen_prelean: set[str] = set()
     telemetry = _Depth2Telemetry()
     cursor = 0
     while len(out) < count and cursor < attempt_limit:
@@ -377,7 +459,13 @@ def _generate_depth2_candidates_parallel(
         batch_end = min(cursor + batch_width, attempt_limit)
         seen_snapshot = frozenset(seen)
         batch_cursors = range(cursor, batch_end)
-        attempts = _attempt_depth2_candidates_parallel(ctx, batch_cursors, seen_snapshot, workers=workers)
+        attempts = _attempt_depth2_candidates_parallel(
+            ctx,
+            batch_cursors,
+            seen_snapshot,
+            seen_prelean_keys=seen_prelean,
+            workers=workers,
+        )
         for attempt in sorted(attempts, key=lambda item: item.cursor):
             accepted = False
             if attempt.candidate is None or attempt.verdict is None:
@@ -394,6 +482,9 @@ def _generate_depth2_candidates_parallel(
 
 
 def _gate_batch_width(gate_runner: ProceduralGateRunner, workers: int) -> int:
+    batch_capacity = getattr(gate_runner, "batch_capacity", None)
+    if callable(batch_capacity):
+        return max(workers, int(batch_capacity(workers)))
     if callable(getattr(gate_runner, "batch", None)):
         return max(workers, _LEAN_GATE_BATCH_ATTEMPTS)
     return workers
@@ -404,6 +495,7 @@ def _attempt_depth2_candidates_parallel(
     cursors: range,
     seen_snapshot: frozenset[str],
     *,
+    seen_prelean_keys: set[str],
     workers: int,
 ) -> tuple[_Depth2Attempt, ...]:
     if not cursors:
@@ -412,12 +504,17 @@ def _attempt_depth2_candidates_parallel(
     batch_gate = getattr(ctx.gate_runner, "batch", None)
     if callable(batch_gate):
         mutation_attempts = _attempt_depth2_candidate_mutations_parallel(ctx, cursors, workers=worker_count)
-        candidates = tuple(attempt.candidate for attempt in mutation_attempts if attempt.candidate is not None)
-        verdicts = batch_gate(candidates, seen_canonical_hashes=seen_snapshot)
+        mutation_attempts = _mark_prelean_duplicates(mutation_attempts, seen_prelean_keys)
+        candidates = tuple(
+            attempt.candidate
+            for attempt in mutation_attempts
+            if attempt.candidate is not None and attempt.rejection_reason is None
+        )
+        verdicts = batch_gate(candidates, seen_canonical_hashes=seen_snapshot) if candidates else ()
         verdict_iter = iter(verdicts)
         batch_out: list[_Depth2Attempt] = []
         for attempt in mutation_attempts:
-            if attempt.candidate is None:
+            if attempt.candidate is None or attempt.rejection_reason is not None:
                 batch_out.append(attempt)
             else:
                 batch_out.append(
@@ -425,14 +522,25 @@ def _attempt_depth2_candidates_parallel(
                 )
         return tuple(batch_out)
 
+    mutation_attempts = _mark_prelean_duplicates(
+        _attempt_depth2_candidate_mutations_parallel(ctx, cursors, workers=worker_count),
+        seen_prelean_keys,
+    )
+    fallback_out = list(mutation_attempts)
     with ThreadPoolExecutor(max_workers=worker_count) as pool:
         futures = {
-            pool.submit(_attempt_depth2_candidate, ctx, cursor=cursor, seen_canonical_hashes=seen_snapshot): cursor
-            for cursor in cursors
+            pool.submit(ctx.gate_runner, attempt.candidate, seen_canonical_hashes=seen_snapshot): index
+            for index, attempt in enumerate(fallback_out)
+            if attempt.candidate is not None and attempt.rejection_reason is None
         }
-        fallback_out: list[_Depth2Attempt] = []
         for future in as_completed(futures):
-            fallback_out.append(future.result())
+            index = futures[future]
+            attempt = fallback_out[index]
+            fallback_out[index] = _Depth2Attempt(
+                cursor=attempt.cursor,
+                candidate=attempt.candidate,
+                verdict=future.result(),
+            )
     return tuple(fallback_out)
 
 
@@ -455,6 +563,7 @@ def _attempt_depth2_candidate(
     *,
     cursor: int,
     seen_canonical_hashes: frozenset[str],
+    seen_prelean_keys: set[str],
 ) -> _Depth2Attempt:
     source = ctx.ordered[cursor % len(ctx.ordered)]
     try:
@@ -466,12 +575,19 @@ def _attempt_depth2_candidate(
             mutation_engine=ctx.mutation_engine,
             source_pool_hash_value=ctx.pool_hash,
             source_pool_receipt_value=ctx.pool_receipt,
+            yield_history_metadata=ctx.yield_history_metadata,
             operator_bundle_hash=ctx.operator_hash,
             tempo=ctx.tempo,
             sequence=cursor,
         )
     except ValueError as exc:
         return _Depth2Attempt(cursor=cursor, candidate=None, verdict=None, rejection_reason=_mutation_rejection(exc))
+    prelean_rejection = _prelean_candidate_rejection(candidate)
+    if prelean_rejection:
+        return _Depth2Attempt(cursor=cursor, candidate=candidate, verdict=None, rejection_reason=prelean_rejection)
+    duplicate_rejection = _prelean_duplicate_rejection(candidate, seen_prelean_keys)
+    if duplicate_rejection:
+        return _Depth2Attempt(cursor=cursor, candidate=candidate, verdict=None, rejection_reason=duplicate_rejection)
     verdict = ctx.gate_runner(candidate, seen_canonical_hashes=seen_canonical_hashes)
     return _Depth2Attempt(cursor=cursor, candidate=candidate, verdict=verdict)
 
@@ -487,13 +603,35 @@ def _candidate_attempt(ctx: _Depth2GenerationContext, *, cursor: int) -> _Depth2
             mutation_engine=ctx.mutation_engine,
             source_pool_hash_value=ctx.pool_hash,
             source_pool_receipt_value=ctx.pool_receipt,
+            yield_history_metadata=ctx.yield_history_metadata,
             operator_bundle_hash=ctx.operator_hash,
             tempo=ctx.tempo,
             sequence=cursor,
         )
     except ValueError as exc:
         return _Depth2Attempt(cursor=cursor, candidate=None, verdict=None, rejection_reason=_mutation_rejection(exc))
+    prelean_rejection = _prelean_candidate_rejection(candidate)
+    if prelean_rejection:
+        return _Depth2Attempt(cursor=cursor, candidate=candidate, verdict=None, rejection_reason=prelean_rejection)
     return _Depth2Attempt(cursor=cursor, candidate=candidate, verdict=None)
+
+
+def _mark_prelean_duplicates(
+    attempts: tuple[_Depth2Attempt, ...],
+    seen_prelean_keys: set[str],
+) -> tuple[_Depth2Attempt, ...]:
+    out: list[_Depth2Attempt] = []
+    for attempt in attempts:
+        if attempt.candidate is None or attempt.rejection_reason is not None:
+            out.append(attempt)
+            continue
+        reason = _prelean_duplicate_rejection(attempt.candidate, seen_prelean_keys)
+        out.append(
+            _Depth2Attempt(cursor=attempt.cursor, candidate=attempt.candidate, verdict=None, rejection_reason=reason)
+            if reason
+            else attempt
+        )
+    return tuple(out)
 
 
 def _maybe_accept_depth2_attempt(
@@ -513,8 +651,18 @@ def _maybe_accept_depth2_attempt(
 
 def _record_depth2_attempt(telemetry: _Depth2Telemetry, attempt: _Depth2Attempt, *, accepted: bool) -> None:
     telemetry.attempts += 1
+    chain = _attempt_operator_chain(attempt)
+    source_family = _attempt_source_family(attempt)
+    if chain:
+        telemetry.operator_chains[chain] += 1
+    if source_family:
+        telemetry.source_families[source_family] += 1
     if accepted:
         telemetry.accepted += 1
+        if chain:
+            telemetry.accepted_operator_chains[chain] += 1
+        if source_family:
+            telemetry.accepted_source_families[source_family] += 1
         return
     telemetry.rejected[_depth2_rejection_reason(attempt)] += 1
 
@@ -543,6 +691,30 @@ def _mutation_rejection(exc: ValueError) -> str:
     return f"mutation:{message or 'failed'}"
 
 
+def _attempt_operator_chain(attempt: _Depth2Attempt) -> str:
+    if attempt.candidate is None:
+        return ""
+    chain = attempt.candidate.metadata.get("mutation_chain")
+    if not isinstance(chain, list):
+        return ""
+    operators = [str(step.get("operator") or "") for step in chain if isinstance(step, dict)]
+    return ",".join(operator for operator in operators if operator)
+
+
+def _attempt_source_family(attempt: _Depth2Attempt) -> str:
+    if attempt.candidate is None:
+        return ""
+    source_path = str(attempt.candidate.source_ref.path or "").strip()
+    if source_path:
+        return source_path
+    source_name = str(attempt.candidate.metadata.get("source_theorem_name") or "")
+    return source_name
+
+
+def _top_counter(counter: Counter[str], *, limit: int = 8) -> dict[str, int]:
+    return dict(sorted(counter.items(), key=lambda item: (-item[1], item[0]))[:limit])
+
+
 def _log_depth2_telemetry(telemetry: _Depth2Telemetry, *, count: int, attempt_limit: int) -> None:
     if os.environ.get("LEMMA_PROCEDURAL_GENERATION_TELEMETRY", "").strip().lower() not in {"1", "true", "yes"}:
         return
@@ -553,12 +725,69 @@ def _log_depth2_telemetry(telemetry: _Depth2Telemetry, *, count: int, attempt_li
                 "accepted": telemetry.accepted,
                 "attempt_limit": attempt_limit,
                 "attempts": telemetry.attempts,
+                "acceptance_rate": round(telemetry.accepted / telemetry.attempts, 4) if telemetry.attempts else 0.0,
+                "accepted_operator_chains": _top_counter(telemetry.accepted_operator_chains),
+                "accepted_source_families": _top_counter(telemetry.accepted_source_families),
                 "needed": count,
+                "operator_chains": _top_counter(telemetry.operator_chains),
                 "rejected": dict(sorted(telemetry.rejected.items())),
+                "source_families": _top_counter(telemetry.source_families),
             },
             sort_keys=True,
         ),
     )
+
+
+def _prelean_candidate_rejection(candidate: TaskCandidate) -> str:
+    metadata = candidate.metadata
+    chain = metadata.get("mutation_chain")
+    if not isinstance(chain, list) or len(chain) != 2:
+        return "prelean:mutation_chain"
+    for step in chain:
+        if not isinstance(step, dict):
+            return "prelean:mutation_chain"
+        operator = step.get("operator")
+        if operator not in OPERATOR_NAMES:
+            return "prelean:operator"
+        params = step.get("params")
+        if not isinstance(params, dict):
+            return "prelean:mutation_params"
+        engine = params.get("engine")
+        if isinstance(engine, str) and engine and engine != MUTATION_ENGINE:
+            return "prelean:mutation_engine"
+        input_hash = str(step.get("input_hash") or "")
+        output_hash = str(step.get("output_hash") or "")
+        if not _HEX64.fullmatch(input_hash) or not _HEX64.fullmatch(output_hash):
+            return "prelean:mutation_hash"
+        if input_hash == output_hash:
+            return "prelean:no_op"
+    if len(set(candidate.imports)) != len(candidate.imports):
+        return "prelean:duplicate_import"
+    if any(not _LEAN_MODULE.fullmatch(module) for module in candidate.imports):
+        return "prelean:import_module"
+    if any(token in candidate.type_expr for token in _STANDALONE_FORBIDDEN_TOKENS):
+        return "prelean:unsupported_token"
+    return ""
+
+
+def _prelean_duplicate_rejection(candidate: TaskCandidate, seen_prelean_keys: set[str]) -> str:
+    key = _prelean_statement_key(candidate)
+    if key in seen_prelean_keys:
+        return "prelean:duplicate_statement"
+    seen_prelean_keys.add(key)
+    return ""
+
+
+def _prelean_statement_key(candidate: TaskCandidate) -> str:
+    return statement_hash(_normalize_generated_binders(candidate.type_expr))
+
+
+def _normalize_generated_binders(type_expr: str) -> str:
+    text = type_expr.strip()
+    match = _GENERATED_PROP_BINDER.fullmatch(text)
+    if match is None:
+        return text
+    return f"∀ lemma_p : Prop, lemma_p → ({match.group(2).strip()})"
 
 
 def build_procedural_registry_tasks(
@@ -608,6 +837,7 @@ def _candidate_from_source(
     mutation_engine: ProceduralMutationEngine,
     source_pool_hash_value: str,
     source_pool_receipt_value: dict[str, object],
+    yield_history_metadata: dict[str, object] | None = None,
     operator_bundle_hash: str,
     tempo: int,
     sequence: int,
@@ -694,6 +924,7 @@ def _candidate_from_source(
         "citation_alpha_basis_points": source_pool_receipt_value["citation_alpha_basis_points"],
         "citation_weight_cap_micros": source_pool_receipt_value["citation_weight_cap_micros"],
         "citation_window_tempos": source_pool_receipt_value["citation_window_tempos"],
+        **(yield_history_metadata or {}),
         "operator_bundle_version": OPERATOR_BUNDLE_VERSION,
         "operator_bundle_hash": operator_bundle_hash,
         "canonical_hash": canonical_hash,
@@ -859,11 +1090,21 @@ def _ordered_sources(
     seed: str,
     citation_alpha: float,
     citation_weight_cap: float,
+    yield_history: ProceduralYieldHistory | None = None,
 ) -> tuple[TaskCandidate, ...]:
     alpha = min(1.0, max(0.0, float(citation_alpha)))
     cap = max(1.0, float(citation_weight_cap))
-    uniform = sorted(sources, key=lambda source: _hash_text(f"{seed}:uniform:{source.id}:{source.type_expr}"))
-    weighted = sorted(sources, key=lambda source: _weighted_source_key(source, seed=seed, cap=cap))
+    uniform = sorted(
+        sources,
+        key=lambda source: (
+            -_yield_source_score(source, yield_history),
+            _hash_text(f"{seed}:uniform:{source.id}:{source.type_expr}"),
+        ),
+    )
+    weighted = sorted(
+        sources,
+        key=lambda source: _weighted_source_key(source, seed=seed, cap=cap, yield_history=yield_history),
+    )
     used: set[str] = set()
     out: list[TaskCandidate] = []
     lanes = {"uniform": iter(uniform), "weighted": iter(weighted)}
@@ -885,12 +1126,36 @@ def _next_unused(candidates: Iterator[TaskCandidate], used: set[str]) -> TaskCan
     return None
 
 
-def _weighted_source_key(source: TaskCandidate, *, seed: str, cap: float) -> tuple[float, str]:
+def _weighted_source_key(
+    source: TaskCandidate,
+    *,
+    seed: str,
+    cap: float,
+    yield_history: ProceduralYieldHistory | None,
+) -> tuple[int, float, str]:
     raw_weight = _metadata_float(source.metadata.get("citation_weight"))
     weight = min(cap, raw_weight if raw_weight is not None else 1.0)
     if weight <= 0:
-        return math.inf, source.id
-    return -math.log(_unit_interval(f"{seed}:weighted:{source.id}:{source.type_expr}")) / weight, source.id
+        return -_yield_source_score(source, yield_history), math.inf, source.id
+    return (
+        -_yield_source_score(source, yield_history),
+        -math.log(_unit_interval(f"{seed}:weighted:{source.id}:{source.type_expr}")) / weight,
+        source.id,
+    )
+
+
+def _yield_source_score(source: TaskCandidate, yield_history: ProceduralYieldHistory | None) -> int:
+    if yield_history is None:
+        return 0
+    source_score = yield_history.accepted_source_families.get(_source_family(source), 0)
+    chain_score = 0
+    for operator in _productive_operators_for(source.type_expr):
+        chain_score = max(chain_score, yield_history.accepted_operator_chains.get(f"{operator},generalize", 0))
+    return (source_score * 1_000) + chain_score
+
+
+def _source_family(source: TaskCandidate) -> str:
+    return str(source.source_ref.path or source.source_ref.name or source.id)
 
 
 def _citation_weight_for_hash(source: TaskCandidate) -> float:

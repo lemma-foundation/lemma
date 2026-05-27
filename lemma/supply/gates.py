@@ -7,6 +7,7 @@ import json
 import os
 import threading
 from collections.abc import Iterable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field, replace
 from typing import Protocol
 
@@ -40,6 +41,8 @@ TRIVIALITY_STACK = (
     ("nlinarith", "  nlinarith"),
     ("aesop", "  aesop"),
 )
+_BatchGateInput = tuple[int, TaskCandidate]
+_BatchGateRow = tuple[int, TaskCandidate, dict[str, object] | None, VerifyResult, int]
 
 
 @dataclass(frozen=True)
@@ -132,7 +135,17 @@ class LeanProceduralGateRunner:
         self.novelty_cache = novelty_cache or empty_novelty_cache()
         self.import_graph = import_graph or empty_import_graph()
         self.lean_workers = _resolve_lean_workers(settings)
+        self.batch_size = max(1, int(getattr(settings, "procedural_lean_batch_size", 96) or 96))
+        configured_batch_parallelism = int(getattr(settings, "procedural_lean_batch_parallelism", 0) or 0)
+        self.batch_parallelism = max(1, configured_batch_parallelism or 1)
+        self.compile_error_split_limit = max(
+            0,
+            int(getattr(settings, "procedural_lean_compile_error_split_limit", 16) or 0),
+        )
         self._lean_slots = threading.BoundedSemaphore(self.lean_workers)
+
+    def batch_capacity(self, generation_workers: int) -> int:
+        return max(generation_workers, self.batch_size * self.batch_parallelism)
 
     def batch(
         self,
@@ -166,14 +179,38 @@ class LeanProceduralGateRunner:
             else:
                 pending.append((index, candidate))
 
-        for group in _batch_gate_groups(pending):
-            result = self._compile_batch_gate(tuple(candidate for _index, candidate in group))
-            parsed = _batch_gate_results(result)
-            batch_size = len(group)
-            for local_index, (output_index, candidate) in enumerate(group):
+        gate_groups = _batch_gate_groups(pending, batch_size=self.batch_size)
+        compile_split_budget = [self.compile_error_split_limit]
+        compile_split_lock = threading.Lock()
+        if self.batch_parallelism <= 1 or len(gate_groups) <= 1:
+            group_results = [
+                self._run_batch_gate_group(
+                    group,
+                    compile_split_budget=compile_split_budget,
+                    compile_split_lock=compile_split_lock,
+                )
+                for group in gate_groups
+            ]
+        else:
+            with ThreadPoolExecutor(max_workers=min(self.batch_parallelism, len(gate_groups))) as pool:
+                futures = {
+                    pool.submit(
+                        self._run_batch_gate_group,
+                        group,
+                        compile_split_budget=compile_split_budget,
+                        compile_split_lock=compile_split_lock,
+                    ): index
+                    for index, group in enumerate(gate_groups)
+                }
+                grouped: list[tuple[_BatchGateRow, ...] | None] = [None] * len(gate_groups)
+                for future in as_completed(futures):
+                    grouped[futures[future]] = future.result()
+                group_results = [group for group in grouped if group is not None]
+        for group_result in group_results:
+            for output_index, candidate, payload, result, batch_size in group_result:
                 out[output_index] = self._batch_gate_verdict(
                     candidate,
-                    payload=parsed.get(str(local_index)),
+                    payload=payload,
                     result=result,
                     seen_canonical_hashes=seen,
                     batch_size=batch_size,
@@ -347,6 +384,40 @@ class LeanProceduralGateRunner:
                 submission_policy="strict_envelope",
             )
 
+    def _run_batch_gate_group(
+        self,
+        group: tuple[_BatchGateInput, ...],
+        *,
+        compile_split_budget: list[int],
+        compile_split_lock: threading.Lock,
+    ) -> tuple[_BatchGateRow, ...]:
+        result = self._compile_batch_gate(tuple(candidate for _index, candidate in group))
+        parsed = _batch_gate_results(result)
+        if parsed or len(group) == 1 or result.passed or not _batch_result_should_split(
+            result,
+            compile_split_budget=compile_split_budget,
+            compile_split_lock=compile_split_lock,
+        ):
+            batch_size = len(group)
+            return tuple(
+                (output_index, candidate, parsed.get(str(local_index)), result, batch_size)
+                for local_index, (output_index, candidate) in enumerate(group)
+            )
+
+        mid = len(group) // 2
+        return (
+            *self._run_batch_gate_group(
+                group[:mid],
+                compile_split_budget=compile_split_budget,
+                compile_split_lock=compile_split_lock,
+            ),
+            *self._run_batch_gate_group(
+                group[mid:],
+                compile_split_budget=compile_split_budget,
+                compile_split_lock=compile_split_lock,
+            ),
+        )
+
     def _batch_gate_verdict(
         self,
         candidate: TaskCandidate,
@@ -423,6 +494,10 @@ def _combined_triviality_body() -> str:
     return "\n".join(["  first", *(f"  | {body.strip()}" for _name, body in TRIVIALITY_STACK)])
 
 
+def _combined_triviality_source() -> str:
+    return f"by\n{_combined_triviality_body()}"
+
+
 def _combined_imports(groups: Iterable[Iterable[str]]) -> tuple[str, ...]:
     out: list[str] = []
     for group in groups:
@@ -430,15 +505,6 @@ def _combined_imports(groups: Iterable[Iterable[str]]) -> tuple[str, ...]:
             if module not in out:
                 out.append(module)
     return tuple(out)
-
-
-def _proof_term_source(body: str | None) -> str:
-    return "" if body is None else f"by\n{body}"
-
-
-def _ancestor_baseline_body(candidate: TaskCandidate) -> str | None:
-    _ = candidate
-    return None
 
 
 def _resolve_lean_workers(settings: LemmaSettings) -> int:
@@ -531,12 +597,18 @@ def _triviality_result(result: VerifyResult) -> tuple[bool, bool, str | None, st
 
 def _batch_gate_groups(
     indexed: list[tuple[int, TaskCandidate]],
-) -> tuple[tuple[tuple[int, TaskCandidate], ...], ...]:
+    *,
+    batch_size: int,
+) -> tuple[tuple[_BatchGateInput, ...], ...]:
     groups: dict[tuple[str, str], list[tuple[int, TaskCandidate]]] = {}
     for item in indexed:
         candidate = item[1]
         groups.setdefault((candidate.lean_toolchain, candidate.mathlib_rev), []).append(item)
-    return tuple(tuple(group) for group in groups.values())
+    out: list[tuple[_BatchGateInput, ...]] = []
+    for group in groups.values():
+        for start in range(0, len(group), max(1, batch_size)):
+            out.append(tuple(group[start : start + batch_size]))
+    return tuple(out)
 
 
 def _batch_gate_results(result: VerifyResult) -> dict[str, dict[str, object]]:
@@ -556,13 +628,29 @@ def _batch_gate_results(result: VerifyResult) -> dict[str, dict[str, object]]:
     return out
 
 
+def _batch_result_should_split(
+    result: VerifyResult,
+    *,
+    compile_split_budget: list[int],
+    compile_split_lock: threading.Lock,
+) -> bool:
+    if result.reason in {"timeout", "oom"}:
+        return True
+    if result.reason != "compile_error":
+        return False
+    with compile_split_lock:
+        if compile_split_budget[0] <= 0:
+            return False
+        compile_split_budget[0] -= 1
+        return True
+
+
 def _batch_gate_source(candidates: tuple[TaskCandidate, ...]) -> str:
     specs = [
         "  { "
         f"id := {_json_string(str(index))}, "
         f"canonicalSource := {_json_string(candidate.type_expr)}, "
-        f"ancestorBaselineSource := {_json_string(_proof_term_source(_ancestor_baseline_body(candidate)))}, "
-        f"combinedTrivialitySource := {_json_string(_proof_term_source(_combined_triviality_body()))} "
+        f"combinedTrivialitySource := {_json_string(_combined_triviality_source())} "
         "}"
         for index, candidate in enumerate(candidates)
     ]
@@ -578,7 +666,6 @@ def _batch_gate_source(candidates: tuple[TaskCandidate, ...]) -> str:
             "structure CandidateSpec where",
             "  id : String",
             "  canonicalSource : String",
-            "  ancestorBaselineSource : String",
             "  combinedTrivialitySource : String",
             "",
             "def candidateSpecs : List CandidateSpec := [",
@@ -664,17 +751,9 @@ def _batch_gate_source(candidates: tuple[TaskCandidate, ...]) -> str:
             "    let _ ← Elab.Command.runTermElabM fun _ => do",
             "      let _ ← Elab.Term.elabType typeStx.raw",
             "      pure ()",
-            "    let ancestorSolved ← proofSourceSucceeds spec.canonicalSource spec.ancestorBaselineSource",
-            "    let stackSolved ←",
-            "      if ancestorSolved then",
-            "        pure false",
-            "      else",
-            "        proofSourceSucceeds spec.canonicalSource spec.combinedTrivialitySource",
-            "    let baselineSolved := ancestorSolved || stackSolved",
+            "    let baselineSolved ← proofSourceSucceeds spec.canonicalSource spec.combinedTrivialitySource",
             "    let solver : Option String :=",
-            "      if ancestorSolved then",
-            "        some \"source_theorem\"",
-            "      else if stackSolved then",
+            "      if baselineSolved then",
             "        some \"triviality_stack\"",
             "      else",
             "        none",
@@ -703,7 +782,6 @@ def _batch_gate_source(candidates: tuple[TaskCandidate, ...]) -> str:
 
 
 def _prop_gate_source(candidate: TaskCandidate) -> str:
-    ancestor_baseline = _ancestor_baseline_body(candidate)
     return "\n".join(
         [
             "import Lean",
@@ -713,8 +791,7 @@ def _prop_gate_source(candidate: TaskCandidate) -> str:
             "namespace LemmaProceduralGate",
             "",
             f"def canonicalSource : String := {_json_string(candidate.type_expr)}",
-            f"def ancestorBaselineSource : String := {_json_string(_proof_term_source(ancestor_baseline))}",
-            f"def combinedTrivialitySource : String := {_json_string(_proof_term_source(_combined_triviality_body()))}",
+            f"def combinedTrivialitySource : String := {_json_string(_combined_triviality_source())}",
             "",
             f"def typecheck_gate : ({candidate.type_expr}) := by",
             "  sorry",
@@ -745,13 +822,9 @@ def _prop_gate_source(candidate: TaskCandidate) -> str:
             "  | some value => Json.str value",
             "",
             "def emit_triviality : Elab.Command.CommandElabM Unit := do",
-            "  let ancestorSolved ← proofSourceSucceeds ancestorBaselineSource",
-            "  let stackSolved ← if ancestorSolved then pure false else proofSourceSucceeds combinedTrivialitySource",
-            "  let baselineSolved := ancestorSolved || stackSolved",
+            "  let baselineSolved ← proofSourceSucceeds combinedTrivialitySource",
             "  let solver : Option String :=",
-            "    if ancestorSolved then",
-            "      some \"source_theorem\"",
-            "    else if stackSolved then",
+            "    if baselineSolved then",
             "      some \"triviality_stack\"",
             "    else",
             "      none",

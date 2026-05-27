@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 from bittensor_wallet import Keypair
@@ -213,6 +214,41 @@ def test_active_registry_cache_stale_checks_gate_version() -> None:
     registry = TaskRegistry(schema_version=1, tasks=(stale,), sha256="0" * 64, signature_status="verified")
 
     assert active_registry_cache_stale(registry, _production_settings()) is True
+
+
+def test_active_registry_cache_stale_checks_yield_history_hash(tmp_path: Path) -> None:
+    history = tmp_path / "yield-history.jsonl"
+    history.write_text(json.dumps({"accepted_source_families": {"Mathlib/Old.lean": 1}}) + "\n", encoding="utf-8")
+    task = _production_task()
+    stale = task.model_copy(
+        update={
+            "metadata": {
+                **task.metadata,
+                "yield_history_version": "lemma-procedural-yield-history-v1",
+                "yield_history_sha256": "0" * 64,
+                "yield_history_entries": 1,
+            }
+        }
+    )
+    registry = TaskRegistry(schema_version=1, tasks=(stale,), sha256="0" * 64, signature_status="verified")
+
+    assert active_registry_cache_stale(registry, _production_settings(procedural_yield_history_jsonl=history)) is True
+
+
+def test_production_supply_rejects_malformed_yield_history_metadata() -> None:
+    task = _production_task()
+    bad = task.model_copy(
+        update={
+            "metadata": {
+                **task.metadata,
+                "yield_history_version": "lemma-procedural-yield-history-v1",
+                "yield_history_sha256": "not-a-sha",
+                "yield_history_entries": 1,
+            }
+        }
+    )
+
+    assert production_supply_rejection_reason(bad) == "yield_history_sha256"
 
 
 def _proof() -> str:

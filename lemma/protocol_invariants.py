@@ -79,6 +79,9 @@ def production_supply_rejection_reason(task: LemmaTask) -> str:
     source_pool_reason = _source_pool_rejection_reason(task)
     if source_pool_reason:
         return source_pool_reason
+    yield_history_reason = _yield_history_rejection_reason(task)
+    if yield_history_reason:
+        return yield_history_reason
     if metadata.get("gate_version") != GATE_VERSION:
         return "gate_version"
     if metadata.get("gate_runner") != "lean":
@@ -179,6 +182,14 @@ def _procedural_gate_receipt_sha256(task: LemmaTask, budget_key: str) -> str:
         "operator_bundle_hash": metadata.get("operator_bundle_hash"),
         "mutation_chain": metadata.get("mutation_chain"),
     }
+    if "yield_history_version" in metadata:
+        payload.update(
+            {
+                "yield_history_version": metadata.get("yield_history_version"),
+                "yield_history_sha256": metadata.get("yield_history_sha256"),
+                "yield_history_entries": metadata.get("yield_history_entries"),
+            }
+        )
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
     return hashlib.sha256(canonical).hexdigest()
 
@@ -298,6 +309,20 @@ def _source_pool_rejection_reason(task: LemmaTask) -> str:
     }
     if metadata.get("source_pool_receipt_sha256") != source_pool_receipt_sha256(expected_receipt):
         return "source_pool_receipt_sha256"
+    return ""
+
+
+def _yield_history_rejection_reason(task: LemmaTask) -> str:
+    metadata = task.metadata
+    present = any(key in metadata for key in ("yield_history_version", "yield_history_sha256", "yield_history_entries"))
+    if not present:
+        return ""
+    if metadata.get("yield_history_version") != "lemma-procedural-yield-history-v1":
+        return "yield_history_version"
+    if not _has_hex64(metadata, "yield_history_sha256"):
+        return "yield_history_sha256"
+    if not _has_int(metadata, "yield_history_entries"):
+        return "yield_history_entries"
     return ""
 
 
