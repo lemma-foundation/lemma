@@ -425,8 +425,8 @@ def test_candidate_from_source_falls_back_to_second_step_generalize() -> None:
             operators.append(operator)
             if step == 0:
                 return MutationResult(
-                    "∀ x : ℂ, Complex.im x = Complex.im x",
-                    {"from": "Complex.re", "to": "Complex.im"},
+                    f"({type_expr}) ∧ ({type_expr})",
+                    {"rule": "conjoin_self"},
                 )
             return MutationResult(
                 f"∀ p : Prop, p → ({type_expr})",
@@ -463,7 +463,7 @@ def test_candidate_from_source_falls_back_to_second_step_generalize() -> None:
         sequence=0,
     )
 
-    assert operators == ["substitute-type", "generalize"]
+    assert operators == ["conjoin-self", "generalize"]
     assert [step["operator"] for step in candidate.metadata["mutation_chain"]] == operators
 
 

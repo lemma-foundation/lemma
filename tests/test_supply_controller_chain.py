@@ -178,18 +178,22 @@ def test_procedural_registry_requires_depth_two_metadata() -> None:
         "mutation_depth": 2,
         "mutation_chain": [
             {
-                "operator": "substitute-type",
+                "operator": "conjoin-self",
                 "params": {
-                    "from": "Nat",
-                    "to": "Int",
+                    "rule": "conjoin_self",
                     "engine": "lean_ast_elaborator",
                 },
                 "input_hash": "1" * 64,
                 "output_hash": "2" * 64,
             },
             {
-                "operator": "substitute-type",
-                "params": {"from": "Int", "to": "Rat", "engine": "lean_ast_elaborator"},
+                "operator": "generalize",
+                "params": {
+                    "target": "fresh_prop_hypothesis",
+                    "binder": "p",
+                    "binder_type": "Prop",
+                    "engine": "lean_ast_elaborator",
+                },
                 "input_hash": "2" * 64,
                 "output_hash": "3" * 64,
             },

@@ -56,6 +56,8 @@ class PreviewMutationEngine:
                 f"∀ {binder} : Prop, {binder} → ({expr})",
                 {"target": "fresh_prop_hypothesis", "binder": binder, "binder_type": "Prop"},
             )
+        if operator == "conjoin-self":
+            return MutationResult(f"({expr}) ∧ ({expr})", {"rule": "conjoin_self"})
         if operator == "specialize":
             return _preview_specialize(expr, param_seed=param_seed)
         if operator == "conjoin":
@@ -415,6 +417,9 @@ def mutate (expr peer : TSyntax `term) : Elab.Command.CommandElabM (TSyntax `ter
       ("binder", Json.str binderName),
       ("binder_type", Json.str "Prop")
     ])
+  else if operatorName == "conjoin-self" then
+    let output ← `(term| ($expr) ∧ ($expr))
+    pure (output, jsonObj [("rule", Json.str "conjoin_self")])
   else if operatorName == "specialize" then
     match ← elabTypeExpr expr with
     | Expr.forallE name domain body _ =>

@@ -20,8 +20,6 @@ from lemma.supply.mutation import PreviewMutationEngine, ProceduralMutationEngin
 from lemma.supply.novelty import statement_hash
 from lemma.supply.operator_bundle import (
     OPERATOR_BUNDLE_VERSION,
-    SMALL_VALUES_BY_TYPE,
-    TYPE_SUBSTITUTIONS,
     procedural_operator_bundle_hash,
 )
 from lemma.supply.source_pool import source_pool_receipt, source_pool_receipt_sha256
@@ -73,7 +71,7 @@ _LOW_VALUE_MUTATION_FALLBACKS = frozenset(
 _LOW_VALUE_MUTATION_MODES = frozenset({"peer_premise"})
 _LOW_VALUE_MUTATION_RULES = frozenset({"conjoin_peer_conclusion", "false_disjunct"})
 _LOW_VALUE_MUTATION_TARGETS: frozenset[str] = frozenset()
-_PRODUCTIVE_OPERATOR_NAMES = ("substitute-type",)
+_PRODUCTIVE_OPERATOR_NAMES = ("conjoin-self",)
 
 
 def candidates_from_jsonl(path: Path) -> tuple[TaskCandidate, ...]:
@@ -641,45 +639,7 @@ def _eligible_depth2_sources(
 
 
 def _productive_operators_for(type_expr: str) -> tuple[str, ...]:
-    out: list[str] = []
-    if _has_small_specialization_target(type_expr):
-        out.append("specialize")
-    if any(_lean_token_present(type_expr, source) for source, _replacement in TYPE_SUBSTITUTIONS):
-        out.append("substitute-type")
-    if _has_top_level_arrow(type_expr):
-        out.append("weaken")
-    return tuple(operator for operator in _PRODUCTIVE_OPERATOR_NAMES if operator in out)
-
-
-def _has_small_specialization_target(type_expr: str) -> bool:
-    return "∀ " in type_expr and any(
-        _lean_token_present(type_expr, binder_type)
-        for binder_type in SMALL_VALUES_BY_TYPE
-        if binder_type != "Prop"
-    )
-
-
-def _lean_token_present(value: str, token: str) -> bool:
-    return re.search(rf"(?<![A-Za-z0-9_'.]){re.escape(token)}(?![A-Za-z0-9_'.])", value) is not None
-
-
-def _has_top_level_arrow(value: str) -> bool:
-    return _top_level_index(value, "→") is not None or _top_level_index(value, "->") is not None
-
-
-def _top_level_index(value: str, marker: str) -> int | None:
-    depth = 0
-    i = 0
-    while i < len(value):
-        char = value[i]
-        if char in "([{":
-            depth += 1
-        elif char in ")]}" and depth > 0:
-            depth -= 1
-        elif depth == 0 and value.startswith(marker, i):
-            return i
-        i += 1
-    return None
+    return _PRODUCTIVE_OPERATOR_NAMES if type_expr.strip() else ()
 
 
 def _peer_source(

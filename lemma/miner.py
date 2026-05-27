@@ -152,7 +152,7 @@ def _source_theorem_is_direct_proof(task: LemmaTask) -> bool:
             continue
         if params.get("mode") == "peer_premise":
             continue
-        if params.get("rule") in {"conjoin_peer_conclusion", "false_disjunct"}:
+        if params.get("rule") in {"conjoin_peer_conclusion", "conjoin_self", "false_disjunct"}:
             continue
         return False
     return True
@@ -236,6 +236,8 @@ def _source_theorem_exact(task: LemmaTask, source_theorem: str) -> str:
             peer = params.get("peer_theorem_name")
             if isinstance(peer, str) and _LEAN_DECL_RE.fullmatch(peer.strip()):
                 exact = f"And.intro ({exact}) {peer.strip()}"
+        elif params.get("rule") == "conjoin_self":
+            exact = f"And.intro ({exact}) ({exact})"
         elif params.get("rule") == "false_disjunct":
             exact = f"Or.inl ({exact})"
             wraps_false = True
