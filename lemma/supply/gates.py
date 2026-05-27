@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import re
 import threading
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
@@ -24,12 +23,12 @@ from lemma.supply.triviality_budget import (
 )
 from lemma.supply.types import TaskCandidate
 
-GATE_VERSION = "lemma-procedural-gates-v3"
+GATE_VERSION = "lemma-procedural-gates-v4"
 _TYPECHECK_GATE_DECL = "LemmaProceduralGate.typecheck_gate"
 _PROP_GATE_DECL = "LemmaProceduralGate.prop_gate"
 _KERNEL_NORMAL_MARKER = "LEMMA_KERNEL_NORMAL_FORM "
 _TRIVIALITY_MARKER = "LEMMA_TRIVIALITY "
-_LEAN_DECL_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_']*(?:\.[A-Za-z_][A-Za-z0-9_']*)*$")
+_BATCH_GATE_MARKER = "LEMMA_GATE_RESULT "
 TRIVIALITY_STACK = (
     ("decide", "  decide"),
     ("simp_all", "  simp_all"),
@@ -41,6 +40,8 @@ TRIVIALITY_STACK = (
     ("nlinarith", "  nlinarith"),
     ("aesop", "  aesop"),
 )
+
+
 @dataclass(frozen=True)
 class ProceduralGateVerdict:
     typechecked: bool
@@ -133,6 +134,53 @@ class LeanProceduralGateRunner:
         self.lean_workers = _resolve_lean_workers(settings)
         self._lean_slots = threading.BoundedSemaphore(self.lean_workers)
 
+    def batch(
+        self,
+        candidates: tuple[TaskCandidate, ...],
+        *,
+        seen_canonical_hashes: Iterable[str],
+    ) -> tuple[ProceduralGateVerdict, ...]:
+        if not candidates:
+            return ()
+        seen = tuple(seen_canonical_hashes)
+        out: list[ProceduralGateVerdict | None] = [None] * len(candidates)
+        pending: list[tuple[int, TaskCandidate]] = []
+        for index, candidate in enumerate(candidates):
+            statement_novelty = _novelty_status(candidate, seen, self.novelty_cache)
+            if statement_novelty == "duplicate":
+                skipped = VerifyResult(passed=False, reason="compile_error", stderr_tail="statement novelty duplicate")
+                out[index] = self._gate_verdict(
+                    candidate,
+                    seen_canonical_hashes=seen,
+                    typecheck=skipped,
+                    prop=skipped,
+                    kernel_hash="",
+                    novelty="duplicate",
+                    triviality_checked=False,
+                    baseline_solved=False,
+                    baseline_solver=None,
+                    baseline_reason="not_run",
+                    prop_gate_reason="skipped_statement_duplicate",
+                    lean_gate_invocations=0,
+                )
+            else:
+                pending.append((index, candidate))
+
+        for group in _batch_gate_groups(pending):
+            result = self._compile_batch_gate(tuple(candidate for _index, candidate in group))
+            parsed = _batch_gate_results(result)
+            batch_size = len(group)
+            for local_index, (output_index, candidate) in enumerate(group):
+                out[output_index] = self._batch_gate_verdict(
+                    candidate,
+                    payload=parsed.get(str(local_index)),
+                    result=result,
+                    seen_canonical_hashes=seen,
+                    batch_size=batch_size,
+                )
+
+        return tuple(verdict for verdict in out if verdict is not None)
+
     def __call__(
         self,
         candidate: TaskCandidate,
@@ -205,9 +253,17 @@ class LeanProceduralGateRunner:
         baseline_reason: str,
         prop_gate_reason: str | None = None,
         lean_gate_invocations: int = 1,
+        lean_gate_mode: str = "combined_prop_triviality",
+        lean_gate_batch_size: int | None = None,
+        lean_gate_batch_seconds: float | None = None,
     ) -> ProceduralGateVerdict:
         _ = seen_canonical_hashes
         slot_weight = slot_weight_receipt_for_candidate(candidate, import_graph=self.import_graph)
+        batch_metadata: dict[str, object] = {}
+        if lean_gate_batch_size is not None:
+            batch_metadata["lean_gate_batch_size"] = lean_gate_batch_size
+        if lean_gate_batch_seconds is not None:
+            batch_metadata["lean_gate_batch_seconds"] = round(lean_gate_batch_seconds, 3)
         return ProceduralGateVerdict(
             typechecked=typecheck.passed,
             prop_gate_passed=prop.passed,
@@ -225,9 +281,10 @@ class LeanProceduralGateRunner:
                 "triviality_stack": _triviality_stack_names(candidate),
                 "triviality_reason": baseline_reason,
                 "baseline_solver": baseline_solver,
-                "lean_gate_mode": "combined_prop_triviality",
+                "lean_gate_mode": lean_gate_mode,
                 "lean_gate_build_seconds": round(typecheck.build_seconds, 3),
                 "lean_gate_invocations": lean_gate_invocations,
+                **batch_metadata,
                 **self.novelty_cache.metadata(),
                 **self.triviality_budget_receipt.metadata(),
                 **slot_weight.metadata(),
@@ -258,11 +315,107 @@ class LeanProceduralGateRunner:
                 submission_policy="strict_envelope",
             )
 
+    def _compile_batch_gate(self, candidates: tuple[TaskCandidate, ...]) -> VerifyResult:
+        first = candidates[0]
+        imports = _combined_imports(candidate.imports for candidate in candidates)
+        problem = Problem(
+            id=f"{first.id}.gate.batch",
+            theorem_name="lemma_gate_dummy",
+            type_expr="True",
+            split="procedural_gate",
+            lean_toolchain=first.lean_toolchain,
+            mathlib_rev=first.mathlib_rev,
+            imports=imports,
+            extra={
+                "challenge_full": _batch_gate_source(candidates),
+                "lean_build_target": "Challenge",
+                "lean_eval_commands": (
+                    f"set_option maxHeartbeats {self.triviality_budget_heartbeats}",
+                    "#lemma_emit_gate_results",
+                ),
+                "lean_skip_submission_axiom_check": True,
+                "submission_policy": "strict_envelope",
+                "lean_max_heartbeats": self.gate_heartbeats,
+            },
+        )
+        with self._lean_slots:
+            return run_lean_verify(
+                self.settings,
+                verify_timeout_s=self.gate_timeout_s,
+                problem=problem,
+                proof_script=_dummy_submission_for_imports(imports),
+                submission_policy="strict_envelope",
+            )
+
+    def _batch_gate_verdict(
+        self,
+        candidate: TaskCandidate,
+        *,
+        payload: dict[str, object] | None,
+        result: VerifyResult,
+        seen_canonical_hashes: Iterable[str],
+        batch_size: int,
+    ) -> ProceduralGateVerdict:
+        if payload is None:
+            reason = result.reason if not result.passed else "compile_error"
+            typecheck = VerifyResult(passed=False, reason=reason, build_seconds=result.build_seconds)
+            return self._gate_verdict(
+                candidate,
+                seen_canonical_hashes=seen_canonical_hashes,
+                typecheck=typecheck,
+                prop=typecheck,
+                kernel_hash="",
+                novelty="missing_kernel_fingerprint",
+                triviality_checked=False,
+                baseline_solved=False,
+                baseline_solver=None,
+                baseline_reason="not_run",
+                lean_gate_mode="batched_prop_triviality",
+                lean_gate_invocations=1,
+                lean_gate_batch_size=batch_size,
+                lean_gate_batch_seconds=result.build_seconds,
+            )
+
+        typechecked = payload.get("typechecked") is True
+        reason = "ok" if typechecked else "compile_error"
+        typecheck = VerifyResult(passed=typechecked, reason=reason, build_seconds=result.build_seconds)
+        kernel_value = str(payload.get("kernel_normal_form") or "")
+        kernel_hash = hashlib.sha256(kernel_value.encode("utf-8")).hexdigest() if kernel_value else ""
+        triviality_checked = payload.get("triviality_checked") is True if typechecked else False
+        baseline_solved = payload.get("baseline_solved") is True if typechecked else False
+        if baseline_solved and not kernel_hash:
+            novelty = "passed"
+        elif kernel_hash:
+            novelty = _novelty_status(candidate, seen_canonical_hashes, self.novelty_cache, canonical_hash=kernel_hash)
+        else:
+            novelty = "missing_kernel_fingerprint"
+        if typechecked and (novelty == "passed" or baseline_solved):
+            solver = payload.get("baseline_solver")
+            baseline_solver = solver if isinstance(solver, str) and solver else None
+            baseline_reason = str(payload.get("triviality_reason") or "baseline_failed")
+        else:
+            triviality_checked, baseline_solved, baseline_solver, baseline_reason = False, False, None, "not_run"
+        return self._gate_verdict(
+            candidate,
+            seen_canonical_hashes=seen_canonical_hashes,
+            typecheck=typecheck,
+            prop=typecheck,
+            kernel_hash=kernel_hash,
+            novelty=novelty,
+            triviality_checked=triviality_checked,
+            baseline_solved=baseline_solved,
+            baseline_solver=baseline_solver,
+            baseline_reason=baseline_reason,
+            lean_gate_mode="batched_prop_triviality",
+            lean_gate_invocations=1,
+            lean_gate_batch_size=batch_size,
+            lean_gate_batch_seconds=result.build_seconds,
+        )
+
 
 def _triviality_stack_names(candidate: TaskCandidate) -> list[str]:
+    _ = candidate
     names = [name for name, _body in TRIVIALITY_STACK]
-    if _ancestor_baseline_body(candidate) is not None:
-        return ["source_theorem", *names]
     return names
 
 
@@ -270,49 +423,22 @@ def _combined_triviality_body() -> str:
     return "\n".join(["  first", *(f"  | {body.strip()}" for _name, body in TRIVIALITY_STACK)])
 
 
+def _combined_imports(groups: Iterable[Iterable[str]]) -> tuple[str, ...]:
+    out: list[str] = []
+    for group in groups:
+        for module in group:
+            if module not in out:
+                out.append(module)
+    return tuple(out)
+
+
 def _proof_term_source(body: str | None) -> str:
     return "" if body is None else f"by\n{body}"
 
 
 def _ancestor_baseline_body(candidate: TaskCandidate) -> str | None:
-    names = _ancestor_theorem_names(candidate)
-    if not names:
-        return None
-    alternatives = _ancestor_baseline_alternatives(names)
-    return "\n".join(("  repeat intro", "  first", *alternatives))
-
-
-def _ancestor_baseline_alternatives(names: tuple[str, ...]) -> tuple[str, ...]:
-    lines: list[str] = []
-    if len(names) > 1:
-        lines.append("  | constructor <;> first")
-        for name in names:
-            lines.append(f"    | apply {name} <;> assumption")
-            lines.append(f"    | exact {name}")
-            lines.append(f"    | simpa using {name}")
-    for name in names:
-        lines.append(f"  | apply {name} <;> assumption")
-        lines.append(f"  | exact {name}")
-        lines.append(f"  | simpa using {name}")
-    return tuple(lines)
-
-
-def _ancestor_theorem_names(candidate: TaskCandidate) -> tuple[str, ...]:
-    names: list[str] = []
-    _append_lean_decl_name(names, candidate.metadata.get("source_theorem_name"))
-    for step in candidate.metadata.get("mutation_chain") or ():
-        if not isinstance(step, dict):
-            continue
-        params = step.get("params")
-        if isinstance(params, dict):
-            _append_lean_decl_name(names, params.get("peer_theorem_name"))
-    return tuple(names)
-
-
-def _append_lean_decl_name(names: list[str], value: object) -> None:
-    if not isinstance(value, str) or not _LEAN_DECL_RE.fullmatch(value) or value in names:
-        return
-    names.append(value)
+    _ = candidate
+    return None
 
 
 def _resolve_lean_workers(settings: LemmaSettings) -> int:
@@ -401,6 +527,179 @@ def _triviality_result(result: VerifyResult) -> tuple[bool, bool, str | None, st
             str(payload.get("triviality_reason") or "baseline_failed"),
         )
     return False, False, None, "missing_triviality_marker"
+
+
+def _batch_gate_groups(
+    indexed: list[tuple[int, TaskCandidate]],
+) -> tuple[tuple[tuple[int, TaskCandidate], ...], ...]:
+    groups: dict[tuple[str, str], list[tuple[int, TaskCandidate]]] = {}
+    for item in indexed:
+        candidate = item[1]
+        groups.setdefault((candidate.lean_toolchain, candidate.mathlib_rev), []).append(item)
+    return tuple(tuple(group) for group in groups.values())
+
+
+def _batch_gate_results(result: VerifyResult) -> dict[str, dict[str, object]]:
+    out: dict[str, dict[str, object]] = {}
+    for line in (result.stdout_tail + "\n" + result.stderr_tail).splitlines():
+        if not line.startswith(_BATCH_GATE_MARKER):
+            continue
+        try:
+            payload = json.loads(line.removeprefix(_BATCH_GATE_MARKER))
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        key = payload.get("id")
+        if isinstance(key, str) and key:
+            out[key] = payload
+    return out
+
+
+def _batch_gate_source(candidates: tuple[TaskCandidate, ...]) -> str:
+    specs = [
+        "  { "
+        f"id := {_json_string(str(index))}, "
+        f"canonicalSource := {_json_string(candidate.type_expr)}, "
+        f"ancestorBaselineSource := {_json_string(_proof_term_source(_ancestor_baseline_body(candidate)))}, "
+        f"combinedTrivialitySource := {_json_string(_proof_term_source(_combined_triviality_body()))} "
+        "}"
+        for index, candidate in enumerate(candidates)
+    ]
+    spec_body = ",\n".join(specs)
+    return "\n".join(
+        [
+            "import Lean",
+            "",
+            "open Lean",
+            "",
+            "namespace LemmaProceduralGate",
+            "",
+            "structure CandidateSpec where",
+            "  id : String",
+            "  canonicalSource : String",
+            "  ancestorBaselineSource : String",
+            "  combinedTrivialitySource : String",
+            "",
+            "def candidateSpecs : List CandidateSpec := [",
+            spec_body,
+            "]",
+            "",
+            "def parseTermOrThrow (source : String) : Elab.Command.CommandElabM (TSyntax `term) := do",
+            "  let env ← getEnv",
+            "  match Parser.runParserCategory env `term source with",
+            "  | Except.ok stx => pure ⟨stx⟩",
+            "  | Except.error e => throwError e",
+            "",
+            "def proofSourceSucceeds (typeSource proofSource : String) : Elab.Command.CommandElabM Bool := do",
+            "  if proofSource == \"\" then",
+            "    pure false",
+            "  else",
+            "    try",
+            "      let typeStx ← parseTermOrThrow typeSource",
+            "      let proofStx ← parseTermOrThrow proofSource",
+            "      Elab.Command.runTermElabM fun _ => do",
+            "        let expected ← Elab.Term.elabType typeStx.raw",
+            "        let _ ← Elab.Term.elabTermEnsuringType proofStx.raw (some expected)",
+            "        Elab.Term.synthesizeSyntheticMVarsNoPostponing",
+            "        pure true",
+            "    catch _ =>",
+            "      pure false",
+            "",
+            "def nullableString : Option String → Json",
+            "  | none => Json.null",
+            "  | some value => Json.str value",
+            "",
+            "def binderInfoKey : BinderInfo → String",
+            "  | BinderInfo.default => \"default\"",
+            "  | BinderInfo.implicit => \"implicit\"",
+            "  | BinderInfo.strictImplicit => \"strictImplicit\"",
+            "  | BinderInfo.instImplicit => \"instImplicit\"",
+            "",
+            "def literalKey : Literal → String",
+            "  | Literal.natVal n => \"nat:\" ++ toString n",
+            "  | Literal.strVal value => \"str:\" ++ reprStr value",
+            "",
+            "partial def exprKey : Expr → String",
+            "  | Expr.bvar i => \"bvar:\" ++ toString i",
+            "  | Expr.fvar id => \"fvar:\" ++ toString id.name",
+            "  | Expr.mvar id => \"mvar:\" ++ toString id.name",
+            "  | Expr.sort level => \"sort:\" ++ toString level",
+            "  | Expr.const name levels => \"const:\" ++ name.toString ++ \":\" ++ toString levels",
+            "  | Expr.app fn arg => \"(app \" ++ exprKey fn ++ \" \" ++ exprKey arg ++ \")\"",
+            "  | Expr.lam _ domain body info =>",
+            "      \"(lam \" ++ binderInfoKey info ++ \" \" ++ exprKey domain ++ \" \" ++ exprKey body ++ \")\"",
+            "  | Expr.forallE _ domain body info =>",
+            "      \"(forall \" ++ binderInfoKey info ++ \" \" ++ exprKey domain ++ \" \" ++ exprKey body ++ \")\"",
+            "  | Expr.letE _ type value body _ =>",
+            "      \"(let \" ++ exprKey type ++ \" \" ++ exprKey value ++ \" \" ++ exprKey body ++ \")\"",
+            "  | Expr.lit literal => \"lit:\" ++ literalKey literal",
+            "  | Expr.mdata _ body => exprKey body",
+            "  | Expr.proj structName index body =>",
+            "      \"(proj \" ++ structName.toString ++ \" \" ++ toString index ++ \" \" ++ exprKey body ++ \")\"",
+            "",
+            "def emitPayload",
+            "    (spec : CandidateSpec)",
+            "    (typechecked : Bool)",
+            "    (kernelNormal : String)",
+            "    (trivialityChecked : Bool)",
+            "    (baselineSolved : Bool)",
+            "    (solver : Option String)",
+            "    (reason : String) : IO Unit := do",
+            "  let payload := Json.mkObj [",
+            "    (\"id\", Json.str spec.id),",
+            "    (\"typechecked\", Json.bool typechecked),",
+            "    (\"kernel_normal_form\", Json.str kernelNormal),",
+            "    (\"triviality_checked\", Json.bool trivialityChecked),",
+            "    (\"baseline_solved\", Json.bool baselineSolved),",
+            "    (\"baseline_solver\", nullableString solver),",
+            "    (\"triviality_reason\", Json.str reason),",
+            "    (\"reason\", Json.str reason)",
+            "  ]",
+            f"  IO.println <| {_json_string(_BATCH_GATE_MARKER)} ++ payload.compress",
+            "",
+            "def analyzeSpec (spec : CandidateSpec) : Elab.Command.CommandElabM Unit := do",
+            "  try",
+            "    let typeStx ← parseTermOrThrow spec.canonicalSource",
+            "    let _ ← Elab.Command.runTermElabM fun _ => do",
+            "      let _ ← Elab.Term.elabType typeStx.raw",
+            "      pure ()",
+            "    let ancestorSolved ← proofSourceSucceeds spec.canonicalSource spec.ancestorBaselineSource",
+            "    let stackSolved ←",
+            "      if ancestorSolved then",
+            "        pure false",
+            "      else",
+            "        proofSourceSucceeds spec.canonicalSource spec.combinedTrivialitySource",
+            "    let baselineSolved := ancestorSolved || stackSolved",
+            "    let solver : Option String :=",
+            "      if ancestorSolved then",
+            "        some \"source_theorem\"",
+            "      else if stackSolved then",
+            "        some \"triviality_stack\"",
+            "      else",
+            "        none",
+            "    let reason := if baselineSolved then \"baseline_solved\" else \"baseline_failed\"",
+            "    if baselineSolved then",
+            "      emitPayload spec true \"\" true baselineSolved solver reason",
+            "    else",
+            "      let kernelNormal ← Elab.Command.runTermElabM fun _ => do",
+            "        let expr ← Elab.Term.elabType typeStx.raw",
+            "        let expr ← instantiateMVars expr",
+            "        let normal ← Meta.reduceAll expr",
+            "        pure (exprKey normal)",
+            "      emitPayload spec true kernelNormal true baselineSolved solver reason",
+            "  catch _ =>",
+            "    emitPayload spec false \"\" false false none \"compile_error\"",
+            "",
+            "def emit_gate_results : Elab.Command.CommandElabM Unit := do",
+            "  for spec in candidateSpecs do",
+            "    analyzeSpec spec",
+            "",
+            "elab \"#lemma_emit_gate_results\" : command => emit_gate_results",
+            "",
+            "end LemmaProceduralGate",
+        ]
+    )
 
 
 def _prop_gate_source(candidate: TaskCandidate) -> str:
@@ -517,9 +816,13 @@ def _json_string(value: str) -> str:
 
 
 def _dummy_submission(candidate: TaskCandidate) -> str:
+    return _dummy_submission_for_imports(candidate.imports)
+
+
+def _dummy_submission_for_imports(imports: tuple[str, ...]) -> str:
     return "\n".join(
         [
-            *(f"import {module}" for module in candidate.imports),
+            *(f"import {module}" for module in imports),
             "",
             "namespace Submission",
             "",

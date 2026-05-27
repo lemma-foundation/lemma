@@ -84,6 +84,7 @@ _LOW_VALUE_MUTATION_RULES = frozenset({"conjoin_peer_conclusion", "false_disjunc
 _LOW_VALUE_MUTATION_TARGETS: frozenset[str] = frozenset()
 _PRODUCTIVE_OPERATOR_NAMES = ("symm",)
 _PEER_OPERATOR_NAMES = frozenset({"conjoin", "strengthen"})
+_LEAN_GATE_BATCH_ATTEMPTS = 50
 _MAX_SOURCE_DIFFICULTY_SCORE = 2
 _MAX_DIRECT_DEPENDENCY_COUNT = 0
 _MAX_DEPENDENCY_DEPTH = 0
@@ -372,7 +373,8 @@ def _generate_depth2_candidates_parallel(
     telemetry = _Depth2Telemetry()
     cursor = 0
     while len(out) < count and cursor < attempt_limit:
-        batch_end = min(cursor + workers, attempt_limit)
+        batch_width = _gate_batch_width(ctx.gate_runner, workers)
+        batch_end = min(cursor + batch_width, attempt_limit)
         seen_snapshot = frozenset(seen)
         batch_cursors = range(cursor, batch_end)
         attempts = _attempt_depth2_candidates_parallel(ctx, batch_cursors, seen_snapshot, workers=workers)
@@ -391,6 +393,12 @@ def _generate_depth2_candidates_parallel(
     return tuple(out)
 
 
+def _gate_batch_width(gate_runner: ProceduralGateRunner, workers: int) -> int:
+    if callable(getattr(gate_runner, "batch", None)):
+        return max(workers, _LEAN_GATE_BATCH_ATTEMPTS)
+    return workers
+
+
 def _attempt_depth2_candidates_parallel(
     ctx: _Depth2GenerationContext,
     cursors: range,
@@ -401,15 +409,45 @@ def _attempt_depth2_candidates_parallel(
     if not cursors:
         return ()
     worker_count = min(workers, len(cursors))
+    batch_gate = getattr(ctx.gate_runner, "batch", None)
+    if callable(batch_gate):
+        mutation_attempts = _attempt_depth2_candidate_mutations_parallel(ctx, cursors, workers=worker_count)
+        candidates = tuple(attempt.candidate for attempt in mutation_attempts if attempt.candidate is not None)
+        verdicts = batch_gate(candidates, seen_canonical_hashes=seen_snapshot)
+        verdict_iter = iter(verdicts)
+        batch_out: list[_Depth2Attempt] = []
+        for attempt in mutation_attempts:
+            if attempt.candidate is None:
+                batch_out.append(attempt)
+            else:
+                batch_out.append(
+                    _Depth2Attempt(cursor=attempt.cursor, candidate=attempt.candidate, verdict=next(verdict_iter))
+                )
+        return tuple(batch_out)
+
     with ThreadPoolExecutor(max_workers=worker_count) as pool:
         futures = {
             pool.submit(_attempt_depth2_candidate, ctx, cursor=cursor, seen_canonical_hashes=seen_snapshot): cursor
             for cursor in cursors
         }
+        fallback_out: list[_Depth2Attempt] = []
+        for future in as_completed(futures):
+            fallback_out.append(future.result())
+    return tuple(fallback_out)
+
+
+def _attempt_depth2_candidate_mutations_parallel(
+    ctx: _Depth2GenerationContext,
+    cursors: range,
+    *,
+    workers: int,
+) -> tuple[_Depth2Attempt, ...]:
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(_candidate_attempt, ctx, cursor=cursor): cursor for cursor in cursors}
         attempts: list[_Depth2Attempt] = []
         for future in as_completed(futures):
             attempts.append(future.result())
-    return tuple(attempts)
+    return tuple(sorted(attempts, key=lambda item: item.cursor))
 
 
 def _attempt_depth2_candidate(
@@ -436,6 +474,26 @@ def _attempt_depth2_candidate(
         return _Depth2Attempt(cursor=cursor, candidate=None, verdict=None, rejection_reason=_mutation_rejection(exc))
     verdict = ctx.gate_runner(candidate, seen_canonical_hashes=seen_canonical_hashes)
     return _Depth2Attempt(cursor=cursor, candidate=candidate, verdict=verdict)
+
+
+def _candidate_attempt(ctx: _Depth2GenerationContext, *, cursor: int) -> _Depth2Attempt:
+    source = ctx.ordered[cursor % len(ctx.ordered)]
+    try:
+        candidate = _candidate_from_source(
+            source,
+            source_pool=ctx.ordered,
+            generation_seed=ctx.generation_seed,
+            epoch_fields=ctx.epoch_fields,
+            mutation_engine=ctx.mutation_engine,
+            source_pool_hash_value=ctx.pool_hash,
+            source_pool_receipt_value=ctx.pool_receipt,
+            operator_bundle_hash=ctx.operator_hash,
+            tempo=ctx.tempo,
+            sequence=cursor,
+        )
+    except ValueError as exc:
+        return _Depth2Attempt(cursor=cursor, candidate=None, verdict=None, rejection_reason=_mutation_rejection(exc))
+    return _Depth2Attempt(cursor=cursor, candidate=candidate, verdict=None)
 
 
 def _maybe_accept_depth2_attempt(

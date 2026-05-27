@@ -87,6 +87,12 @@ def _fake_lean_gate(self, candidate, *, seen_canonical_hashes) -> ProceduralGate
     )
 
 
+def _fake_lean_gate_batch(self, candidates, *, seen_canonical_hashes) -> tuple[ProceduralGateVerdict, ...]:  # noqa: ANN001
+    return tuple(
+        _fake_lean_gate(self, candidate, seen_canonical_hashes=seen_canonical_hashes) for candidate in candidates
+    )
+
+
 def test_operator_registry_flow_smoke(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     runner = CliRunner()
     fixture_dir = Path("examples/operator-smoke")
@@ -342,6 +348,7 @@ def test_production_like_procedural_submission_smoke(monkeypatch: pytest.MonkeyP
         lambda settings, *, tempo: active_randomness,
     )
     monkeypatch.setattr("lemma.supply.gates.LeanProceduralGateRunner.__call__", _fake_lean_gate)
+    monkeypatch.setattr("lemma.supply.gates.LeanProceduralGateRunner.batch", _fake_lean_gate_batch)
     source_hash = source_pool_hash(mathlib_candidates_from_jsonl(snapshot_path))
     base_settings = LemmaSettings(
         _env_file=None,

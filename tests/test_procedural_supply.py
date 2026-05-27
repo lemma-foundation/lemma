@@ -201,6 +201,12 @@ def _fake_lean_gate(self, candidate, *, seen_canonical_hashes) -> ProceduralGate
     )
 
 
+def _fake_lean_gate_batch(self, candidates, *, seen_canonical_hashes) -> tuple[ProceduralGateVerdict, ...]:  # noqa: ANN001
+    return tuple(
+        _fake_lean_gate(self, candidate, seen_canonical_hashes=seen_canonical_hashes) for candidate in candidates
+    )
+
+
 def test_lean_ast_mutation_engine_uses_lean_eval_output(monkeypatch: pytest.MonkeyPatch) -> None:
     captured = {}
 
@@ -712,6 +718,60 @@ def test_depth2_generation_attempt_limit_scales_with_requested_count() -> None:
     assert gate.calls == 50
 
 
+def test_depth2_generation_batches_lean_gate_attempts() -> None:
+    class AlwaysGoodMutationEngine:
+        def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001, ARG002
+            return MutationResult(f"∀ p{step} : Prop, p{step} → ({type_expr})", {"target": "pytest"})
+
+    class BatchRejectingGate:
+        def __init__(self) -> None:
+            self.batch_sizes: list[int] = []
+
+        def __call__(self, candidate, *, seen_canonical_hashes):  # noqa: ANN001, ARG002
+            raise AssertionError("parallel generation should use the batch gate")
+
+        def batch(self, candidates, *, seen_canonical_hashes):  # noqa: ANN001, ARG002
+            self.batch_sizes.append(len(candidates))
+            return tuple(
+                ProceduralGateVerdict(
+                    typechecked=True,
+                    prop_gate_passed=True,
+                    triviality_checked=True,
+                    baseline_solved=False,
+                    novelty_status="duplicate",
+                    slot_weight=1.0,
+                )
+                for _candidate in candidates
+            )
+
+    sources = tuple(
+        fixture_candidate(
+            slug=f"source_{index}",
+            source_stream="mathlib_snapshot",
+            source_name="snapshot",
+            theorem_name=f"source_{index}",
+            type_expr="∀ x : ℂ, Complex.re x = Complex.re x",
+            queue_depth=0,
+        )
+        for index in range(100)
+    )
+    gate = BatchRejectingGate()
+
+    with pytest.raises(ValueError, match="procedural gates accepted 0 candidates, needed 1"):
+        generate_depth2_candidates(
+            sources,
+            generation_seed="epoch-a",
+            epoch_randomness=json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
+            count=1,
+            tempo=3,
+            gate_runner=gate,
+            generation_workers=2,
+            mutation_engine=AlwaysGoodMutationEngine(),
+        )
+
+    assert gate.batch_sizes == [50]
+
+
 def test_depth2_generation_parallel_matches_sequential(tmp_path: Path) -> None:
     class LatencyGate:
         def __call__(self, candidate, *, seen_canonical_hashes):  # noqa: ANN001, ARG002
@@ -938,7 +998,7 @@ def test_lean_gate_runner_embeds_triviality_stack(monkeypatch: pytest.MonkeyPatc
     assert calls == ["gate"]
 
 
-def test_lean_gate_runner_rejects_source_theorem_wrappers(
+def test_lean_gate_runner_does_not_embed_source_theorem_baseline(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     snapshot = tmp_path / "snapshot.jsonl"
@@ -952,15 +1012,14 @@ def test_lean_gate_runner_rejects_source_theorem_wrappers(
     )[0]
     def fake_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001, ARG001
         assert problem.id.endswith(".gate")
-        assert "def ancestorBaselineSource" in str(problem.extra["challenge_full"])
-        assert "apply " in str(problem.extra["challenge_full"])
+        assert 'def ancestorBaselineSource : String := ""' in str(problem.extra["challenge_full"])
         return VerifyResult(
             passed=True,
             reason="ok",
             stdout_tail=(
                 "LEMMA_KERNEL_NORMAL_FORM (forall default const:True:[] const:True:[])\n"
-                'LEMMA_TRIVIALITY {"checked":true,"baseline_solved":true,'
-                '"baseline_solver":"source_theorem","triviality_reason":"baseline_solved"}'
+                'LEMMA_TRIVIALITY {"checked":true,"baseline_solved":false,'
+                '"baseline_solver":null,"triviality_reason":"baseline_failed"}'
             ),
             declaration_fingerprints={
                 "LemmaProceduralGate.typecheck_gate": "7" * 64,
@@ -973,9 +1032,59 @@ def test_lean_gate_runner_rejects_source_theorem_wrappers(
         LemmaSettings(_env_file=None, lean_use_docker=False, procedural_gate_timeout_s=5)
     )(candidate, seen_canonical_hashes=())
 
-    assert verdict.accepted is False
-    assert verdict.baseline_solved is True
-    assert verdict.metadata["baseline_solver"] == "source_theorem"
+    assert verdict.accepted is True
+    assert verdict.baseline_solved is False
+    assert verdict.metadata["baseline_solver"] is None
+
+
+def test_lean_gate_runner_batches_gate_results(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    snapshot = tmp_path / "snapshot.jsonl"
+    _write_snapshot(snapshot)
+    candidates = generate_depth2_candidates(
+        mathlib_candidates_from_jsonl(snapshot),
+        generation_seed="epoch-a",
+        epoch_randomness=json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
+        count=2,
+        tempo=3,
+    )
+    calls: list[str] = []
+
+    def fake_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001, ARG001
+        assert problem.id.endswith(".gate.batch")
+        gate_source = str(problem.extra["challenge_full"])
+        assert "#lemma_emit_gate_results" in problem.extra["lean_eval_commands"]
+        assert 'ancestorBaselineSource := ""' in gate_source
+        calls.append("batch")
+        return VerifyResult(
+            passed=True,
+            reason="ok",
+            build_seconds=2.5,
+            stdout_tail="\n".join(
+                (
+                    'LEMMA_GATE_RESULT {"id":"0","typechecked":true,"kernel_normal_form":"first",'
+                    '"triviality_checked":true,"baseline_solved":false,"baseline_solver":null,'
+                    '"triviality_reason":"baseline_failed"}',
+                    'LEMMA_GATE_RESULT {"id":"1","typechecked":true,"kernel_normal_form":"second",'
+                    '"triviality_checked":true,"baseline_solved":false,"baseline_solver":null,'
+                    '"triviality_reason":"baseline_failed"}',
+                )
+            ),
+        )
+
+    monkeypatch.setattr("lemma.supply.gates.run_lean_verify", fake_verify)
+    verdicts = LeanProceduralGateRunner(
+        LemmaSettings(_env_file=None, lean_use_docker=False, procedural_gate_timeout_s=5)
+    ).batch(candidates, seen_canonical_hashes=())
+
+    assert calls == ["batch"]
+    assert [verdict.accepted for verdict in verdicts] == [True, True]
+    assert [verdict.metadata["kernel_canonical_hash"] for verdict in verdicts] == [
+        hashlib.sha256(b"first").hexdigest(),
+        hashlib.sha256(b"second").hexdigest(),
+    ]
+    assert verdicts[0].metadata["lean_gate_mode"] == "batched_prop_triviality"
+    assert verdicts[0].metadata["lean_gate_batch_size"] == 2
+    assert verdicts[0].metadata["lean_gate_batch_seconds"] == 2.5
 
 
 def test_lean_gate_runner_skips_triviality_when_compile_gate_fails(
@@ -1195,6 +1304,7 @@ def test_procedural_supply_mode_rebuilds_active_registry_from_public_inputs(
     )
     monkeypatch.setattr("lemma.validator.resolve_active_epoch_randomness", lambda settings, *, tempo: randomness)
     monkeypatch.setattr("lemma.supply.gates.LeanProceduralGateRunner.__call__", _fake_lean_gate)
+    monkeypatch.setattr("lemma.supply.gates.LeanProceduralGateRunner.batch", _fake_lean_gate_batch)
     settings = LemmaSettings(
         _env_file=None,
         task_supply_mode="procedural",
@@ -1420,6 +1530,7 @@ def test_procedural_source_pool_includes_prior_accepted_corpus(
         lambda settings, *, tempo: json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
     )
     monkeypatch.setattr("lemma.supply.gates.LeanProceduralGateRunner.__call__", _fake_lean_gate)
+    monkeypatch.setattr("lemma.supply.gates.LeanProceduralGateRunner.batch", _fake_lean_gate_batch)
     settings = LemmaSettings(
         _env_file=None,
         task_supply_mode="procedural",

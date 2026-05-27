@@ -207,6 +207,14 @@ def test_active_registry_cache_stale_checks_operator_bundle_hash() -> None:
     assert active_registry_cache_stale(registry, settings) is True
 
 
+def test_active_registry_cache_stale_checks_gate_version() -> None:
+    task = _production_task()
+    stale = task.model_copy(update={"metadata": {**task.metadata, "gate_version": "lemma-procedural-gates-old"}})
+    registry = TaskRegistry(schema_version=1, tasks=(stale,), sha256="0" * 64, signature_status="verified")
+
+    assert active_registry_cache_stale(registry, _production_settings()) is True
+
+
 def _proof() -> str:
     return "import Mathlib\n\nnamespace Submission\n\ntheorem test_true : True := by\n  trivial\n\nend Submission\n"
 

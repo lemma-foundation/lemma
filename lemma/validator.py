@@ -24,6 +24,7 @@ from lemma.scoring import ScoreResult, UnearnedPolicy, VerificationRecord, score
 from lemma.store import append_jsonl
 from lemma.submissions import LemmaSubmission, validate_submission_for_task
 from lemma.supply.controller import CurriculumTempoRecord
+from lemma.supply.gates import GATE_VERSION
 from lemma.supply.queue import initial_active_pool
 from lemma.supply.slot_weight import slot_weight_receipt_for_kernel_dependencies, slot_weight_receipt_for_task
 from lemma.task_activation import task_reward_eligibility, task_slot_weight
@@ -239,6 +240,11 @@ def active_registry_cache_stale(registry: TaskRegistry, settings: LemmaSettings)
     if expected_operator and {str(task.metadata.get("operator_bundle_hash") or "") for task in registry.tasks} != {
         expected_operator
     }:
+        return True
+    gate_versions = {
+        str(task.metadata.get("gate_version")) for task in registry.tasks if "gate_version" in task.metadata
+    }
+    if gate_versions and gate_versions != {GATE_VERSION}:
         return True
     return False
 
