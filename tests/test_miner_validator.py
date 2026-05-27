@@ -20,6 +20,7 @@ from lemma.miner import (
     _normalize_prover_result,
     _strip_json_fence,
     mine_once,
+    prover_input,
     run_openai_compatible_prover,
     run_prover_command,
 )
@@ -762,6 +763,48 @@ def test_mine_once_wraps_substitute_type_fallback_inside_fresh_prop_hypothesis(
 
     assert result.verification.passed is True
     assert result.submission.metadata["prover"] == "source_theorem_wrapper"
+
+
+def test_mine_once_does_not_reuse_source_theorem_after_type_substitution(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    task = _task().model_copy(
+        update={
+            "metadata": {
+                "source_theorem_name": "known_true",
+                "mutation_chain": [
+                    {
+                        "operator": "substitute-type",
+                        "params": {"source": "Complex.re", "target": "Complex.im"},
+                    }
+                ],
+            }
+        }
+    )
+    registry = TaskRegistry(schema_version=1, tasks=(task,), sha256="0" * 64)
+    calls = []
+
+    def fake_prover(*args: object, **kwargs: object) -> ProverResult:
+        calls.append(kwargs)
+        return ProverResult(task_id=task.id, proof_script=_proof("  trivial"))
+
+    class FakeVerifier:
+        def verify(self, task: object, submission: object) -> VerifyResult:
+            assert isinstance(submission, LemmaSubmission)
+            return VerifyResult(passed="trivial" in submission.proof_script, reason="ok")
+
+    monkeypatch.setattr("lemma.miner.run_openai_compatible_prover", fake_prover)
+    monkeypatch.setattr("lemma.miner.get_verifier", lambda *args, **kwargs: FakeVerifier())
+    monkeypatch.setattr("lemma.miner.verify_result_from_adapter_result", lambda result: result)
+
+    result = mine_once(
+        _settings(tmp_path).model_copy(update={"prover_base_url": "https://example.test", "prover_model": "model"}),
+        registry=registry,
+    )
+
+    assert result.verification.passed is True
+    assert calls == [{}]
+    assert "source_theorem_name" not in prover_input(task, timeout_s=1.0)
 
 
 def test_mine_once_falls_back_to_hosted_when_source_theorem_wrapper_fails(

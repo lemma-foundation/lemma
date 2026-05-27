@@ -79,7 +79,7 @@ def prover_input(task: LemmaTask, timeout_s: float) -> dict[str, Any]:
         "submission_stub": task.submission_stub,
         "timeout_s": timeout_s,
     }
-    source_theorem = _source_theorem_name(task)
+    source_theorem = _reusable_source_theorem_name(task)
     if source_theorem is not None:
         payload["source_theorem_name"] = source_theorem
     return payload
@@ -132,8 +132,34 @@ def _source_theorem_name(task: LemmaTask) -> str | None:
     return name if _LEAN_DECL_RE.fullmatch(name) else None
 
 
+def _reusable_source_theorem_name(task: LemmaTask) -> str | None:
+    name = _source_theorem_name(task)
+    return name if name is not None and _source_theorem_is_direct_proof(task) else None
+
+
+def _source_theorem_is_direct_proof(task: LemmaTask) -> bool:
+    for step in task.metadata.get("mutation_chain", ()):
+        if not isinstance(step, dict):
+            return False
+        params = step.get("params")
+        if not isinstance(params, dict):
+            return False
+        if step.get("operator") == "substitute-type" and params.get("fallback") != "no_supported_type_occurrence":
+            return False
+        if params.get("target") == "fresh_prop_hypothesis" and params.get("binder_type") == "Prop":
+            continue
+        if params.get("fallback") in {"true_premise", "no_supported_type_occurrence"}:
+            continue
+        if params.get("mode") == "peer_premise":
+            continue
+        if params.get("rule") in {"conjoin_peer_conclusion", "false_disjunct"}:
+            continue
+        return False
+    return True
+
+
 def _source_theorem_wrapper_prover(task: LemmaTask) -> ProverResult | None:
-    source_theorem = _source_theorem_name(task)
+    source_theorem = _reusable_source_theorem_name(task)
     if source_theorem is None or "\n  sorry" not in task.submission_stub:
         return None
     exact = _source_theorem_exact(task, source_theorem)
