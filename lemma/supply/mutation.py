@@ -179,13 +179,16 @@ def _preview_specialize(expr: str, *, param_seed: str) -> MutationResult:
 
 
 def _preview_substitute_type(expr: str, *, param_seed: str) -> MutationResult:
-    offset = _hash_int(param_seed) % len(TYPE_SUBSTITUTIONS)
-    ordered = TYPE_SUBSTITUTIONS[offset:] + TYPE_SUBSTITUTIONS[:offset]
-    for source_type, replacement_type in ordered:
+    for source_type, replacement_type in _ordered_type_substitutions(param_seed):
         output = _replace_type_name(expr, source_type, replacement_type)
         if output != expr:
             return MutationResult(output, {"from": source_type, "to": replacement_type})
     return MutationResult(f"True → ({expr})", {"fallback": "no_supported_type_occurrence"})
+
+
+def _ordered_type_substitutions(param_seed: str) -> tuple[tuple[str, str], ...]:
+    offset = _hash_int(param_seed) % len(TYPE_SUBSTITUTIONS)
+    return TYPE_SUBSTITUTIONS[offset:] + TYPE_SUBSTITUTIONS[:offset]
 
 
 def _preview_weaken(expr: str) -> MutationResult:
@@ -287,7 +290,7 @@ def paramSeed : String := {_lean_string(param_seed)}
 def peerSourceId : String := {_lean_string(peer.id)}
 def peerTheoremName : String := {_lean_string(peer.theorem_name)}
 def peerTargetSha256 : String := {_lean_string(_hash_text(peer.statement))}
-def substitutions : List (String × String) := {_lean_pairs(TYPE_SUBSTITUTIONS)}
+def substitutions : List (String × String) := {_lean_pairs(_ordered_type_substitutions(param_seed))}
 def smallValues : List (String × List String) := {_lean_string_tuple_list(SMALL_VALUES_BY_TYPE)}
 
 def parseTermOrThrow (source : String) : Elab.Command.CommandElabM (TSyntax `term) := do
