@@ -43,6 +43,25 @@ class MineOnceResult:
     verification: VerifyResult
 
 
+def _miner_attempt_row(task: LemmaTask, submission: LemmaSubmission, verification: VerifyResult) -> dict[str, Any]:
+    row: dict[str, Any] = {
+        "created_at": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        "task_id": task.id,
+        "task_version": task.task_version,
+        "target_sha256": task.target_sha256,
+        "proof_sha256": submission.proof_sha256,
+        "passed_local_verify": verification.passed,
+    }
+    if not verification.passed:
+        row["verify_reason"] = verification.reason
+        row["proof_script"] = submission.proof_script
+        if verification.stderr_tail:
+            row["stderr_tail"] = verification.stderr_tail[-8000:]
+        if verification.stdout_tail:
+            row["stdout_tail"] = verification.stdout_tail[-2000:]
+    return row
+
+
 def _strip_json_fence(content: str) -> str:
     text = content.strip()
     lines = text.splitlines()
@@ -342,20 +361,15 @@ def mine_once(
     if proof is None or draft_submission is None or verification is None:
         raise ProverError("prover did not return a proof")
     if not verification.passed:
+        append_jsonl(
+            settings.operator_data_dir / "miner-attempts.jsonl",
+            [_miner_attempt_row(task, draft_submission, verification)],
+        )
         raise ProverError(f"local verification failed after {attempts} attempt(s): {verification.reason}")
 
     submission = sign_submission_with_wallet(settings, draft_submission) if sign else draft_submission
     append_jsonl(
         settings.operator_data_dir / "miner-attempts.jsonl",
-        [
-            {
-                "created_at": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
-                "task_id": task.id,
-                "task_version": task.task_version,
-                "target_sha256": task.target_sha256,
-                "proof_sha256": submission.proof_sha256,
-                "passed_local_verify": verification.passed,
-            }
-        ],
+        [_miner_attempt_row(task, submission, verification)],
     )
     return MineOnceResult(task=task, submission=submission, verification=verification)

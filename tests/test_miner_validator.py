@@ -280,12 +280,26 @@ def test_mine_once_rejects_local_verify_failure(monkeypatch: pytest.MonkeyPatch,
     )
 
     def fake_verify(*args: object, **kwargs: object) -> VerifyResult:
-        return VerifyResult(passed=False, reason="compile_error")
+        return VerifyResult(passed=False, reason="compile_error", stderr_tail="unknown identifier `bad`")
 
     monkeypatch.setattr("lemma.verifiers.lean.run_lean_verify", fake_verify)
 
     with pytest.raises(ProverError, match=r"local verification failed after 1 attempt\(s\)"):
         mine_once(_settings(tmp_path), prover_command=f"{sys.executable} {script}", registry=_registry())
+    rows = [json.loads(line) for line in (tmp_path / "operator" / "miner-attempts.jsonl").read_text().splitlines()]
+    assert rows == [
+        {
+            "created_at": rows[0]["created_at"],
+            "passed_local_verify": False,
+            "proof_script": _proof().strip(),
+            "proof_sha256": rows[0]["proof_sha256"],
+            "stderr_tail": "unknown identifier `bad`",
+            "target_sha256": rows[0]["target_sha256"],
+            "task_id": "lemma.test.true",
+            "task_version": rows[0]["task_version"],
+            "verify_reason": "compile_error",
+        }
+    ]
 
 
 def test_mine_once_repairs_hosted_proof_after_compile_error(
