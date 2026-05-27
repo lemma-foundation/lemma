@@ -513,6 +513,45 @@ def test_candidate_from_source_falls_back_to_second_step_generalize() -> None:
     assert [step["operator"] for step in candidate.metadata["mutation_chain"]] == operators
 
 
+def test_candidate_from_source_skips_peer_lookup_for_non_peer_operators(monkeypatch: pytest.MonkeyPatch) -> None:
+    source = fixture_candidate(
+        slug="source",
+        source_stream="mathlib_snapshot",
+        source_name="snapshot",
+        theorem_name="source",
+        type_expr="true = false",
+        queue_depth=0,
+    )
+    monkeypatch.setattr(
+        "lemma.supply.procedural._peer_source",
+        lambda *args, **kwargs: pytest.fail("non-peer operators should not scan the source pool"),
+    )
+
+    candidate = _candidate_from_source(
+        source,
+        source_pool=(source,),
+        generation_seed="epoch-a",
+        epoch_fields={},
+        operator_chain=("symm", "generalize"),
+        mutation_engine=StructuralMutationEngine(),
+        source_pool_hash_value="a" * 64,
+        source_pool_receipt_value={
+            "version": "test",
+            "source_count": 1,
+            "source_stream_counts": {"mathlib_snapshot": 1},
+            "sampling_version": "test",
+            "citation_alpha_basis_points": 5000,
+            "citation_weight_cap_micros": 64_000_000,
+            "citation_window_tempos": 2000,
+        },
+        operator_bundle_hash="b" * 64,
+        tempo=3,
+        sequence=0,
+    )
+
+    assert [step["operator"] for step in candidate.metadata["mutation_chain"]] == ["symm", "generalize"]
+
+
 def test_candidate_from_source_rejects_placeholder_mutation() -> None:
     class PlaceholderMutationEngine:
         def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001, ARG002

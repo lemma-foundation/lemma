@@ -83,6 +83,7 @@ _LOW_VALUE_MUTATION_MODES = frozenset({"peer_premise"})
 _LOW_VALUE_MUTATION_RULES = frozenset({"conjoin_peer_conclusion", "false_disjunct"})
 _LOW_VALUE_MUTATION_TARGETS: frozenset[str] = frozenset()
 _PRODUCTIVE_OPERATOR_NAMES = ("symm",)
+_PEER_OPERATOR_NAMES = frozenset({"conjoin", "strengthen"})
 _MAX_SOURCE_DIFFICULTY_SCORE = 2
 _MAX_DIRECT_DEPENDENCY_COUNT = 0
 _MAX_DEPENDENCY_DEPTH = 0
@@ -566,7 +567,11 @@ def _candidate_from_source(
         )
         if operator is None:
             raise ValueError("no productive procedural operator for current type")
-        peer = _peer_source(source_pool, source_id=source.id, seed=generation_seed, sequence=sequence, step=step)
+        peer = (
+            _peer_source(source_pool, source_id=source.id, seed=generation_seed, sequence=sequence, step=step)
+            if operator in _PEER_OPERATOR_NAMES
+            else source
+        )
         mutation = mutation_engine.apply(
             source,
             type_expr,
