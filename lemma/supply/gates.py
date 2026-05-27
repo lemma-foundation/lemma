@@ -415,6 +415,7 @@ def _gate_problem(
             "lean_build_target": "Challenge",
             "lean_fingerprint_names": fingerprint_names,
             "lean_eval_commands": eval_commands,
+            "lean_skip_submission_axiom_check": True,
             "submission_policy": "strict_envelope",
         },
     )

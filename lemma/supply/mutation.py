@@ -123,7 +123,8 @@ class LeanAstMutationEngine:
                 ),
                 "lean_build_target": "Challenge",
                 "lean_max_heartbeats": int(self.settings.procedural_gate_max_heartbeats),
-                "lean_eval_commands": ("#lemma_emit_mutation",),
+                "lean_skip_axiom_check": True,
+                "lean_skip_submission_axiom_check": True,
                 "submission_policy": "strict_envelope",
             },
         )
@@ -145,9 +146,10 @@ class LeanAstMutationEngine:
 
     def _parse_result(self, output: str) -> MutationResult:
         for line in output.splitlines():
-            if not line.startswith(self._MARKER):
+            marker_index = line.find(self._MARKER)
+            if marker_index < 0:
                 continue
-            payload = json.loads(line.removeprefix(self._MARKER))
+            payload = json.loads(line[marker_index + len(self._MARKER) :])
             type_expr = payload.get("type_expr")
             params = payload.get("params")
             if not isinstance(type_expr, str) or not type_expr.strip() or not isinstance(params, dict):
@@ -481,6 +483,8 @@ def emit : Elab.Command.CommandElabM Unit := do
   IO.println <| "LEMMA_AST_MUTATION " ++ payload.compress
 
 elab "#lemma_emit_mutation" : command => emit
+
+#lemma_emit_mutation
 
 end LemmaProceduralMutator
 """

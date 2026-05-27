@@ -214,8 +214,10 @@ def test_lean_ast_mutation_engine_uses_lean_eval_output(monkeypatch: pytest.Monk
     assert "def sourceTermOrThrow" in captured["problem"].extra["challenge_full"]
     assert "let roundtrip ← parseTermOrThrow rendered" in captured["problem"].extra["challenge_full"]
     assert captured["problem"].extra["lean_max_heartbeats"] == 400_000
-    assert captured["problem"].extra["lean_eval_commands"] == ("#lemma_emit_mutation",)
+    assert captured["problem"].extra["lean_skip_axiom_check"] is True
+    assert captured["problem"].extra["lean_skip_submission_axiom_check"] is True
     assert 'elab "#lemma_emit_mutation" : command => emit' in captured["problem"].extra["challenge_full"]
+    assert "\n#lemma_emit_mutation\n" in captured["problem"].extra["challenge_full"]
     assert "theorem lemma_ast_mutation_dummy : True" in captured["proof_script"]
 
 
@@ -286,6 +288,18 @@ def test_lean_ast_mutation_engine_accepts_marker_before_postcheck_failure(
     )
 
     assert result.type_expr == "ℤ = ℤ"
+
+
+def test_lean_ast_mutation_engine_parses_lake_build_info_prefixed_marker() -> None:
+    output = (
+        'info: Challenge.lean:206:0: LEMMA_AST_MUTATION {"params":{"rule":"conjoin_self"},'
+        '"type_expr":"(True) ∧ (True)"}'
+    )
+
+    result = LeanAstMutationEngine(LemmaSettings(_env_file=None, lean_use_docker=False))._parse_result(output)
+
+    assert result.type_expr == "(True) ∧ (True)"
+    assert result.params["engine"] == "lean_ast_elaborator"
 
 
 def test_depth2_generation_is_epoch_seeded_not_static(tmp_path: Path) -> None:
@@ -814,6 +828,7 @@ def test_lean_gate_runner_caps_parallel_verify_jobs(monkeypatch: pytest.MonkeyPa
         try:
             if problem.id.endswith(".gate"):
                 assert problem.extra["lean_max_heartbeats"] == 400_000
+                assert problem.extra["lean_skip_submission_axiom_check"] is True
                 gate_source = str(problem.extra["challenge_full"])
                 assert "def typecheck_gate" in gate_source
                 assert "theorem prop_gate" in gate_source

@@ -9,6 +9,9 @@ from pathlib import Path
 from lemma.lean.submission_policy import submission_axiom_check_names, submission_policy_for_problem
 from lemma.problems.base import Problem
 
+_SKIP_AXIOM_CHECK_FLAG = ".lemma_skip_axiom_check"
+_SKIP_SUBMISSION_FLAG = ".lemma_skip_submission"
+
 
 def workspace_template_cache_key(problem: Problem) -> str:
     """Stable id for Challenge/Solution/lakefile template (same epoch ⇒ same key)."""
@@ -70,6 +73,8 @@ def materialize_workspace(
         lake = _lakefile_toml(problem)
         (dest / "lakefile.toml").write_text(lake, encoding="utf-8")
         (dest / ".lemma_build_target").write_text(build_target + "\n", encoding="utf-8")
+        _write_bool_flag(dest, _SKIP_AXIOM_CHECK_FLAG, _skip_axiom_check(problem))
+        _write_skip_submission_flag(dest, problem)
         (dest / "AxiomCheck.lean").write_text(_axiom_check_source(problem, submission_lean, policy), encoding="utf-8")
         return
 
@@ -85,6 +90,8 @@ def materialize_workspace(
 
     (dest / "lakefile.toml").write_text(_lakefile_toml(problem), encoding="utf-8")
     (dest / ".lemma_build_target").write_text(build_target + "\n", encoding="utf-8")
+    _write_bool_flag(dest, _SKIP_AXIOM_CHECK_FLAG, _skip_axiom_check(problem))
+    _write_skip_submission_flag(dest, problem)
 
     # Check axioms on the submitted theorem in ``Submission`` (not ``Solution``): the
     # Solution module only bridges Challenge ↔ Submission and may not expose names
@@ -97,6 +104,26 @@ def _lean_build_target(problem: Problem) -> str:
     if raw not in {"Challenge", "Solution", "Submission"}:
         raise ValueError(f"unsupported Lean build target: {raw}")
     return raw
+
+
+def _skip_submission_axiom_check(problem: Problem) -> bool:
+    return bool(problem.extra.get("lean_skip_submission_axiom_check"))
+
+
+def _skip_axiom_check(problem: Problem) -> bool:
+    return bool(problem.extra.get("lean_skip_axiom_check"))
+
+
+def _write_bool_flag(dest: Path, name: str, enabled: bool) -> None:
+    path = dest / name
+    if enabled:
+        path.write_text("1\n", encoding="utf-8")
+    elif path.exists():
+        path.unlink()
+
+
+def _write_skip_submission_flag(dest: Path, problem: Problem) -> None:
+    _write_bool_flag(dest, _SKIP_SUBMISSION_FLAG, _skip_submission_axiom_check(problem))
 
 
 def _lakefile_toml(problem: Problem) -> str:
@@ -144,14 +171,20 @@ def _lean_max_heartbeats(problem: Problem) -> int | None:
 def _axiom_check_source(problem: Problem, submission_lean: str, policy: str) -> str:
     fingerprint_names = _extra_fingerprint_names(problem)
     eval_commands = _extra_eval_commands(problem)
-    submission_names = submission_axiom_check_names(problem, submission_lean, policy=policy)
-    lines = ["import Submission"]
-    if fingerprint_names or eval_commands:
+    skip_submission = _skip_submission_axiom_check(problem)
+    submission_names = [] if skip_submission else submission_axiom_check_names(problem, submission_lean, policy=policy)
+    if skip_submission:
+        lines = ["import Challenge" if fingerprint_names or eval_commands else "import Init"]
+    else:
+        lines = ["import Submission"]
+    if not skip_submission and (fingerprint_names or eval_commands):
         lines.append("import Challenge")
     lines.append("")
     if submission_names:
         lines.extend(_dependency_audit_source(submission_names))
     lines.extend(eval_commands)
+    if skip_submission:
+        lines.append("#print axioms True.intro")
     for name in submission_names:
         _append_declaration_fingerprint(lines, f"Submission.{name}", include_axioms=True)
     for name in fingerprint_names:

@@ -62,6 +62,51 @@ def test_materialize_records_requested_lean_build_target(tmp_path: Path) -> None
     materialize_workspace(dest, p, p.submission_stub())
 
     assert (dest / ".lemma_build_target").read_text(encoding="utf-8").strip() == "Challenge"
+    assert not (dest / ".lemma_skip_submission").exists()
+
+
+def test_materialize_can_skip_dummy_submission_for_internal_challenge_eval(tmp_path: Path) -> None:
+    p = _minimal_problem()
+    p = Problem(
+        **{
+            **p.__dict__,
+            "extra": {
+                "lean_build_target": "Challenge",
+                "lean_eval_commands": ("#eval IO.println \"mutation-ready\"",),
+                "lean_skip_submission_axiom_check": True,
+            },
+        }
+    )
+    dest = tmp_path / "work"
+
+    materialize_workspace(dest, p, p.submission_stub())
+
+    axiom_check = (dest / "AxiomCheck.lean").read_text(encoding="utf-8")
+    assert (dest / ".lemma_skip_submission").read_text(encoding="utf-8").strip() == "1"
+    assert "import Challenge" in axiom_check
+    assert "import Submission" not in axiom_check
+    assert "#eval IO.println \"mutation-ready\"" in axiom_check
+    assert "#print axioms True.intro" in axiom_check
+
+
+def test_materialize_records_internal_axiom_check_skip(tmp_path: Path) -> None:
+    p = _minimal_problem()
+    p = Problem(
+        **{
+            **p.__dict__,
+            "extra": {
+                "lean_build_target": "Challenge",
+                "lean_skip_axiom_check": True,
+                "lean_skip_submission_axiom_check": True,
+            },
+        }
+    )
+    dest = tmp_path / "work"
+
+    materialize_workspace(dest, p, p.submission_stub())
+
+    assert (dest / ".lemma_skip_axiom_check").read_text(encoding="utf-8").strip() == "1"
+    assert (dest / ".lemma_skip_submission").read_text(encoding="utf-8").strip() == "1"
 
 
 def test_materialize_adds_extra_challenge_fingerprint_names(tmp_path: Path) -> None:

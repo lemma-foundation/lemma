@@ -34,6 +34,48 @@ def test_docker_verify_script_uses_workspace_build_target(tmp_path: Path, monkey
     assert "\nlake build Challenge Submission\n" in script
 
 
+def test_docker_verify_script_skips_submission_for_internal_challenge_eval(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.delenv("LEMMA_LEAN_VERIFY_FULL_BUILD", raising=False)
+    (tmp_path / ".lemma_build_target").write_text("Challenge\n", encoding="utf-8")
+    (tmp_path / ".lemma_skip_submission").write_text("1\n", encoding="utf-8")
+    sb = LeanSandbox(use_docker=True, network_mode="none")
+
+    script = sb._docker_verify_script_source(tmp_path)
+
+    assert "\nlake build Challenge\n" in script
+    assert "\nlake build Challenge Submission\n" not in script
+
+
+def test_docker_verify_script_skips_axiom_check_for_internal_eval(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.delenv("LEMMA_LEAN_VERIFY_FULL_BUILD", raising=False)
+    (tmp_path / ".lemma_build_target").write_text("Challenge\n", encoding="utf-8")
+    (tmp_path / ".lemma_skip_submission").write_text("1\n", encoding="utf-8")
+    (tmp_path / ".lemma_skip_axiom_check").write_text("1\n", encoding="utf-8")
+    sb = LeanSandbox(use_docker=True, network_mode="none")
+
+    script = sb._docker_verify_script_source(tmp_path)
+
+    assert "\nlake build Challenge\n" in script
+    assert "AxiomCheck.lean" not in script
+
+
+def test_docker_parse_logs_accepts_internal_eval_without_axiom_scan(tmp_path: Path) -> None:
+    (tmp_path / ".lemma_skip_axiom_check").write_text("1\n", encoding="utf-8")
+    sb = LeanSandbox(use_docker=True)
+
+    result = sb._verify_docker_parse_logs(
+        "LEMMA_AST_MUTATION {\"type_expr\":\"True\",\"params\":{}}\n",
+        0,
+        1.25,
+        tmp_path,
+        16_000,
+    )
+
+    assert result.passed is True
+    assert result.reason == "ok"
+    assert "LEMMA_AST_MUTATION" in result.stdout_tail
+
+
 def test_docker_worker_exec_uses_workdir_argv(tmp_path: Path, monkeypatch) -> None:
     calls: list[list[str]] = []
 
