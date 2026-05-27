@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from pathlib import Path
 from typing import cast
 
@@ -1079,6 +1080,8 @@ def _warm_active_procedural_registry(*, tempo: int | None, force: bool) -> None:
         task_registry_for_validation,
     )
 
+    started = time.perf_counter()
+    rebuild_wall_seconds = 0.0
     settings = LemmaSettings()
     if settings.active_registry_json is not None:
         raise click.ClickException("active registry cache warming requires LEMMA_ACTIVE_REGISTRY_CACHE_DIR")
@@ -1106,6 +1109,7 @@ def _warm_active_procedural_registry(*, tempo: int | None, force: bool) -> None:
         rebuild_settings = effective_settings.model_copy(
             update={"active_registry_json": None, "active_registry_cache_dir": None}
         )
+        rebuild_started = time.perf_counter()
         registry = task_registry_for_validation(rebuild_settings, tempo=active_tempo)
         latest_effective_settings = curriculum_controlled_settings(settings, tempo=active_tempo)
         if active_registry_cache_stale(registry, latest_effective_settings):
@@ -1113,6 +1117,7 @@ def _warm_active_procedural_registry(*, tempo: int | None, force: bool) -> None:
                 update={"active_registry_json": None, "active_registry_cache_dir": None}
             )
             registry = task_registry_for_validation(rebuild_settings, tempo=active_tempo)
+        rebuild_wall_seconds = time.perf_counter() - rebuild_started
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         tmp_path = cache_path.with_name(cache_path.name + ".tmp")
         write_registry(registry.tasks, tmp_path)
@@ -1129,6 +1134,8 @@ def _warm_active_procedural_registry(*, tempo: int | None, force: bool) -> None:
                 "tempo": active_tempo,
                 "registry_sha256": hashlib.sha256(cache_path.read_bytes()).hexdigest(),
                 "tasks": len(registry.tasks),
+                "rebuild_wall_seconds": round(rebuild_wall_seconds, 3),
+                "wall_seconds": round(time.perf_counter() - started, 3),
             },
             indent=2,
             sort_keys=True,

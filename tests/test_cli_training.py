@@ -167,6 +167,8 @@ def test_prebuild_active_procedural_registry_writes_configured_cache(
     payload = json.loads(result.output)
     assert payload["built"] is True
     assert payload["tempo"] == 23
+    assert payload["rebuild_wall_seconds"] >= 0
+    assert payload["wall_seconds"] >= payload["rebuild_wall_seconds"]
     assert calls == {"tempo": 23, "active_registry_json": None, "active_registry_cache_dir": None}
     assert "lemma.procedural.prebuilt" in (cache_dir / "tempo-23.registry.json").read_text(encoding="utf-8")
 
@@ -206,6 +208,8 @@ def test_prebuild_active_procedural_registry_skips_existing_cache(
     payload = json.loads(result.output)
     assert payload["built"] is False
     assert payload["tasks"] == 1
+    assert payload["rebuild_wall_seconds"] == 0
+    assert payload["wall_seconds"] >= 0
 
 
 def test_prebuild_active_procedural_registry_auditor_mode_refuses_rebuild(
