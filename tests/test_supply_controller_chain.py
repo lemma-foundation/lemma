@@ -23,7 +23,7 @@ from lemma.supply.gates import GATE_VERSION
 from lemma.supply.import_graph import ImportGraphRow, import_graph_from_rows
 from lemma.supply.mixed import build_mixed_registry_tasks
 from lemma.supply.novelty import novelty_cache_from_hashes
-from lemma.supply.operator_bundle import OPERATOR_BUNDLE_VERSION, procedural_operator_bundle_hash
+from lemma.supply.operator_bundle import MUTATION_ENGINE, OPERATOR_BUNDLE_VERSION, procedural_operator_bundle_hash
 from lemma.supply.procedural import build_procedural_registry_tasks
 from lemma.supply.queue import advance_active_pool, initial_active_pool
 from lemma.supply.slot_weight import slot_weight_receipt_for_candidate
@@ -204,7 +204,7 @@ def test_procedural_registry_requires_depth_two_metadata() -> None:
                 "operator": "conjoin-self",
                 "params": {
                     "rule": "conjoin_self",
-                    "engine": "lean_ast_elaborator",
+                    "engine": MUTATION_ENGINE,
                 },
                 "input_hash": "1" * 64,
                 "output_hash": "2" * 64,
@@ -215,7 +215,7 @@ def test_procedural_registry_requires_depth_two_metadata() -> None:
                     "target": "fresh_prop_hypothesis",
                     "binder": "p",
                     "binder_type": "Prop",
-                    "engine": "lean_ast_elaborator",
+                    "engine": MUTATION_ENGINE,
                 },
                 "input_hash": "2" * 64,
                 "output_hash": "3" * 64,

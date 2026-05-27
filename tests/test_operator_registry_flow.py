@@ -23,23 +23,12 @@ from lemma.supply.controller import CurriculumTempoRecord, append_curriculum_rec
 from lemma.supply.gates import ProceduralGateVerdict
 from lemma.supply.import_graph import ImportGraphRow, read_import_graph
 from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
-from lemma.supply.mutation import PreviewMutationEngine
 from lemma.supply.novelty import novelty_cache_from_hashes
 from lemma.supply.procedural import procedural_operator_bundle_hash, source_pool_hash
 from lemma.supply.slot_weight import slot_weight_receipt_for_candidate
 from lemma.supply.triviality_budget import TrivialityRetargetConfig, triviality_budget_receipt
 from lemma.tasks import load_task_registry
 from lemma.validator import active_epoch_seed, active_tasks_for_validation, task_registry_for_validation
-
-
-class _PreviewMutationEngineForProduction:
-    def __init__(self, settings: LemmaSettings) -> None:
-        _ = settings
-        self.preview = PreviewMutationEngine()
-
-    def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001
-        result = self.preview.apply(source, type_expr, operator, step=step, param_seed=param_seed, peer=peer)
-        return result.__class__(result.type_expr, {**result.params, "engine": "lean_ast_elaborator"})
 
 
 def _proof_for(theorem_name: str, type_expr: str) -> str:
@@ -353,7 +342,6 @@ def test_production_like_procedural_submission_smoke(monkeypatch: pytest.MonkeyP
         lambda settings, *, tempo: active_randomness,
     )
     monkeypatch.setattr("lemma.supply.gates.LeanProceduralGateRunner.__call__", _fake_lean_gate)
-    monkeypatch.setattr("lemma.supply.mutation.LeanAstMutationEngine", _PreviewMutationEngineForProduction)
     source_hash = source_pool_hash(mathlib_candidates_from_jsonl(snapshot_path))
     base_settings = LemmaSettings(
         _env_file=None,

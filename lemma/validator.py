@@ -273,7 +273,7 @@ def _procedural_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> Ta
     from lemma.supply.gates import LeanProceduralGateRunner
     from lemma.supply.import_graph import empty_import_graph, read_import_graph
     from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
-    from lemma.supply.mutation import LeanAstMutationEngine
+    from lemma.supply.mutation import StructuralMutationEngine
     from lemma.supply.novelty import empty_novelty_cache, read_novelty_cache
     from lemma.supply.procedural import (
         build_procedural_registry_tasks,
@@ -336,7 +336,7 @@ def _procedural_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> Ta
         citation_alpha=settings.procedural_citation_alpha,
         citation_weight_cap=settings.procedural_citation_weight_cap,
         citation_window_tempos=settings.procedural_citation_window_tempos,
-        mutation_engine=LeanAstMutationEngine(settings) if settings.protocol_mode == "production" else None,
+        mutation_engine=StructuralMutationEngine() if settings.protocol_mode == "production" else None,
         gate_runner=(
             LeanProceduralGateRunner(
                 settings,

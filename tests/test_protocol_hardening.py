@@ -21,7 +21,7 @@ from lemma.submissions import build_submission, sign_submission
 from lemma.supply.gates import GATE_VERSION
 from lemma.supply.import_graph import ImportGraphRow, import_graph_from_rows, write_import_graph_jsonl
 from lemma.supply.novelty import novelty_cache_from_hashes
-from lemma.supply.operator_bundle import OPERATOR_BUNDLE_VERSION, procedural_operator_bundle_hash
+from lemma.supply.operator_bundle import MUTATION_ENGINE, OPERATOR_BUNDLE_VERSION, procedural_operator_bundle_hash
 from lemma.supply.slot_weight import slot_weight_receipt_for_task
 from lemma.supply.source_pool import source_pool_receipt, source_pool_receipt_sha256
 from lemma.supply.triviality_budget import TrivialityRetargetConfig, triviality_budget_receipt
@@ -79,7 +79,7 @@ def _procedural_metadata(
                 "operator": "conjoin-self",
                 "params": {
                     "rule": "conjoin_self",
-                    "engine": "lean_ast_elaborator",
+                    "engine": MUTATION_ENGINE,
                 },
                 "input_hash": "1" * 64,
                 "output_hash": "2" * 64,
@@ -90,7 +90,7 @@ def _procedural_metadata(
                     "target": "fresh_prop_hypothesis",
                     "binder": "p",
                     "binder_type": "Prop",
-                    "engine": "lean_ast_elaborator",
+                    "engine": MUTATION_ENGINE,
                 },
                 "input_hash": "2" * 64,
                 "output_hash": "3" * 64,
@@ -522,7 +522,7 @@ def test_production_mode_rejects_unpinned_operator_params() -> None:
     assert production_supply_rejection_reason(tampered) == "mutation_params"
 
 
-def test_production_mode_rejects_non_lean_ast_mutation_engine() -> None:
+def test_production_mode_rejects_wrong_mutation_engine() -> None:
     task = _production_task()
     metadata = dict(task.metadata)
     chain = [dict(step) for step in metadata["mutation_chain"]]

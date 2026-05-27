@@ -21,7 +21,7 @@ from lemma.supply.gates import (
 )
 from lemma.supply.import_graph import ImportGraphRow, extract_import_graph_rows, read_import_graph
 from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
-from lemma.supply.mutation import LeanAstMutationEngine, MutationResult, PreviewMutationEngine
+from lemma.supply.mutation import LeanAstMutationEngine, MutationResult, PreviewMutationEngine, StructuralMutationEngine
 from lemma.supply.novelty import novelty_cache_from_hashes, read_novelty_cache, statement_hash
 from lemma.supply.operator_bundle import (
     OPERATOR_BUNDLE_VERSION,
@@ -50,14 +50,37 @@ def test_operator_bundle_includes_lean_pretty_value_aliases() -> None:
     assert SMALL_VALUES_BY_TYPE["\u211D"] == SMALL_VALUES_BY_TYPE["Real"]
 
 
-class _PreviewMutationEngineForProduction:
-    def __init__(self, settings: LemmaSettings) -> None:
-        _ = settings
-        self.preview = PreviewMutationEngine()
+def test_structural_mutation_engine_marks_current_bundle_engine() -> None:
+    source = fixture_candidate(
+        slug="source_true",
+        source_stream="mathlib_snapshot",
+        source_name="snapshot",
+        theorem_name="source_true",
+        type_expr="True",
+        queue_depth=0,
+    )
 
-    def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001
-        result = self.preview.apply(source, type_expr, operator, step=step, param_seed=param_seed, peer=peer)
-        return result.__class__(result.type_expr, {**result.params, "engine": "lean_ast_elaborator"})
+    first = StructuralMutationEngine().apply(
+        source,
+        "True",
+        "conjoin-self",
+        step=0,
+        param_seed="a" * 64,
+        peer=source,
+    )
+    second = StructuralMutationEngine().apply(
+        source,
+        first.type_expr,
+        "generalize",
+        step=1,
+        param_seed="b" * 64,
+        peer=source,
+    )
+
+    assert first.type_expr == "(True) ∧ (True)"
+    assert first.params["engine"] == "structural_syntax_v1"
+    assert second.type_expr == "∀ lemma_p1_bbbbbb : Prop, lemma_p1_bbbbbb → ((True) ∧ (True))"
+    assert second.params["engine"] == "structural_syntax_v1"
 
 
 def _write_snapshot(path: Path) -> None:
@@ -736,7 +759,7 @@ def test_procedural_registry_rejects_assumed_gate_receipts(tmp_path: Path) -> No
         epoch_randomness=json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
         count=1,
         tempo=3,
-        mutation_engine=_PreviewMutationEngineForProduction(LemmaSettings(_env_file=None)),
+        mutation_engine=StructuralMutationEngine(),
     )
 
     build = build_procedural_registry_tasks(candidates, seed="epoch-a")
@@ -1129,7 +1152,6 @@ def test_procedural_supply_mode_rebuilds_active_registry_from_public_inputs(
     )
     monkeypatch.setattr("lemma.validator.resolve_active_epoch_randomness", lambda settings, *, tempo: randomness)
     monkeypatch.setattr("lemma.supply.gates.LeanProceduralGateRunner.__call__", _fake_lean_gate)
-    monkeypatch.setattr("lemma.supply.mutation.LeanAstMutationEngine", _PreviewMutationEngineForProduction)
     settings = LemmaSettings(
         _env_file=None,
         task_supply_mode="procedural",
@@ -1355,7 +1377,6 @@ def test_procedural_source_pool_includes_prior_accepted_corpus(
         lambda settings, *, tempo: json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
     )
     monkeypatch.setattr("lemma.supply.gates.LeanProceduralGateRunner.__call__", _fake_lean_gate)
-    monkeypatch.setattr("lemma.supply.mutation.LeanAstMutationEngine", _PreviewMutationEngineForProduction)
     settings = LemmaSettings(
         _env_file=None,
         task_supply_mode="procedural",

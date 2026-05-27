@@ -828,7 +828,7 @@ def tasks_generate_procedural_depth2_cmd(
     from lemma.supply.gates import AssumedProceduralGateRunner, LeanProceduralGateRunner
     from lemma.supply.import_graph import empty_import_graph, read_import_graph
     from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
-    from lemma.supply.mutation import LeanAstMutationEngine
+    from lemma.supply.mutation import StructuralMutationEngine
     from lemma.supply.novelty import empty_novelty_cache, read_novelty_cache
     from lemma.supply.procedural import corpus_sources_from_dir, generate_depth2_candidates, source_pool_hash
     from lemma.supply.triviality_budget import triviality_budget_receipt_for_settings
@@ -857,7 +857,7 @@ def tasks_generate_procedural_depth2_cmd(
         citation_alpha=citation_alpha,
         citation_weight_cap=citation_weight_cap,
         citation_window_tempos=citation_window_tempos,
-        mutation_engine=None if assume_gates else LeanAstMutationEngine(settings),
+        mutation_engine=None if assume_gates else StructuralMutationEngine(),
         gate_runner=AssumedProceduralGateRunner(novelty_cache=novelty_cache, import_graph=import_graph)
         if assume_gates
         else LeanProceduralGateRunner(
@@ -952,7 +952,7 @@ def tasks_rebuild_procedural_registry_cmd(
     from lemma.supply.gates import LeanProceduralGateRunner
     from lemma.supply.import_graph import empty_import_graph, read_import_graph
     from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
-    from lemma.supply.mutation import LeanAstMutationEngine
+    from lemma.supply.mutation import StructuralMutationEngine
     from lemma.supply.novelty import empty_novelty_cache, read_novelty_cache
     from lemma.supply.procedural import (
         build_procedural_registry_tasks,
@@ -987,7 +987,7 @@ def tasks_rebuild_procedural_registry_cmd(
         citation_alpha=citation_alpha,
         citation_weight_cap=citation_weight_cap,
         citation_window_tempos=citation_window_tempos,
-        mutation_engine=LeanAstMutationEngine(settings),
+        mutation_engine=StructuralMutationEngine(),
         gate_runner=LeanProceduralGateRunner(
             settings,
             triviality_budget_receipt=triviality_budget,

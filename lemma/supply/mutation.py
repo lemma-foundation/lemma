@@ -11,7 +11,7 @@ from typing import Protocol
 from lemma.common.config import LemmaSettings
 from lemma.lean.verify_runner import run_lean_verify
 from lemma.problems.base import Problem
-from lemma.supply.operator_bundle import SMALL_VALUES_BY_TYPE, TYPE_SUBSTITUTIONS
+from lemma.supply.operator_bundle import MUTATION_ENGINE, SMALL_VALUES_BY_TYPE, TYPE_SUBSTITUTIONS
 from lemma.supply.types import TaskCandidate
 
 
@@ -35,8 +35,8 @@ class ProceduralMutationEngine(Protocol):
         """Apply one deterministic procedural mutation step."""
 
 
-class PreviewMutationEngine:
-    """Fast dev-only preview engine used with assumed gates."""
+class StructuralMutationEngine:
+    """Deterministic syntax mutations; the production Lean gate validates output."""
 
     def apply(
         self,
@@ -54,10 +54,15 @@ class PreviewMutationEngine:
             binder = f"lemma_p{step}_{param_seed[:6]}"
             return MutationResult(
                 f"∀ {binder} : Prop, {binder} → ({expr})",
-                {"target": "fresh_prop_hypothesis", "binder": binder, "binder_type": "Prop"},
+                {
+                    "target": "fresh_prop_hypothesis",
+                    "binder": binder,
+                    "binder_type": "Prop",
+                    "engine": MUTATION_ENGINE,
+                },
             )
         if operator == "conjoin-self":
-            return MutationResult(f"({expr}) ∧ ({expr})", {"rule": "conjoin_self"})
+            return MutationResult(f"({expr}) ∧ ({expr})", {"rule": "conjoin_self", "engine": MUTATION_ENGINE})
         if operator == "specialize":
             return _preview_specialize(expr, param_seed=param_seed)
         if operator == "conjoin":
@@ -83,6 +88,10 @@ class PreviewMutationEngine:
         if operator == "weaken":
             return _preview_weaken(expr)
         raise ValueError(f"unknown procedural operator: {operator}")
+
+
+class PreviewMutationEngine(StructuralMutationEngine):
+    """Backward-compatible name for preview callers."""
 
 
 class LeanAstMutationEngine:

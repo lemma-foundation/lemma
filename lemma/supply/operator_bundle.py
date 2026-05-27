@@ -5,9 +5,9 @@ from __future__ import annotations
 import hashlib
 import json
 
-OPERATOR_BUNDLE_VERSION = "lemma-procedural-depth2-v12"
+OPERATOR_BUNDLE_VERSION = "lemma-procedural-depth2-v13"
 OPERATOR_NAMES = ("conjoin-self", "generalize")
-MUTATION_ENGINE = "lean_ast_elaborator"
+MUTATION_ENGINE = "structural_syntax_v1"
 TYPE_SUBSTITUTIONS = (
     ("Complex.re", "Complex.im"),
     ("Complex.im", "Complex.re"),
