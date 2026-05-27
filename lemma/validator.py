@@ -229,8 +229,17 @@ def active_registry_cache_stale(registry: TaskRegistry, settings: LemmaSettings)
     if any(task.frontier_depth != settings.frontier_depth for task in registry.tasks):
         return True
     expected_source = (settings.procedural_source_sha256_expected or "").strip().lower().removeprefix("sha256:")
-    if expected_source:
-        return {str(task.metadata.get("source_pool_hash") or "") for task in registry.tasks} != {expected_source}
+    if expected_source and {str(task.metadata.get("source_pool_hash") or "") for task in registry.tasks} != {
+        expected_source
+    }:
+        return True
+    expected_operator = (settings.procedural_operator_bundle_sha256_expected or "").strip().lower().removeprefix(
+        "sha256:"
+    )
+    if expected_operator and {str(task.metadata.get("operator_bundle_hash") or "") for task in registry.tasks} != {
+        expected_operator
+    }:
+        return True
     return False
 
 

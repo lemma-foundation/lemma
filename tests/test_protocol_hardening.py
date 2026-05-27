@@ -34,7 +34,13 @@ from lemma.tasks import (
     load_task_registry,
     registry_signing_payload,
 )
-from lemma.validator import _active_slot_weights, active_epoch_seed, active_tasks_for_validation, validate_once
+from lemma.validator import (
+    _active_slot_weights,
+    active_epoch_seed,
+    active_registry_cache_stale,
+    active_tasks_for_validation,
+    validate_once,
+)
 
 
 def _task(source_license: str = "CC-BY-4.0"):
@@ -191,6 +197,13 @@ def _production_settings(**updates: object) -> LemmaSettings:
         "active_epoch_randomness_source": "chain_drand",
     }
     return LemmaSettings(**(base | updates))
+
+
+def test_active_registry_cache_stale_checks_operator_bundle_hash() -> None:
+    registry = TaskRegistry(schema_version=1, tasks=(_production_task(),), sha256="0" * 64, signature_status="verified")
+    settings = _production_settings(procedural_operator_bundle_sha256_expected="0" * 64)
+
+    assert active_registry_cache_stale(registry, settings) is True
 
 
 def _proof() -> str:
