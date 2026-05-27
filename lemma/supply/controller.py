@@ -45,7 +45,6 @@ class CurriculumTempoRecord:
     parked_task_ids: tuple[str, ...]
     action: str
     variant_stream_requested: bool
-    activation_block: int | None = None
     retarget_receipt: dict[str, object] | None = None
 
     def to_json(self) -> str:
@@ -59,8 +58,6 @@ class CurriculumTempoRecord:
             "action": self.action,
             "variant_stream_requested": self.variant_stream_requested,
         }
-        if self.activation_block is not None:
-            payload["activation_block"] = self.activation_block
         if self.retarget_receipt is not None:
             payload["retarget_receipt"] = self.retarget_receipt
         return json.dumps(payload, sort_keys=True, separators=(",", ":"))
@@ -77,7 +74,6 @@ class CurriculumTempoRecord:
             parked_task_ids=tuple(str(item) for item in data.get("parked_task_ids", [])),
             action=str(data["action"]),
             variant_stream_requested=bool(data["variant_stream_requested"]),
-            activation_block=int(data["activation_block"]) if data.get("activation_block") is not None else None,
             retarget_receipt=data.get("retarget_receipt"),
         )
 
@@ -183,7 +179,6 @@ def curriculum_retarget_receipt(
     validator_capacity: int,
     config: CurriculumConfig,
     decision: CurriculumDecision,
-    activation_block: int | None = None,
 ) -> dict[str, object]:
     if previous_state.active_K <= 0:
         raise ValueError("active_K must be positive")
@@ -213,8 +208,6 @@ def curriculum_retarget_receipt(
         "next_frontier_depth": decision.state.frontier_depth,
         "next_ema_solve_rate": decision.state.ema_solve_rate,
     }
-    if activation_block is not None:
-        receipt["activation_block"] = activation_block
     if cost_cap is not None and estimated_cost is not None:
         receipt["next_cost_limited_K"] = cost_cap
         receipt["next_estimated_task_cost_s"] = estimated_cost

@@ -82,7 +82,7 @@ LEMMA_OPERATOR_DATA_DIR=validator-data
 `LEMMA_ACTIVE_K` is validator throughput. `LEMMA_FRONTIER_DEPTH` and generated queue depth control difficulty. Payment uses deterministic active slot weights, not subjective validator scores.
 When `LEMMA_ACTIVE_REGISTRY_CACHE_DIR` is set, miners and validators load `tempo-<tempo>.registry.json` for the active tempo if it exists. `LEMMA_ACTIVE_REGISTRY_JSON` pins one exact registry file and fails closed if that file is missing. The recommended production shape is one designated builder validator plus auditor validators. Builder validators use the same deterministic generation path as the local warm command. Auditor validators set `LEMMA_ACTIVE_REGISTRY_ROLE=auditor`; they hydrate the public cache, verify it against the published hash and effective curriculum state, and refuse local generation if the current cache is not available. Run extra builders only when intentionally cross-checking the builder path.
 
-For live dynamic operation, the curriculum state log retargets throughput and difficulty after each completed tempo:
+For live curriculum retargeting, the state log updates throughput and difficulty after each completed tempo:
 
 ```bash
 LEMMA_CURRICULUM_RETARGET=1

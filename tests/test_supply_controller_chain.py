@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from lemma.chain.burn_or_recycle import UnearnedAllocation
 from lemma.chain.commitments import CommitmentEnvelope, ciphertext_sha256
 from lemma.chain.weights import _wait_for_commit_reveal_window, allocation_vector, resolve_weight_plan
@@ -116,6 +118,27 @@ def test_curriculum_retarget_receipt_replays_public_state() -> None:
         "next_frontier_depth": 4,
         "next_ema_solve_rate": 0.32000000000000006,
     }
+
+
+def test_curriculum_tempo_record_ignores_legacy_activation_block() -> None:
+    record = CurriculumTempoRecord.from_json(
+        json.dumps(
+            {
+                "tempo": 7,
+                "active_K": 3,
+                "frontier_depth": 2,
+                "ema_solve_rate": 0.4,
+                "solved_slots": 1,
+                "parked_task_ids": [],
+                "action": "hold",
+                "variant_stream_requested": False,
+                "activation_block": 3240,
+            },
+            sort_keys=True,
+        )
+    )
+
+    assert "activation_block" not in record.to_json()
 
 
 def test_curriculum_records_persist_per_tempo(tmp_path) -> None:

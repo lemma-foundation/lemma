@@ -255,25 +255,9 @@ def curriculum_controlled_settings(settings: LemmaSettings, *, tempo: int) -> Le
 
     # Retarget rows are produced after validating a tempo, so they activate with
     # one extra tempo of public replay lag to avoid mid-epoch active-set changes.
-    records = read_curriculum_records(settings.curriculum_state_jsonl)
-    if settings.active_tempo_source == "chain":
-        import bittensor as bt
-
-        subtensor = bt.Subtensor(network=settings.bt_network or None)
-        current_block = int(subtensor.get_current_block())
-        eligible_records = tuple(
-            record
-            for record in records
-            if (
-                record.activation_block is not None
-                and record.activation_block <= current_block
-                or record.activation_block is None
-                and record.tempo < tempo - 1
-            )
-        )
-    else:
-        eligible_records = tuple(record for record in records if record.tempo < tempo - 1)
-    records = eligible_records
+    records = tuple(
+        record for record in read_curriculum_records(settings.curriculum_state_jsonl) if record.tempo < tempo - 1
+    )
     if not records:
         return settings
     latest = records[-1]
@@ -885,17 +869,10 @@ def _retarget_curriculum_after_validation(settings: LemmaSettings, *, tempo: int
         validator_capacity=validator_capacity,
         config=config,
     )
-    activation_block = None
-    if settings.active_tempo_source == "chain":
-        from lemma.chain.tempo import current_chain_tempo_blocks
-
-        chain_tempo_blocks = current_chain_tempo_blocks(settings)
-        activation_block = (tempo + 2) * chain_tempo_blocks
     record = CurriculumTempoRecord(
         tempo=tempo,
         active_K=decision.state.active_K,
         frontier_depth=decision.state.frontier_depth,
-        activation_block=activation_block,
         ema_solve_rate=decision.state.ema_solve_rate,
         solved_slots=solved_slots,
         parked_task_ids=(),
@@ -908,7 +885,6 @@ def _retarget_curriculum_after_validation(settings: LemmaSettings, *, tempo: int
             validator_capacity=validator_capacity,
             config=config,
             decision=decision,
-            activation_block=activation_block,
         ),
     )
     append_curriculum_record(settings.curriculum_state_jsonl, record)
