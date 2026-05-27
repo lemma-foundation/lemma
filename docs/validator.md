@@ -37,7 +37,7 @@ For a live website feed, run `uv run python scripts/serve_current_problems.py --
 ## Runtime Steps
 
 1. Load the active task registry.
-2. Load the latest eligible public curriculum tempo state when retargeting is enabled. A retarget row must be at least one full tempo old (`record.tempo < active_tempo - 1`) before it can affect active selection. Then select the deterministic active set from active `K`, frontier depth, `LEMMA_ACTIVE_QUEUE_SEED`, and production chain/drand epoch randomness.
+2. Load the latest eligible public curriculum row when retargeting is enabled. A retarget row must be at least one full tempo old (`record.tempo < active_tempo - 1`) before it can affect active selection. Then select the deterministic active set from active `K`, frontier depth, `LEMMA_ACTIVE_QUEUE_SEED`, and production chain/drand epoch randomness.
 3. Read miner bucket reveals in production, or local smoke submissions in development.
 4. Reject submissions outside the active window.
 5. Reject task-version and target-hash mismatches.
