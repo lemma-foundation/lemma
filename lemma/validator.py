@@ -25,6 +25,7 @@ from lemma.store import append_jsonl
 from lemma.submissions import LemmaSubmission, validate_submission_for_task
 from lemma.supply.controller import CurriculumTempoRecord
 from lemma.supply.gates import GATE_VERSION
+from lemma.supply.operator_bundle import OPERATOR_BUNDLE_VERSION, procedural_operator_bundle_hash
 from lemma.supply.queue import initial_active_pool
 from lemma.supply.slot_weight import slot_weight_receipt_for_kernel_dependencies, slot_weight_receipt_for_task
 from lemma.supply.source_pool import SOURCE_SAMPLING_VERSION
@@ -226,8 +227,18 @@ def cached_active_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> 
 
 def active_registry_cache_stale(registry: TaskRegistry, settings: LemmaSettings) -> bool:
     expected_count = max(settings.active_task_count, settings.procedural_candidate_count or 0)
+    target_counts = [
+        int(task.metadata["procedural_generation_target_count"])
+        for task in registry.tasks
+        if isinstance(task.metadata.get("procedural_generation_target_count"), int)
+    ]
     if len(registry.tasks) != expected_count:
-        return True
+        if len(registry.tasks) > expected_count or len(target_counts) != len(registry.tasks):
+            return True
+        if len(registry.tasks) < _partial_generation_min_count(expected_count):
+            return True
+        if set(target_counts) != {expected_count}:
+            return True
     if any(task.frontier_depth != settings.frontier_depth for task in registry.tasks):
         return True
     expected_source = (settings.procedural_source_sha256_expected or "").strip().lower().removeprefix("sha256:")
@@ -235,13 +246,25 @@ def active_registry_cache_stale(registry: TaskRegistry, settings: LemmaSettings)
         expected_source
     }:
         return True
-    expected_operator = (settings.procedural_operator_bundle_sha256_expected or "").strip().lower().removeprefix(
-        "sha256:"
-    )
-    if expected_operator and {str(task.metadata.get("operator_bundle_hash") or "") for task in registry.tasks} != {
-        expected_operator
-    }:
-        return True
+    procedural_tasks = [
+        task
+        for task in registry.tasks
+        if task.source_stream == "procedural" or task.metadata.get("supply_mode") == "procedural"
+    ]
+    if procedural_tasks:
+        expected_operator = (
+            (settings.procedural_operator_bundle_sha256_expected or "").strip().lower().removeprefix("sha256:")
+            or procedural_operator_bundle_hash()
+        )
+        if {str(task.metadata.get("operator_bundle_hash") or "") for task in procedural_tasks} != {expected_operator}:
+            return True
+        operator_versions = {
+            str(task.metadata.get("operator_bundle_version"))
+            for task in procedural_tasks
+            if "operator_bundle_version" in task.metadata
+        }
+        if operator_versions and operator_versions != {OPERATOR_BUNDLE_VERSION}:
+            return True
     history_hashes = {
         str(task.metadata.get("yield_history_sha256") or "")
         for task in registry.tasks
@@ -272,6 +295,10 @@ def active_registry_cache_stale(registry: TaskRegistry, settings: LemmaSettings)
     if sampling_versions and sampling_versions != {SOURCE_SAMPLING_VERSION}:
         return True
     return False
+
+
+def _partial_generation_min_count(expected_count: int) -> int:
+    return max(1, (expected_count * 2 + 2) // 3)
 
 
 def curriculum_controlled_settings(settings: LemmaSettings, *, tempo: int) -> LemmaSettings:
@@ -385,6 +412,8 @@ def _procedural_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> Ta
         epoch_randomness=epoch_randomness,
         count=count,
         tempo=tempo,
+        allow_partial=settings.protocol_mode == "production",
+        min_count=_partial_generation_min_count(count),
         max_queue_depth=settings.frontier_depth,
         citation_alpha=settings.procedural_citation_alpha,
         citation_weight_cap=settings.procedural_citation_weight_cap,
@@ -792,14 +821,28 @@ def _publish_public_tempo_artifacts(
         )
         if isinstance(path, Path)
     )
-    published = publish_paths_to_s3(
-        paths,
-        root=output_root,
-        s3_uri=settings.canonical_publish_s3_uri,
-        endpoint_url=settings.canonical_publish_endpoint_url,
-        aws=aws_command(settings.canonical_publish_aws_command),
-        verify=settings.canonical_publish_verify,
-    )
+    try:
+        published = publish_paths_to_s3(
+            paths,
+            root=output_root,
+            s3_uri=settings.canonical_publish_s3_uri,
+            endpoint_url=settings.canonical_publish_endpoint_url,
+            aws=aws_command(settings.canonical_publish_aws_command),
+            verify=settings.canonical_publish_verify,
+        )
+    except Exception as exc:
+        append_jsonl(
+            settings.operator_data_dir / "canonical-publish.jsonl",
+            [
+                *rows,
+                {
+                    "kind": "s3_publish_error",
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                },
+            ],
+        )
+        return tuple(rows)
     rows.extend(
         {
             "kind": "s3_object",

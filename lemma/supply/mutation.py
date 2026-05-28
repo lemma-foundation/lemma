@@ -185,15 +185,18 @@ def _peer_params(value: str, peer: TaskCandidate, *, mode_key: str) -> dict[str,
 def _preview_specialize(expr: str, *, param_seed: str) -> MutationResult:
     binder = _split_forall(expr)
     if binder is None:
-        return MutationResult(f"True → ({expr})", {"fallback": "true_premise"})
+        return MutationResult(f"True → ({expr})", {"fallback": "true_premise", "engine": MUTATION_ENGINE})
     name, binder_type, body = binder
     value = _small_value(binder_type, param_seed)
     if value is None:
-        return MutationResult(f"True → ({expr})", {"fallback": "unsupported_binder_type", "binder_type": binder_type})
+        return MutationResult(
+            f"True → ({expr})",
+            {"fallback": "unsupported_binder_type", "binder_type": binder_type, "engine": MUTATION_ENGINE},
+        )
     typed_value = value if binder_type == "Prop" else f"({value} : {binder_type})"
     return MutationResult(
         _replace_ident(body, name, typed_value),
-        {"binder": name, "binder_type": binder_type, "value": value},
+        {"binder": name, "binder_type": binder_type, "value": value, "engine": MUTATION_ENGINE},
     )
 
 
@@ -272,6 +275,8 @@ def _split_top_level_token(expr: str, token: str) -> tuple[str, str] | None:
         depth += char in "([{"
         depth -= char in ")]}"
         if char == token and depth == 0:
+            if token == "=" and _is_operator_equals(expr, index):
+                continue
             left = expr[:index].strip()
             right = expr[index + len(token) :].strip()
             if left and right:
@@ -279,21 +284,67 @@ def _split_top_level_token(expr: str, token: str) -> tuple[str, str] | None:
     return None
 
 
+def _is_operator_equals(expr: str, index: int) -> bool:
+    previous = expr[index - 1] if index > 0 else ""
+    following = expr[index + 1] if index + 1 < len(expr) else ""
+    return previous in "<>!=" or following in "=>"
+
+
 def _split_forall(expr: str) -> tuple[str, str, str] | None:
     stripped = expr.strip()
-    if not stripped.startswith("∀ "):
+    if not stripped.startswith("∀"):
         return None
-    comma = _top_level_index(stripped, ",")
+    rest = stripped[1:].strip()
+    comma = _top_level_index(rest, ",")
     if comma is None:
         return None
-    binder = stripped[2:comma].strip()
-    body = stripped[comma + 1 :].strip()
+    binder_prefix = rest[:comma].strip()
+    body = rest[comma + 1 :].strip()
+    if not binder_prefix:
+        return None
+    binder, remaining_prefix, wrapper = _first_binder_group(binder_prefix)
+    if binder is None:
+        return None
     if ":" not in binder:
         return None
-    name, binder_type = (part.strip() for part in binder.split(":", 1))
-    if not _LEAN_IDENT.fullmatch(name) or not binder_type:
+    names_raw, binder_type = (part.strip() for part in binder.split(":", 1))
+    names = tuple(name for name in names_raw.split() if name)
+    if not names or any(not _LEAN_IDENT.fullmatch(name) for name in names) or not binder_type:
         return None
+    name = names[0]
+    remaining = []
+    if len(names) > 1:
+        open_char, close_char = wrapper
+        remaining.append(f"{open_char}{' '.join(names[1:])} : {binder_type}{close_char}")
+    if remaining_prefix:
+        remaining.append(remaining_prefix)
+    if remaining:
+        body = f"∀ {' '.join(remaining)}, {body}"
     return name, binder_type, body
+
+
+def _first_binder_group(prefix: str) -> tuple[str | None, str, tuple[str, str]]:
+    if prefix[0] in "({[":
+        close_char = {"(": ")", "{": "}", "[": "]"}[prefix[0]]
+        end = _matching_delimiter(prefix, close_char)
+        if end is None:
+            return None, "", ("", "")
+        return prefix[1:end].strip(), prefix[end + 1 :].strip(), (prefix[0], close_char)
+    if ":" not in prefix:
+        return None, "", ("", "")
+    return prefix, "", ("", "")
+
+
+def _matching_delimiter(value: str, close_char: str) -> int | None:
+    depth = 0
+    for index, char in enumerate(value):
+        if char == value[0]:
+            depth += 1
+        elif char == close_char:
+            depth -= 1
+            if depth == 0:
+                return index
+    return None
 
 
 def _split_top_level_arrow(expr: str) -> tuple[str, str] | None:
@@ -332,7 +383,7 @@ def _small_value(binder_type: str, seed: str) -> str | None:
 
 
 def _replace_ident(expr: str, name: str, replacement: str) -> str:
-    return re.sub(rf"(?<![A-Za-z0-9_'.]){re.escape(name)}(?![A-Za-z0-9_'.])", replacement, expr)
+    return re.sub(rf"(?<![A-Za-z0-9_'.]){re.escape(name)}(?![A-Za-z0-9_'])", replacement, expr)
 
 
 def _replace_type_name(expr: str, source_type: str, replacement_type: str) -> str:
@@ -361,6 +412,7 @@ namespace LemmaProceduralMutator
 def inputSource : String := {_lean_string(type_expr)}
 def peerSource : String := {_lean_string(peer.type_expr)}
 def operatorName : String := {_lean_string(operator)}
+def mutationEngine : String := {_lean_string(MUTATION_ENGINE)}
 def binderName : String := {_lean_string(binder)}
 def paramSeed : String := {_lean_string(param_seed)}
 def peerSourceId : String := {_lean_string(peer.id)}
@@ -500,7 +552,8 @@ def mutate (expr peer : TSyntax `term) : Elab.Command.CommandElabM (TSyntax `ter
             let output ← trueArrow expr
             pure (output, jsonObj [
               ("fallback", Json.str "unsupported_binder_type"),
-              ("binder_type", Json.str typeText)
+              ("binder_type", Json.str typeText),
+              ("engine", Json.str mutationEngine)
             ])
         | some value =>
             let replacement ← typedValueExpr typeText value domain
@@ -508,11 +561,15 @@ def mutate (expr peer : TSyntax `term) : Elab.Command.CommandElabM (TSyntax `ter
             pure (output, jsonObj [
               ("binder", Json.str name.toString),
               ("binder_type", Json.str typeText),
-              ("value", Json.str value)
+              ("value", Json.str value),
+              ("engine", Json.str mutationEngine)
             ])
     | _ =>
         let output ← trueArrow expr
-        pure (output, jsonObj [("fallback", Json.str "true_premise")])
+        pure (output, jsonObj [
+          ("fallback", Json.str "true_premise"),
+          ("engine", Json.str mutationEngine)
+        ])
   else if operatorName == "conjoin" then
     let output ← `(term| ($peer) → ($expr))
     pure (output, peerParams "mode" "peer_premise")

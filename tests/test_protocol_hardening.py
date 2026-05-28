@@ -93,11 +93,11 @@ def _procedural_metadata(
                 "output_hash": "2" * 64,
             },
             {
-                "operator": "generalize",
+                "operator": "specialize",
                 "params": {
-                    "target": "fresh_prop_hypothesis",
-                    "binder": "p",
-                    "binder_type": "Prop",
+                    "binder": "n",
+                    "binder_type": "Nat",
+                    "value": "1",
                     "engine": MUTATION_ENGINE,
                 },
                 "input_hash": "2" * 64,
@@ -204,6 +204,95 @@ def _production_settings(**updates: object) -> LemmaSettings:
 def test_active_registry_cache_stale_checks_operator_bundle_hash() -> None:
     registry = TaskRegistry(schema_version=1, tasks=(_production_task(),), sha256="0" * 64, signature_status="verified")
     settings = _production_settings(procedural_operator_bundle_sha256_expected="0" * 64)
+
+    assert active_registry_cache_stale(registry, settings) is True
+
+
+def test_active_registry_cache_stale_checks_current_operator_bundle_by_default() -> None:
+    stale = _production_task().model_copy(
+        update={"metadata": {**_production_task().metadata, "operator_bundle_hash": "0" * 64}}
+    )
+    registry = TaskRegistry(schema_version=1, tasks=(stale,), sha256="0" * 64, signature_status="verified")
+
+    assert active_registry_cache_stale(registry, _production_settings()) is True
+
+
+def test_active_registry_cache_accepts_partial_generation_at_floor_with_matching_target() -> None:
+    tasks = tuple(
+        _production_task().model_copy(
+            update={
+                "id": f"lemma.test.partial_{index}",
+                "frontier_depth": 0,
+                "metadata": {
+                    **_production_task().metadata,
+                    "procedural_generation_target_count": 6,
+                    "procedural_generation_accepted_count": 4,
+                    "procedural_generation_attempt_count": 300,
+                    "procedural_generation_attempt_limit": 300,
+                },
+            }
+        )
+        for index in range(4)
+    )
+    registry = TaskRegistry(schema_version=1, tasks=tasks, sha256="0" * 64, signature_status="verified")
+    settings = _production_settings(active_task_count=6)
+
+    assert active_registry_cache_stale(registry, settings) is False
+
+
+def test_active_registry_cache_accepts_partial_generation_before_attempt_budget_exhausted() -> None:
+    tasks = tuple(
+        _production_task().model_copy(
+            update={
+                "id": f"lemma.test.partial_early_{index}",
+                "frontier_depth": 0,
+                "metadata": {
+                    **_production_task().metadata,
+                    "procedural_generation_target_count": 6,
+                    "procedural_generation_accepted_count": 4,
+                    "procedural_generation_attempt_count": 16,
+                    "procedural_generation_attempt_limit": 300,
+                },
+            }
+        )
+        for index in range(4)
+    )
+    registry = TaskRegistry(schema_version=1, tasks=tasks, sha256="0" * 64, signature_status="verified")
+    settings = _production_settings(active_task_count=6)
+
+    assert active_registry_cache_stale(registry, settings) is False
+
+
+def test_active_registry_cache_rejects_partial_generation_below_floor() -> None:
+    tasks = tuple(
+        _production_task().model_copy(
+            update={
+                "id": f"lemma.test.partial_small_{index}",
+                "frontier_depth": 0,
+                "metadata": {
+                    **_production_task().metadata,
+                    "procedural_generation_target_count": 6,
+                    "procedural_generation_accepted_count": 3,
+                },
+            }
+        )
+        for index in range(3)
+    )
+    registry = TaskRegistry(schema_version=1, tasks=tasks, sha256="0" * 64, signature_status="verified")
+    settings = _production_settings(active_task_count=6)
+
+    assert active_registry_cache_stale(registry, settings) is True
+
+
+def test_active_registry_cache_rejects_partial_generation_for_different_target() -> None:
+    task = _production_task().model_copy(
+        update={
+            "frontier_depth": 0,
+            "metadata": {**_production_task().metadata, "procedural_generation_target_count": 4},
+        }
+    )
+    registry = TaskRegistry(schema_version=1, tasks=(task,), sha256="0" * 64, signature_status="verified")
+    settings = _production_settings(active_task_count=6)
 
     assert active_registry_cache_stale(registry, settings) is True
 

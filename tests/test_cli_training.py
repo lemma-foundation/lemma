@@ -19,6 +19,7 @@ from lemma.lean.sandbox import VerifyResult
 from lemma.operator import OperatorDiagnosticsReport, OperatorPreflightReport, OperatorRegistryInspectReport
 from lemma.submissions import build_submission, sign_submission
 from lemma.supply.controller import CurriculumTempoRecord, append_curriculum_record
+from lemma.supply.operator_bundle import OPERATOR_BUNDLE_VERSION, procedural_operator_bundle_hash
 from lemma.task_supply import make_task, write_registry
 
 
@@ -139,6 +140,17 @@ def test_prebuild_active_procedural_registry_writes_configured_cache(
         type_expr="True",
         source_stream="procedural",
         source_name="pytest",
+        metadata={
+            "procedural_generation_target_count": 2,
+            "procedural_generation_accepted_count": 1,
+            "procedural_generation_attempt_count": 100,
+            "procedural_generation_attempt_limit": 100,
+            "typechecked": True,
+            "prop_gate_passed": True,
+            "triviality_checked": True,
+            "baseline_solved": False,
+            "novelty_status": "passed",
+        },
     )
     calls = {}
 
@@ -167,8 +179,18 @@ def test_prebuild_active_procedural_registry_writes_configured_cache(
     payload = json.loads(result.output)
     assert payload["built"] is True
     assert payload["tempo"] == 23
+    assert payload["generated_tasks"] == 1
+    assert payload["generation_target_tasks"] == 2
+    assert payload["gate_verified_tasks"] == 1
+    assert payload["partial_generation"] is True
+    assert payload["procedural_generation_accepted_count"] == 1
+    assert payload["procedural_generation_attempt_count"] == 100
+    assert payload["procedural_generation_attempt_limit"] == 100
+    assert payload["lean_gate_build_seconds_total"] == 0.0
     assert payload["rebuild_wall_seconds"] >= 0
     assert payload["wall_seconds"] >= payload["rebuild_wall_seconds"]
+    assert payload["rebuild_started_at"] is not None
+    assert payload["rebuild_finished_at"] is not None
     assert calls == {"tempo": 23, "active_registry_json": None, "active_registry_cache_dir": None}
     assert "lemma.procedural.prebuilt" in (cache_dir / "tempo-23.registry.json").read_text(encoding="utf-8")
 
@@ -183,6 +205,10 @@ def test_prebuild_active_procedural_registry_skips_existing_cache(
         type_expr="True",
         source_stream="procedural",
         source_name="pytest",
+        metadata={
+            "operator_bundle_hash": procedural_operator_bundle_hash(),
+            "operator_bundle_version": OPERATOR_BUNDLE_VERSION,
+        },
     ).model_copy(update={"frontier_depth": 0})
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
@@ -254,6 +280,10 @@ def test_prebuild_active_procedural_registry_refreshes_stale_frontier_cache(
         type_expr="True",
         source_stream="procedural",
         source_name="pytest",
+        metadata={
+            "operator_bundle_hash": procedural_operator_bundle_hash(),
+            "operator_bundle_version": OPERATOR_BUNDLE_VERSION,
+        },
     ).model_copy(update={"frontier_depth": 0})
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
@@ -436,6 +466,10 @@ def test_prebuild_active_procedural_registry_keeps_cache_for_inactive_curriculum
         type_expr="True",
         source_stream="procedural",
         source_name="pytest",
+        metadata={
+            "operator_bundle_hash": procedural_operator_bundle_hash(),
+            "operator_bundle_version": OPERATOR_BUNDLE_VERSION,
+        },
     ).model_copy(update={"frontier_depth": 0})
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()

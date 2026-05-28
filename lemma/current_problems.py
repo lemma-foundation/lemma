@@ -231,7 +231,7 @@ def build_current_problems_snapshot(
         generated_at=generated_at or _timestamp(),
         registry_sha256=task_registry.sha256,
         registry_task_count=len(task_registry.tasks),
-        active_K=effective_settings.active_task_count,
+        active_K=len(tasks) or effective_settings.active_task_count,
         tempo=active_tempo,
         active_tempo_source=effective_settings.active_tempo_source,
         active_tempo_seconds=effective_settings.active_tempo_seconds,

@@ -211,11 +211,11 @@ def test_procedural_registry_requires_depth_two_metadata() -> None:
                 "output_hash": "2" * 64,
             },
             {
-                "operator": "generalize",
+                "operator": "specialize",
                 "params": {
-                    "target": "fresh_prop_hypothesis",
-                    "binder": "p",
-                    "binder_type": "Prop",
+                    "binder": "n",
+                    "binder_type": "Nat",
+                    "value": "1",
                     "engine": MUTATION_ENGINE,
                 },
                 "input_hash": "2" * 64,

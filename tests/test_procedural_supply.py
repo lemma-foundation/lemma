@@ -23,12 +23,14 @@ from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candi
 from lemma.supply.mutation import LeanAstMutationEngine, MutationResult, PreviewMutationEngine, StructuralMutationEngine
 from lemma.supply.novelty import novelty_cache_from_hashes, read_novelty_cache, statement_hash
 from lemma.supply.operator_bundle import (
+    MUTATION_ENGINE,
     OPERATOR_BUNDLE_VERSION,
     OPERATOR_NAMES,
     SMALL_VALUES_BY_TYPE,
 )
 from lemma.supply.procedural import (
     _candidate_from_source,
+    _depth_balanced_sources,
     _eligible_depth2_sources,
     build_procedural_registry_tasks,
     corpus_sources_from_dir,
@@ -53,6 +55,8 @@ def test_operator_bundle_includes_lean_pretty_value_aliases() -> None:
     assert SMALL_VALUES_BY_TYPE["\u2124"] == SMALL_VALUES_BY_TYPE["Int"]
     assert SMALL_VALUES_BY_TYPE["\u211A"] == SMALL_VALUES_BY_TYPE["Rat"]
     assert SMALL_VALUES_BY_TYPE["\u211D"] == SMALL_VALUES_BY_TYPE["Real"]
+    assert "0" not in SMALL_VALUES_BY_TYPE["Nat"]
+    assert "Prop" not in SMALL_VALUES_BY_TYPE
 
 
 def test_structural_mutation_engine_marks_current_bundle_engine() -> None:
@@ -97,6 +101,26 @@ def test_structural_mutation_engine_marks_current_bundle_engine() -> None:
     )
     assert implication.type_expr == "¬b = false → true = b"
 
+    bind_relation = StructuralMutationEngine().apply(
+        source,
+        "x >>= f = x.bind f",
+        "symm",
+        step=0,
+        param_seed="d" * 64,
+        peer=source,
+    )
+    assert bind_relation.type_expr == "x.bind f = x >>= f"
+
+    field_notation = StructuralMutationEngine().apply(
+        source,
+        "∀ a b : Nat, a.succ = b",
+        "specialize",
+        step=1,
+        param_seed="e" * 64,
+        peer=source,
+    )
+    assert field_notation.type_expr == "∀ b : Nat, (1 : Nat).succ = b"
+
 
 def _write_snapshot(path: Path) -> None:
     rows = [
@@ -110,20 +134,20 @@ def _write_snapshot(path: Path) -> None:
             "queue_depth": 0,
         },
         {
-            "theorem_name": "Bool.eq_false_eq_not_eq_true",
-            "type_expr": "∀ (b : Bool), (¬(b = true)) = (b = false)",
-            "imports": ["Mathlib"],
+            "theorem_name": "Nat.add_comm_smoke",
+            "type_expr": "∀ n m : Nat, n + m = m + n",
+            "imports": ["Mathlib.Data.Nat.Hyperoperation"],
             "mathlib_rev": "abc123",
-            "source_path": "Mathlib/Data/Bool/Basic.lean",
+            "source_path": "Mathlib/Data/Nat/Hyperoperation.lean",
             "source_license": "Apache-2.0",
             "queue_depth": 0,
         },
         {
-            "theorem_name": "Bool.eq_true_eq_not_eq_false",
-            "type_expr": "∀ (b : Bool), (¬(b = false)) = (b = true)",
-            "imports": ["Mathlib"],
+            "theorem_name": "Nat.mul_comm_smoke",
+            "type_expr": "∀ n m : Nat, n * m = m * n",
+            "imports": ["Mathlib.Data.Nat.Factorization.Basic"],
             "mathlib_rev": "abc123",
-            "source_path": "Mathlib/Data/Bool/Basic.lean",
+            "source_path": "Mathlib/Data/Nat/Factorization/Basic.lean",
             "source_license": "Apache-2.0",
             "queue_depth": 0,
         },
@@ -140,9 +164,27 @@ def _write_import_graph(path: Path) -> None:
         ImportGraphRow(module="Mathlib", imports=("Mathlib.Init", "Mathlib.Data.Nat.Basic")),
         ImportGraphRow(module="Mathlib.Init", imports=()),
         ImportGraphRow(module="Mathlib.Data.Nat.Basic", imports=("Mathlib.Init",)),
+        ImportGraphRow(module="Mathlib.Data.Nat.Hyperoperation", imports=("Mathlib.Data.Nat.Basic",)),
+        ImportGraphRow(module="Mathlib.Data.Nat.Factorization.Basic", imports=("Mathlib.Data.Nat.Basic",)),
         ImportGraphRow(module="Mathlib.Algebra.Group.Basic", imports=("Mathlib.Init",)),
     )
     path.write_text("".join(row.model_dump_json() + "\n" for row in rows), encoding="utf-8")
+
+
+def _test_valid_mutation(source, *, step: int, engine: str = MUTATION_ENGINE) -> MutationResult:  # noqa: ANN001
+    if step == 0:
+        return MutationResult(
+            "∀ n m : Nat, m = n",
+            {"rule": "reverse_relation", "relation": "=", "engine": engine},
+        )
+    suffix = source.theorem_name.rsplit("_", 1)[-1]
+    value = int(suffix) + 1 if suffix.isdigit() else 1 + (
+        int(hashlib.sha256(source.theorem_name.encode()).hexdigest()[:8], 16) % 1_000_000
+    )
+    return MutationResult(
+        f"∀ m : Nat, ({value} : Nat) = m",
+        {"binder": "n", "binder_type": "Nat", "value": str(value), "engine": engine},
+    )
 
 
 def test_materialize_workspace_writes_lean_heartbeat_budget(tmp_path: Path) -> None:
@@ -390,7 +432,7 @@ def test_depth2_generation_is_epoch_seeded_not_static(tmp_path: Path) -> None:
     assert all(
         candidate.metadata["source_pool_receipt_version"] == "lemma-source-pool-receipt-v1" for candidate in first
     )
-    assert all(candidate.metadata["source_sampling_version"] == "lemma-source-sampling-v2" for candidate in first)
+    assert all(candidate.metadata["source_sampling_version"] == "lemma-source-sampling-v3" for candidate in first)
     assert all(candidate.metadata["source_pool_stream_counts"] == {"mathlib_snapshot": 3} for candidate in first)
     assert all(candidate.metadata["citation_alpha_basis_points"] == 5000 for candidate in first)
     assert all(candidate.metadata["citation_window_tempos"] == 2000 for candidate in first)
@@ -474,20 +516,20 @@ def test_candidate_from_source_rejects_low_value_mutation(params: dict[str, obje
         )
 
 
-def test_candidate_from_source_falls_back_to_second_step_generalize() -> None:
+def test_candidate_from_source_uses_specialize_as_second_step() -> None:
     operators = []
 
-    class FallbackMutationEngine:
+    class RecordingMutationEngine:
         def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001, ARG002
             operators.append(operator)
             if step == 0:
                 return MutationResult(
-                    "false = true",
-                    {"rule": "reverse_relation"},
+                    "∀ n m : Nat, m = n",
+                    {"rule": "reverse_relation", "engine": MUTATION_ENGINE},
                 )
             return MutationResult(
-                f"∀ p : Prop, p → ({type_expr})",
-                {"target": "fresh_prop_hypothesis", "binder": "p", "binder_type": "Prop"},
+                "∀ m : Nat, (1 : Nat) = m",
+                {"binder": "n", "binder_type": "Nat", "value": "1", "engine": MUTATION_ENGINE},
             )
 
     source = fixture_candidate(
@@ -495,7 +537,7 @@ def test_candidate_from_source_falls_back_to_second_step_generalize() -> None:
         source_stream="mathlib_snapshot",
         source_name="snapshot",
         theorem_name="source",
-        type_expr="true = false",
+        type_expr="∀ n m : Nat, n = m",
         queue_depth=0,
     )
 
@@ -504,7 +546,7 @@ def test_candidate_from_source_falls_back_to_second_step_generalize() -> None:
         source_pool=(source,),
         generation_seed="epoch-a",
         epoch_fields={},
-        mutation_engine=FallbackMutationEngine(),
+        mutation_engine=RecordingMutationEngine(),
         source_pool_hash_value="a" * 64,
         source_pool_receipt_value={
             "version": "test",
@@ -520,8 +562,9 @@ def test_candidate_from_source_falls_back_to_second_step_generalize() -> None:
         sequence=0,
     )
 
-    assert operators == ["symm", "generalize"]
+    assert operators == ["symm", "specialize"]
     assert [step["operator"] for step in candidate.metadata["mutation_chain"]] == operators
+    assert candidate.type_expr == "∀ m : Nat, (1 : Nat) = m"
 
 
 def test_candidate_from_source_skips_peer_lookup_for_non_peer_operators(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -530,7 +573,7 @@ def test_candidate_from_source_skips_peer_lookup_for_non_peer_operators(monkeypa
         source_stream="mathlib_snapshot",
         source_name="snapshot",
         theorem_name="source",
-        type_expr="true = false",
+        type_expr="∀ n m : Nat, n = m",
         queue_depth=0,
     )
     monkeypatch.setattr(
@@ -543,7 +586,7 @@ def test_candidate_from_source_skips_peer_lookup_for_non_peer_operators(monkeypa
         source_pool=(source,),
         generation_seed="epoch-a",
         epoch_fields={},
-        operator_chain=("symm", "generalize"),
+        operator_chain=("symm", "specialize"),
         mutation_engine=StructuralMutationEngine(),
         source_pool_hash_value="a" * 64,
         source_pool_receipt_value={
@@ -560,7 +603,7 @@ def test_candidate_from_source_skips_peer_lookup_for_non_peer_operators(monkeypa
         sequence=0,
     )
 
-    assert [step["operator"] for step in candidate.metadata["mutation_chain"]] == ["symm", "generalize"]
+    assert [step["operator"] for step in candidate.metadata["mutation_chain"]] == ["symm", "specialize"]
 
 
 def test_candidate_from_source_rejects_placeholder_mutation() -> None:
@@ -680,8 +723,7 @@ def test_candidate_from_source_rejects_all_specialize_chain() -> None:
 def test_depth2_generation_attempt_limit_scales_with_requested_count() -> None:
     class AlwaysGoodMutationEngine:
         def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001, ARG002
-            binder = f"p{step}_{source.theorem_name}"
-            return MutationResult(f"∀ {binder} : Prop, {binder} → ({type_expr})", {"target": "pytest"})
+            return _test_valid_mutation(source, step=step)
 
     class RejectingGate:
         def __init__(self) -> None:
@@ -704,7 +746,7 @@ def test_depth2_generation_attempt_limit_scales_with_requested_count() -> None:
             source_stream="mathlib_snapshot",
             source_name="snapshot",
             theorem_name=f"source_{index}",
-            type_expr="∀ x : ℂ, Complex.re x = Complex.re x",
+            type_expr="∀ n m : Nat, n = m",
             queue_depth=0,
         )
         for index in range(100)
@@ -725,11 +767,113 @@ def test_depth2_generation_attempt_limit_scales_with_requested_count() -> None:
     assert gate.calls == 50
 
 
+def test_depth2_generation_can_return_partial_when_allowed() -> None:
+    class AlwaysGoodMutationEngine:
+        def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001, ARG002
+            return _test_valid_mutation(source, step=step)
+
+    class OneGoodGate:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def __call__(self, candidate, *, seen_canonical_hashes):  # noqa: ANN001, ARG002
+            self.calls += 1
+            return ProceduralGateVerdict(
+                typechecked=True,
+                prop_gate_passed=True,
+                triviality_checked=True,
+                baseline_solved=False,
+                novelty_status="passed" if self.calls == 1 else "duplicate",
+                slot_weight=1.0,
+            )
+
+    gate = OneGoodGate()
+    candidates = generate_depth2_candidates(
+        tuple(
+            fixture_candidate(
+                slug=f"source_{index}",
+                source_stream="mathlib_snapshot",
+                source_name="snapshot",
+                theorem_name=f"source_{index}",
+                    type_expr="∀ n m : Nat, n = m",
+                queue_depth=0,
+            )
+            for index in range(4)
+        ),
+        generation_seed="epoch-a",
+        epoch_randomness=json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
+        count=2,
+        tempo=3,
+        allow_partial=True,
+        gate_runner=gate,
+        mutation_engine=AlwaysGoodMutationEngine(),
+        generation_workers=1,
+    )
+
+    assert gate.calls == 4
+    assert len(candidates) == 1
+    assert candidates[0].metadata["procedural_generation_target_count"] == 2
+    assert candidates[0].metadata["procedural_generation_accepted_count"] == 1
+    assert candidates[0].metadata["procedural_generation_attempt_count"] == 100
+    assert candidates[0].metadata["procedural_generation_attempt_limit"] == 100
+
+
+def test_depth2_partial_generation_keeps_trying_for_target_when_allowed() -> None:
+    class AlwaysGoodMutationEngine:
+        def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001, ARG002
+            return _test_valid_mutation(source, step=step)
+
+    class CountingGate:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def __call__(self, candidate, *, seen_canonical_hashes):  # noqa: ANN001, ARG002
+            self.calls += 1
+            return ProceduralGateVerdict(
+                typechecked=True,
+                prop_gate_passed=True,
+                triviality_checked=True,
+                baseline_solved=False,
+                novelty_status="passed",
+                slot_weight=1.0,
+            )
+
+    gate = CountingGate()
+    candidates = generate_depth2_candidates(
+        tuple(
+            fixture_candidate(
+                slug=f"source_{index}",
+                source_stream="mathlib_snapshot",
+                source_name="snapshot",
+                theorem_name=f"source_{index}",
+                    type_expr="∀ n m : Nat, n = m",
+                queue_depth=0,
+            )
+            for index in range(12)
+        ),
+        generation_seed="epoch-a",
+        epoch_randomness=json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
+        count=6,
+        min_count=4,
+        tempo=3,
+        allow_partial=True,
+        gate_runner=gate,
+        mutation_engine=AlwaysGoodMutationEngine(),
+        generation_workers=1,
+    )
+
+    assert gate.calls == 6
+    assert len(candidates) == 6
+    assert {candidate.metadata["procedural_generation_target_count"] for candidate in candidates} == {6}
+    assert {candidate.metadata["procedural_generation_accepted_count"] for candidate in candidates} == {6}
+    assert {candidate.metadata["procedural_generation_attempt_count"] for candidate in candidates} == {6}
+    assert {candidate.metadata["procedural_generation_attempt_limit"] for candidate in candidates} == {300}
+
+
 def test_depth2_generation_batches_lean_gate_attempts() -> None:
     class AlwaysGoodMutationEngine:
         def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001, ARG002
-            binder = f"p{step}_{source.theorem_name}"
-            return MutationResult(f"∀ {binder} : Prop, {binder} → ({type_expr})", {"target": "pytest"})
+            return _test_valid_mutation(source, step=step)
 
     class BatchRejectingGate:
         def __init__(self) -> None:
@@ -737,6 +881,9 @@ def test_depth2_generation_batches_lean_gate_attempts() -> None:
 
         def __call__(self, candidate, *, seen_canonical_hashes):  # noqa: ANN001, ARG002
             raise AssertionError("parallel generation should use the batch gate")
+
+        def batch_capacity(self, generation_workers):  # noqa: ANN001, ARG002
+            return 96
 
         def batch(self, candidates, *, seen_canonical_hashes):  # noqa: ANN001, ARG002
             self.batch_sizes.append(len(candidates))
@@ -758,7 +905,7 @@ def test_depth2_generation_batches_lean_gate_attempts() -> None:
             source_stream="mathlib_snapshot",
             source_name="snapshot",
             theorem_name=f"source_{index}",
-            type_expr="∀ x : ℂ, Complex.re x = Complex.re x",
+            type_expr="∀ n m : Nat, n = m",
             queue_depth=0,
         )
         for index in range(100)
@@ -777,16 +924,14 @@ def test_depth2_generation_batches_lean_gate_attempts() -> None:
             mutation_engine=AlwaysGoodMutationEngine(),
         )
 
-    assert gate.batch_sizes == [50]
+    assert gate.batch_sizes[0] == 8
+    assert sum(gate.batch_sizes) == 50
 
 
 def test_depth2_generation_rejects_mismatched_mutation_engine_before_lean() -> None:
     class DriftedMutationEngine:
         def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001, ARG002
-            return MutationResult(
-                f"∀ p{step} : Prop, p{step} → ({type_expr})",
-                {"target": "pytest", "engine": "old-engine"},
-            )
+            return _test_valid_mutation(source, step=step, engine="old-engine")
 
     class NoLeanGate:
         def __call__(self, candidate, *, seen_canonical_hashes):  # noqa: ANN001, ARG002
@@ -801,7 +946,7 @@ def test_depth2_generation_rejects_mismatched_mutation_engine_before_lean() -> N
             source_stream="mathlib_snapshot",
             source_name="snapshot",
             theorem_name=f"source_{index}",
-            type_expr="∀ x : ℂ, Complex.re x = Complex.re x",
+            type_expr="∀ n m : Nat, n = m",
             queue_depth=0,
         )
         for index in range(100)
@@ -990,7 +1135,7 @@ def test_lean_gate_runner_records_generation_time_gates(monkeypatch: pytest.Monk
     assert verdict.metadata["triviality_reason"] == "baseline_failed"
     assert verdict.metadata["lean_gate_mode"] == "combined_prop_triviality"
     assert verdict.metadata["lean_gate_invocations"] == 1
-    assert verdict.metadata["lean_gate_build_seconds"] == 1.25
+    assert "lean_gate_build_seconds" not in verdict.metadata
     assert calls == ["gate"]
 
 
@@ -1102,7 +1247,7 @@ def test_lean_gate_runner_batches_gate_results(monkeypatch: pytest.MonkeyPatch, 
     def fake_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001, ARG001
         assert problem.id.endswith(".gate.batch")
         gate_source = str(problem.extra["challenge_full"])
-        assert "#lemma_emit_gate_results" in problem.extra["lean_eval_commands"]
+        assert problem.extra["lean_eval_commands"] == ("set_option maxHeartbeats 200000", "#lemma_emit_gate_results")
         assert "ancestorBaselineSource" not in gate_source
         assert "source_theorem" not in gate_source
         calls.append("batch")
@@ -1127,7 +1272,6 @@ def test_lean_gate_runner_batches_gate_results(monkeypatch: pytest.MonkeyPatch, 
         LemmaSettings(_env_file=None, lean_use_docker=False, procedural_gate_timeout_s=5)
     ).batch(candidates, seen_canonical_hashes=())
 
-    assert calls == ["batch"]
     assert [verdict.accepted for verdict in verdicts] == [True, True]
     assert [verdict.metadata["kernel_canonical_hash"] for verdict in verdicts] == [
         hashlib.sha256(b"first").hexdigest(),
@@ -1135,7 +1279,8 @@ def test_lean_gate_runner_batches_gate_results(monkeypatch: pytest.MonkeyPatch, 
     ]
     assert verdicts[0].metadata["lean_gate_mode"] == "batched_prop_triviality"
     assert verdicts[0].metadata["lean_gate_batch_size"] == 2
-    assert verdicts[0].metadata["lean_gate_batch_seconds"] == 2.5
+    assert "lean_gate_batch_seconds" not in verdicts[0].metadata
+    assert calls == ["batch"]
 
 
 def test_lean_gate_runner_splits_failed_batch_to_salvage_candidates(
@@ -1153,6 +1298,8 @@ def test_lean_gate_runner_splits_failed_batch_to_salvage_candidates(
     batch_sizes: list[int] = []
 
     def fake_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001, ARG001
+        if problem.id.endswith(".gate.standalone"):
+            return VerifyResult(passed=True, reason="ok")
         gate_source = str(problem.extra["challenge_full"])
         batch_size = gate_source.count("canonicalSource :=")
         batch_sizes.append(batch_size)
@@ -1194,6 +1341,8 @@ def test_lean_gate_runner_splits_compile_error_batch_with_budget(
     batch_sizes: list[int] = []
 
     def fake_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001, ARG001
+        if problem.id.endswith(".gate.standalone"):
+            return VerifyResult(passed=True, reason="ok")
         batch_size = str(problem.extra["challenge_full"]).count("canonicalSource :=")
         batch_sizes.append(batch_size)
         if batch_size > 1:
@@ -1283,6 +1432,8 @@ def test_lean_gate_runner_uses_configured_parallel_batches(
     batch_sizes: list[int] = []
 
     def fake_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001, ARG001
+        if problem.id.endswith(".gate.standalone"):
+            return VerifyResult(passed=True, reason="ok")
         gate_source = str(problem.extra["challenge_full"])
         batch_sizes.append(gate_source.count("canonicalSource :="))
         return VerifyResult(
@@ -1437,14 +1588,14 @@ def test_public_novelty_cache_can_be_built_from_type_expr_rows(tmp_path: Path) -
 def test_procedural_slot_weight_receipt_uses_dependency_metadata(tmp_path: Path) -> None:
     class SlotWeightMutationEngine:
         def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001, ARG002
-            return MutationResult(f"∀ p{step} : Prop, p{step} → ({type_expr})", {"target": "pytest"})
+            return _test_valid_mutation(source, step=step)
 
     snapshot = tmp_path / "snapshot.jsonl"
     snapshot.write_text(
         json.dumps(
             {
                 "theorem_name": "Deep.weight",
-                "type_expr": "∀ x : ℂ, Complex.re x = Complex.re x",
+                "type_expr": "∀ n m : Nat, n = m",
                 "imports": ["Mathlib.Data.Nat.Basic", "Mathlib.Algebra.Group.Basic"],
                 "mathlib_rev": "abc123",
                 "source_path": "Mathlib/Deep.lean",
@@ -1499,7 +1650,7 @@ def test_procedural_slot_weight_receipt_uses_public_import_graph(tmp_path: Path)
     assert inputs["import_graph_resolved"] is True
     assert inputs["import_graph_sha256"] == import_graph.sha256
     assert inputs["missing_import_count"] == 0
-    assert inputs["direct_dependency_count"] == 2
+    assert inputs["direct_dependency_count"] == 1
     assert inputs["transitive_dependency_count"] == 2
 
 
@@ -1676,7 +1827,7 @@ def test_depth2_generation_filters_ordering_without_changing_source_hash(tmp_pat
     assert candidates[0].metadata["source_pool_hash"] == full_source_hash
 
 
-def test_depth2_generation_does_not_collapse_to_bool_basic(tmp_path: Path) -> None:
+def test_depth2_generation_skips_toy_basic_sources(tmp_path: Path) -> None:
     snapshot = tmp_path / "snapshot.jsonl"
     snapshot.write_text(
         "\n".join(
@@ -1684,7 +1835,7 @@ def test_depth2_generation_does_not_collapse_to_bool_basic(tmp_path: Path) -> No
                 json.dumps(
                     {
                         "theorem_name": "Bool.source",
-                        "type_expr": "true = false",
+                        "type_expr": "∀ a b : Bool, a = b",
                         "imports": ["Mathlib.Data.Bool.Basic"],
                         "mathlib_rev": "abc123",
                         "source_path": "Mathlib/Data/Bool/Basic.lean",
@@ -1699,10 +1850,40 @@ def test_depth2_generation_does_not_collapse_to_bool_basic(tmp_path: Path) -> No
                 json.dumps(
                     {
                         "theorem_name": "Nat.source",
-                        "type_expr": "(0 : Nat) = 1",
+                        "type_expr": "∀ n m : Nat, n = m",
                         "imports": ["Mathlib.Data.Nat.Basic"],
                         "mathlib_rev": "abc123",
                         "source_path": "Mathlib/Data/Nat/Basic.lean",
+                        "source_license": "Apache-2.0",
+                        "queue_depth": 0,
+                        "difficulty_score": 0,
+                        "direct_dependency_count": 0,
+                        "dependency_depth": 0,
+                    },
+                    sort_keys=True,
+                ),
+                json.dumps(
+                    {
+                        "theorem_name": "Nat.hyper",
+                        "type_expr": "∀ n m : Nat, n + m = m + n",
+                        "imports": ["Mathlib.Data.Nat.Hyperoperation"],
+                        "mathlib_rev": "abc123",
+                        "source_path": "Mathlib/Data/Nat/Hyperoperation.lean",
+                        "source_license": "Apache-2.0",
+                        "queue_depth": 0,
+                        "difficulty_score": 0,
+                        "direct_dependency_count": 0,
+                        "dependency_depth": 0,
+                    },
+                    sort_keys=True,
+                ),
+                json.dumps(
+                    {
+                        "theorem_name": "Nat.factor",
+                        "type_expr": "∀ n m : Nat, n * m = m * n",
+                        "imports": ["Mathlib.Data.Nat.Factorization.Basic"],
+                        "mathlib_rev": "abc123",
+                        "source_path": "Mathlib/Data/Nat/Factorization/Basic.lean",
                         "source_license": "Apache-2.0",
                         "queue_depth": 0,
                         "difficulty_score": 0,
@@ -1729,9 +1910,13 @@ def test_depth2_generation_does_not_collapse_to_bool_basic(tmp_path: Path) -> No
     )
 
     assert {candidate.source_ref.path for candidate in candidates} == {
-        "Mathlib/Data/Bool/Basic.lean",
-        "Mathlib/Data/Nat/Basic.lean",
+        "Mathlib/Data/Nat/Hyperoperation.lean",
+        "Mathlib/Data/Nat/Factorization/Basic.lean",
     }
+    assert all(
+        candidate.source_ref.path not in {"Mathlib/Data/Bool/Basic.lean", "Mathlib/Data/Nat/Basic.lean"}
+        for candidate in candidates
+    )
 
 
 def test_depth2_source_bound_admits_controlled_deeper_rows() -> None:
@@ -1740,27 +1925,27 @@ def test_depth2_source_bound_admits_controlled_deeper_rows() -> None:
         source_stream="mathlib_snapshot",
         source_name="snapshot",
         theorem_name="Set.easy",
-        type_expr="∀ x : Set Nat, x = x",
+        type_expr="∀ n m : Nat, n = m",
         queue_depth=0,
         metadata={
             "difficulty_score": 2,
             "direct_dependency_count": 0,
             "dependency_depth": 0,
         },
-    ).model_copy(update={"imports": ("Mathlib.Data.Set.Basic",)})
+    ).model_copy(update={"imports": ("Mathlib.Data.Nat.Factorization.Basic",)})
     medium = fixture_candidate(
         slug="medium_set",
         source_stream="mathlib_snapshot",
         source_name="snapshot",
         theorem_name="Set.medium",
-        type_expr="∀ x : Set Nat, x ∪ x = x",
+        type_expr="∀ n m : Nat, n + m = m + n",
         queue_depth=2,
         metadata={
             "difficulty_score": 4,
             "direct_dependency_count": 0,
             "dependency_depth": 0,
         },
-    ).model_copy(update={"imports": ("Mathlib.Data.Set.Basic",)})
+    ).model_copy(update={"imports": ("Mathlib.Data.Nat.Hyperoperation",)})
     too_broad = fixture_candidate(
         slug="broad_set",
         source_stream="mathlib_snapshot",
@@ -1774,10 +1959,102 @@ def test_depth2_source_bound_admits_controlled_deeper_rows() -> None:
             "dependency_depth": 0,
         },
     ).model_copy(update={"imports": ("Mathlib.Data.Set.Basic",)})
+    broad_import = fixture_candidate(
+        slug="nat_prime",
+        source_stream="mathlib_snapshot",
+        source_name="snapshot",
+        theorem_name="Nat.prime",
+        type_expr="∀ n m : Nat, n = m",
+        queue_depth=0,
+        metadata={
+            "difficulty_score": 1,
+            "direct_dependency_count": 0,
+            "dependency_depth": 0,
+        },
+    ).model_copy(update={"imports": ("Mathlib.Data.Nat.Prime.Basic",)})
+    free_type_var = fixture_candidate(
+        slug="free_alpha",
+        source_stream="mathlib_snapshot",
+        source_name="snapshot",
+        theorem_name="Set.freeAlpha",
+        type_expr="∀ x : Set α, x = x",
+        queue_depth=0,
+        metadata={
+            "difficulty_score": 1,
+            "direct_dependency_count": 0,
+            "dependency_depth": 0,
+        },
+    ).model_copy(update={"imports": ("Mathlib.Data.Set.Basic",)})
+    free_value_var = fixture_candidate(
+        slug="free_set",
+        source_stream="mathlib_snapshot",
+        source_name="snapshot",
+        theorem_name="Set.freeSet",
+        type_expr="s.Nonempty ↔ ∅ ⊂ s",
+        queue_depth=0,
+        metadata={
+            "difficulty_score": 1,
+            "direct_dependency_count": 0,
+            "dependency_depth": 0,
+        },
+    ).model_copy(update={"imports": ("Mathlib.Data.Set.Basic",)})
+    fixture_without_dependency_metadata = fixture_candidate(
+        slug="fixture_mathlib",
+        source_stream="mathlib_snapshot",
+        source_name="snapshot",
+        theorem_name="Fixture.mathlib",
+        type_expr="true = false",
+        queue_depth=0,
+    ).model_copy(update={"imports": ("Mathlib",)})
 
-    eligible = _eligible_depth2_sources((easy, medium, too_broad), max_queue_depth=16)
+    eligible = _eligible_depth2_sources(
+        (
+            easy,
+            medium,
+            too_broad,
+            broad_import,
+            free_type_var,
+            free_value_var,
+            fixture_without_dependency_metadata,
+        ),
+        max_queue_depth=16,
+    )
 
-    assert {source.id for source in eligible} == {easy.id, medium.id}
+    assert {source.id for source in eligible} == {
+        easy.id,
+        medium.id,
+        broad_import.id,
+    }
+
+
+def test_depth2_sources_require_productive_specialization() -> None:
+    def source(slug: str, type_expr: str):
+        return fixture_candidate(
+            slug=slug,
+            source_stream="mathlib_snapshot",
+            source_name="snapshot",
+            theorem_name=f"Source.{slug}",
+            type_expr=type_expr,
+            queue_depth=0,
+            metadata={
+                "difficulty_score": 1,
+                "direct_dependency_count": 0,
+                "dependency_depth": 0,
+            },
+        ).model_copy(update={"imports": ("Mathlib.Data.Nat.Basic",)})
+
+    good = source("good", "∀ n m : Nat, n = m")
+    one_binder = source("one_binder", "∀ n : Nat, n = n")
+    instance_after_value = source("instance_after_value", "∀ n : Nat, ∀ [NeZero n], n = n")
+    prop_first = source("prop_first", "∀ p : Prop, ∀ n : Nat, n = n")
+    no_binder = source("no_binder", "true = false")
+
+    eligible = _eligible_depth2_sources(
+        (good, one_binder, instance_after_value, prop_first, no_binder),
+        max_queue_depth=16,
+    )
+
+    assert tuple(source.id for source in eligible) == (good.id,)
 
 
 def test_depth2_generation_uses_public_yield_history_for_source_order(tmp_path: Path) -> None:
@@ -1788,7 +2065,7 @@ def test_depth2_generation_uses_public_yield_history_for_source_order(tmp_path: 
                 json.dumps(
                     {
                         "theorem_name": "Yield.low",
-                        "type_expr": "true = false",
+                        "type_expr": "∀ a b : Bool, a = b",
                         "imports": ["Mathlib.Data.Bool.Basic"],
                         "mathlib_rev": "abc123",
                         "source_path": "Mathlib/Low.lean",
@@ -1800,7 +2077,7 @@ def test_depth2_generation_uses_public_yield_history_for_source_order(tmp_path: 
                 json.dumps(
                     {
                         "theorem_name": "Yield.high",
-                        "type_expr": "true = false",
+                        "type_expr": "∀ a b : Bool, a ≠ b ↔ b ≠ a",
                         "imports": ["Mathlib.Data.Bool.Basic"],
                         "mathlib_rev": "abc123",
                         "source_path": "Mathlib/High.lean",
@@ -1818,7 +2095,7 @@ def test_depth2_generation_uses_public_yield_history_for_source_order(tmp_path: 
     history_path.write_text(
         json.dumps(
             {
-                "accepted_operator_chains": {"symm,generalize": 2},
+                "accepted_operator_chains": {"symm,specialize": 2},
                 "accepted_source_families": {"Mathlib/High.lean": 5},
             },
             sort_keys=True,
@@ -1845,13 +2122,31 @@ def test_depth2_generation_uses_public_yield_history_for_source_order(tmp_path: 
     assert candidates[0].metadata["yield_history_entries"] == 1
 
 
+def test_depth_balanced_sources_interleave_available_depths() -> None:
+    sources = tuple(
+        fixture_candidate(
+            slug=f"depth_{depth}_{index}",
+            source_stream="mathlib_snapshot",
+            source_name="snapshot",
+            theorem_name=f"Depth.t{depth}_{index}",
+            type_expr="true = false",
+            queue_depth=depth,
+        )
+        for depth, index in ((0, 0), (0, 1), (0, 2), (1, 0), (1, 1), (2, 0))
+    )
+
+    ordered = _depth_balanced_sources(sources)
+
+    assert [source.queue_depth for source in ordered] == [2, 1, 0, 1, 0, 0]
+
+
 def test_depth2_generation_skips_alpha_equivalent_duplicates_before_lean(tmp_path: Path) -> None:
     snapshot = tmp_path / "snapshot.jsonl"
     snapshot.write_text(
         json.dumps(
             {
                 "theorem_name": "Duplicate.bool",
-                "type_expr": "true = false",
+                "type_expr": "∀ a b : Bool, a = b",
                 "imports": ["Mathlib.Data.Bool.Basic"],
                 "mathlib_rev": "abc123",
                 "source_path": "Mathlib/Duplicate.lean",
@@ -1878,6 +2173,18 @@ def test_depth2_generation_skips_alpha_equivalent_duplicates_before_lean(tmp_pat
             self.batch_sizes.append(len(candidates))
             return tuple(self(candidate, seen_canonical_hashes=seen_canonical_hashes) for candidate in candidates)
 
+    class DuplicateMutationEngine:
+        def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001, ARG002
+            if step == 0:
+                return MutationResult(
+                    "∀ a b : Bool, true = b",
+                    {"rule": "reverse_relation", "relation": "=", "engine": MUTATION_ENGINE},
+                )
+            return MutationResult(
+                "true = true",
+                {"binder": "b", "binder_type": "Bool", "value": "true", "engine": MUTATION_ENGINE},
+            )
+
     gate = CountingBatchGate()
     with pytest.raises(ValueError, match="procedural gates accepted 1 candidates, needed 2"):
         generate_depth2_candidates(
@@ -1888,7 +2195,7 @@ def test_depth2_generation_skips_alpha_equivalent_duplicates_before_lean(tmp_pat
             tempo=3,
             citation_alpha=0.0,
             gate_runner=gate,
-            mutation_engine=StructuralMutationEngine(),
+            mutation_engine=DuplicateMutationEngine(),
             generation_workers=4,
         )
 

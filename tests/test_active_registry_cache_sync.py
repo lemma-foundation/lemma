@@ -5,6 +5,7 @@ import importlib.util
 import json
 from pathlib import Path
 
+from lemma.supply.operator_bundle import OPERATOR_BUNDLE_VERSION, procedural_operator_bundle_hash
 from lemma.task_supply import make_task, write_registry
 from lemma.tasks import load_task_registry
 
@@ -35,6 +36,10 @@ def test_sync_active_registry_cache_hydrates_public_tempo_cache(monkeypatch, tmp
         source_stream="procedural",
         source_name="pytest",
         frontier_depth=0,
+        metadata={
+            "operator_bundle_hash": procedural_operator_bundle_hash(),
+            "operator_bundle_version": OPERATOR_BUNDLE_VERSION,
+        },
     )
     write_registry([task], registry_path)
     registry_sha = load_task_registry(registry_path.read_bytes()).sha256
@@ -72,6 +77,10 @@ def test_sync_active_registry_cache_reports_present_cache_without_public_index(
         source_stream="procedural",
         source_name="pytest",
         frontier_depth=0,
+        metadata={
+            "operator_bundle_hash": procedural_operator_bundle_hash(),
+            "operator_bundle_version": OPERATOR_BUNDLE_VERSION,
+        },
     )
     cache_path = cache / "tempo-7.registry.json"
     write_registry([task], cache_path)

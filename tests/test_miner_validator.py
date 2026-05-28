@@ -674,6 +674,96 @@ def test_mine_once_wraps_fresh_prop_hypothesis_strengthened_source_theorem(
     assert result.submission.metadata["prover"] == "source_theorem_wrapper"
 
 
+def test_mine_once_wraps_reversed_source_theorem_inside_fresh_prop_hypothesis(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    task = make_task(
+        task_id="lemma.test.fresh_prop_symm",
+        title="Fresh prop symm task",
+        theorem_name="test_fresh_prop_symm",
+        type_expr="∀ P : Prop, P → (False = True)",
+        source_stream="human_curated",
+        source_name="pytest",
+        metadata={
+            "source_theorem_name": "known_false_true",
+            "mutation_chain": [
+                {"operator": "symm", "params": {"rule": "reverse_relation", "relation": "="}},
+                {
+                    "operator": "generalize",
+                    "params": {"target": "fresh_prop_hypothesis", "binder_type": "Prop"},
+                },
+            ],
+        },
+    )
+    registry = TaskRegistry(schema_version=1, tasks=(task,), sha256="0" * 64)
+
+    def fail_prover(*args: object, **kwargs: object) -> ProverResult:
+        raise AssertionError("hosted prover should not run when source theorem wrapper verifies")
+
+    class FakeVerifier:
+        def verify(self, task: object, submission: object) -> VerifyResult:
+            assert isinstance(submission, LemmaSubmission)
+            expected = "exact (fun _ _ => (known_false_true).symm)"
+            return VerifyResult(passed=expected in submission.proof_script, reason="ok")
+
+    monkeypatch.setattr("lemma.miner.run_openai_compatible_prover", fail_prover)
+    monkeypatch.setattr("lemma.miner.get_verifier", lambda *args, **kwargs: FakeVerifier())
+    monkeypatch.setattr("lemma.miner.verify_result_from_adapter_result", lambda result: result)
+
+    result = mine_once(
+        _settings(tmp_path).model_copy(update={"prover_base_url": "https://example.test", "prover_model": "model"}),
+        registry=registry,
+    )
+
+    assert result.verification.passed is True
+    assert result.submission.metadata["prover"] == "source_theorem_wrapper"
+
+
+def test_mine_once_specializes_reversed_source_theorem(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    task = make_task(
+        task_id="lemma.test.specialized_symm",
+        title="Specialized symm task",
+        theorem_name="test_specialized_symm",
+        type_expr="true = true",
+        source_stream="human_curated",
+        source_name="pytest",
+        metadata={
+            "source_theorem_name": "known_bool",
+            "mutation_chain": [
+                {"operator": "symm", "params": {"rule": "reverse_relation", "relation": "="}},
+                {
+                    "operator": "specialize",
+                    "params": {"binder": "b", "binder_type": "Bool", "value": "true"},
+                },
+            ],
+        },
+    )
+    registry = TaskRegistry(schema_version=1, tasks=(task,), sha256="0" * 64)
+
+    def fail_prover(*args: object, **kwargs: object) -> ProverResult:
+        raise AssertionError("hosted prover should not run when source theorem wrapper verifies")
+
+    class FakeVerifier:
+        def verify(self, task: object, submission: object) -> VerifyResult:
+            assert isinstance(submission, LemmaSubmission)
+            expected = "exact ((known_bool (true : Bool))).symm"
+            return VerifyResult(passed=expected in submission.proof_script, reason="ok")
+
+    monkeypatch.setattr("lemma.miner.run_openai_compatible_prover", fail_prover)
+    monkeypatch.setattr("lemma.miner.get_verifier", lambda *args, **kwargs: FakeVerifier())
+    monkeypatch.setattr("lemma.miner.verify_result_from_adapter_result", lambda result: result)
+
+    result = mine_once(
+        _settings(tmp_path).model_copy(update={"prover_base_url": "https://example.test", "prover_model": "model"}),
+        registry=registry,
+    )
+
+    assert result.verification.passed is True
+    assert result.submission.metadata["prover"] == "source_theorem_wrapper"
+
+
 def test_mine_once_wraps_fresh_prop_before_strengthening_inside_source_conjunct(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -1171,6 +1261,42 @@ def test_validator_scores_and_writes_alternate_corpus_rows(tmp_path: Path) -> No
     tempo_dir = f"tempo-{run_summary.active_tempo:06d}"
     assert (tmp_path / "operator" / "canonical" / "sn0" / "active-pools" / tempo_dir / "manifest.json").exists()
     assert (tmp_path / "operator" / "canonical" / "sn0" / "tempos" / tempo_dir / "manifest.json").exists()
+
+
+def test_validator_keeps_scoring_when_optional_s3_publish_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from lemma.corpus import publish
+
+    def fail_publish(*args: object, **kwargs: object) -> object:
+        raise RuntimeError("object store unavailable")
+
+    monkeypatch.setattr(publish, "publish_paths_to_s3", fail_publish)
+    settings = _settings(tmp_path).model_copy(
+        update={
+            "canonical_publish_s3_uri": "s3://lemma-corpus/live",
+            "canonical_publish_endpoint_url": "https://s3.example",
+            "canonical_publish_aws_command": "aws",
+        }
+    )
+
+    result = validate_once(
+        settings,
+        [build_submission(_task(), solver_hotkey="hk", proof_script=_proof())],
+        registry=_registry(),
+        verify_submission=lambda task, submission: VerifyResult(passed=True, reason="ok"),  # noqa: ARG005
+        no_set_weights=True,
+    )
+
+    assert result.summary.accepted_unique_count == 1
+    assert result.summary.canonical_publish_count == 0
+    publish_rows = [
+        json.loads(line)
+        for line in (tmp_path / "operator" / "canonical-publish.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert publish_rows == [
+        {"kind": "s3_publish_error", "error_type": "RuntimeError", "error": "object store unavailable"}
+    ]
 
 
 def test_validator_scores_from_recorded_kernel_dependencies(tmp_path: Path) -> None:

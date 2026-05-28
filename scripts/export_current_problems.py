@@ -41,6 +41,11 @@ def main() -> int:
         help="Write an empty current-tempo snapshot if --current-cache-dir has no current cache yet",
     )
     parser.add_argument(
+        "--keep-output-when-current-cache-missing",
+        action="store_true",
+        help="Leave an existing output snapshot unchanged if --current-cache-dir has no current cache yet",
+    )
+    parser.add_argument(
         "--registry-is-active",
         action="store_true",
         help="Treat --registry-json as the already-selected active task set",
@@ -62,6 +67,19 @@ def main() -> int:
         registry_json = active_registry_cache_path(cache_settings, tempo=tempo)
         registry_is_active = True
         if registry_json is not None and not registry_json.is_file():
+            if args.keep_output_when_current_cache_missing and args.output is not None and args.output.is_file():
+                print(
+                    json.dumps(
+                        {
+                            "kept": True,
+                            "output": str(args.output),
+                            "reason": "current cache missing",
+                            "task_count": None,
+                        },
+                        sort_keys=True,
+                    )
+                )
+                return 0
             if not args.empty_when_current_cache_missing:
                 raise FileNotFoundError(registry_json)
             snapshot = build_empty_current_problems_snapshot(settings, tempo=tempo)

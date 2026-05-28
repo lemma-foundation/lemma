@@ -148,7 +148,11 @@ def _source_theorem_is_direct_proof(task: LemmaTask) -> bool:
             return False
         if params.get("target") == "fresh_prop_hypothesis" and params.get("binder_type") == "Prop":
             continue
+        if step.get("operator") == "specialize" and _specialize_value(params) is not None:
+            continue
         if params.get("fallback") in {"true_premise", "no_supported_type_occurrence"}:
+            continue
+        if params.get("rule") == "reverse_relation" and params.get("relation") in {"=", "↔"}:
             continue
         if params.get("mode") == "peer_premise":
             continue
@@ -222,6 +226,7 @@ def _strip_outer_parens(text: str) -> str:
 def _source_theorem_exact(task: LemmaTask, source_theorem: str) -> str:
     exact = source_theorem
     wraps_false = False
+    pending_symm = False
     for step in task.metadata.get("mutation_chain", ()):
         if not isinstance(step, dict):
             continue
@@ -229,21 +234,50 @@ def _source_theorem_exact(task: LemmaTask, source_theorem: str) -> str:
         if not isinstance(params, dict):
             continue
         if params.get("target") == "fresh_prop_hypothesis" and params.get("binder_type") == "Prop":
+            exact = _flush_symm(exact, pending_symm)
+            pending_symm = False
             exact = f"(fun _ _ => {exact})"
         elif params.get("fallback") in {"true_premise", "no_supported_type_occurrence"}:
+            exact = _flush_symm(exact, pending_symm)
+            pending_symm = False
             exact = f"(fun _ => {exact})"
+        elif params.get("rule") == "reverse_relation" and params.get("relation") in {"=", "↔"}:
+            pending_symm = not pending_symm
+        elif step.get("operator") == "specialize" and (value := _specialize_value(params)) is not None:
+            exact = f"({exact} {value})"
         elif params.get("rule") == "conjoin_peer_conclusion":
+            exact = _flush_symm(exact, pending_symm)
+            pending_symm = False
             peer = params.get("peer_theorem_name")
             if isinstance(peer, str) and _LEAN_DECL_RE.fullmatch(peer.strip()):
                 exact = f"And.intro ({exact}) {peer.strip()}"
         elif params.get("rule") == "conjoin_self":
+            exact = _flush_symm(exact, pending_symm)
+            pending_symm = False
             exact = f"And.intro ({exact}) ({exact})"
         elif params.get("rule") == "false_disjunct":
+            exact = _flush_symm(exact, pending_symm)
+            pending_symm = False
             exact = f"Or.inl ({exact})"
             wraps_false = True
+    exact = _flush_symm(exact, pending_symm)
     if not wraps_false and "∨" in task.type_expr and "False" in task.type_expr:
         exact = f"Or.inl {exact}"
     return exact
+
+
+def _flush_symm(exact: str, pending_symm: bool) -> str:
+    return f"({exact}).symm" if pending_symm else exact
+
+
+def _specialize_value(params: dict[str, object]) -> str | None:
+    value = params.get("value")
+    binder_type = params.get("binder_type")
+    if not isinstance(value, str) or not value.strip() or not isinstance(binder_type, str) or not binder_type.strip():
+        return None
+    if binder_type.strip() == "Prop":
+        return value.strip()
+    return f"({value.strip()} : {binder_type.strip()})"
 
 
 def run_openai_compatible_prover(

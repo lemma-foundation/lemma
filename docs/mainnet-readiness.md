@@ -83,10 +83,9 @@ PY
 Systemd timers, cron jobs, and local reminders are only wakeups. On every wakeup, the operator should read the chain block and derive the active tempo before deciding whether to warm the current registry cache, mine, validate, publish, or wait.
 For burn-in, prefer short wakeups such as 5-10 minutes plus once-per-tempo miner state over epoch-length timers. Epoch-length timers can drift into a validator-before-miner ordering and delay reveal consumption until the next epoch-sized wakeup.
 
-For SN467 burn-in, keep service timeouts long enough for slow Lean gates and
-keep wakeup jitter small enough that a miner/validator ordering miss costs
-minutes, not a tempo. A production-shaped systemd setup should use the same
-pattern:
+For SN467 burn-in, keep service timeouts long enough for slow Lean gates. The
+active-registry warmer must wait until the previous cold build has finished;
+miner and validator wakeups can stay tighter because they are cheap retries.
 
 ```ini
 # lemma-active-registry-prebuild.service.d/10-local-lean-worker.conf
@@ -100,14 +99,16 @@ TimeoutStartSec=4500
 
 # lemma-active-registry-prebuild.timer.d/10-cadence.conf
 [Timer]
+OnBootSec=
 OnActiveSec=
+OnUnitActiveSec=
 OnUnitInactiveSec=
 AccuracySec=
 RandomizedDelaySec=
-OnActiveSec=90s
-OnUnitInactiveSec=2min
-AccuracySec=15s
-RandomizedDelaySec=15s
+OnBootSec=5min
+OnUnitInactiveSec=10min
+AccuracySec=1min
+RandomizedDelaySec=30s
 
 # lemma-miner-bucket@miner5.timer.d/10-cadence.conf
 [Timer]

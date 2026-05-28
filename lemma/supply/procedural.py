@@ -25,6 +25,7 @@ from lemma.supply.operator_bundle import (
     MUTATION_ENGINE,
     OPERATOR_BUNDLE_VERSION,
     OPERATOR_NAMES,
+    SMALL_VALUES_BY_TYPE,
     procedural_operator_bundle_hash,
 )
 from lemma.supply.source_pool import source_pool_receipt, source_pool_receipt_sha256
@@ -112,7 +113,7 @@ _LOW_VALUE_MUTATION_RULES = frozenset({"conjoin_peer_conclusion", "false_disjunc
 _LOW_VALUE_MUTATION_TARGETS: frozenset[str] = frozenset()
 _PRODUCTIVE_OPERATOR_NAMES = ("symm",)
 _PEER_OPERATOR_NAMES = frozenset({"conjoin", "strengthen"})
-_LEAN_GATE_BATCH_ATTEMPTS = 50
+_LEAN_GATE_BATCH_ATTEMPTS = 8
 _MAX_SOURCE_DIFFICULTY_SCORE = 4
 _MAX_DIRECT_DEPENDENCY_COUNT = 0
 _MAX_DEPENDENCY_DEPTH = 0
@@ -125,8 +126,15 @@ _LIGHTWEIGHT_IMPORT_PREFIXES = (
     "Mathlib.Data.Set.",
     "Mathlib.Logic.",
 )
-_STANDALONE_FORBIDDEN_TOKENS = ("ofNat", "‹", "›", "ᶜ", "!", "₀", "₁", "₂", "₃", "₄", "₅", "₆", "₇", "₈", "₉")
-
+_TOY_BASIC_SOURCE_PATHS = frozenset(
+    {
+        "Mathlib/Data/Bool/Basic.lean",
+        "Mathlib/Data/Fin/Basic.lean",
+        "Mathlib/Data/Nat/Basic.lean",
+        "Mathlib/Data/Option/Basic.lean",
+        "Mathlib/Logic/Basic.lean",
+    }
+)
 
 def candidates_from_jsonl(path: Path) -> tuple[TaskCandidate, ...]:
     out: list[TaskCandidate] = []
@@ -352,6 +360,8 @@ def generate_depth2_candidates(
     epoch_randomness: str,
     count: int,
     tempo: int,
+    allow_partial: bool = False,
+    min_count: int = 1,
     max_queue_depth: int | None = None,
     citation_alpha: float = 0.5,
     citation_weight_cap: float = 64.0,
@@ -407,15 +417,28 @@ def generate_depth2_candidates(
     )
     workers = _resolve_generation_workers(generation_workers)
     attempt_limit = count * 50
+    required_count = min(max(1, min_count), count) if allow_partial else count
     if workers <= 1:
-        return _generate_depth2_candidates_sequential(ctx, count=count, attempt_limit=attempt_limit)
-    return _generate_depth2_candidates_parallel(ctx, count=count, attempt_limit=attempt_limit, workers=workers)
+        return _generate_depth2_candidates_sequential(
+            ctx,
+            count=count,
+            required_count=required_count,
+            attempt_limit=attempt_limit,
+        )
+    return _generate_depth2_candidates_parallel(
+        ctx,
+        count=count,
+        required_count=required_count,
+        attempt_limit=attempt_limit,
+        workers=workers,
+    )
 
 
 def _generate_depth2_candidates_sequential(
     ctx: _Depth2GenerationContext,
     *,
     count: int,
+    required_count: int,
     attempt_limit: int,
 ) -> tuple[TaskCandidate, ...]:
     out: list[TaskCandidate] = []
@@ -436,15 +459,21 @@ def _generate_depth2_candidates_sequential(
         _record_depth2_attempt(telemetry, attempt, accepted=accepted)
         cursor += 1
     _log_depth2_telemetry(telemetry, count=count, attempt_limit=attempt_limit)
-    if len(out) < count:
-        raise ValueError(f"procedural gates accepted {len(out)} candidates, needed {count}")
-    return tuple(out)
+    if len(out) < required_count:
+        raise ValueError(f"procedural gates accepted {len(out)} candidates, needed {required_count}")
+    return _with_generation_count_receipt(
+        tuple(out),
+        target_count=count,
+        attempt_count=telemetry.attempts,
+        attempt_limit=attempt_limit,
+    )
 
 
 def _generate_depth2_candidates_parallel(
     ctx: _Depth2GenerationContext,
     *,
     count: int,
+    required_count: int,
     attempt_limit: int,
     workers: int,
 ) -> tuple[TaskCandidate, ...]:
@@ -475,15 +504,44 @@ def _generate_depth2_candidates_parallel(
             _record_depth2_attempt(telemetry, attempt, accepted=accepted)
         cursor = batch_end
     _log_depth2_telemetry(telemetry, count=count, attempt_limit=attempt_limit)
-    if len(out) < count:
-        raise ValueError(f"procedural gates accepted {len(out)} candidates, needed {count}")
-    return tuple(out)
+    if len(out) < required_count:
+        raise ValueError(f"procedural gates accepted {len(out)} candidates, needed {required_count}")
+    return _with_generation_count_receipt(
+        tuple(out),
+        target_count=count,
+        attempt_count=telemetry.attempts,
+        attempt_limit=attempt_limit,
+    )
+
+
+def _with_generation_count_receipt(
+    candidates: tuple[TaskCandidate, ...],
+    *,
+    target_count: int,
+    attempt_count: int,
+    attempt_limit: int,
+) -> tuple[TaskCandidate, ...]:
+    accepted_count = len(candidates)
+    return tuple(
+        candidate.model_copy(
+            update={
+                "metadata": {
+                    **candidate.metadata,
+                    "procedural_generation_target_count": target_count,
+                    "procedural_generation_accepted_count": accepted_count,
+                    "procedural_generation_attempt_count": attempt_count,
+                    "procedural_generation_attempt_limit": attempt_limit,
+                }
+            }
+        )
+        for candidate in candidates
+    )
 
 
 def _gate_batch_width(gate_runner: ProceduralGateRunner, workers: int) -> int:
     batch_capacity = getattr(gate_runner, "batch_capacity", None)
     if callable(batch_capacity):
-        return max(workers, int(batch_capacity(workers)))
+        return max(workers, min(_LEAN_GATE_BATCH_ATTEMPTS, int(batch_capacity(workers))))
     if callable(getattr(gate_runner, "batch", None)):
         return max(workers, _LEAN_GATE_BATCH_ATTEMPTS)
     return workers
@@ -764,8 +822,6 @@ def _prelean_candidate_rejection(candidate: TaskCandidate) -> str:
         return "prelean:duplicate_import"
     if any(not _LEAN_MODULE.fullmatch(module) for module in candidate.imports):
         return "prelean:import_module"
-    if any(token in candidate.type_expr for token in _STANDALONE_FORBIDDEN_TOKENS):
-        return "prelean:unsupported_token"
     return ""
 
 
@@ -1000,7 +1056,7 @@ def _with_gate_receipt(candidate: TaskCandidate, verdict: ProceduralGateVerdict)
 
 def _operator_for_step(seed: str, sequence: int, step: int, type_expr: str) -> str | None:
     if step > 0:
-        return "generalize"
+        return "specialize" if _supports_specialize(type_expr) else None
     operators = _productive_operators_for(type_expr)
     if not operators:
         return None
@@ -1016,9 +1072,13 @@ def _eligible_depth2_sources(
         source
         for source in sources
         if (max_queue_depth is None or source.queue_depth <= max_queue_depth)
-        and _productive_operators_for(source.type_expr)
+        and _supports_depth2_chain(source.type_expr)
         and _lightweight_source(source)
     )
+
+
+def _supports_depth2_chain(type_expr: str) -> bool:
+    return bool(_productive_operators_for(type_expr)) and _supports_specialize(type_expr)
 
 
 def _productive_operators_for(type_expr: str) -> tuple[str, ...]:
@@ -1028,13 +1088,33 @@ def _productive_operators_for(type_expr: str) -> tuple[str, ...]:
     return _PRODUCTIVE_OPERATOR_NAMES if _split_top_level_relation(body) is not None else ()
 
 
+def _supports_specialize(type_expr: str) -> bool:
+    from lemma.supply.mutation import _split_forall
+
+    binder = _split_forall(type_expr)
+    if binder is None:
+        return False
+    _name, binder_type, body = binder
+    remaining = body.strip()
+    return (
+        binder_type.strip() in SMALL_VALUES_BY_TYPE
+        and remaining.startswith("∀")
+        and not remaining[1:].lstrip().startswith("[")
+    )
+
+
 def _lightweight_source(source: TaskCandidate) -> bool:
     return (
         _metadata_leq(source.metadata, "difficulty_score", _MAX_SOURCE_DIFFICULTY_SCORE)
         and _metadata_leq(source.metadata, "direct_dependency_count", _MAX_DIRECT_DEPENDENCY_COUNT)
         and _metadata_leq(source.metadata, "dependency_depth", _MAX_DEPENDENCY_DEPTH)
         and _lightweight_imports(source)
+        and _not_toy_basic_source(source)
     )
+
+
+def _not_toy_basic_source(source: TaskCandidate) -> bool:
+    return str(source.source_ref.path or "").strip() not in _TOY_BASIC_SOURCE_PATHS
 
 
 def _metadata_leq(metadata: dict[str, object], key: str, limit: int) -> bool:
@@ -1104,6 +1184,22 @@ def _ordered_sources(
             break
         used.add(source.id)
         out.append(source)
+    return _depth_balanced_sources(tuple(out))
+
+
+def _depth_balanced_sources(sources: tuple[TaskCandidate, ...]) -> tuple[TaskCandidate, ...]:
+    buckets: dict[int, list[TaskCandidate]] = {}
+    for source in sources:
+        buckets.setdefault(source.queue_depth, []).append(source)
+    depths = sorted(buckets, reverse=True)
+    out: list[TaskCandidate] = []
+    index = 0
+    while len(out) < len(sources):
+        for depth in depths:
+            bucket = buckets[depth]
+            if index < len(bucket):
+                out.append(bucket[index])
+        index += 1
     return tuple(out)
 
 
@@ -1138,7 +1234,7 @@ def _yield_source_score(source: TaskCandidate, yield_history: ProceduralYieldHis
     source_score = yield_history.accepted_source_families.get(_source_family(source), 0)
     chain_score = 0
     for operator in _productive_operators_for(source.type_expr):
-        chain_score = max(chain_score, yield_history.accepted_operator_chains.get(f"{operator},generalize", 0))
+        chain_score = max(chain_score, yield_history.accepted_operator_chains.get(f"{operator},specialize", 0))
     return (source_score * 1_000) + chain_score
 
 

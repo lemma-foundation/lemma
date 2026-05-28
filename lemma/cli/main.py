@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
@@ -102,6 +103,61 @@ def _read_int_mapping(path: Path) -> dict[str, int]:
             raise click.ClickException(f"{path}: expected string keys and integer values")
         out[key] = value
     return out
+
+
+def _timestamp() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _active_registry_generation_metrics(registry) -> dict[str, object]:  # noqa: ANN001
+    tasks = tuple(getattr(registry, "tasks", ()) or ())
+    metadata = [getattr(task, "metadata", {}) or {} for task in tasks]
+    target_counts = [
+        value
+        for item in metadata
+        if isinstance(value := item.get("procedural_generation_target_count"), int)
+    ]
+    accepted_counts = [
+        value
+        for item in metadata
+        if isinstance(value := item.get("procedural_generation_accepted_count"), int)
+    ]
+    attempt_counts = [
+        value
+        for item in metadata
+        if isinstance(value := item.get("procedural_generation_attempt_count"), int)
+    ]
+    attempt_limits = [
+        value
+        for item in metadata
+        if isinstance(value := item.get("procedural_generation_attempt_limit"), int)
+    ]
+    gate_seconds = [
+        float(value)
+        for item in metadata
+        if isinstance(value := item.get("lean_gate_build_seconds"), int | float)
+    ]
+    gate_verified = sum(
+        1
+        for item in metadata
+        if item.get("typechecked") is True
+        and item.get("prop_gate_passed") is True
+        and item.get("triviality_checked") is True
+        and item.get("baseline_solved") is False
+        and item.get("novelty_status") == "passed"
+    )
+    target = max(target_counts) if target_counts else len(tasks)
+    return {
+        "generation_target_tasks": target,
+        "generated_tasks": len(tasks),
+        "gate_verified_tasks": gate_verified,
+        "procedural_generation_accepted_count": max(accepted_counts) if accepted_counts else None,
+        "procedural_generation_attempt_count": max(attempt_counts) if attempt_counts else None,
+        "procedural_generation_attempt_limit": max(attempt_limits) if attempt_limits else None,
+        "partial_generation": bool(target and len(tasks) < target),
+        "lean_gate_build_seconds_total": round(sum(gate_seconds), 3),
+        "lean_gate_build_seconds_max": round(max(gate_seconds), 3) if gate_seconds else 0.0,
+    }
 
 
 def _load_registry():
@@ -1064,18 +1120,25 @@ def tasks_rebuild_active_procedural_registry_cmd(output_path: Path, tempo: int |
     from lemma.task_supply import write_registry
     from lemma.validator import current_active_tempo, task_registry_for_validation
 
+    started = time.perf_counter()
+    started_at = _timestamp()
     settings = LemmaSettings()
     active_tempo = current_active_tempo(settings) if tempo is None else tempo
     rebuild_settings = settings.model_copy(update={"active_registry_json": None, "active_registry_cache_dir": None})
     registry = task_registry_for_validation(rebuild_settings, tempo=active_tempo)
+    finished_at = _timestamp()
     write_registry(registry.tasks, output_path)
     click.echo(
         json.dumps(
             {
+                "finished_at": finished_at,
                 "output": str(output_path),
                 "tempo": active_tempo,
                 "registry_sha256": hashlib.sha256(output_path.read_bytes()).hexdigest(),
+                "started_at": started_at,
                 "tasks": len(registry.tasks),
+                "wall_seconds": round(time.perf_counter() - started, 3),
+                **_active_registry_generation_metrics(registry),
             },
             indent=2,
             sort_keys=True,
@@ -1111,6 +1174,9 @@ def _warm_active_procedural_registry(*, tempo: int | None, force: bool) -> None:
     )
 
     started = time.perf_counter()
+    started_at = _timestamp()
+    rebuild_started_at = None
+    rebuild_finished_at = None
     rebuild_wall_seconds = 0.0
     settings = LemmaSettings()
     if settings.active_registry_json is not None:
@@ -1139,6 +1205,7 @@ def _warm_active_procedural_registry(*, tempo: int | None, force: bool) -> None:
         rebuild_settings = effective_settings.model_copy(
             update={"active_registry_json": None, "active_registry_cache_dir": None}
         )
+        rebuild_started_at = _timestamp()
         rebuild_started = time.perf_counter()
         registry = task_registry_for_validation(rebuild_settings, tempo=active_tempo)
         latest_effective_settings = curriculum_controlled_settings(settings, tempo=active_tempo)
@@ -1148,6 +1215,7 @@ def _warm_active_procedural_registry(*, tempo: int | None, force: bool) -> None:
             )
             registry = task_registry_for_validation(rebuild_settings, tempo=active_tempo)
         rebuild_wall_seconds = time.perf_counter() - rebuild_started
+        rebuild_finished_at = _timestamp()
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         tmp_path = cache_path.with_name(cache_path.name + ".tmp")
         write_registry(registry.tasks, tmp_path)
@@ -1165,7 +1233,11 @@ def _warm_active_procedural_registry(*, tempo: int | None, force: bool) -> None:
                 "registry_sha256": hashlib.sha256(cache_path.read_bytes()).hexdigest(),
                 "tasks": len(registry.tasks),
                 "rebuild_wall_seconds": round(rebuild_wall_seconds, 3),
+                "started_at": started_at,
+                "rebuild_started_at": rebuild_started_at,
+                "rebuild_finished_at": rebuild_finished_at,
                 "wall_seconds": round(time.perf_counter() - started, 3),
+                **_active_registry_generation_metrics(registry),
             },
             indent=2,
             sort_keys=True,

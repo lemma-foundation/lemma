@@ -99,6 +99,16 @@ def test_write_current_problem_snapshot(tmp_path: Path) -> None:
     assert payload["tasks"][0]["queue_depth"] == 0
 
 
+def test_current_problem_snapshot_reports_actual_active_count_when_registry_is_partial() -> None:
+    settings = LemmaSettings(active_task_count=6, frontier_depth=0, active_queue_seed="pytest")
+
+    snapshot = build_current_problems_snapshot(settings, registry=_registry(), tempo=0, registry_is_active=True)
+
+    assert snapshot.active_K == 3
+    assert snapshot.registry_task_count == 3
+    assert snapshot.task_count == 3
+
+
 def test_current_problem_snapshot_rotates_by_tempo() -> None:
     settings = LemmaSettings(active_task_count=1, frontier_depth=0, active_queue_seed="pytest")
 
@@ -326,6 +336,36 @@ def test_export_current_problems_uses_empty_current_snapshot_when_cache_missing(
     assert payload["task_count"] == 0
     assert payload["tasks"] == []
     assert payload["registry_sha256"] == "0" * 64
+
+
+def test_export_current_problems_can_keep_existing_output_when_cache_missing(tmp_path: Path) -> None:
+    cache_dir = tmp_path / "registries"
+    cache_dir.mkdir()
+    output = tmp_path / "current-problems.json"
+    output.write_text('{"task_count": 2}\n', encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/export_current_problems.py",
+            "--tempo",
+            "7",
+            "--current-cache-dir",
+            str(cache_dir),
+            "--keep-output-when-current-cache-missing",
+            "--output",
+            str(output),
+        ],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    summary = json.loads(result.stdout)
+    assert summary["kept"] is True
+    assert summary["reason"] == "current cache missing"
+    assert output.read_text(encoding="utf-8") == '{"task_count": 2}\n'
 
 
 def test_current_problem_service_serves_snapshot() -> None:

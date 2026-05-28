@@ -5,24 +5,23 @@ from __future__ import annotations
 import hashlib
 import json
 
-OPERATOR_BUNDLE_VERSION = "lemma-procedural-depth2-v15"
-OPERATOR_NAMES = ("symm", "generalize")
+OPERATOR_BUNDLE_VERSION = "lemma-procedural-depth2-v18"
+OPERATOR_NAMES = ("symm", "specialize")
 MUTATION_ENGINE = "structural_reversible_v2"
 TYPE_SUBSTITUTIONS = (
     ("Complex.re", "Complex.im"),
     ("Complex.im", "Complex.re"),
 )
 SMALL_VALUES_BY_TYPE = {
-    "Nat": ("0", "1", "2", "Nat.zero", "Nat.succ Nat.zero"),
-    "\u2115": ("0", "1", "2", "Nat.zero", "Nat.succ Nat.zero"),
-    "Int": ("0", "1", "-1"),
-    "\u2124": ("0", "1", "-1"),
-    "Rat": ("0", "1"),
-    "\u211A": ("0", "1"),
-    "Real": ("0", "1"),
-    "\u211D": ("0", "1"),
+    "Nat": ("1", "2"),
+    "\u2115": ("1", "2"),
+    "Int": ("1", "-1"),
+    "\u2124": ("1", "-1"),
+    "Rat": ("1",),
+    "\u211A": ("1",),
+    "Real": ("1",),
+    "\u211D": ("1",),
     "Bool": ("true", "false"),
-    "Prop": ("True", "False"),
 }
 
 

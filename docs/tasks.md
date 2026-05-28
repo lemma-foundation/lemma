@@ -175,6 +175,7 @@ The active pool is a deterministic queue window of size `K`.
 
 - `K` controls paid throughput and validator load, capped by validator capacity and the public cost budget.
 - `queue_depth` / `frontier_depth` is the protocol difficulty proxy.
+- The dashboard should describe this plainly: `K` is how many tasks are live, and `frontier_depth` is how deep the task pool is open.
 - Human difficulty labels are compatibility/display metadata, not protocol inputs.
 - Solved slots advance.
 - Expired unsolved slots are parked.

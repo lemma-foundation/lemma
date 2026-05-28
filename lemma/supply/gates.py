@@ -295,12 +295,11 @@ class LeanProceduralGateRunner:
         lean_gate_batch_seconds: float | None = None,
     ) -> ProceduralGateVerdict:
         _ = seen_canonical_hashes
+        _ = lean_gate_batch_seconds
         slot_weight = slot_weight_receipt_for_candidate(candidate, import_graph=self.import_graph)
         batch_metadata: dict[str, object] = {}
         if lean_gate_batch_size is not None:
             batch_metadata["lean_gate_batch_size"] = lean_gate_batch_size
-        if lean_gate_batch_seconds is not None:
-            batch_metadata["lean_gate_batch_seconds"] = round(lean_gate_batch_seconds, 3)
         return ProceduralGateVerdict(
             typechecked=typecheck.passed,
             prop_gate_passed=prop.passed,
@@ -319,7 +318,6 @@ class LeanProceduralGateRunner:
                 "triviality_reason": baseline_reason,
                 "baseline_solver": baseline_solver,
                 "lean_gate_mode": lean_gate_mode,
-                "lean_gate_build_seconds": round(typecheck.build_seconds, 3),
                 "lean_gate_invocations": lean_gate_invocations,
                 **batch_metadata,
                 **self.novelty_cache.metadata(),
