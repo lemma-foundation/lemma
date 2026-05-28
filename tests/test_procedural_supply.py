@@ -4,6 +4,7 @@ import hashlib
 import json
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from lemma.common.config import LemmaSettings
@@ -29,6 +30,7 @@ from lemma.supply.operator_bundle import (
     SMALL_VALUES_BY_TYPE,
 )
 from lemma.supply.procedural import (
+    _accepted_source_family_limit,
     _candidate_from_source,
     _depth_balanced_sources,
     _eligible_depth2_sources,
@@ -544,6 +546,31 @@ def test_source_family_uses_mathlib_topic_buckets() -> None:
     assert _source_family(metadata_bucket) == "Data/Nat"
     assert _source_family(path_bucket) == "Data/List"
     assert _source_family(logic_bucket) == "Logic"
+
+
+def test_source_family_limit_keeps_fill_capacity_with_many_families() -> None:
+    def source(slug: str, path: str) -> TaskCandidate:
+        return fixture_candidate(
+            slug=slug,
+            source_stream="mathlib_snapshot",
+            source_name="snapshot",
+            theorem_name=slug,
+            type_expr="∀ n m : Nat, n = m",
+            queue_depth=0,
+        ).model_copy(update={"source_ref": SourceRef(kind="fixture", name=slug, path=path)})
+
+    ctx = SimpleNamespace(
+        ordered=(
+            source("nat_a", "Mathlib/Data/Nat/Factorization/Basic.lean"),
+            source("nat_b", "Mathlib/Data/Nat/GCD/Lemmas.lean"),
+            source("fin", "Mathlib/Data/Fin/SuccPred.lean"),
+            source("list", "Mathlib/Data/List/Basic.lean"),
+            source("set", "Mathlib/Data/Set/Basic.lean"),
+            source("equiv", "Mathlib/Logic/Equiv/Basic.lean"),
+        )
+    )
+
+    assert _accepted_source_family_limit(ctx, 6) == 2
 
 
 @pytest.mark.parametrize(

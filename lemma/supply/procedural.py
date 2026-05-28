@@ -728,7 +728,8 @@ def _accepted_source_family_limit(ctx: _Depth2GenerationContext, count: int) -> 
     family_counts = Counter(_source_family(source) for source in ctx.ordered)
     if len(family_counts) <= 1:
         return 0
-    for limit in range(1, count + 1):
+    base_limit = max(1, math.ceil(count / 3))
+    for limit in range(base_limit, count + 1):
         if sum(min(size, limit) for size in family_counts.values()) >= count:
             return limit
     return 0
