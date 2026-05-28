@@ -224,7 +224,7 @@ def cached_active_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> 
 
 
 def active_registry_cache_stale(registry: TaskRegistry, settings: LemmaSettings) -> bool:
-    expected_count = settings.procedural_candidate_count or settings.active_task_count
+    expected_count = max(settings.active_task_count, settings.procedural_candidate_count or 0)
     if len(registry.tasks) != expected_count:
         return True
     if any(task.frontier_depth != settings.frontier_depth for task in registry.tasks):
@@ -346,7 +346,7 @@ def _procedural_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> Ta
         else settings.active_queue_seed
     )
     generation_seed = active_epoch_seed(settings, tempo=tempo, epoch_randomness=epoch_randomness)
-    count = settings.procedural_candidate_count or settings.active_task_count
+    count = max(settings.active_task_count, settings.procedural_candidate_count or 0)
     triviality_budget = triviality_budget_receipt_for_settings(settings, tempo=tempo)
     novelty_cache = (
         read_novelty_cache(settings.procedural_novelty_cache_jsonl)

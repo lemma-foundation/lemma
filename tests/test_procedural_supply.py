@@ -40,7 +40,11 @@ from lemma.supply.slot_weight import slot_weight_receipt_for_candidate
 from lemma.supply.triviality_budget import TrivialityRetargetConfig, triviality_budget_receipt
 from lemma.supply.types import fixture_candidate
 from lemma.task_supply import make_task, write_registry
-from lemma.validator import active_epoch_seed, active_tasks_for_validation, task_registry_for_validation
+from lemma.validator import (
+    active_epoch_seed,
+    active_tasks_for_validation,
+    task_registry_for_validation,
+)
 
 
 def test_operator_bundle_includes_lean_pretty_value_aliases() -> None:
@@ -1606,6 +1610,36 @@ def test_procedural_supply_filters_sources_to_frontier_depth(monkeypatch, tmp_pa
     assert captured_depths == [0, 0, 0, 1]
 
 
+def test_procedural_candidate_count_cannot_shrink_active_generation(monkeypatch, tmp_path: Path) -> None:
+    snapshot = tmp_path / "snapshot.jsonl"
+    _write_snapshot(snapshot)
+    full_source_hash = source_pool_hash(mathlib_candidates_from_jsonl(snapshot))
+    captured_count = None
+
+    class StopGeneration(Exception):
+        pass
+
+    def fake_generate_depth2_candidates(sources, **kwargs):  # noqa: ANN001, ANN202
+        nonlocal captured_count
+        captured_count = kwargs["count"]
+        raise StopGeneration
+
+    monkeypatch.setattr("lemma.supply.procedural.generate_depth2_candidates", fake_generate_depth2_candidates)
+    settings = LemmaSettings(
+        _env_file=None,
+        task_supply_mode="procedural",
+        procedural_source_jsonl=snapshot,
+        procedural_source_sha256_expected=full_source_hash,
+        procedural_candidate_count=1,
+        active_task_count=6,
+    )
+
+    with pytest.raises(StopGeneration):
+        task_registry_for_validation(settings, tempo=3)
+
+    assert captured_count == 6
+
+
 def test_depth2_generation_filters_ordering_without_changing_source_hash(tmp_path: Path) -> None:
     snapshot = tmp_path / "snapshot.jsonl"
     _write_snapshot(snapshot)
@@ -1639,6 +1673,64 @@ def test_depth2_generation_filters_ordering_without_changing_source_hash(tmp_pat
 
     assert candidates[0].queue_depth == 0
     assert candidates[0].metadata["source_pool_hash"] == full_source_hash
+
+
+def test_depth2_generation_does_not_collapse_to_bool_basic(tmp_path: Path) -> None:
+    snapshot = tmp_path / "snapshot.jsonl"
+    snapshot.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "theorem_name": "Bool.source",
+                        "type_expr": "true = false",
+                        "imports": ["Mathlib.Data.Bool.Basic"],
+                        "mathlib_rev": "abc123",
+                        "source_path": "Mathlib/Data/Bool/Basic.lean",
+                        "source_license": "Apache-2.0",
+                        "queue_depth": 0,
+                        "difficulty_score": 0,
+                        "direct_dependency_count": 0,
+                        "dependency_depth": 0,
+                    },
+                    sort_keys=True,
+                ),
+                json.dumps(
+                    {
+                        "theorem_name": "Nat.source",
+                        "type_expr": "(0 : Nat) = 1",
+                        "imports": ["Mathlib.Data.Nat.Basic"],
+                        "mathlib_rev": "abc123",
+                        "source_path": "Mathlib/Data/Nat/Basic.lean",
+                        "source_license": "Apache-2.0",
+                        "queue_depth": 0,
+                        "difficulty_score": 0,
+                        "direct_dependency_count": 0,
+                        "dependency_depth": 0,
+                    },
+                    sort_keys=True,
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    candidates = generate_depth2_candidates(
+        mathlib_candidates_from_jsonl(snapshot),
+        generation_seed="source-diversity",
+        epoch_randomness="source-diversity",
+        count=2,
+        tempo=3,
+        max_queue_depth=0,
+        gate_runner=AssumedProceduralGateRunner(),
+        mutation_engine=StructuralMutationEngine(),
+    )
+
+    assert {candidate.source_ref.path for candidate in candidates} == {
+        "Mathlib/Data/Bool/Basic.lean",
+        "Mathlib/Data/Nat/Basic.lean",
+    }
 
 
 def test_depth2_generation_uses_public_yield_history_for_source_order(tmp_path: Path) -> None:
