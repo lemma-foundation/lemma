@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-OPERATOR_BUNDLE_VERSION = "lemma-procedural-depth2-v19"
+OPERATOR_BUNDLE_VERSION = "lemma-procedural-depth2-v21"
 OPERATOR_NAMES = ("symm", "specialize")
 MUTATION_ENGINE = "structural_reversible_v3"
 TYPE_SUBSTITUTIONS = (
@@ -13,8 +13,8 @@ TYPE_SUBSTITUTIONS = (
     ("Complex.im", "Complex.re"),
 )
 SMALL_VALUES_BY_TYPE = {
-    "Nat": ("1", "2"),
-    "\u2115": ("1", "2"),
+    "Nat": ("3", "5"),
+    "\u2115": ("3", "5"),
     "Int": ("1", "-1"),
     "\u2124": ("1", "-1"),
     "Rat": ("1",),

@@ -445,6 +445,7 @@ def _generate_depth2_candidates_sequential(
     seen: set[str] = set()
     seen_prelean: set[str] = set()
     telemetry = _Depth2Telemetry()
+    source_family_limit = _accepted_source_family_limit(ctx, count)
     cursor = 0
     while len(out) < count and cursor < attempt_limit:
         attempt = _attempt_depth2_candidate(
@@ -455,7 +456,13 @@ def _generate_depth2_candidates_sequential(
         )
         accepted = False
         if attempt.candidate is not None and attempt.verdict is not None:
-            accepted = _maybe_accept_depth2_attempt(out, seen, attempt.candidate, attempt.verdict)
+            accepted = _maybe_accept_depth2_attempt(
+                out,
+                seen,
+                attempt.candidate,
+                attempt.verdict,
+                source_family_limit=source_family_limit,
+            )
         _record_depth2_attempt(telemetry, attempt, accepted=accepted)
         cursor += 1
     _log_depth2_telemetry(telemetry, count=count, attempt_limit=attempt_limit)
@@ -481,6 +488,7 @@ def _generate_depth2_candidates_parallel(
     seen: set[str] = set()
     seen_prelean: set[str] = set()
     telemetry = _Depth2Telemetry()
+    source_family_limit = _accepted_source_family_limit(ctx, count)
     cursor = 0
     while len(out) < count and cursor < attempt_limit:
         batch_width = _gate_batch_width(ctx.gate_runner, workers)
@@ -500,7 +508,13 @@ def _generate_depth2_candidates_parallel(
                 _record_depth2_attempt(telemetry, attempt, accepted=False)
                 continue
             if len(out) < count:
-                accepted = _maybe_accept_depth2_attempt(out, seen, attempt.candidate, attempt.verdict)
+                accepted = _maybe_accept_depth2_attempt(
+                    out,
+                    seen,
+                    attempt.candidate,
+                    attempt.verdict,
+                    source_family_limit=source_family_limit,
+                )
             _record_depth2_attempt(telemetry, attempt, accepted=accepted)
         cursor = batch_end
     _log_depth2_telemetry(telemetry, count=count, attempt_limit=attempt_limit)
@@ -696,14 +710,29 @@ def _maybe_accept_depth2_attempt(
     seen: set[str],
     candidate: TaskCandidate,
     verdict: ProceduralGateVerdict,
+    *,
+    source_family_limit: int,
 ) -> bool:
     candidate = _with_gate_receipt(candidate, verdict)
     canonical_hash = str(candidate.metadata["canonical_hash"])
     if not verdict.accepted or canonical_hash in seen:
         return False
+    if source_family_limit and _accepted_source_family_count(out, _source_family(candidate)) >= source_family_limit:
+        return False
     seen.add(canonical_hash)
     out.append(candidate)
     return True
+
+
+def _accepted_source_family_limit(ctx: _Depth2GenerationContext, count: int) -> int:
+    distinct_sources = len({_source_family(source) for source in ctx.ordered})
+    if distinct_sources < count:
+        return 0
+    return max(1, math.ceil(count / 3))
+
+
+def _accepted_source_family_count(candidates: list[TaskCandidate], source_family: str) -> int:
+    return sum(1 for candidate in candidates if _source_family(candidate) == source_family)
 
 
 def _record_depth2_attempt(telemetry: _Depth2Telemetry, attempt: _Depth2Attempt, *, accepted: bool) -> None:

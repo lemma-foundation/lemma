@@ -32,6 +32,7 @@ from lemma.supply.procedural import (
     _candidate_from_source,
     _depth_balanced_sources,
     _eligible_depth2_sources,
+    _maybe_accept_depth2_attempt,
     build_procedural_registry_tasks,
     corpus_sources_from_dir,
     generate_depth2_candidates,
@@ -41,8 +42,9 @@ from lemma.supply.procedural import (
 )
 from lemma.supply.slot_weight import slot_weight_receipt_for_candidate
 from lemma.supply.triviality_budget import TrivialityRetargetConfig, triviality_budget_receipt
-from lemma.supply.types import fixture_candidate
+from lemma.supply.types import TaskCandidate, fixture_candidate
 from lemma.task_supply import make_task, write_registry
+from lemma.tasks import SourceRef
 from lemma.validator import (
     active_epoch_seed,
     active_tasks_for_validation,
@@ -56,6 +58,7 @@ def test_operator_bundle_includes_lean_pretty_value_aliases() -> None:
     assert SMALL_VALUES_BY_TYPE["\u211A"] == SMALL_VALUES_BY_TYPE["Rat"]
     assert SMALL_VALUES_BY_TYPE["\u211D"] == SMALL_VALUES_BY_TYPE["Real"]
     assert "0" not in SMALL_VALUES_BY_TYPE["Nat"]
+    assert "1" not in SMALL_VALUES_BY_TYPE["Nat"]
     assert "Prop" not in SMALL_VALUES_BY_TYPE
 
 
@@ -119,7 +122,7 @@ def test_structural_mutation_engine_marks_current_bundle_engine() -> None:
         param_seed="e" * 64,
         peer=source,
     )
-    assert field_notation.type_expr == "∀ b : Nat, (1 : Nat).succ = b"
+    assert field_notation.type_expr == "∀ b : Nat, (3 : Nat).succ = b"
 
 
 def _write_snapshot(path: Path) -> None:
@@ -145,9 +148,9 @@ def _write_snapshot(path: Path) -> None:
         {
             "theorem_name": "Nat.mul_comm_smoke",
             "type_expr": "∀ n m : Nat, n * m = m * n",
-            "imports": ["Mathlib.Data.Nat.Factorization.Basic"],
+            "imports": ["Mathlib.Data.Nat.Factorization.Defs"],
             "mathlib_rev": "abc123",
-            "source_path": "Mathlib/Data/Nat/Factorization/Basic.lean",
+            "source_path": "Mathlib/Data/Nat/Factorization/Defs.lean",
             "source_license": "Apache-2.0",
             "queue_depth": 0,
         },
@@ -165,7 +168,7 @@ def _write_import_graph(path: Path) -> None:
         ImportGraphRow(module="Mathlib.Init", imports=()),
         ImportGraphRow(module="Mathlib.Data.Nat.Basic", imports=("Mathlib.Init",)),
         ImportGraphRow(module="Mathlib.Data.Nat.Hyperoperation", imports=("Mathlib.Data.Nat.Basic",)),
-        ImportGraphRow(module="Mathlib.Data.Nat.Factorization.Basic", imports=("Mathlib.Data.Nat.Basic",)),
+        ImportGraphRow(module="Mathlib.Data.Nat.Factorization.Defs", imports=("Mathlib.Data.Nat.Basic",)),
         ImportGraphRow(module="Mathlib.Algebra.Group.Basic", imports=("Mathlib.Init",)),
     )
     path.write_text("".join(row.model_dump_json() + "\n" for row in rows), encoding="utf-8")
@@ -466,6 +469,44 @@ def test_depth2_generation_skips_failed_mutations(tmp_path: Path) -> None:
 
     assert len(candidates) == 1
     assert engine.calls >= 3
+
+
+def test_depth2_acceptance_caps_source_family() -> None:
+    verdict = ProceduralGateVerdict(
+        typechecked=True,
+        prop_gate_passed=True,
+        triviality_checked=True,
+        baseline_solved=False,
+        novelty_status="passed",
+        slot_weight=1.0,
+        metadata={"gate_runner": "pytest"},
+    )
+
+    def candidate(slug: str, source_path: str) -> TaskCandidate:
+        canonical_hash = hashlib.sha256(slug.encode()).hexdigest()
+        return fixture_candidate(
+            slug=slug,
+            source_stream="procedural",
+            source_name=slug,
+            theorem_name=slug,
+            type_expr="True",
+            queue_depth=0,
+            metadata={"canonical_hash": canonical_hash},
+        ).model_copy(update={"source_ref": SourceRef(kind="procedural", name=slug, path=source_path)})
+
+    out: list[TaskCandidate] = []
+    seen: set[str] = set()
+
+    assert _maybe_accept_depth2_attempt(out, seen, candidate("first", "Mathlib/A.lean"), verdict, source_family_limit=1)
+    assert not _maybe_accept_depth2_attempt(
+        out,
+        seen,
+        candidate("second", "Mathlib/A.lean"),
+        verdict,
+        source_family_limit=1,
+    )
+    assert _maybe_accept_depth2_attempt(out, seen, candidate("third", "Mathlib/B.lean"), verdict, source_family_limit=1)
+    assert [item.source_ref.path for item in out] == ["Mathlib/A.lean", "Mathlib/B.lean"]
 
 
 @pytest.mark.parametrize(
@@ -1965,9 +2006,9 @@ def test_depth2_generation_skips_toy_basic_sources(tmp_path: Path) -> None:
                     {
                         "theorem_name": "Nat.factor",
                         "type_expr": "∀ n m : Nat, n * m = m * n",
-                        "imports": ["Mathlib.Data.Nat.Factorization.Basic"],
+                        "imports": ["Mathlib.Data.Nat.Factorization.Defs"],
                         "mathlib_rev": "abc123",
-                        "source_path": "Mathlib/Data/Nat/Factorization/Basic.lean",
+                        "source_path": "Mathlib/Data/Nat/Factorization/Defs.lean",
                         "source_license": "Apache-2.0",
                         "queue_depth": 0,
                         "difficulty_score": 0,
@@ -1995,12 +2036,50 @@ def test_depth2_generation_skips_toy_basic_sources(tmp_path: Path) -> None:
 
     assert {candidate.source_ref.path for candidate in candidates} == {
         "Mathlib/Data/Nat/Hyperoperation.lean",
-        "Mathlib/Data/Nat/Factorization/Basic.lean",
+        "Mathlib/Data/Nat/Factorization/Defs.lean",
     }
     assert all(
         candidate.source_ref.path not in {"Mathlib/Data/Bool/Basic.lean", "Mathlib/Data/Nat/Basic.lean"}
         for candidate in candidates
     )
+
+
+def test_depth2_generation_caps_accepted_source_families_when_pool_is_wide() -> None:
+    class AlwaysGoodMutationEngine:
+        def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001, ARG002
+            return _test_valid_mutation(source, step=step)
+
+    def source(index: int, path: str):
+        return fixture_candidate(
+            slug=f"source_{index}",
+            source_stream="mathlib_snapshot",
+            source_name=f"source_{index}",
+            theorem_name=f"source_{index}",
+            type_expr="∀ n m : Nat, n = m",
+            queue_depth=0,
+        ).model_copy(update={"source_ref": SourceRef(kind="fixture", name=f"source_{index}", path=path)})
+
+    crowded_path = "Mathlib/Data/Nat/Factorization/Basic.lean"
+    candidates = generate_depth2_candidates(
+        (
+            *(source(index, crowded_path) for index in range(4)),
+            source(4, "Mathlib/Data/Nat/Factorization/Defs.lean"),
+            source(5, "Mathlib/Data/Nat/GCD/Lemmas.lean"),
+            source(6, "Mathlib/Data/Fin/SuccPred.lean"),
+            source(7, "Mathlib/Data/List/Intervals.lean"),
+            source(8, "Mathlib/Data/List/Pairwise.lean"),
+        ),
+        generation_seed="source-cap",
+        epoch_randomness="source-cap",
+        count=6,
+        tempo=3,
+        gate_runner=AssumedProceduralGateRunner(),
+        mutation_engine=AlwaysGoodMutationEngine(),
+    )
+
+    paths = [candidate.source_ref.path for candidate in candidates]
+    assert paths.count(crowded_path) <= 2
+    assert len(paths) == 6
 
 
 def test_depth2_source_bound_admits_controlled_deeper_rows() -> None:
@@ -2016,7 +2095,7 @@ def test_depth2_source_bound_admits_controlled_deeper_rows() -> None:
             "direct_dependency_count": 0,
             "dependency_depth": 0,
         },
-    ).model_copy(update={"imports": ("Mathlib.Data.Nat.Factorization.Basic",)})
+    ).model_copy(update={"imports": ("Mathlib.Data.Nat.Factorization.Defs",)})
     medium = fixture_candidate(
         slug="medium_set",
         source_stream="mathlib_snapshot",
