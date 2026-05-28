@@ -108,8 +108,7 @@ if not active:
     raise SystemExit(0)
 
 slot = int(os.environ.get("LEMMA_MINER_SLOT", "0"))
-period = max(1, int(os.environ.get("LEMMA_MINER_ROTATION_SECONDS", "1800")))
-task = active[(slot + int(datetime.now(UTC).timestamp() // period)) % len(active)]
+task = active[(slot + tempo) % len(active)]
 bucket_root = Path(os.environ["LEMMA_MINER_BUCKET_DIR"])
 bucket_dir = bucket_root / datetime.now(UTC).strftime("run-%Y%m%dT%H%M%SZ")
 configured_prover = settings.prover_command.strip()

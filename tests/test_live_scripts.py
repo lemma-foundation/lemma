@@ -73,6 +73,14 @@ def test_bucket_miner_publishes_once_per_chain_tempo() -> None:
     assert 'printf \'%s:%s\\n\' "$tempo" "$registry_sha256" > "$state_dir/last_bucket_tempo"' in miner
 
 
+def test_bucket_miner_task_rotation_is_chain_tempo_bound() -> None:
+    miner = (ROOT / "scripts" / "lemma-miner-once-to-bucket").read_text(encoding="utf-8")
+
+    assert "task = active[(slot + tempo) % len(active)]" in miner
+    assert "LEMMA_MINER_ROTATION_SECONDS" not in miner
+    assert "timestamp() // period" not in miner
+
+
 def test_bucket_miner_idles_when_active_registry_cache_is_missing() -> None:
     miner = (ROOT / "scripts" / "lemma-miner-once-to-bucket").read_text(encoding="utf-8")
 
