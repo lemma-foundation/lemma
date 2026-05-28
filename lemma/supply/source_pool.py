@@ -9,7 +9,7 @@ from collections.abc import Iterable
 from typing import Any
 
 SOURCE_POOL_RECEIPT_VERSION = "lemma-source-pool-receipt-v1"
-SOURCE_SAMPLING_VERSION = "lemma-source-sampling-v4"
+SOURCE_SAMPLING_VERSION = "lemma-source-sampling-v5"
 
 
 def source_sampling_policy(

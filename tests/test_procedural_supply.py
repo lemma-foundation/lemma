@@ -4,7 +4,6 @@ import hashlib
 import json
 import time
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 from lemma.common.config import LemmaSettings
@@ -30,7 +29,6 @@ from lemma.supply.operator_bundle import (
     SMALL_VALUES_BY_TYPE,
 )
 from lemma.supply.procedural import (
-    _accepted_source_family_limit,
     _candidate_from_source,
     _depth_balanced_sources,
     _eligible_depth2_sources,
@@ -476,7 +474,7 @@ def test_depth2_generation_skips_failed_mutations(tmp_path: Path) -> None:
     assert engine.calls >= 3
 
 
-def test_depth2_acceptance_caps_source_family() -> None:
+def test_depth2_acceptance_keeps_unique_candidates_from_same_source_family() -> None:
     verdict = ProceduralGateVerdict(
         typechecked=True,
         prop_gate_passed=True,
@@ -502,16 +500,10 @@ def test_depth2_acceptance_caps_source_family() -> None:
     out: list[TaskCandidate] = []
     seen: set[str] = set()
 
-    assert _maybe_accept_depth2_attempt(out, seen, candidate("first", "Mathlib/A.lean"), verdict, source_family_limit=1)
-    assert not _maybe_accept_depth2_attempt(
-        out,
-        seen,
-        candidate("second", "Mathlib/A.lean"),
-        verdict,
-        source_family_limit=1,
-    )
-    assert _maybe_accept_depth2_attempt(out, seen, candidate("third", "Mathlib/B.lean"), verdict, source_family_limit=1)
-    assert [item.source_ref.path for item in out] == ["Mathlib/A.lean", "Mathlib/B.lean"]
+    assert _maybe_accept_depth2_attempt(out, seen, candidate("first", "Mathlib/A.lean"), verdict)
+    assert _maybe_accept_depth2_attempt(out, seen, candidate("second", "Mathlib/A.lean"), verdict)
+    assert _maybe_accept_depth2_attempt(out, seen, candidate("third", "Mathlib/B.lean"), verdict)
+    assert [item.source_ref.path for item in out] == ["Mathlib/A.lean", "Mathlib/A.lean", "Mathlib/B.lean"]
 
 
 def test_source_family_uses_mathlib_topic_buckets() -> None:
@@ -546,31 +538,6 @@ def test_source_family_uses_mathlib_topic_buckets() -> None:
     assert _source_family(metadata_bucket) == "Data/Nat"
     assert _source_family(path_bucket) == "Data/List"
     assert _source_family(logic_bucket) == "Logic"
-
-
-def test_source_family_limit_keeps_fill_capacity_with_many_families() -> None:
-    def source(slug: str, path: str) -> TaskCandidate:
-        return fixture_candidate(
-            slug=slug,
-            source_stream="mathlib_snapshot",
-            source_name="snapshot",
-            theorem_name=slug,
-            type_expr="∀ n m : Nat, n = m",
-            queue_depth=0,
-        ).model_copy(update={"source_ref": SourceRef(kind="fixture", name=slug, path=path)})
-
-    ctx = SimpleNamespace(
-        ordered=(
-            source("nat_a", "Mathlib/Data/Nat/Factorization/Basic.lean"),
-            source("nat_b", "Mathlib/Data/Nat/GCD/Lemmas.lean"),
-            source("fin", "Mathlib/Data/Fin/SuccPred.lean"),
-            source("list", "Mathlib/Data/List/Basic.lean"),
-            source("set", "Mathlib/Data/Set/Basic.lean"),
-            source("equiv", "Mathlib/Logic/Equiv/Basic.lean"),
-        )
-    )
-
-    assert _accepted_source_family_limit(ctx, 6) == 2
 
 
 @pytest.mark.parametrize(
@@ -2108,7 +2075,7 @@ def test_depth2_generation_skips_toy_basic_sources(tmp_path: Path) -> None:
     )
 
 
-def test_depth2_generation_caps_accepted_source_families_when_pool_is_wide() -> None:
+def test_depth2_generation_fills_target_when_one_source_family_is_wide() -> None:
     class AlwaysGoodMutationEngine:
         def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001, ARG002
             return _test_valid_mutation(source, step=step)
@@ -2143,7 +2110,6 @@ def test_depth2_generation_caps_accepted_source_families_when_pool_is_wide() -> 
 
     paths = [candidate.source_ref.path for candidate in candidates]
     assert len(paths) == 6
-    assert sum(str(path).startswith("Mathlib/Data/Nat/") for path in paths) <= 3
     assert any(str(path).startswith("Mathlib/Data/Fin/") for path in paths)
     assert any(str(path).startswith("Mathlib/Data/List/") for path in paths)
 

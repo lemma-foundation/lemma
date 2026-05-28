@@ -445,7 +445,6 @@ def _generate_depth2_candidates_sequential(
     seen: set[str] = set()
     seen_prelean: set[str] = set()
     telemetry = _Depth2Telemetry()
-    source_family_limit = _accepted_source_family_limit(ctx, count)
     cursor = 0
     while len(out) < count and cursor < attempt_limit:
         attempt = _attempt_depth2_candidate(
@@ -461,7 +460,6 @@ def _generate_depth2_candidates_sequential(
                 seen,
                 attempt.candidate,
                 attempt.verdict,
-                source_family_limit=source_family_limit,
             )
         _record_depth2_attempt(telemetry, attempt, accepted=accepted)
         cursor += 1
@@ -488,7 +486,6 @@ def _generate_depth2_candidates_parallel(
     seen: set[str] = set()
     seen_prelean: set[str] = set()
     telemetry = _Depth2Telemetry()
-    source_family_limit = _accepted_source_family_limit(ctx, count)
     cursor = 0
     while len(out) < count and cursor < attempt_limit:
         batch_width = _gate_batch_width(ctx.gate_runner, workers)
@@ -513,7 +510,6 @@ def _generate_depth2_candidates_parallel(
                     seen,
                     attempt.candidate,
                     attempt.verdict,
-                    source_family_limit=source_family_limit,
                 )
             _record_depth2_attempt(telemetry, attempt, accepted=accepted)
         cursor = batch_end
@@ -710,33 +706,14 @@ def _maybe_accept_depth2_attempt(
     seen: set[str],
     candidate: TaskCandidate,
     verdict: ProceduralGateVerdict,
-    *,
-    source_family_limit: int,
 ) -> bool:
     candidate = _with_gate_receipt(candidate, verdict)
     canonical_hash = str(candidate.metadata["canonical_hash"])
     if not verdict.accepted or canonical_hash in seen:
         return False
-    if source_family_limit and _accepted_source_family_count(out, _source_family(candidate)) >= source_family_limit:
-        return False
     seen.add(canonical_hash)
     out.append(candidate)
     return True
-
-
-def _accepted_source_family_limit(ctx: _Depth2GenerationContext, count: int) -> int:
-    family_counts = Counter(_source_family(source) for source in ctx.ordered)
-    if len(family_counts) <= 1:
-        return 0
-    base_limit = max(1, math.ceil(count / 3))
-    for limit in range(base_limit, count + 1):
-        if sum(min(size, limit) for size in family_counts.values()) >= count:
-            return limit
-    return 0
-
-
-def _accepted_source_family_count(candidates: list[TaskCandidate], source_family: str) -> int:
-    return sum(1 for candidate in candidates if _source_family(candidate) == source_family)
 
 
 def _record_depth2_attempt(telemetry: _Depth2Telemetry, attempt: _Depth2Attempt, *, accepted: bool) -> None:
