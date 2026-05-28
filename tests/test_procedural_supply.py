@@ -1324,6 +1324,49 @@ def test_lean_gate_runner_ignores_payload_from_failed_batch(
     assert verdict.novelty_status == "missing_kernel_fingerprint"
 
 
+def test_lean_gate_runner_uses_complete_failed_batch_payload(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    snapshot = tmp_path / "snapshot.jsonl"
+    _write_snapshot(snapshot)
+    candidates = generate_depth2_candidates(
+        mathlib_candidates_from_jsonl(snapshot),
+        generation_seed="epoch-a",
+        epoch_randomness=json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
+        count=2,
+        tempo=3,
+    )
+    batch_sizes: list[int] = []
+
+    def fake_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001, ARG001
+        gate_source = str(problem.extra["challenge_full"])
+        batch_sizes.append(gate_source.count("canonicalSource :="))
+        return VerifyResult(
+            passed=False,
+            reason="compile_error",
+            stdout_tail="\n".join(
+                (
+                    'LEMMA_GATE_RESULT {"id":"0","typechecked":true,"kernel_normal_form":"first",'
+                    '"triviality_checked":true,"baseline_solved":false,"baseline_solver":null,'
+                    '"triviality_reason":"baseline_failed"}',
+                    'LEMMA_GATE_RESULT {"id":"1","typechecked":true,"kernel_normal_form":"second",'
+                    '"triviality_checked":true,"baseline_solved":false,"baseline_solver":null,'
+                    '"triviality_reason":"baseline_failed"}',
+                    "LEMMA_GATE_DONE 2",
+                )
+            ),
+        )
+
+    monkeypatch.setattr("lemma.supply.gates.run_lean_verify", fake_verify)
+    verdicts = LeanProceduralGateRunner(
+        LemmaSettings(_env_file=None, lean_use_docker=False, procedural_gate_timeout_s=5)
+    ).batch(candidates, seen_canonical_hashes=())
+
+    assert batch_sizes == [2]
+    assert [verdict.accepted for verdict in verdicts] == [True, True]
+    assert [verdict.metadata["lean_gate_batch_size"] for verdict in verdicts] == [2, 2]
+
+
 def test_lean_gate_runner_splits_failed_batch_to_salvage_candidates(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

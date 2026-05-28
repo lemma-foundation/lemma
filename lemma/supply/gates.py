@@ -24,12 +24,13 @@ from lemma.supply.triviality_budget import (
 )
 from lemma.supply.types import TaskCandidate
 
-GATE_VERSION = "lemma-procedural-gates-v5"
+GATE_VERSION = "lemma-procedural-gates-v6"
 _TYPECHECK_GATE_DECL = "LemmaProceduralGate.typecheck_gate"
 _PROP_GATE_DECL = "LemmaProceduralGate.prop_gate"
 _KERNEL_NORMAL_MARKER = "LEMMA_KERNEL_NORMAL_FORM "
 _TRIVIALITY_MARKER = "LEMMA_TRIVIALITY "
 _BATCH_GATE_MARKER = "LEMMA_GATE_RESULT "
+_BATCH_GATE_DONE_MARKER = "LEMMA_GATE_DONE "
 TRIVIALITY_STACK = (
     ("decide", "  decide"),
     ("simp_all", "  simp_all"),
@@ -390,8 +391,11 @@ class LeanProceduralGateRunner:
         compile_split_lock: threading.Lock,
     ) -> tuple[_BatchGateRow, ...]:
         result = self._compile_batch_gate(tuple(candidate for _index, candidate in group))
-        # Lean can emit JSON before later logged elaboration errors fail the file.
-        parsed = _batch_gate_results(result) if result.passed else {}
+        parsed = _batch_gate_results(result)
+        batch_complete = _batch_gate_complete(result, expected_count=len(group)) and len(parsed) == len(group)
+        if not result.passed and not batch_complete:
+            # Lean can emit JSON before later logged elaboration errors fail the file.
+            parsed = {}
         if parsed or len(group) == 1 or result.passed or not _batch_result_should_split(
             result,
             compile_split_budget=compile_split_budget,
@@ -627,6 +631,11 @@ def _batch_gate_results(result: VerifyResult) -> dict[str, dict[str, object]]:
     return out
 
 
+def _batch_gate_complete(result: VerifyResult, *, expected_count: int) -> bool:
+    expected = f"{_BATCH_GATE_DONE_MARKER}{expected_count}"
+    return any(line.strip() == expected for line in (result.stdout_tail + "\n" + result.stderr_tail).splitlines())
+
+
 def _batch_result_should_split(
     result: VerifyResult,
     *,
@@ -794,6 +803,7 @@ def _batch_gate_source(candidates: tuple[TaskCandidate, ...]) -> str:
             "def emit_gate_results : Elab.Command.CommandElabM Unit := do",
             "  for spec in candidateSpecs do",
             "    analyzeSpec spec",
+            f"  IO.println <| {_json_string(_BATCH_GATE_DONE_MARKER)} ++ toString candidateSpecs.length",
             "",
             "elab \"#lemma_emit_gate_results\" : command => emit_gate_results",
             "",
