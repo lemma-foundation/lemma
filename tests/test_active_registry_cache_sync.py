@@ -5,7 +5,9 @@ import importlib.util
 import json
 from pathlib import Path
 
+from lemma.supply.gates import GATE_VERSION
 from lemma.supply.operator_bundle import OPERATOR_BUNDLE_VERSION, procedural_operator_bundle_hash
+from lemma.supply.source_pool import SOURCE_SAMPLING_VERSION
 from lemma.task_supply import make_task, write_registry
 from lemma.tasks import load_task_registry
 
@@ -37,8 +39,10 @@ def test_sync_active_registry_cache_hydrates_public_tempo_cache(monkeypatch, tmp
         source_name="pytest",
         frontier_depth=0,
         metadata={
+            "gate_version": GATE_VERSION,
             "operator_bundle_hash": procedural_operator_bundle_hash(),
             "operator_bundle_version": OPERATOR_BUNDLE_VERSION,
+            "source_sampling_version": SOURCE_SAMPLING_VERSION,
         },
     )
     write_registry([task], registry_path)
@@ -78,8 +82,10 @@ def test_sync_active_registry_cache_reports_present_cache_without_public_index(
         source_name="pytest",
         frontier_depth=0,
         metadata={
+            "gate_version": GATE_VERSION,
             "operator_bundle_hash": procedural_operator_bundle_hash(),
             "operator_bundle_version": OPERATOR_BUNDLE_VERSION,
+            "source_sampling_version": SOURCE_SAMPLING_VERSION,
         },
     )
     cache_path = cache / "tempo-7.registry.json"

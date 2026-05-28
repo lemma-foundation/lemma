@@ -24,7 +24,7 @@ from lemma.supply.triviality_budget import (
 )
 from lemma.supply.types import TaskCandidate
 
-GATE_VERSION = "lemma-procedural-gates-v4"
+GATE_VERSION = "lemma-procedural-gates-v5"
 _TYPECHECK_GATE_DECL = "LemmaProceduralGate.typecheck_gate"
 _PROP_GATE_DECL = "LemmaProceduralGate.prop_gate"
 _KERNEL_NORMAL_MARKER = "LEMMA_KERNEL_NORMAL_FORM "
@@ -390,7 +390,8 @@ class LeanProceduralGateRunner:
         compile_split_lock: threading.Lock,
     ) -> tuple[_BatchGateRow, ...]:
         result = self._compile_batch_gate(tuple(candidate for _index, candidate in group))
-        parsed = _batch_gate_results(result)
+        # Lean can emit JSON before later logged elaboration errors fail the file.
+        parsed = _batch_gate_results(result) if result.passed else {}
         if parsed or len(group) == 1 or result.passed or not _batch_result_should_split(
             result,
             compile_split_budget=compile_split_budget,
@@ -657,6 +658,8 @@ def _batch_gate_source(candidates: tuple[TaskCandidate, ...]) -> str:
         [
             "import Lean",
             "",
+            "set_option autoImplicit false",
+            "",
             "open Lean",
             "",
             "namespace LemmaProceduralGate",
@@ -676,6 +679,18 @@ def _batch_gate_source(candidates: tuple[TaskCandidate, ...]) -> str:
             "  | Except.ok stx => pure ⟨stx⟩",
             "  | Except.error e => throwError e",
             "",
+            "partial def containsSyntheticHole : Expr → Bool",
+            "  | Expr.mvar _ => true",
+            "  | Expr.const name _ => name == `sorryAx",
+            "  | Expr.app fn arg => containsSyntheticHole fn || containsSyntheticHole arg",
+            "  | Expr.lam _ domain body _ => containsSyntheticHole domain || containsSyntheticHole body",
+            "  | Expr.forallE _ domain body _ => containsSyntheticHole domain || containsSyntheticHole body",
+            "  | Expr.letE _ type value body _ =>",
+            "      containsSyntheticHole type || containsSyntheticHole value || containsSyntheticHole body",
+            "  | Expr.mdata _ body => containsSyntheticHole body",
+            "  | Expr.proj _ _ body => containsSyntheticHole body",
+            "  | _ => false",
+            "",
             "def proofSourceSucceeds (typeSource proofSource : String) : Elab.Command.CommandElabM Bool := do",
             "  if proofSource == \"\" then",
             "    pure false",
@@ -685,6 +700,9 @@ def _batch_gate_source(candidates: tuple[TaskCandidate, ...]) -> str:
             "      let proofStx ← parseTermOrThrow proofSource",
             "      Elab.Command.runTermElabM fun _ => do",
             "        let expected ← Elab.Term.elabType typeStx.raw",
+            "        let expected ← instantiateMVars expected",
+            "        if containsSyntheticHole expected then",
+            "          throwError \"gate type contains unresolved identifiers\"",
             "        let _ ← Elab.Term.elabTermEnsuringType proofStx.raw (some expected)",
             "        Elab.Term.synthesizeSyntheticMVarsNoPostponing",
             "        pure true",
@@ -747,7 +765,10 @@ def _batch_gate_source(candidates: tuple[TaskCandidate, ...]) -> str:
             "  try",
             "    let typeStx ← parseTermOrThrow spec.canonicalSource",
             "    let _ ← Elab.Command.runTermElabM fun _ => do",
-            "      let _ ← Elab.Term.elabType typeStx.raw",
+            "      let expr ← Elab.Term.elabType typeStx.raw",
+            "      let expr ← instantiateMVars expr",
+            "      if containsSyntheticHole expr then",
+            "        throwError \"gate type contains unresolved identifiers\"",
             "      pure ()",
             "    let baselineSolved ← proofSourceSucceeds spec.canonicalSource spec.combinedTrivialitySource",
             "    let solver : Option String :=",
@@ -762,6 +783,8 @@ def _batch_gate_source(candidates: tuple[TaskCandidate, ...]) -> str:
             "      let kernelNormal ← Elab.Command.runTermElabM fun _ => do",
             "        let expr ← Elab.Term.elabType typeStx.raw",
             "        let expr ← instantiateMVars expr",
+            "        if containsSyntheticHole expr then",
+            "          throwError \"gate type contains unresolved identifiers\"",
             "        let normal ← Meta.reduceAll expr",
             "        pure (exprKey normal)",
             "      emitPayload spec true kernelNormal true baselineSolved solver reason",
@@ -784,6 +807,8 @@ def _prop_gate_source(candidate: TaskCandidate) -> str:
         [
             "import Lean",
             "",
+            "set_option autoImplicit false",
+            "",
             "open Lean",
             "",
             "namespace LemmaProceduralGate",
@@ -800,6 +825,18 @@ def _prop_gate_source(candidate: TaskCandidate) -> str:
             "  | Except.ok stx => pure ⟨stx⟩",
             "  | Except.error e => throwError e",
             "",
+            "partial def containsSyntheticHole : Expr → Bool",
+            "  | Expr.mvar _ => true",
+            "  | Expr.const name _ => name == `sorryAx",
+            "  | Expr.app fn arg => containsSyntheticHole fn || containsSyntheticHole arg",
+            "  | Expr.lam _ domain body _ => containsSyntheticHole domain || containsSyntheticHole body",
+            "  | Expr.forallE _ domain body _ => containsSyntheticHole domain || containsSyntheticHole body",
+            "  | Expr.letE _ type value body _ =>",
+            "      containsSyntheticHole type || containsSyntheticHole value || containsSyntheticHole body",
+            "  | Expr.mdata _ body => containsSyntheticHole body",
+            "  | Expr.proj _ _ body => containsSyntheticHole body",
+            "  | _ => false",
+            "",
             "def proofSourceSucceeds (proofSource : String) : Elab.Command.CommandElabM Bool := do",
             "  if proofSource == \"\" then",
             "    pure false",
@@ -809,6 +846,9 @@ def _prop_gate_source(candidate: TaskCandidate) -> str:
             "      let proofStx ← parseTermOrThrow proofSource",
             "      Elab.Command.runTermElabM fun _ => do",
             "        let expected ← Elab.Term.elabType typeStx.raw",
+            "        let expected ← instantiateMVars expected",
+            "        if containsSyntheticHole expected then",
+            "          throwError \"gate type contains unresolved identifiers\"",
             "        let _ ← Elab.Term.elabTermEnsuringType proofStx.raw (some expected)",
             "        Elab.Term.synthesizeSyntheticMVarsNoPostponing",
             "        pure true",
@@ -868,6 +908,8 @@ def _prop_gate_source(candidate: TaskCandidate) -> str:
             "  Elab.Command.runTermElabM fun _ => do",
             "    let expr ← Elab.Term.elabType stx.raw",
             "    let expr ← instantiateMVars expr",
+            "    if containsSyntheticHole expr then",
+            "      throwError \"gate type contains unresolved identifiers\"",
             "    let normal ← Meta.reduceAll expr",
             "    IO.println <| \"LEMMA_KERNEL_NORMAL_FORM \" ++ exprKey normal",
             "",

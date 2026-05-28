@@ -435,11 +435,31 @@ def nameFromString (source : String) : Name :=
 def ppTerm (stx : TSyntax `term) : Elab.Command.CommandElabM String := do
   pure ((← Elab.Command.liftCoreM <| PrettyPrinter.ppCategory `term stx.raw).pretty)
 
-def requireProp (stx : TSyntax `term) : Elab.Command.CommandElabM Unit := do
+partial def containsSyntheticHole : Expr → Bool
+  | Expr.mvar _ => true
+  | Expr.const name _ => name == `sorryAx
+  | Expr.app fn arg => containsSyntheticHole fn || containsSyntheticHole arg
+  | Expr.lam _ domain body _ => containsSyntheticHole domain || containsSyntheticHole body
+  | Expr.forallE _ domain body _ => containsSyntheticHole domain || containsSyntheticHole body
+  | Expr.letE _ type value body _ =>
+      containsSyntheticHole type || containsSyntheticHole value || containsSyntheticHole body
+  | Expr.mdata _ body => containsSyntheticHole body
+  | Expr.proj _ _ body => containsSyntheticHole body
+  | _ => false
+
+def checkedPropExpr (stx : TSyntax `term) : Elab.Command.CommandElabM Expr := do
   Elab.Command.runTermElabM fun _ => do
     let expr ← Elab.Term.elabType stx.raw
+    let expr ← instantiateMVars expr
+    if containsSyntheticHole expr then
+      throwError "mutated statement contains unresolved identifiers"
     unless (← Meta.isProp expr) do
       throwError "mutated statement did not elaborate to Prop"
+    pure expr
+
+def requireProp (stx : TSyntax `term) : Elab.Command.CommandElabM Unit := do
+  let _ ← checkedPropExpr stx
+  pure ()
 
 def sourceTermOrThrow (source : String) : Elab.Command.CommandElabM (TSyntax `term) := do
   let stx ← parseTermOrThrow source
@@ -448,12 +468,19 @@ def sourceTermOrThrow (source : String) : Elab.Command.CommandElabM (TSyntax `te
 
 def elabTypeExpr (stx : TSyntax `term) : Elab.Command.CommandElabM Expr := do
   Elab.Command.runTermElabM fun _ => do
-    Elab.Term.elabType stx.raw
+    let expr ← Elab.Term.elabType stx.raw
+    let expr ← instantiateMVars expr
+    if containsSyntheticHole expr then
+      throwError "mutated statement contains unresolved identifiers"
+    pure expr
 
 def ppExprTerm (expr : Expr) : Elab.Command.CommandElabM String := do
   Elab.Command.runTermElabM fun _ => do
     withOptions (fun opts => (opts.setBool `pp.fullNames true).setBool `pp.universes false) do
       pure ((← Meta.ppExpr (← instantiateMVars expr)).pretty)
+
+def renderProp (stx : TSyntax `term) : Elab.Command.CommandElabM String := do
+  ppExprTerm (← checkedPropExpr stx)
 
 def typeConstName (source : String) : Name :=
   match source with
@@ -601,10 +628,9 @@ def emit : Elab.Command.CommandElabM Unit := do
   let expr ← sourceTermOrThrow inputSource
   let peer ← sourceTermOrThrow peerSource
   let (output, params) ← mutate expr peer
-  requireProp output
-  let rendered ← ppTerm output
+  let rendered ← renderProp output
   let roundtrip ← parseTermOrThrow rendered
-  requireProp roundtrip
+  let rendered ← renderProp roundtrip
   let payload := jsonObj [("type_expr", Json.str rendered), ("params", params)]
   IO.println <| "LEMMA_AST_MUTATION " ++ payload.compress
 

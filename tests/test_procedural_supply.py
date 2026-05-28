@@ -87,9 +87,9 @@ def test_structural_mutation_engine_marks_current_bundle_engine() -> None:
     )
 
     assert first.type_expr == "false = true"
-    assert first.params["engine"] == "structural_reversible_v2"
+    assert first.params["engine"] == MUTATION_ENGINE
     assert second.type_expr == "∀ lemma_p1_bbbbbb : Prop, lemma_p1_bbbbbb → (false = true)"
-    assert second.params["engine"] == "structural_reversible_v2"
+    assert second.params["engine"] == MUTATION_ENGINE
 
     implication = StructuralMutationEngine().apply(
         source,
@@ -297,6 +297,7 @@ def test_lean_ast_mutation_engine_uses_lean_eval_output(monkeypatch: pytest.Monk
     assert "replaceConst" in captured["problem"].extra["challenge_full"]
     assert 'def inputSource : String := "True"' in captured["problem"].extra["challenge_full"]
     assert "def sourceTermOrThrow" in captured["problem"].extra["challenge_full"]
+    assert "containsSyntheticHole" in captured["problem"].extra["challenge_full"]
     assert "let roundtrip ← parseTermOrThrow rendered" in captured["problem"].extra["challenge_full"]
     assert captured["problem"].extra["lean_max_heartbeats"] == 400_000
     assert captured["problem"].extra["lean_skip_axiom_check"] is True
@@ -1086,6 +1087,8 @@ def test_lean_gate_runner_records_generation_time_gates(monkeypatch: pytest.Monk
             assert problem.extra["lean_build_target"] == "Challenge"
             assert problem.extra["lean_max_heartbeats"] == 400_000
             gate_source = str(problem.extra["challenge_full"])
+            assert "set_option autoImplicit false" in gate_source
+            assert "containsSyntheticHole" in gate_source
             assert "def typecheck_gate" in gate_source
             assert "theorem prop_gate" in gate_source
             assert problem.extra["lean_fingerprint_names"] == (
@@ -1247,6 +1250,8 @@ def test_lean_gate_runner_batches_gate_results(monkeypatch: pytest.MonkeyPatch, 
     def fake_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001, ARG001
         assert problem.id.endswith(".gate.batch")
         gate_source = str(problem.extra["challenge_full"])
+        assert "set_option autoImplicit false" in gate_source
+        assert "containsSyntheticHole" in gate_source
         assert problem.extra["lean_eval_commands"] == ("set_option maxHeartbeats 200000", "#lemma_emit_gate_results")
         assert "ancestorBaselineSource" not in gate_source
         assert "source_theorem" not in gate_source
@@ -1281,6 +1286,42 @@ def test_lean_gate_runner_batches_gate_results(monkeypatch: pytest.MonkeyPatch, 
     assert verdicts[0].metadata["lean_gate_batch_size"] == 2
     assert "lean_gate_batch_seconds" not in verdicts[0].metadata
     assert calls == ["batch"]
+
+
+def test_lean_gate_runner_ignores_payload_from_failed_batch(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    snapshot = tmp_path / "snapshot.jsonl"
+    _write_snapshot(snapshot)
+    (candidate,) = generate_depth2_candidates(
+        mathlib_candidates_from_jsonl(snapshot),
+        generation_seed="epoch-a",
+        epoch_randomness=json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
+        count=1,
+        tempo=3,
+    )
+
+    def fake_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001, ARG001
+        assert problem.id.endswith(".gate.batch")
+        return VerifyResult(
+            passed=False,
+            reason="compile_error",
+            stdout_tail=(
+                'LEMMA_GATE_RESULT {"id":"0","typechecked":true,"kernel_normal_form":"bad",'
+                '"triviality_checked":true,"baseline_solved":false,"baseline_solver":null,'
+                '"triviality_reason":"baseline_failed"}'
+            ),
+        )
+
+    monkeypatch.setattr("lemma.supply.gates.run_lean_verify", fake_verify)
+    (verdict,) = LeanProceduralGateRunner(
+        LemmaSettings(_env_file=None, lean_use_docker=False, procedural_gate_timeout_s=5)
+    ).batch((candidate,), seen_canonical_hashes=())
+
+    assert verdict.accepted is False
+    assert verdict.typechecked is False
+    assert verdict.metadata["typecheck_reason"] == "compile_error"
+    assert verdict.novelty_status == "missing_kernel_fingerprint"
 
 
 def test_lean_gate_runner_splits_failed_batch_to_salvage_candidates(

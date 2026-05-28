@@ -305,6 +305,18 @@ def test_active_registry_cache_stale_checks_gate_version() -> None:
     assert active_registry_cache_stale(registry, _production_settings()) is True
 
 
+def test_active_registry_cache_stale_checks_missing_procedural_versions() -> None:
+    metadata = {
+        key: value
+        for key, value in _production_task().metadata.items()
+        if key not in {"gate_version", "operator_bundle_version", "source_sampling_version"}
+    }
+    stale = _production_task().model_copy(update={"metadata": metadata})
+    registry = TaskRegistry(schema_version=1, tasks=(stale,), sha256="0" * 64, signature_status="verified")
+
+    assert active_registry_cache_stale(registry, _production_settings()) is True
+
+
 def test_active_registry_cache_stale_checks_yield_history_hash(tmp_path: Path) -> None:
     history = tmp_path / "yield-history.jsonl"
     history.write_text(json.dumps({"accepted_source_families": {"Mathlib/Old.lean": 1}}) + "\n", encoding="utf-8")

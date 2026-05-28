@@ -259,11 +259,9 @@ def active_registry_cache_stale(registry: TaskRegistry, settings: LemmaSettings)
         if {str(task.metadata.get("operator_bundle_hash") or "") for task in procedural_tasks} != {expected_operator}:
             return True
         operator_versions = {
-            str(task.metadata.get("operator_bundle_version"))
-            for task in procedural_tasks
-            if "operator_bundle_version" in task.metadata
+            str(task.metadata.get("operator_bundle_version") or "") for task in procedural_tasks
         }
-        if operator_versions and operator_versions != {OPERATOR_BUNDLE_VERSION}:
+        if operator_versions != {OPERATOR_BUNDLE_VERSION}:
             return True
     history_hashes = {
         str(task.metadata.get("yield_history_sha256") or "")
@@ -283,14 +281,12 @@ def active_registry_cache_stale(registry: TaskRegistry, settings: LemmaSettings)
     elif history_hashes:
         return True
     gate_versions = {
-        str(task.metadata.get("gate_version")) for task in registry.tasks if "gate_version" in task.metadata
+        str(task.metadata.get("gate_version") or "") for task in procedural_tasks
     }
     if gate_versions and gate_versions != {GATE_VERSION}:
         return True
     sampling_versions = {
-        str(task.metadata.get("source_sampling_version"))
-        for task in registry.tasks
-        if "source_sampling_version" in task.metadata
+        str(task.metadata.get("source_sampling_version") or "") for task in procedural_tasks
     }
     if sampling_versions and sampling_versions != {SOURCE_SAMPLING_VERSION}:
         return True

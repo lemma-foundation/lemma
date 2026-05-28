@@ -19,7 +19,9 @@ from lemma.lean.sandbox import VerifyResult
 from lemma.operator import OperatorDiagnosticsReport, OperatorPreflightReport, OperatorRegistryInspectReport
 from lemma.submissions import build_submission, sign_submission
 from lemma.supply.controller import CurriculumTempoRecord, append_curriculum_record
+from lemma.supply.gates import GATE_VERSION
 from lemma.supply.operator_bundle import OPERATOR_BUNDLE_VERSION, procedural_operator_bundle_hash
+from lemma.supply.source_pool import SOURCE_SAMPLING_VERSION
 from lemma.task_supply import make_task, write_registry
 
 
@@ -208,6 +210,8 @@ def test_prebuild_active_procedural_registry_skips_existing_cache(
         metadata={
             "operator_bundle_hash": procedural_operator_bundle_hash(),
             "operator_bundle_version": OPERATOR_BUNDLE_VERSION,
+            "gate_version": GATE_VERSION,
+            "source_sampling_version": SOURCE_SAMPLING_VERSION,
         },
     ).model_copy(update={"frontier_depth": 0})
     cache_dir = tmp_path / "cache"
@@ -283,6 +287,8 @@ def test_prebuild_active_procedural_registry_refreshes_stale_frontier_cache(
         metadata={
             "operator_bundle_hash": procedural_operator_bundle_hash(),
             "operator_bundle_version": OPERATOR_BUNDLE_VERSION,
+            "gate_version": GATE_VERSION,
+            "source_sampling_version": SOURCE_SAMPLING_VERSION,
         },
     ).model_copy(update={"frontier_depth": 0})
     cache_dir = tmp_path / "cache"
@@ -467,8 +473,10 @@ def test_prebuild_active_procedural_registry_keeps_cache_for_inactive_curriculum
         source_stream="procedural",
         source_name="pytest",
         metadata={
+            "gate_version": GATE_VERSION,
             "operator_bundle_hash": procedural_operator_bundle_hash(),
             "operator_bundle_version": OPERATOR_BUNDLE_VERSION,
+            "source_sampling_version": SOURCE_SAMPLING_VERSION,
         },
     ).model_copy(update={"frontier_depth": 0})
     cache_dir = tmp_path / "cache"
