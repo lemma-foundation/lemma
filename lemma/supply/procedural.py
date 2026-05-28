@@ -725,10 +725,13 @@ def _maybe_accept_depth2_attempt(
 
 
 def _accepted_source_family_limit(ctx: _Depth2GenerationContext, count: int) -> int:
-    distinct_sources = len({_source_family(source) for source in ctx.ordered})
-    if distinct_sources < count:
+    family_counts = Counter(_source_family(source) for source in ctx.ordered)
+    if len(family_counts) <= 1:
         return 0
-    return max(1, math.ceil(count / 3))
+    for limit in range(1, count + 1):
+        if sum(min(size, limit) for size in family_counts.values()) >= count:
+            return limit
+    return 0
 
 
 def _accepted_source_family_count(candidates: list[TaskCandidate], source_family: str) -> int:
@@ -790,11 +793,7 @@ def _attempt_operator_chain(attempt: _Depth2Attempt) -> str:
 def _attempt_source_family(attempt: _Depth2Attempt) -> str:
     if attempt.candidate is None:
         return ""
-    source_path = str(attempt.candidate.source_ref.path or "").strip()
-    if source_path:
-        return source_path
-    source_name = str(attempt.candidate.metadata.get("source_theorem_name") or "")
-    return source_name
+    return _source_family(attempt.candidate)
 
 
 def _top_counter(counter: Counter[str], *, limit: int = 8) -> dict[str, int]:
@@ -1019,6 +1018,8 @@ def _candidate_from_source(
         "source_target_sha256": _hash_text(source.statement),
     }
     for key in (
+        "topic",
+        "subtopic",
         "citation_weight",
         "direct_dependency_count",
         "dependency_depth",
@@ -1268,7 +1269,21 @@ def _yield_source_score(source: TaskCandidate, yield_history: ProceduralYieldHis
 
 
 def _source_family(source: TaskCandidate) -> str:
-    return str(source.source_ref.path or source.source_ref.name or source.id)
+    topic = str(source.metadata.get("topic") or "").strip()
+    subtopic = str(source.metadata.get("subtopic") or "").strip()
+    if topic and subtopic:
+        return f"{topic}/{subtopic}"
+    if topic:
+        return topic
+    path = str(source.source_ref.path or "").strip()
+    if path:
+        parts = path.removesuffix(".lean").split("/")
+        if len(parts) >= 3 and parts[0] == "Mathlib":
+            if parts[1] == "Data":
+                return "/".join(parts[1:3])
+            return parts[1]
+        return path
+    return str(source.source_ref.name or source.id)
 
 
 def _citation_weight_for_hash(source: TaskCandidate) -> float:

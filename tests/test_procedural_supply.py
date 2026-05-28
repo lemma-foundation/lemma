@@ -33,6 +33,7 @@ from lemma.supply.procedural import (
     _depth_balanced_sources,
     _eligible_depth2_sources,
     _maybe_accept_depth2_attempt,
+    _source_family,
     build_procedural_registry_tasks,
     corpus_sources_from_dir,
     generate_depth2_candidates,
@@ -41,6 +42,7 @@ from lemma.supply.procedural import (
     source_pool_hash,
 )
 from lemma.supply.slot_weight import slot_weight_receipt_for_candidate
+from lemma.supply.source_pool import SOURCE_SAMPLING_VERSION
 from lemma.supply.triviality_budget import TrivialityRetargetConfig, triviality_budget_receipt
 from lemma.supply.types import TaskCandidate, fixture_candidate
 from lemma.task_supply import make_task, write_registry
@@ -437,7 +439,7 @@ def test_depth2_generation_is_epoch_seeded_not_static(tmp_path: Path) -> None:
     assert all(
         candidate.metadata["source_pool_receipt_version"] == "lemma-source-pool-receipt-v1" for candidate in first
     )
-    assert all(candidate.metadata["source_sampling_version"] == "lemma-source-sampling-v3" for candidate in first)
+    assert all(candidate.metadata["source_sampling_version"] == SOURCE_SAMPLING_VERSION for candidate in first)
     assert all(candidate.metadata["source_pool_stream_counts"] == {"mathlib_snapshot": 3} for candidate in first)
     assert all(candidate.metadata["citation_alpha_basis_points"] == 5000 for candidate in first)
     assert all(candidate.metadata["citation_window_tempos"] == 2000 for candidate in first)
@@ -508,6 +510,40 @@ def test_depth2_acceptance_caps_source_family() -> None:
     )
     assert _maybe_accept_depth2_attempt(out, seen, candidate("third", "Mathlib/B.lean"), verdict, source_family_limit=1)
     assert [item.source_ref.path for item in out] == ["Mathlib/A.lean", "Mathlib/B.lean"]
+
+
+def test_source_family_uses_mathlib_topic_buckets() -> None:
+    metadata_bucket = fixture_candidate(
+        slug="source_nat",
+        source_stream="mathlib_snapshot",
+        source_name="snapshot",
+        theorem_name="Nat.source",
+        type_expr="∀ n m : Nat, n = m",
+        queue_depth=0,
+        metadata={"topic": "Data", "subtopic": "Nat"},
+    )
+    path_bucket = fixture_candidate(
+        slug="source_list",
+        source_stream="mathlib_snapshot",
+        source_name="snapshot",
+        theorem_name="List.source",
+        type_expr="∀ xs ys : List Nat, xs = ys",
+        queue_depth=0,
+    ).model_copy(
+        update={"source_ref": SourceRef(kind="fixture", name="source_list", path="Mathlib/Data/List/Basic.lean")}
+    )
+    logic_bucket = fixture_candidate(
+        slug="source_logic",
+        source_stream="mathlib_snapshot",
+        source_name="snapshot",
+        theorem_name="Logic.source",
+        type_expr="∀ p q : Prop, p = q",
+        queue_depth=0,
+    ).model_copy(update={"source_ref": SourceRef(kind="fixture", name="source_logic", path="Mathlib/Logic/Basic.lean")})
+
+    assert _source_family(metadata_bucket) == "Data/Nat"
+    assert _source_family(path_bucket) == "Data/List"
+    assert _source_family(logic_bucket) == "Logic"
 
 
 @pytest.mark.parametrize(
@@ -2079,8 +2115,10 @@ def test_depth2_generation_caps_accepted_source_families_when_pool_is_wide() -> 
     )
 
     paths = [candidate.source_ref.path for candidate in candidates]
-    assert paths.count(crowded_path) <= 2
     assert len(paths) == 6
+    assert sum(str(path).startswith("Mathlib/Data/Nat/") for path in paths) <= 3
+    assert any(str(path).startswith("Mathlib/Data/Fin/") for path in paths)
+    assert any(str(path).startswith("Mathlib/Data/List/") for path in paths)
 
 
 def test_depth2_source_bound_admits_controlled_deeper_rows() -> None:
