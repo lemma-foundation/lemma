@@ -123,8 +123,8 @@ def test_active_registry_prebuild_idles_until_public_cache_is_published() -> Non
     assert '\'"cache": "hydrated"\'' in prebuild
     assert '"$force_requested" != "1"' in prebuild
     assert "LEMMA_ACTIVE_REGISTRY_CACHE_INDEX_URL" in prebuild
-    assert "missing_public_index_row" in prebuild
     assert "public active registry cache not published yet" in prebuild
+    assert '&& -n "${LEMMA_ACTIVE_REGISTRY_CACHE_INDEX_URL:-}"' in prebuild
 
 
 def test_auditor_registry_wrappers_refuse_local_generation() -> None:

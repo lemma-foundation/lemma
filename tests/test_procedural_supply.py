@@ -29,6 +29,7 @@ from lemma.supply.operator_bundle import (
 )
 from lemma.supply.procedural import (
     _candidate_from_source,
+    _eligible_depth2_sources,
     build_procedural_registry_tasks,
     corpus_sources_from_dir,
     generate_depth2_candidates,
@@ -1731,6 +1732,52 @@ def test_depth2_generation_does_not_collapse_to_bool_basic(tmp_path: Path) -> No
         "Mathlib/Data/Bool/Basic.lean",
         "Mathlib/Data/Nat/Basic.lean",
     }
+
+
+def test_depth2_source_bound_admits_controlled_deeper_rows() -> None:
+    easy = fixture_candidate(
+        slug="easy_set",
+        source_stream="mathlib_snapshot",
+        source_name="snapshot",
+        theorem_name="Set.easy",
+        type_expr="∀ x : Set Nat, x = x",
+        queue_depth=0,
+        metadata={
+            "difficulty_score": 2,
+            "direct_dependency_count": 0,
+            "dependency_depth": 0,
+        },
+    ).model_copy(update={"imports": ("Mathlib.Data.Set.Basic",)})
+    medium = fixture_candidate(
+        slug="medium_set",
+        source_stream="mathlib_snapshot",
+        source_name="snapshot",
+        theorem_name="Set.medium",
+        type_expr="∀ x : Set Nat, x ∪ x = x",
+        queue_depth=2,
+        metadata={
+            "difficulty_score": 4,
+            "direct_dependency_count": 0,
+            "dependency_depth": 0,
+        },
+    ).model_copy(update={"imports": ("Mathlib.Data.Set.Basic",)})
+    too_broad = fixture_candidate(
+        slug="broad_set",
+        source_stream="mathlib_snapshot",
+        source_name="snapshot",
+        theorem_name="Set.broad",
+        type_expr="∀ x : Set Nat, x ∩ x = x",
+        queue_depth=3,
+        metadata={
+            "difficulty_score": 5,
+            "direct_dependency_count": 0,
+            "dependency_depth": 0,
+        },
+    ).model_copy(update={"imports": ("Mathlib.Data.Set.Basic",)})
+
+    eligible = _eligible_depth2_sources((easy, medium, too_broad), max_queue_depth=16)
+
+    assert {source.id for source in eligible} == {easy.id, medium.id}
 
 
 def test_depth2_generation_uses_public_yield_history_for_source_order(tmp_path: Path) -> None:
