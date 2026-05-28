@@ -488,10 +488,13 @@ class LeanSandbox:
             "fi",
         ]
         if _docker_network_allows_remote_cache(self.network_mode):
-            if lake_exe_cache_get_needed(work):
-                lines.append("lake exe cache get")
-            else:
-                logger.debug("docker verify: skipping lake exe cache get (warm packages/mathlib)")
+            lines.extend(
+                [
+                    "if [ ! -d .lake/packages/mathlib ]; then",
+                    "  lake exe cache get",
+                    "fi",
+                ]
+            )
         lines.append(shlex.join(_lake_build_argv(work)))
         if not _skip_axiom_check(work):
             lines.append("lake env lean AxiomCheck.lean")
