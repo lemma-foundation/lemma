@@ -242,9 +242,7 @@ def test_prebuild_active_procedural_registry_skips_existing_cache(
     assert payload["wall_seconds"] >= 0
 
 
-def test_prebuild_active_procedural_registry_keeps_complete_cache_over_smaller_rebuild(
-    monkeypatch: pytest.MonkeyPatch, tmp_path
-) -> None:
+def test_prebuild_active_procedural_registry_keeps_existing_stale_cache(tmp_path) -> None:
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
     existing_tasks = [
@@ -266,38 +264,6 @@ def test_prebuild_active_procedural_registry_keeps_complete_cache_over_smaller_r
     ]
     write_registry(existing_tasks, cache_dir / "tempo-31.registry.json")
 
-    rebuilt_tasks = [
-        make_task(
-            task_id=f"lemma.procedural.rebuilt_{index}",
-            title=f"Rebuilt {index}",
-            theorem_name=f"rebuilt_{index}",
-            type_expr="True",
-            source_stream="procedural",
-            source_name="pytest",
-            metadata={
-                "operator_bundle_hash": procedural_operator_bundle_hash(),
-                "operator_bundle_version": OPERATOR_BUNDLE_VERSION,
-                "gate_version": GATE_VERSION,
-                "source_sampling_version": SOURCE_SAMPLING_VERSION,
-                "procedural_generation_target_count": 6,
-                "procedural_generation_accepted_count": 4,
-                "procedural_generation_attempt_count": 300,
-                "procedural_generation_attempt_limit": 300,
-                "typechecked": True,
-                "prop_gate_passed": True,
-                "triviality_checked": True,
-                "baseline_solved": False,
-                "novelty_status": "passed",
-            },
-        ).model_copy(update={"frontier_depth": 0})
-        for index in range(4)
-    ]
-
-    def fake_registry(settings, *, tempo):  # noqa: ANN001, ARG001
-        return type("Registry", (), {"tasks": tuple(rebuilt_tasks)})()
-
-    monkeypatch.setattr("lemma.validator.task_registry_for_validation", fake_registry)
-
     result = CliRunner().invoke(
         main,
         ["tasks", "prebuild-active-procedural-registry", "--tempo", "31"],
@@ -312,12 +278,10 @@ def test_prebuild_active_procedural_registry_keeps_complete_cache_over_smaller_r
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)
     assert payload["built"] is False
-    assert payload["kept_existing_registry"] is True
-    assert payload["discarded_rebuild_tasks"] == 4
+    assert payload["stale_existing_registry"] is True
     assert payload["tasks"] == 6
     persisted = (cache_dir / "tempo-31.registry.json").read_text(encoding="utf-8")
     assert "lemma.procedural.cached_0" in persisted
-    assert "lemma.procedural.rebuilt_0" not in persisted
 
 
 def test_prebuild_active_procedural_registry_auditor_mode_refuses_rebuild(
@@ -344,7 +308,47 @@ def test_prebuild_active_procedural_registry_auditor_mode_refuses_rebuild(
     assert "auditor mode requires a current public/cache registry" in result.output
 
 
-def test_prebuild_active_procedural_registry_refreshes_stale_frontier_cache(
+def test_prebuild_active_procedural_registry_keeps_stale_frontier_cache(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    old_task = make_task(
+        task_id="lemma.procedural.old-frontier",
+        title="Old Frontier",
+        theorem_name="old_frontier",
+        type_expr="True",
+        source_stream="procedural",
+        source_name="pytest",
+    ).model_copy(update={"frontier_depth": 2})
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    cache_path = cache_dir / "tempo-30.registry.json"
+    write_registry([old_task], cache_path)
+
+    def fail_registry(settings, *, tempo):  # noqa: ANN001, ARG001
+        raise AssertionError("existing tempo cache should not rebuild without --force")
+
+    monkeypatch.setattr("lemma.validator.task_registry_for_validation", fail_registry)
+
+    result = CliRunner().invoke(
+        main,
+        ["tasks", "prebuild-active-procedural-registry", "--tempo", "30"],
+        env={
+            "LEMMA_PREFER_PROCESS_ENV": "1",
+            "LEMMA_TASK_SUPPLY_MODE": "procedural",
+            "LEMMA_ACTIVE_REGISTRY_CACHE_DIR": str(cache_dir),
+            "LEMMA_ACTIVE_K": "1",
+            "LEMMA_FRONTIER_DEPTH": "0",
+        },
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["built"] is False
+    assert payload["stale_existing_registry"] is True
+    assert "lemma.procedural.old-frontier" in cache_path.read_text(encoding="utf-8")
+
+
+def test_prebuild_active_procedural_registry_force_refreshes_stale_frontier_cache(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
     old_task = make_task(
@@ -384,7 +388,7 @@ def test_prebuild_active_procedural_registry_refreshes_stale_frontier_cache(
 
     result = CliRunner().invoke(
         main,
-        ["tasks", "prebuild-active-procedural-registry", "--tempo", "30"],
+        ["tasks", "prebuild-active-procedural-registry", "--tempo", "30", "--force"],
         env={
             "LEMMA_PREFER_PROCESS_ENV": "1",
             "LEMMA_TASK_SUPPLY_MODE": "procedural",
@@ -400,29 +404,13 @@ def test_prebuild_active_procedural_registry_refreshes_stale_frontier_cache(
     assert "lemma.procedural.new-frontier" in cache_path.read_text(encoding="utf-8")
 
 
-def test_prebuild_active_procedural_registry_refreshes_stale_curriculum_cache(
+def test_prebuild_active_procedural_registry_keeps_stale_curriculum_cache(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
     old_task = make_task(
         task_id="lemma.procedural.old",
         title="Old",
         theorem_name="old",
-        type_expr="True",
-        source_stream="procedural",
-        source_name="pytest",
-    )
-    new_task = make_task(
-        task_id="lemma.procedural.new",
-        title="New",
-        theorem_name="new",
-        type_expr="True",
-        source_stream="procedural",
-        source_name="pytest",
-    )
-    second_task = make_task(
-        task_id="lemma.procedural.second",
-        title="Second",
-        theorem_name="second",
         type_expr="True",
         source_stream="procedural",
         source_name="pytest",
@@ -448,14 +436,10 @@ def test_prebuild_active_procedural_registry_refreshes_stale_curriculum_cache(
     )
     os.utime(state_path, (2, 2))
 
-    def fake_registry(settings, *, tempo):  # noqa: ANN001
-        assert tempo == 32
-        assert settings.active_task_count == 2
-        assert settings.active_registry_json is None
-        assert settings.active_registry_cache_dir is None
-        return type("Registry", (), {"tasks": (new_task, second_task)})()
+    def fail_registry(settings, *, tempo):  # noqa: ANN001, ARG001
+        raise AssertionError("existing tempo cache should not rebuild without --force")
 
-    monkeypatch.setattr("lemma.validator.task_registry_for_validation", fake_registry)
+    monkeypatch.setattr("lemma.validator.task_registry_for_validation", fail_registry)
 
     result = CliRunner().invoke(
         main,
@@ -471,9 +455,10 @@ def test_prebuild_active_procedural_registry_refreshes_stale_curriculum_cache(
 
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)
-    assert payload["built"] is True
-    assert payload["tasks"] == 2
-    assert "lemma.procedural.new" in cache_path.read_text(encoding="utf-8")
+    assert payload["built"] is False
+    assert payload["stale_existing_registry"] is True
+    assert payload["tasks"] == 1
+    assert "lemma.procedural.old" in cache_path.read_text(encoding="utf-8")
 
 
 def test_prebuild_active_procedural_registry_rechecks_curriculum_after_slow_build(

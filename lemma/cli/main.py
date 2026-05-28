@@ -1178,8 +1178,7 @@ def _warm_active_procedural_registry(*, tempo: int | None, force: bool) -> None:
     rebuild_started_at = None
     rebuild_finished_at = None
     rebuild_wall_seconds = 0.0
-    kept_existing_registry = False
-    discarded_rebuild_tasks = None
+    stale_existing_registry = False
     settings = LemmaSettings()
     if settings.active_registry_json is not None:
         raise click.ClickException("active registry cache warming requires LEMMA_ACTIVE_REGISTRY_CACHE_DIR")
@@ -1197,12 +1196,12 @@ def _warm_active_procedural_registry(*, tempo: int | None, force: bool) -> None:
     needs_rebuild = force or not cache_path.exists()
     registry = None
     existing_registry = None
-    if not needs_rebuild:
-        registry = load_task_registry(cache_path.read_bytes())
-        existing_registry = registry
-        needs_rebuild = active_registry_cache_stale(registry, effective_settings)
-    elif cache_path.exists():
+    if cache_path.exists():
         existing_registry = load_task_registry(cache_path.read_bytes())
+        if not force:
+            registry = existing_registry
+            stale_existing_registry = active_registry_cache_stale(registry, effective_settings)
+            needs_rebuild = False
     if needs_rebuild and settings.active_registry_role == "auditor":
         raise click.ClickException(
             "active registry auditor mode requires a current public/cache registry; refusing local generation"
@@ -1222,24 +1221,12 @@ def _warm_active_procedural_registry(*, tempo: int | None, force: bool) -> None:
             rebuilt_registry = task_registry_for_validation(rebuild_settings, tempo=active_tempo)
         rebuild_wall_seconds = time.perf_counter() - rebuild_started
         rebuild_finished_at = _timestamp()
-        expected_count = max(effective_settings.active_task_count, effective_settings.procedural_candidate_count or 0)
-        if (
-            not force
-            and existing_registry is not None
-            and expected_count
-            and len(existing_registry.tasks) >= expected_count
-            and len(rebuilt_registry.tasks) < len(existing_registry.tasks)
-        ):
-            registry = existing_registry
-            kept_existing_registry = True
-            discarded_rebuild_tasks = len(rebuilt_registry.tasks)
-        else:
-            registry = rebuilt_registry
-            cache_path.parent.mkdir(parents=True, exist_ok=True)
-            tmp_path = cache_path.with_name(cache_path.name + ".tmp")
-            write_registry(registry.tasks, tmp_path)
-            tmp_path.replace(cache_path)
-            built = True
+        registry = rebuilt_registry
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = cache_path.with_name(cache_path.name + ".tmp")
+        write_registry(registry.tasks, tmp_path)
+        tmp_path.replace(cache_path)
+        built = True
     if registry is None:
         raise click.ClickException("active registry cache warming failed to load or build registry")
 
@@ -1251,8 +1238,7 @@ def _warm_active_procedural_registry(*, tempo: int | None, force: bool) -> None:
                 "tempo": active_tempo,
                 "registry_sha256": hashlib.sha256(cache_path.read_bytes()).hexdigest(),
                 "tasks": len(registry.tasks),
-                "kept_existing_registry": kept_existing_registry,
-                "discarded_rebuild_tasks": discarded_rebuild_tasks,
+                "stale_existing_registry": stale_existing_registry,
                 "rebuild_wall_seconds": round(rebuild_wall_seconds, 3),
                 "started_at": started_at,
                 "rebuild_started_at": rebuild_started_at,

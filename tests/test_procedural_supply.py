@@ -34,6 +34,7 @@ from lemma.supply.procedural import (
     _eligible_depth2_sources,
     _maybe_accept_depth2_attempt,
     _source_family,
+    _source_family_balanced_sources,
     build_procedural_registry_tasks,
     corpus_sources_from_dir,
     generate_depth2_candidates,
@@ -2371,6 +2372,38 @@ def test_depth_balanced_sources_interleave_available_depths() -> None:
     ordered = _depth_balanced_sources(sources)
 
     assert [source.queue_depth for source in ordered] == [2, 1, 0, 1, 0, 0]
+
+
+def test_source_family_balanced_sources_interleave_available_families() -> None:
+    def source(index: int, path: str):
+        return fixture_candidate(
+            slug=f"family_{index}",
+            source_stream="mathlib_snapshot",
+            source_name="snapshot",
+            theorem_name=f"Family.t{index}",
+            type_expr="true = false",
+            queue_depth=0,
+        ).model_copy(update={"source_ref": SourceRef(kind="fixture", name=f"family_{index}", path=path)})
+
+    ordered = _source_family_balanced_sources(
+        (
+            source(0, "Mathlib/Data/Nat/A.lean"),
+            source(1, "Mathlib/Data/Nat/B.lean"),
+            source(2, "Mathlib/Data/Fin/A.lean"),
+            source(3, "Mathlib/Data/List/A.lean"),
+            source(4, "Mathlib/Data/Nat/C.lean"),
+            source(5, "Mathlib/Data/Fin/B.lean"),
+        )
+    )
+
+    assert [_source_family(item) for item in ordered] == [
+        "Data/Nat",
+        "Data/Fin",
+        "Data/List",
+        "Data/Nat",
+        "Data/Fin",
+        "Data/Nat",
+    ]
 
 
 def test_depth2_generation_skips_alpha_equivalent_duplicates_before_lean(tmp_path: Path) -> None:

@@ -1192,7 +1192,7 @@ def _ordered_sources(
             break
         used.add(source.id)
         out.append(source)
-    return _depth_balanced_sources(tuple(out))
+    return _source_family_balanced_sources(_depth_balanced_sources(tuple(out)))
 
 
 def _depth_balanced_sources(sources: tuple[TaskCandidate, ...]) -> tuple[TaskCandidate, ...]:
@@ -1205,6 +1205,22 @@ def _depth_balanced_sources(sources: tuple[TaskCandidate, ...]) -> tuple[TaskCan
     while len(out) < len(sources):
         for depth in depths:
             bucket = buckets[depth]
+            if index < len(bucket):
+                out.append(bucket[index])
+        index += 1
+    return tuple(out)
+
+
+def _source_family_balanced_sources(sources: tuple[TaskCandidate, ...]) -> tuple[TaskCandidate, ...]:
+    buckets: dict[str, list[TaskCandidate]] = {}
+    for source in sources:
+        buckets.setdefault(_source_family(source), []).append(source)
+    families = tuple(buckets)
+    out: list[TaskCandidate] = []
+    index = 0
+    while len(out) < len(sources):
+        for family in families:
+            bucket = buckets[family]
             if index < len(bucket):
                 out.append(bucket[index])
         index += 1
