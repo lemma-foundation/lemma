@@ -294,7 +294,7 @@ def active_registry_cache_stale(registry: TaskRegistry, settings: LemmaSettings)
 
 
 def _partial_generation_min_count(expected_count: int) -> int:
-    return max(1, (expected_count * 2 + 2) // 3)
+    return max(1, (expected_count + 1) // 2)
 
 
 def curriculum_controlled_settings(settings: LemmaSettings, *, tempo: int) -> LemmaSettings:

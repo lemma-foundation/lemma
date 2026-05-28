@@ -217,7 +217,7 @@ def test_active_registry_cache_stale_checks_current_operator_bundle_by_default()
     assert active_registry_cache_stale(registry, _production_settings()) is True
 
 
-def test_active_registry_cache_accepts_partial_generation_at_floor_with_matching_target() -> None:
+def test_active_registry_cache_accepts_half_generation_floor_with_matching_target() -> None:
     tasks = tuple(
         _production_task().model_copy(
             update={
@@ -226,13 +226,13 @@ def test_active_registry_cache_accepts_partial_generation_at_floor_with_matching
                 "metadata": {
                     **_production_task().metadata,
                     "procedural_generation_target_count": 6,
-                    "procedural_generation_accepted_count": 4,
+                    "procedural_generation_accepted_count": 3,
                     "procedural_generation_attempt_count": 300,
                     "procedural_generation_attempt_limit": 300,
                 },
             }
         )
-        for index in range(4)
+        for index in range(3)
     )
     registry = TaskRegistry(schema_version=1, tasks=tasks, sha256="0" * 64, signature_status="verified")
     settings = _production_settings(active_task_count=6)
@@ -249,13 +249,13 @@ def test_active_registry_cache_accepts_partial_generation_before_attempt_budget_
                 "metadata": {
                     **_production_task().metadata,
                     "procedural_generation_target_count": 6,
-                    "procedural_generation_accepted_count": 4,
+                    "procedural_generation_accepted_count": 3,
                     "procedural_generation_attempt_count": 16,
                     "procedural_generation_attempt_limit": 300,
                 },
             }
         )
-        for index in range(4)
+        for index in range(3)
     )
     registry = TaskRegistry(schema_version=1, tasks=tasks, sha256="0" * 64, signature_status="verified")
     settings = _production_settings(active_task_count=6)
@@ -272,11 +272,11 @@ def test_active_registry_cache_rejects_partial_generation_below_floor() -> None:
                 "metadata": {
                     **_production_task().metadata,
                     "procedural_generation_target_count": 6,
-                    "procedural_generation_accepted_count": 3,
+                    "procedural_generation_accepted_count": 2,
                 },
             }
         )
-        for index in range(3)
+        for index in range(2)
     )
     registry = TaskRegistry(schema_version=1, tasks=tasks, sha256="0" * 64, signature_status="verified")
     settings = _production_settings(active_task_count=6)
