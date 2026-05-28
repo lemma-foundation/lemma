@@ -67,9 +67,10 @@ def test_bucket_miner_publishes_once_per_chain_tempo() -> None:
     miner = (ROOT / "scripts" / "lemma-miner-once-to-bucket").read_text(encoding="utf-8")
 
     assert 'last_bucket_tempo = Path(os.environ["LEMMA_OPERATOR_DATA_DIR"]) / "last_bucket_tempo"' in miner
-    assert "last_bucket_tempo.read_text(encoding=\"utf-8\").strip() == str(tempo)" in miner
-    assert '"reason": f"already published tempo {tempo}"' in miner
-    assert 'printf \'%s\\n\' "$tempo" > "$state_dir/last_bucket_tempo"' in miner
+    assert 'publish_marker = f"{tempo}:{registry.sha256}"' in miner
+    assert 'last_bucket_tempo.read_text(encoding="utf-8").strip() == publish_marker' in miner
+    assert '"reason": f"already published tempo {tempo} registry {registry.sha256}"' in miner
+    assert 'printf \'%s:%s\\n\' "$tempo" "$registry_sha256" > "$state_dir/last_bucket_tempo"' in miner
 
 
 def test_bucket_miner_idles_when_active_registry_cache_is_missing() -> None:
