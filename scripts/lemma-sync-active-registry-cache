@@ -52,14 +52,17 @@ def main() -> None:
     cache_path = active_registry_cache_path(settings, tempo=tempo)
     if cache_path is None:
         return
+    cached = None
+    cached_stale = False
     if cache_path.is_file():
         cached = load_task_registry(cache_path.read_bytes())
-        if not active_registry_cache_stale(cached, effective):
-            print(json.dumps({"cache": "present", "tempo": tempo, "registry_sha256": cached.sha256}))
-            return
+        cached_stale = active_registry_cache_stale(cached, effective)
 
     index_url = os.environ.get("LEMMA_ACTIVE_REGISTRY_CACHE_INDEX_URL", "").strip()
     if not index_url:
+        if cached is not None and not cached_stale:
+            print(json.dumps({"cache": "present", "tempo": tempo, "registry_sha256": cached.sha256}))
+            return
         if settings.active_registry_role == "auditor":
             print(json.dumps({"cache": "missing_public_index_url", "tempo": tempo}))
         return
@@ -74,6 +77,9 @@ def main() -> None:
     expected = row.get("sha256")
     if not url or not isinstance(expected, str):
         print(json.dumps({"cache": "invalid_public_index_row", "tempo": tempo}))
+        return
+    if cached is not None and not cached_stale and cached.sha256 == expected:
+        print(json.dumps({"cache": "present", "tempo": tempo, "registry_sha256": cached.sha256}))
         return
 
     raw = _fetch(url)
