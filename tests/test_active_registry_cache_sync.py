@@ -67,7 +67,7 @@ def test_sync_active_registry_cache_hydrates_public_tempo_cache(monkeypatch, tmp
     assert load_task_registry(hydrated.read_bytes()).sha256 == registry_sha
 
 
-def test_sync_active_registry_cache_replaces_cache_when_public_hash_changes(
+def test_sync_active_registry_cache_keeps_existing_cache_when_public_hash_changes(
     monkeypatch, tmp_path: Path, capsys
 ) -> None:
     module = _load_sync_module()
@@ -105,8 +105,9 @@ def test_sync_active_registry_cache_replaces_cache_when_public_hash_changes(
     public_path = public / "registry.json"
     write_registry([cached_task], cache_path)
     write_registry([public_task], public_path)
+    cached_sha = load_task_registry(cache_path.read_bytes()).sha256
     public_sha = load_task_registry(public_path.read_bytes()).sha256
-    assert load_task_registry(cache_path.read_bytes()).sha256 != public_sha
+    assert cached_sha != public_sha
     index = {
         "schema_version": 1,
         "netuid": "sn467",
@@ -123,8 +124,13 @@ def test_sync_active_registry_cache_replaces_cache_when_public_hash_changes(
     module.main()
 
     payload = json.loads(capsys.readouterr().out)
-    assert payload == {"cache": "hydrated", "tempo": 7, "registry_sha256": public_sha}
-    assert load_task_registry(cache_path.read_bytes()).sha256 == public_sha
+    assert payload == {
+        "cache": "existing_cache_sha_mismatch",
+        "tempo": 7,
+        "registry_sha256": cached_sha,
+        "public_registry_sha256": public_sha,
+    }
+    assert load_task_registry(cache_path.read_bytes()).sha256 == cached_sha
 
 
 def test_sync_active_registry_cache_reports_present_cache_without_public_index(
