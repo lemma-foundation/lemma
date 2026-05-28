@@ -113,6 +113,18 @@ _LOW_VALUE_MUTATION_TARGETS: frozenset[str] = frozenset()
 _PRODUCTIVE_OPERATOR_NAMES = ("symm",)
 _PEER_OPERATOR_NAMES = frozenset({"conjoin", "strengthen"})
 _LEAN_GATE_BATCH_ATTEMPTS = 50
+_MAX_SOURCE_DIFFICULTY_SCORE = 2
+_MAX_DIRECT_DEPENDENCY_COUNT = 0
+_MAX_DEPENDENCY_DEPTH = 0
+_LIGHTWEIGHT_IMPORT_PREFIXES = (
+    "Mathlib.Data.Bool.",
+    "Mathlib.Data.Fin.",
+    "Mathlib.Data.List.",
+    "Mathlib.Data.Nat.",
+    "Mathlib.Data.Option.",
+    "Mathlib.Data.Set.",
+    "Mathlib.Logic.",
+)
 _STANDALONE_FORBIDDEN_TOKENS = ("ofNat", "‹", "›", "ᶜ", "!", "₀", "₁", "₂", "₃", "₄", "₅", "₆", "₇", "₈", "₉")
 
 
@@ -1005,6 +1017,7 @@ def _eligible_depth2_sources(
         for source in sources
         if (max_queue_depth is None or source.queue_depth <= max_queue_depth)
         and _productive_operators_for(source.type_expr)
+        and _lightweight_source(source)
     )
 
 
@@ -1013,6 +1026,30 @@ def _productive_operators_for(type_expr: str) -> tuple[str, ...]:
 
     _prefix, body = _split_forall_prefix(type_expr)
     return _PRODUCTIVE_OPERATOR_NAMES if _split_top_level_relation(body) is not None else ()
+
+
+def _lightweight_source(source: TaskCandidate) -> bool:
+    return (
+        _metadata_leq(source.metadata, "difficulty_score", _MAX_SOURCE_DIFFICULTY_SCORE)
+        and _metadata_leq(source.metadata, "direct_dependency_count", _MAX_DIRECT_DEPENDENCY_COUNT)
+        and _metadata_leq(source.metadata, "dependency_depth", _MAX_DEPENDENCY_DEPTH)
+        and _lightweight_imports(source)
+    )
+
+
+def _metadata_leq(metadata: dict[str, object], key: str, limit: int) -> bool:
+    value = metadata.get(key)
+    if isinstance(value, bool):
+        return True
+    if isinstance(value, (int, float)):
+        return value <= limit
+    return True
+
+
+def _lightweight_imports(source: TaskCandidate) -> bool:
+    if not all(key in source.metadata for key in ("difficulty_score", "direct_dependency_count", "dependency_depth")):
+        return True
+    return any(module.startswith(_LIGHTWEIGHT_IMPORT_PREFIXES) for module in source.imports)
 
 
 def _peer_source(
