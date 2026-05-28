@@ -59,6 +59,7 @@ def test_operator_bundle_includes_lean_pretty_value_aliases() -> None:
     assert SMALL_VALUES_BY_TYPE["\u211D"] == SMALL_VALUES_BY_TYPE["Real"]
     assert "0" not in SMALL_VALUES_BY_TYPE["Nat"]
     assert "1" not in SMALL_VALUES_BY_TYPE["Nat"]
+    assert len(SMALL_VALUES_BY_TYPE["Nat"]) >= 5
     assert "Prop" not in SMALL_VALUES_BY_TYPE
 
 
@@ -122,7 +123,7 @@ def test_structural_mutation_engine_marks_current_bundle_engine() -> None:
         param_seed="e" * 64,
         peer=source,
     )
-    assert field_notation.type_expr == "∀ b : Nat, (3 : Nat).succ = b"
+    assert field_notation.type_expr == "∀ b : Nat, (5 : Nat).succ = b"
 
 
 def _write_snapshot(path: Path) -> None:

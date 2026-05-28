@@ -1030,7 +1030,7 @@ def _candidate_from_source(
             metadata[key] = source.metadata[key]
     return TaskCandidate(
         id=f"lemma.procedural.{canonical_hash[:16]}",
-        title=f"Procedural {source.title or source.theorem_name}",
+        title=source.title or source.theorem_name,
         source_stream="procedural",
         source_ref=source_ref,
         source_license=source.source_license,
