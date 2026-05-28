@@ -18,7 +18,7 @@ def test_docker_verify_script_source_is_line_oriented(tmp_path: Path, monkeypatc
     script = sb._docker_verify_script_source(tmp_path)
 
     assert "lake exe cache get" not in script
-    assert "ln -s \"$p\" \".lake/packages/$(basename \"$p\")\"" in script
+    assert "[ -e \"$target\" ] || ln -s \"$p\" \"$target\"" in script
     assert "cp -a /opt/lemma-stub/lake-manifest.json ." in script
     assert "\nlake build Submission\n" in script
     assert "\nlake env lean AxiomCheck.lean\n" in script
@@ -30,7 +30,9 @@ def test_docker_verify_script_checks_cache_after_stub_hydration(tmp_path: Path, 
 
     script = sb._docker_verify_script_source(tmp_path)
 
-    assert script.index("ln -s \"$p\"") < script.index("if [ ! -d .lake/packages/mathlib ]; then")
+    assert script.index("[ -e \"$target\" ] || ln -s \"$p\" \"$target\"") < script.index(
+        "if [ ! -d .lake/packages/mathlib ]; then"
+    )
     assert "  lake exe cache get\nfi\nlake build Submission" in script
 
 
