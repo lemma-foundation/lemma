@@ -27,6 +27,7 @@ from lemma.supply.controller import CurriculumTempoRecord
 from lemma.supply.gates import GATE_VERSION
 from lemma.supply.queue import initial_active_pool
 from lemma.supply.slot_weight import slot_weight_receipt_for_kernel_dependencies, slot_weight_receipt_for_task
+from lemma.supply.source_pool import SOURCE_SAMPLING_VERSION
 from lemma.task_activation import task_reward_eligibility, task_slot_weight
 from lemma.tasks import LemmaTask, TaskRegistry, fetch_task_registry, load_task_registry, task_registry_from_tasks
 from lemma.verifiers.lean import verify_result_from_adapter_result
@@ -262,6 +263,13 @@ def active_registry_cache_stale(registry: TaskRegistry, settings: LemmaSettings)
         str(task.metadata.get("gate_version")) for task in registry.tasks if "gate_version" in task.metadata
     }
     if gate_versions and gate_versions != {GATE_VERSION}:
+        return True
+    sampling_versions = {
+        str(task.metadata.get("source_sampling_version"))
+        for task in registry.tasks
+        if "source_sampling_version" in task.metadata
+    }
+    if sampling_versions and sampling_versions != {SOURCE_SAMPLING_VERSION}:
         return True
     return False
 

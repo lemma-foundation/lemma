@@ -389,7 +389,7 @@ def test_depth2_generation_is_epoch_seeded_not_static(tmp_path: Path) -> None:
     assert all(
         candidate.metadata["source_pool_receipt_version"] == "lemma-source-pool-receipt-v1" for candidate in first
     )
-    assert all(candidate.metadata["source_sampling_version"] == "lemma-source-sampling-v1" for candidate in first)
+    assert all(candidate.metadata["source_sampling_version"] == "lemma-source-sampling-v2" for candidate in first)
     assert all(candidate.metadata["source_pool_stream_counts"] == {"mathlib_snapshot": 3} for candidate in first)
     assert all(candidate.metadata["citation_alpha_basis_points"] == 5000 for candidate in first)
     assert all(candidate.metadata["citation_window_tempos"] == 2000 for candidate in first)
