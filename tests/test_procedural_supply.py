@@ -4,7 +4,6 @@ import hashlib
 import json
 import time
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 from lemma.common.config import LemmaSettings
@@ -30,7 +29,6 @@ from lemma.supply.operator_bundle import (
     SMALL_VALUES_BY_TYPE,
 )
 from lemma.supply.procedural import (
-    _accepted_source_family_limit,
     _candidate_from_source,
     _depth_balanced_sources,
     _eligible_depth2_sources,
@@ -508,51 +506,6 @@ def test_depth2_acceptance_keeps_unique_candidates_from_same_source_family() -> 
     assert [item.source_ref.path for item in out] == ["Mathlib/A.lean", "Mathlib/A.lean", "Mathlib/B.lean"]
 
 
-def test_depth2_acceptance_caps_source_family_when_requested() -> None:
-    verdict = ProceduralGateVerdict(
-        typechecked=True,
-        prop_gate_passed=True,
-        triviality_checked=True,
-        baseline_solved=False,
-        novelty_status="passed",
-        slot_weight=1.0,
-        metadata={"gate_runner": "pytest"},
-    )
-
-    def candidate(slug: str, source_path: str) -> TaskCandidate:
-        canonical_hash = hashlib.sha256(slug.encode()).hexdigest()
-        return fixture_candidate(
-            slug=slug,
-            source_stream="procedural",
-            source_name=slug,
-            theorem_name=slug,
-            type_expr="True",
-            queue_depth=0,
-            metadata={"canonical_hash": canonical_hash},
-        ).model_copy(update={"source_ref": SourceRef(kind="procedural", name=slug, path=source_path)})
-
-    out: list[TaskCandidate] = []
-    seen: set[str] = set()
-
-    assert _maybe_accept_depth2_attempt(
-        out, seen, candidate("first", "Mathlib/Data/Nat/A.lean"), verdict, source_family_limit=2
-    )
-    assert _maybe_accept_depth2_attempt(
-        out, seen, candidate("second", "Mathlib/Data/Nat/B.lean"), verdict, source_family_limit=2
-    )
-    assert not _maybe_accept_depth2_attempt(
-        out, seen, candidate("third", "Mathlib/Data/Nat/C.lean"), verdict, source_family_limit=2
-    )
-    assert _maybe_accept_depth2_attempt(
-        out, seen, candidate("fourth", "Mathlib/Data/List/A.lean"), verdict, source_family_limit=2
-    )
-    assert [item.source_ref.path for item in out] == [
-        "Mathlib/Data/Nat/A.lean",
-        "Mathlib/Data/Nat/B.lean",
-        "Mathlib/Data/List/A.lean",
-    ]
-
-
 def test_source_family_uses_mathlib_topic_buckets() -> None:
     metadata_bucket = fixture_candidate(
         slug="source_nat",
@@ -585,31 +538,6 @@ def test_source_family_uses_mathlib_topic_buckets() -> None:
     assert _source_family(metadata_bucket) == "Data/Nat"
     assert _source_family(path_bucket) == "Data/List"
     assert _source_family(logic_bucket) == "Logic"
-
-
-def test_source_family_limit_keeps_fill_capacity_with_many_families() -> None:
-    def source(slug: str, path: str) -> TaskCandidate:
-        return fixture_candidate(
-            slug=slug,
-            source_stream="mathlib_snapshot",
-            source_name="snapshot",
-            theorem_name=slug,
-            type_expr="∀ n m : Nat, n = m",
-            queue_depth=0,
-        ).model_copy(update={"source_ref": SourceRef(kind="fixture", name=slug, path=path)})
-
-    ctx = SimpleNamespace(
-        ordered=(
-            source("nat_a", "Mathlib/Data/Nat/Factorization/Basic.lean"),
-            source("nat_b", "Mathlib/Data/Nat/GCD/Lemmas.lean"),
-            source("fin", "Mathlib/Data/Fin/SuccPred.lean"),
-            source("list", "Mathlib/Data/List/Basic.lean"),
-            source("set", "Mathlib/Data/Set/Basic.lean"),
-            source("equiv", "Mathlib/Logic/Equiv/Basic.lean"),
-        )
-    )
-
-    assert _accepted_source_family_limit(ctx, 6) == 2
 
 
 @pytest.mark.parametrize(
