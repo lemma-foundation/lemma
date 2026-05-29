@@ -571,6 +571,7 @@ def test_production_like_procedural_submission_smoke(monkeypatch: pytest.MonkeyP
         return VerifyResult(passed=True, reason="ok", proof_term_hash="term-mainnet-readiness")
 
     monkeypatch.setattr("lemma.verifiers.lean.run_lean_verify", fake_verify)
+    monkeypatch.setattr("lemma.validator.current_active_tempo", lambda settings: reveal_tempo + 1)
 
     validate = runner.invoke(
         main,

@@ -2028,7 +2028,35 @@ def validate_cmd(
         reveal_tempos = {reveal.tempo for reveal in reveals}
         if len(reveal_tempos) > 1:
             raise click.ClickException("bucket reveal JSONL must contain exactly one tempo")
-        active_tempo = next(iter(reveal_tempos), current_active_tempo(settings))
+        chain_active_tempo = current_active_tempo(settings)
+        active_tempo = next(iter(reveal_tempos), chain_active_tempo)
+        if settings.protocol_mode == "production" and active_tempo >= chain_active_tempo:
+            click.echo(
+                json.dumps(
+                    {
+                        "verified": 0,
+                        "accepted_unique": 0,
+                        "credits": {},
+                        "scores": {},
+                        "submission_files_consumed": len(spool_paths),
+                        "bucket_reveals_consumed": 0,
+                        "bucket_reveals_rejected": len(bucket_rejections),
+                        "bucket_tempo": active_tempo,
+                        "active_tempo": chain_active_tempo,
+                        "reason": "bucket reveal tempo is not complete",
+                        "weights": {},
+                        "corpus_rows": 0,
+                        "unearned_policy": settings.unearned_allocation_policy,
+                        "unearned_share": 0.0,
+                        "weights_set": False,
+                        "chain_commitment_set": False,
+                        "tempo_commitment_payload": "",
+                    },
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
+            return
         if validation_tempo is not None and validation_tempo != active_tempo:
             raise click.ClickException("live miner intake sources must target the same tempo")
         validation_tempo = active_tempo

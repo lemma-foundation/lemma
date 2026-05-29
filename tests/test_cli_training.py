@@ -1096,6 +1096,40 @@ def test_production_bucket_reveals_wait_for_completed_chain_tempo(
     assert not (inbox / "processed").exists()
 
 
+def test_production_bucket_reveal_jsonl_waits_for_completed_chain_tempo(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    ciphertext = "current-cipher"
+    reveal = MinerBucketReveal(
+        tempo=7,
+        miner_hotkey="hk-current",
+        drand_round=77,
+        drand_signature="0xsig",
+        commit_block=7,
+        commit_extrinsic_hash="0xcurrent",
+        merkle_root=miner_submission_merkle_root(((0, ciphertext_sha256(ciphertext.encode("utf-8"))),)),
+        blobs=(RevealedBucketBlob(slot_index=0, ciphertext=ciphertext, proof_script=_true_intro_proof()),),
+    )
+    reveals_path = tmp_path / "current.jsonl"
+    reveals_path.write_text(reveal.model_dump_json() + "\n", encoding="utf-8")
+    monkeypatch.setattr("lemma.validator.current_active_tempo", lambda settings: 7)
+
+    result = CliRunner().invoke(
+        main,
+        ["validate", "--once", "--bucket-reveals-jsonl", str(reveals_path), "--no-set-weights"],
+        env={
+            "LEMMA_PREFER_PROCESS_ENV": "1",
+            "LEMMA_PROTOCOL_MODE": "production",
+        },
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["reason"] == "bucket reveal tempo is not complete"
+    assert payload["bucket_reveals_consumed"] == 0
+    assert payload["bucket_tempo"] == 7
+
+
 def test_production_miner_bucket_polling_requires_positive_commit_blocks(tmp_path) -> None:
     miners = tmp_path / "miners.json"
     commit_blocks = tmp_path / "commit-blocks.json"
