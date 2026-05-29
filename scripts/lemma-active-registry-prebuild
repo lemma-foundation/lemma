@@ -37,8 +37,4 @@ if [[ "${LEMMA_ACTIVE_REGISTRY_ROLE:-builder}" == "auditor" ]]; then
   echo '{"idle":true,"reason":"auditor mode waits for public active registry cache"}'
   exit 0
 fi
-if [[ "$force_requested" != "1" && -n "${LEMMA_ACTIVE_REGISTRY_CACHE_INDEX_URL:-}" ]]; then
-  echo '{"idle":true,"reason":"public active registry cache not published yet"}'
-  exit 0
-fi
 exec "$uv_bin" run lemma tasks warm-active-procedural-registry "$@"

@@ -124,7 +124,7 @@ def test_active_registry_prebuild_wrapper_serializes_builds() -> None:
     assert "active registry prebuild already running" in prebuild
 
 
-def test_active_registry_prebuild_idles_until_public_cache_is_published() -> None:
+def test_active_registry_prebuild_builder_falls_back_to_local_generation() -> None:
     prebuild = (ROOT / "scripts" / "lemma-active-registry-prebuild").read_text(encoding="utf-8")
 
     assert "force_requested=0" in prebuild
@@ -133,9 +133,8 @@ def test_active_registry_prebuild_idles_until_public_cache_is_published() -> Non
     assert '\'"cache": "present"\'' in prebuild
     assert '\'"cache": "hydrated"\'' in prebuild
     assert '"$force_requested" != "1"' in prebuild
-    assert "LEMMA_ACTIVE_REGISTRY_CACHE_INDEX_URL" in prebuild
-    assert "public active registry cache not published yet" in prebuild
-    assert '&& -n "${LEMMA_ACTIVE_REGISTRY_CACHE_INDEX_URL:-}"' in prebuild
+    assert "public active registry cache not published yet" not in prebuild
+    assert 'exec "$uv_bin" run lemma tasks warm-active-procedural-registry "$@"' in prebuild
 
 
 def test_auditor_registry_wrappers_refuse_local_generation() -> None:
