@@ -295,11 +295,11 @@ def source_import_status(
     if not is_lean_decl_name(metadata.get("source_theorem_name")):
         return "no_source_theorem"
     source_module = _source_module_from_path(source_path)
+    if metadata.get("source_origin_stream") == "lemma_substrate" and source_module is None:
+        return "source_theorem_unavailable"
     if any(module.strip() == "Mathlib" for module in imports):
         return "source_theorem_available"
     if source_module is None:
-        if metadata.get("source_origin_stream") == "lemma_substrate":
-            return "source_theorem_unavailable"
         return "unknown"
     return "source_theorem_available" if source_module in imports else "source_theorem_unavailable"
 

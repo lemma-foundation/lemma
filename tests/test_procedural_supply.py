@@ -1365,7 +1365,12 @@ def test_depth2_generation_current_chain_reaches_serious_lean_gate_with_source_m
 def test_depth2_generation_uses_verified_substrate_sources_as_unavailable() -> None:
     class LeanLikeGate:
         requires_serious_candidates = True
-        import_graph = import_graph_from_rows((ImportGraphRow(module="Mathlib.Data.Nat.Basic", imports=()),))
+        import_graph = import_graph_from_rows(
+            (
+                ImportGraphRow(module="Mathlib", imports=("Mathlib.Data.Nat.Basic",)),
+                ImportGraphRow(module="Mathlib.Data.Nat.Basic", imports=()),
+            )
+        )
 
         def __init__(self) -> None:
             self.seen: list[TaskCandidate] = []
@@ -1386,7 +1391,7 @@ def test_depth2_generation_uses_verified_substrate_sources_as_unavailable() -> N
         queue_depth=0,
     ).model_copy(
         update={
-            "imports": ("Mathlib.Data.Nat.Basic",),
+            "imports": ("Mathlib",),
             "source_ref": SourceRef(
                 kind="lemma_substrate",
                 name="row",
@@ -2480,6 +2485,14 @@ def test_source_import_status_marks_available_source_modules() -> None:
     assert (
         source_import_status(
             ("Mathlib.Data.Nat.Basic",),
+            {"source_origin_stream": "lemma_substrate", **metadata},
+            source_path="tempo-1/accepted/row.json",
+        )
+        == "source_theorem_unavailable"
+    )
+    assert (
+        source_import_status(
+            ("Mathlib",),
             {"source_origin_stream": "lemma_substrate", **metadata},
             source_path="tempo-1/accepted/row.json",
         )
