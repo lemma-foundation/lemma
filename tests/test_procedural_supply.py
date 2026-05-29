@@ -238,6 +238,19 @@ def test_import_graph_accepts_prime_module_names(tmp_path: Path) -> None:
     )
 
 
+def test_import_graph_drops_import_modifiers(tmp_path: Path) -> None:
+    mathlib_root = tmp_path / "mathlib"
+    module_path = mathlib_root / "Mathlib" / "Data" / "Example.lean"
+    module_path.parent.mkdir(parents=True)
+    module_path.write_text("import all Mathlib.Data.Nat.Basic\n", encoding="utf-8")
+
+    rows = extract_import_graph_rows(mathlib_root, ("Mathlib/Data/Example.lean",))
+
+    assert rows == (
+        ImportGraphRow(module="Mathlib.Data.Example", imports=("Mathlib.Data.Nat.Basic",)),
+    )
+
+
 def _fake_lean_gate(self, candidate, *, seen_canonical_hashes) -> ProceduralGateVerdict:  # noqa: ANN001
     canonical_hash = str(candidate.metadata.get("canonical_hash") or "")
     slot_weight = slot_weight_receipt_for_candidate(candidate, import_graph=self.import_graph)
@@ -1094,7 +1107,45 @@ def test_depth2_generation_rejects_source_wrappers_before_lean() -> None:
             generation_workers=2,
             mutation_engine=DirectWrapperMutationEngine(),
         )
-    assert "import graph leaves all 100 eligible source theorems importable" in str(exc_info.value)
+    assert "import graph leaves all 100 eligible source theorems importable or without dependency imports" in str(
+        exc_info.value
+    )
+
+
+def test_depth2_generation_rejects_hidden_sources_without_usable_dependency_imports_before_lean() -> None:
+    class NoLeanGate:
+        requires_serious_candidates = True
+
+        def __call__(self, candidate, *, seen_canonical_hashes):  # noqa: ANN001, ARG002
+            raise AssertionError("empty-import hidden sources should be rejected before Lean")
+
+        def batch(self, candidates, *, seen_canonical_hashes):  # noqa: ANN001, ARG002
+            raise AssertionError("empty-import hidden sources should be rejected before Lean")
+
+    source = fixture_candidate(
+        slug="source",
+        source_stream="mathlib_snapshot",
+        source_name="snapshot",
+        theorem_name="Source.t",
+        type_expr="∀ n m : Nat, n = m",
+        queue_depth=0,
+    ).model_copy(update={"source_ref": SourceRef(kind="mathlib", name="Source.t", path="Mathlib/Source.lean")})
+    for imports in ((), ("all",)):
+        import_graph = import_graph_from_rows((ImportGraphRow(module="Mathlib.Source", imports=imports),))
+
+        with pytest.raises(ValueError, match="source pool has no paid depth-2 candidates") as exc_info:
+            generate_depth2_candidates(
+                (source,),
+                generation_seed="epoch-a",
+                epoch_randomness=json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
+                count=1,
+                tempo=3,
+                gate_runner=NoLeanGate(),
+                generation_workers=1,
+                mutation_engine=StructuralMutationEngine(),
+                import_graph=import_graph,
+            )
+        assert "without dependency imports" in str(exc_info.value)
 
 
 def test_depth2_generation_current_chain_reaches_serious_lean_gate_with_source_module_hidden() -> None:
@@ -1175,6 +1226,70 @@ def test_depth2_generation_current_chain_reaches_serious_lean_gate_with_source_m
     assert candidate.metadata["source_import_status"] == "source_theorem_unavailable"
     assert [step["operator"] for step in candidate.metadata["mutation_chain"]] == ["witness-relation", "specialize"]
     assert "∃ h :" in candidate.type_expr
+
+
+def test_depth2_generation_uses_verified_substrate_sources_as_unavailable() -> None:
+    class RecordingGate:
+        requires_serious_candidates = True
+
+        def __init__(self) -> None:
+            self.seen: list[TaskCandidate] = []
+
+        def __call__(self, candidate, *, seen_canonical_hashes):  # noqa: ANN001, ARG002
+            raise AssertionError("batch path should be used")
+
+        def batch(self, candidates, *, seen_canonical_hashes):  # noqa: ANN001, ARG002
+            self.seen.extend(candidates)
+            return tuple(
+                ProceduralGateVerdict(
+                    typechecked=True,
+                    prop_gate_passed=True,
+                    triviality_checked=True,
+                    baseline_solved=False,
+                    novelty_status="passed",
+                    slot_weight=1.0,
+                    metadata={
+                        "canonical_hash": str(candidate.metadata["canonical_hash"]),
+                        "source_import_status": str(candidate.metadata["source_import_status"]),
+                    },
+                )
+                for candidate in candidates
+            )
+
+    source = fixture_candidate(
+        slug="substrate",
+        source_stream="lemma_substrate",
+        source_name="row",
+        theorem_name="Prior.closed",
+        type_expr="∀ n m : Nat, n = m",
+        queue_depth=0,
+    ).model_copy(
+        update={
+            "imports": ("Mathlib.Data.Nat.Basic",),
+            "source_ref": SourceRef(
+                kind="lemma_substrate",
+                name="row",
+                path="tempo-1/accepted/row.json",
+            ),
+        }
+    )
+    gate = RecordingGate()
+
+    (candidate,) = generate_depth2_candidates(
+        (source,),
+        generation_seed="epoch-a",
+        epoch_randomness=json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
+        count=1,
+        tempo=3,
+        gate_runner=gate,
+        generation_workers=1,
+        mutation_engine=StructuralMutationEngine(),
+    )
+
+    assert gate.seen
+    assert candidate.metadata["task_pool"] == "serious_paid"
+    assert candidate.metadata["source_reuse_class"] == "source_derived_survived"
+    assert candidate.metadata["source_import_status"] == "source_theorem_unavailable"
 
 
 def test_depth2_generation_parallel_matches_sequential(tmp_path: Path) -> None:
@@ -1476,6 +1591,7 @@ def test_lean_gate_runner_batches_gate_results(monkeypatch: pytest.MonkeyPatch, 
         assert "set_option autoImplicit false" in gate_source
         assert "containsSyntheticHole" in gate_source
         assert problem.extra["lean_eval_commands"] == ("set_option maxHeartbeats 200000", "#lemma_emit_gate_results")
+        assert problem.extra["lean_skip_axiom_check"] is True
         assert "ancestorBaselineSource" not in gate_source
         assert "sourceOracleProofs" in gate_source
         assert "source_exact" in gate_source

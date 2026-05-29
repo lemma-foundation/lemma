@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, field_validator
 
 IMPORT_GRAPH_VERSION = "lemma-import-graph-v1"
 _LEAN_MODULE = re.compile(r"^[A-Za-z_][A-Za-z0-9_']*(?:\.[A-Za-z_][A-Za-z0-9_']*)*$")
+_IMPORT_MODIFIERS = frozenset({"all", "meta", "public"})
 
 
 class ImportGraphRow(BaseModel):
@@ -157,7 +158,11 @@ def _imports_from_text(text: str) -> tuple[str, ...]:
         stripped = code.strip()
         if not stripped.startswith("import "):
             continue
-        imports.extend(item for item in stripped.removeprefix("import ").split() if _LEAN_MODULE.fullmatch(item))
+        imports.extend(
+            item
+            for item in stripped.removeprefix("import ").split()
+            if _LEAN_MODULE.fullmatch(item) and item not in _IMPORT_MODIFIERS
+        )
     return tuple(dict.fromkeys(imports))
 
 

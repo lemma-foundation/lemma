@@ -127,6 +127,7 @@ _TOY_BASIC_SOURCE_PATHS = frozenset(
         "Mathlib/Logic/Basic.lean",
     }
 )
+_INVALID_IMPORT_MODULES = frozenset({"all", "meta", "public"})
 
 def candidates_from_jsonl(path: Path) -> tuple[TaskCandidate, ...]:
     out: list[TaskCandidate] = []
@@ -391,7 +392,7 @@ def generate_depth2_candidates(
             raise ValueError(
                 "source pool has no paid depth-2 candidates at "
                 f"max_queue_depth={max_queue_depth}; import graph leaves all "
-                f"{covered_count} eligible source theorems importable"
+                f"{covered_count} eligible source theorems importable or without dependency imports"
             )
         raise ValueError(f"source pool has no candidates at max_queue_depth={max_queue_depth}")
 
@@ -800,7 +801,7 @@ def _prelean_candidate_rejection(candidate: TaskCandidate, *, require_serious: b
             return "prelean:no_op"
     if len(set(candidate.imports)) != len(candidate.imports):
         return "prelean:duplicate_import"
-    if any(not _LEAN_MODULE.fullmatch(module) for module in candidate.imports):
+    if any(not _valid_lean_import_module(module) for module in candidate.imports):
         return "prelean:import_module"
     if require_serious:
         task_pool = parse_task_pool(metadata.get("task_pool"))
@@ -974,7 +975,7 @@ def _candidate_from_source(
         "source_theorem_name": source.theorem_name,
         "source_target_sha256": _hash_text(source.statement),
     }
-    metadata["source_import_status"] = source_import_status(imports, metadata, source_path=source.source_ref.path)
+    metadata["source_import_status"] = _source_import_status_for_source(source, imports, metadata)
     for key in (
         "topic",
         "subtopic",
@@ -1101,12 +1102,29 @@ def _not_toy_basic_source(source: TaskCandidate) -> bool:
 
 def _source_theorem_unavailable_for_source(source: TaskCandidate, import_graph: ImportGraph | None) -> bool:
     imports = _challenge_imports_for_source(source, import_graph)
-    status = source_import_status(
+    if not imports or any(not _valid_lean_import_module(module) for module in imports):
+        return False
+    status = _source_import_status_for_source(
+        source,
         imports,
         {"source_theorem_name": source.theorem_name},
-        source_path=source.source_ref.path,
     )
     return status == "source_theorem_unavailable"
+
+
+def _source_import_status_for_source(
+    source: TaskCandidate,
+    imports: tuple[str, ...],
+    metadata: dict[str, object],
+) -> str:
+    status = source_import_status(imports, metadata, source_path=source.source_ref.path)
+    if status == "unknown" and source.source_stream == "lemma_substrate":
+        return "source_theorem_unavailable"
+    return status
+
+
+def _valid_lean_import_module(module: str) -> bool:
+    return bool(_LEAN_MODULE.fullmatch(module)) and module not in _INVALID_IMPORT_MODULES
 
 
 def _peer_source(

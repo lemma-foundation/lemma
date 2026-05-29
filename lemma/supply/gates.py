@@ -426,6 +426,7 @@ class LeanProceduralGateRunner:
                     f"set_option maxHeartbeats {self.triviality_budget_heartbeats}",
                     "#lemma_emit_gate_results",
                 ),
+                "lean_skip_axiom_check": True,
                 "lean_skip_submission_axiom_check": True,
                 "submission_policy": "strict_envelope",
                 "lean_max_heartbeats": self.gate_heartbeats,
