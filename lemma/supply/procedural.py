@@ -429,59 +429,12 @@ def generate_depth2_candidates(
     workers = _resolve_generation_workers(generation_workers)
     attempt_limit = count * 50
     required_count = min(max(1, min_count), count) if allow_partial else count
-    if workers <= 1:
-        return _generate_depth2_candidates_sequential(
-            ctx,
-            count=count,
-            required_count=required_count,
-            attempt_limit=attempt_limit,
-        )
     return _generate_depth2_candidates_parallel(
         ctx,
         count=count,
         required_count=required_count,
         attempt_limit=attempt_limit,
-        workers=workers,
-    )
-
-
-def _generate_depth2_candidates_sequential(
-    ctx: _Depth2GenerationContext,
-    *,
-    count: int,
-    required_count: int,
-    attempt_limit: int,
-) -> tuple[TaskCandidate, ...]:
-    out: list[TaskCandidate] = []
-    seen: set[str] = set()
-    seen_prelean: set[str] = set()
-    telemetry = _Depth2Telemetry()
-    cursor = 0
-    while len(out) < count and cursor < attempt_limit:
-        attempt = _attempt_depth2_candidate(
-            ctx,
-            cursor=cursor,
-            seen_canonical_hashes=frozenset(seen),
-            seen_prelean_keys=seen_prelean,
-        )
-        accepted = False
-        if attempt.candidate is not None and attempt.verdict is not None:
-            accepted = _maybe_accept_depth2_attempt(
-                out,
-                seen,
-                attempt.candidate,
-                attempt.verdict,
-            )
-        _record_depth2_attempt(telemetry, attempt, accepted=accepted)
-        cursor += 1
-    _log_depth2_telemetry(telemetry, count=count, attempt_limit=attempt_limit)
-    if len(out) < required_count:
-        raise ValueError(_generation_failure_message(len(out), required_count, telemetry))
-    return _with_generation_count_receipt(
-        tuple(out),
-        target_count=count,
-        attempt_count=telemetry.attempts,
-        attempt_limit=attempt_limit,
+        workers=max(1, workers),
     )
 
 

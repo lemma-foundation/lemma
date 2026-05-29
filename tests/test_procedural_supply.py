@@ -962,7 +962,7 @@ def test_depth2_partial_generation_keeps_trying_for_target_when_allowed() -> Non
     assert {candidate.metadata["procedural_generation_attempt_limit"] for candidate in candidates} == {300}
 
 
-def test_depth2_generation_batches_lean_gate_attempts() -> None:
+def test_depth2_generation_batches_lean_gate_attempts_with_one_worker() -> None:
     class AlwaysGoodMutationEngine:
         def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001, ARG002
             return _test_valid_mutation(source, step=step)
@@ -1012,7 +1012,7 @@ def test_depth2_generation_batches_lean_gate_attempts() -> None:
             count=1,
             tempo=3,
             gate_runner=gate,
-            generation_workers=2,
+            generation_workers=1,
             mutation_engine=AlwaysGoodMutationEngine(),
         )
 
