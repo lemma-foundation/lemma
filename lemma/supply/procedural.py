@@ -20,7 +20,7 @@ from lemma.license import license_state_for, paid_license_allowed
 from lemma.protocol_invariants import procedural_gate_receipt_sha256, production_supply_rejection_reason
 from lemma.supply.gates import GATE_VERSION, AssumedProceduralGateRunner, ProceduralGateRunner, ProceduralGateVerdict
 from lemma.supply.import_graph import ImportGraph
-from lemma.supply.mutation import PreviewMutationEngine, ProceduralMutationEngine
+from lemma.supply.mutation import PreviewMutationEngine, ProceduralMutationEngine, _open_namespace_lines
 from lemma.supply.novelty import statement_hash
 from lemma.supply.operator_bundle import (
     MUTATION_ENGINE,
@@ -929,9 +929,6 @@ def _candidate_from_source(
         type_expr = mutation.type_expr
         input_hash = output_hash
 
-    if mutation_chain[0]["operator"] == "pair-congr":
-        imports = _source_module_imports(source)
-
     if all(step["operator"] == "specialize" for step in mutation_chain):
         raise ValueError("low-value procedural mutation chain: specialize_only")
 
@@ -1003,8 +1000,8 @@ def _candidate_from_source(
         imports=imports,
         theorem_name=theorem_name,
         type_expr=type_expr,
-        statement=f"theorem {theorem_name} : {type_expr} := by\n  sorry",
-        submission_stub=_lean_stub(theorem_name, type_expr, imports),
+        statement=_lean_statement(theorem_name, type_expr, source.theorem_name),
+        submission_stub=_lean_stub(theorem_name, type_expr, imports, source.theorem_name),
         lean_toolchain=source.lean_toolchain,
         mathlib_rev=source.mathlib_rev,
         policy=source.policy,
@@ -1172,13 +1169,6 @@ def _challenge_imports_for_source(source: TaskCandidate, import_graph: ImportGra
     module = _source_module_from_path(source.source_ref.path)
     if import_graph is not None and module is not None and module in import_graph.edges:
         return import_graph.edges[module]
-    return source.imports
-
-
-def _source_module_imports(source: TaskCandidate) -> tuple[str, ...]:
-    module = _source_module_from_path(source.source_ref.path)
-    if module is not None and _valid_lean_import_module(module):
-        return (module,)
     return source.imports
 
 
@@ -1390,11 +1380,22 @@ def _theorem_name(source_name: str, canonical_hash: str) -> str:
     return f"procedural_{stem}_{canonical_hash[:12]}"
 
 
-def _lean_stub(theorem_name: str, type_expr: str, imports: tuple[str, ...]) -> str:
-    return "\n".join(
+def _lean_statement(theorem_name: str, type_expr: str, source_theorem_name: str = "") -> str:
+    lines: list[str] = []
+    namespace_lines = _open_namespace_lines(source_theorem_name)
+    if namespace_lines:
+        lines.extend([namespace_lines, ""])
+    lines.extend([f"theorem {theorem_name} : {type_expr} := by", "  sorry"])
+    return "\n".join(lines)
+
+
+def _lean_stub(theorem_name: str, type_expr: str, imports: tuple[str, ...], source_theorem_name: str = "") -> str:
+    lines = [*(f"import {module}" for module in imports), ""]
+    namespace_lines = _open_namespace_lines(source_theorem_name)
+    if namespace_lines:
+        lines.extend([namespace_lines, ""])
+    lines.extend(
         [
-            *(f"import {module}" for module in imports),
-            "",
             "namespace Submission",
             "",
             f"theorem {theorem_name} : {type_expr} := by",
@@ -1404,6 +1405,7 @@ def _lean_stub(theorem_name: str, type_expr: str, imports: tuple[str, ...]) -> s
             "",
         ]
     )
+    return "\n".join(lines)
 
 
 def _triviality_status(queue_depth: int) -> str:

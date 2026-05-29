@@ -16,6 +16,7 @@ from lemma.lean.sandbox import VerifyResult
 from lemma.lean.verify_runner import run_lean_verify
 from lemma.problems.base import Problem
 from lemma.supply.import_graph import ImportGraph, empty_import_graph
+from lemma.supply.mutation import _open_namespace_lines
 from lemma.supply.novelty import NoveltyCache, empty_novelty_cache
 from lemma.supply.slot_weight import slot_weight_receipt_for_candidate
 from lemma.supply.source_pricing import (
@@ -740,10 +741,13 @@ def _batch_gate_groups(
     *,
     batch_size: int,
 ) -> tuple[tuple[_BatchGateInput, ...], ...]:
-    groups: dict[tuple[str, str, tuple[str, ...]], list[tuple[int, TaskCandidate]]] = {}
+    groups: dict[tuple[str, str, tuple[str, ...], str], list[tuple[int, TaskCandidate]]] = {}
     for item in indexed:
         candidate = item[1]
-        groups.setdefault((candidate.lean_toolchain, candidate.mathlib_rev, candidate.imports), []).append(item)
+        groups.setdefault(
+            (candidate.lean_toolchain, candidate.mathlib_rev, candidate.imports, _candidate_namespace_lines(candidate)),
+            [],
+        ).append(item)
     out: list[tuple[_BatchGateInput, ...]] = []
     for group in groups.values():
         for start in range(0, len(group), max(1, batch_size)):
@@ -791,6 +795,8 @@ def _batch_result_should_split(
 
 
 def _batch_gate_source(candidates: tuple[TaskCandidate, ...]) -> str:
+    contexts = {_candidate_namespace_lines(candidate) for candidate in candidates}
+    namespace_lines = contexts.pop() if len(contexts) == 1 else ""
     specs = [
         "  { "
         f"id := {_json_string(str(index))}, "
@@ -809,6 +815,7 @@ def _batch_gate_source(candidates: tuple[TaskCandidate, ...]) -> str:
             "set_option autoImplicit false",
             "",
             "open Lean",
+            namespace_lines,
             "",
             "namespace LemmaProceduralGate",
             "",
@@ -986,6 +993,7 @@ def _batch_gate_source(candidates: tuple[TaskCandidate, ...]) -> str:
 
 
 def _prop_gate_source(candidate: TaskCandidate) -> str:
+    namespace_lines = _candidate_namespace_lines(candidate)
     return "\n".join(
         [
             "import Lean",
@@ -993,6 +1001,7 @@ def _prop_gate_source(candidate: TaskCandidate) -> str:
             "set_option autoImplicit false",
             "",
             "open Lean",
+            namespace_lines,
             "",
             "namespace LemmaProceduralGate",
             "",
@@ -1134,6 +1143,11 @@ def _prop_gate_source(candidate: TaskCandidate) -> str:
             "end LemmaProceduralGate",
         ]
     )
+
+
+def _candidate_namespace_lines(candidate: TaskCandidate) -> str:
+    source = candidate.metadata.get("source_theorem_name")
+    return _open_namespace_lines(str(source).strip()) if is_lean_decl_name(source) else ""
 
 
 def _json_string(value: str) -> str:

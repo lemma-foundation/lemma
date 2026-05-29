@@ -69,6 +69,8 @@ def source_theorem_is_direct_proof(metadata: Mapping[str, object]) -> bool:
             continue
         if params.get("rule") == "witness_relation" and params.get("relation") in {"=", "↔"}:
             continue
+        if params.get("rule") == "pair_congr" and params.get("relation") == "=":
+            continue
         if params.get("mode") == "peer_premise":
             continue
         if params.get("rule") in {"conjoin_peer_conclusion", "conjoin_self", "false_disjunct"}:
@@ -97,55 +99,57 @@ def source_theorem_wrapper_exact(
     wraps_false = False
     pending_symm = False
     pending_witness = False
+    pending_pair_congr = False
+
+    def flush(*, witness_type_expr: str = "") -> None:
+        nonlocal exact, pending_symm, pending_witness, pending_pair_congr
+        exact = _flush_source_transforms(
+            exact,
+            pending_symm=pending_symm,
+            pending_witness=pending_witness,
+            pending_pair_congr=pending_pair_congr,
+            witness_type_expr=witness_type_expr,
+        )
+        pending_symm = False
+        pending_witness = False
+        pending_pair_congr = False
+
     for step in _mutation_chain(metadata):
         params = step.get("params")
         if not isinstance(params, Mapping):
             return None
         if params.get("target") == "fresh_prop_hypothesis" and params.get("binder_type") == "Prop":
-            exact = _flush_source_transforms(exact, pending_symm=pending_symm, pending_witness=pending_witness)
-            pending_symm = False
-            pending_witness = False
+            flush()
             exact = f"(fun _ _ => {exact})"
         elif params.get("fallback") in {"true_premise", "no_supported_type_occurrence"}:
-            exact = _flush_source_transforms(exact, pending_symm=pending_symm, pending_witness=pending_witness)
-            pending_symm = False
-            pending_witness = False
+            flush()
             exact = f"(fun _ => {exact})"
         elif params.get("rule") == "reverse_relation" and params.get("relation") in {"=", "↔"}:
             pending_symm = not pending_symm
         elif params.get("rule") == "witness_relation" and params.get("relation") in {"=", "↔"}:
             pending_witness = True
+        elif params.get("rule") == "pair_congr" and params.get("relation") == "=":
+            pending_pair_congr = True
         elif step.get("operator") == "specialize" and (value := source_specialize_value(params)) is not None:
             exact = f"({exact} {value})"
         elif params.get("mode") == "peer_premise":
             continue
         elif params.get("rule") == "conjoin_peer_conclusion":
-            exact = _flush_source_transforms(exact, pending_symm=pending_symm, pending_witness=pending_witness)
-            pending_symm = False
-            pending_witness = False
+            flush()
             peer = params.get("peer_theorem_name")
             if not isinstance(peer, str) or not is_lean_decl_name(peer):
                 return None
             exact = f"And.intro ({exact}) {peer.strip()}"
         elif params.get("rule") == "conjoin_self":
-            exact = _flush_source_transforms(exact, pending_symm=pending_symm, pending_witness=pending_witness)
-            pending_symm = False
-            pending_witness = False
+            flush()
             exact = f"And.intro ({exact}) ({exact})"
         elif params.get("rule") == "false_disjunct":
-            exact = _flush_source_transforms(exact, pending_symm=pending_symm, pending_witness=pending_witness)
-            pending_symm = False
-            pending_witness = False
+            flush()
             exact = f"Or.inl ({exact})"
             wraps_false = True
         else:
             return None
-    exact = _flush_source_transforms(
-        exact,
-        pending_symm=pending_symm,
-        pending_witness=pending_witness,
-        witness_type_expr=type_expr,
-    )
+    flush(witness_type_expr=type_expr)
     if not wraps_false and "∨" in type_expr and "False" in type_expr:
         exact = f"Or.inl {exact}"
     return exact
@@ -156,13 +160,24 @@ def _flush_source_transforms(
     *,
     pending_symm: bool,
     pending_witness: bool,
+    pending_pair_congr: bool,
     witness_type_expr: str = "",
 ) -> str:
     if pending_symm:
         exact = f"({exact}).symm"
+    if pending_pair_congr:
+        exact = _pair_congr_exact(exact, witness_type_expr)
     if pending_witness:
         exact = _witness_relation_exact(exact, witness_type_expr)
     return exact
+
+
+def _pair_congr_exact(exact: str, type_expr: str) -> str:
+    args = _leading_source_args(type_expr)
+    if not args:
+        return f"congrArg (fun x => (x, x)) ({exact})"
+    applied = " ".join(args)
+    return f"(fun {applied} => congrArg (fun x => (x, x)) ({exact} {applied}))"
 
 
 def _witness_relation_exact(exact: str, type_expr: str) -> str:

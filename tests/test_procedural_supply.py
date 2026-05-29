@@ -132,7 +132,7 @@ def test_structural_mutation_engine_marks_current_bundle_engine() -> None:
         param_seed="e" * 64,
         peer=source,
     )
-    assert field_notation.type_expr == "∀ b : Nat, (5 : Nat).succ = b"
+    assert field_notation.type_expr == "∀ b : Nat, 5.succ = b"
 
 
 def _write_snapshot(path: Path) -> None:
@@ -195,7 +195,7 @@ def _test_valid_mutation(source, *, step: int, engine: str = MUTATION_ENGINE) ->
         int(hashlib.sha256(source.theorem_name.encode()).hexdigest()[:8], 16) % 1_000_000
     )
     return MutationResult(
-        f"∀ m : Nat, (({value} : Nat), ({value} : Nat)) = (m, m)",
+        f"∀ m : Nat, ({value}, {value}) = (m, m)",
         {"binder": "n", "binder_type": "Nat", "value": str(value), "engine": engine},
     )
 
@@ -630,7 +630,7 @@ def test_candidate_from_source_uses_specialize_as_second_step() -> None:
                     {"rule": "pair_congr", "relation": "=", "engine": MUTATION_ENGINE},
                 )
             return MutationResult(
-                "∀ m : Nat, (1 : Nat) = m",
+                "∀ m : Nat, 1 = m",
                 {"binder": "n", "binder_type": "Nat", "value": "1", "engine": MUTATION_ENGINE},
             )
 
@@ -666,7 +666,61 @@ def test_candidate_from_source_uses_specialize_as_second_step() -> None:
 
     assert operators == ["pair-congr", "specialize"]
     assert [step["operator"] for step in candidate.metadata["mutation_chain"]] == operators
-    assert candidate.type_expr == "∀ m : Nat, (1 : Nat) = m"
+    assert candidate.type_expr == "∀ m : Nat, 1 = m"
+
+
+def test_candidate_from_source_uses_source_namespace_in_statement_and_stub() -> None:
+    class NamespaceMutationEngine:
+        def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001, ARG002
+            if step == 0:
+                return MutationResult(
+                    "∀ x : Real, tan x = sin x",
+                    {"rule": "pair_congr", "relation": "=", "engine": MUTATION_ENGINE},
+                )
+            return MutationResult(
+                "tan 1 = sin 1",
+                {"binder": "x", "binder_type": "Real", "value": "1", "engine": MUTATION_ENGINE},
+            )
+
+    source = fixture_candidate(
+        slug="real_source",
+        source_stream="mathlib_snapshot",
+        source_name="snapshot",
+        theorem_name="Real.source",
+        type_expr="∀ x : Real, x = x",
+        queue_depth=0,
+    ).model_copy(
+        update={
+            "imports": ("Mathlib.Data.Real.Basic",),
+            "source_ref": SourceRef(kind="mathlib", name="real_source", path="Mathlib/Data/Real/Basic.lean"),
+        }
+    )
+
+    candidate = _candidate_from_source(
+        source,
+        source_pool=(source,),
+        generation_seed="epoch-a",
+        epoch_fields={},
+        operator_chain=("pair-congr", "specialize"),
+        mutation_engine=NamespaceMutationEngine(),
+        source_pool_hash_value="a" * 64,
+        source_pool_receipt_value={
+            "version": "test",
+            "source_count": 1,
+            "source_stream_counts": {"mathlib_snapshot": 1},
+            "sampling_version": "test",
+            "citation_alpha_basis_points": 5000,
+            "citation_weight_cap_micros": 64_000_000,
+            "citation_window_tempos": 2000,
+        },
+        operator_bundle_hash="b" * 64,
+        tempo=3,
+        sequence=0,
+    )
+
+    assert candidate.statement.startswith("open Real\n\ntheorem ")
+    assert "\ntheorem " in candidate.submission_stub
+    assert "open Real\n\nnamespace Submission" in candidate.submission_stub
 
 
 def test_candidate_from_source_skips_peer_lookup_for_non_peer_operators(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1226,7 +1280,7 @@ def test_depth2_generation_rejects_sources_with_unbound_short_identifiers_before
         )
 
 
-def test_depth2_generation_current_chain_reaches_serious_lean_gate_with_source_oracle_import() -> None:
+def test_depth2_generation_current_chain_reaches_serious_lean_gate_with_source_module_hidden() -> None:
     class RecordingGate:
         requires_serious_candidates = True
 
@@ -1301,8 +1355,8 @@ def test_depth2_generation_current_chain_reaches_serious_lean_gate_with_source_o
     assert gate.seen
     assert candidate.metadata["task_pool"] == "serious_paid"
     assert candidate.metadata["source_reuse_class"] == "source_derived_survived"
-    assert candidate.imports == ("Mathlib.Source",)
-    assert candidate.metadata["source_import_status"] == "source_theorem_available"
+    assert candidate.imports == ("Mathlib.Data.Nat.Basic",)
+    assert candidate.metadata["source_import_status"] == "source_theorem_unavailable"
     assert [step["operator"] for step in candidate.metadata["mutation_chain"]] == ["pair-congr", "specialize"]
     assert "∃ h :" not in candidate.type_expr
     assert "(m, m)" in candidate.type_expr
@@ -1616,7 +1670,7 @@ def test_lean_gate_runner_embeds_source_oracle_baseline(
         gate_source = str(problem.extra["challenge_full"])
         assert "ancestorBaselineSource" not in gate_source
         assert "sourceOracleProofs" in gate_source
-        assert "source_wrapper" not in gate_source
+        assert "source_wrapper" in gate_source
         assert "source_exact" in gate_source
         assert "source_simpa" in gate_source
         assert "source_apply" in gate_source
@@ -1759,6 +1813,54 @@ def test_lean_gate_runner_batches_by_submission_imports(monkeypatch: pytest.Monk
 
     assert imports_seen == [left.imports, right.imports]
     assert [verdict.accepted for verdict in verdicts] == [True, True]
+
+
+def test_lean_gate_runner_batches_by_source_namespace_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    left = fixture_candidate(
+        slug="left_namespace",
+        source_stream="procedural",
+        source_name="snapshot",
+        theorem_name="left_namespace",
+        type_expr="tan 1 = sin 1",
+        queue_depth=0,
+        metadata={"source_theorem_name": "Real.source", "statement_hash": "1" * 64},
+    ).model_copy(update={"imports": ("Mathlib",)})
+    right = fixture_candidate(
+        slug="right_namespace",
+        source_stream="procedural",
+        source_name="snapshot",
+        theorem_name="right_namespace",
+        type_expr="Nat.succ 1 = 2",
+        queue_depth=0,
+        metadata={"source_theorem_name": "Nat.source", "statement_hash": "2" * 64},
+    ).model_copy(update={"imports": ("Mathlib",)})
+    gate_sources: list[str] = []
+
+    def fake_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001, ARG001
+        gate_source = str(problem.extra["challenge_full"])
+        gate_sources.append(gate_source)
+        return VerifyResult(
+            passed=True,
+            reason="ok",
+            stdout_tail=(
+                'LEMMA_GATE_RESULT {"id":"0","typechecked":true,"kernel_normal_form":"single",'
+                '"triviality_checked":true,"baseline_solved":false,"baseline_solver":null,'
+                '"source_oracle_checked":true,"source_oracle_solved":false,"source_oracle_solver":null,'
+                '"triviality_reason":"baseline_failed"}'
+            ),
+        )
+
+    monkeypatch.setattr("lemma.supply.gates.run_lean_verify", fake_verify)
+    verdicts = LeanProceduralGateRunner(
+        LemmaSettings(_env_file=None, lean_use_docker=False, procedural_gate_timeout_s=5)
+    ).batch((left, right), seen_canonical_hashes=())
+
+    assert len(gate_sources) == 2
+    assert any("open Real\n\nnamespace LemmaProceduralGate" in source for source in gate_sources)
+    assert any("open Nat\n\nnamespace LemmaProceduralGate" in source for source in gate_sources)
+    assert all(not ("open Real" in source and "open Nat" in source) for source in gate_sources)
+    assert [verdict.accepted for verdict in verdicts] == [True, True]
+    assert [verdict.metadata["lean_gate_batch_size"] for verdict in verdicts] == [1, 1]
 
 
 def test_lean_gate_runner_ignores_payload_from_failed_batch(
@@ -2204,6 +2306,9 @@ def test_procedural_slot_weight_receipt_uses_dependency_metadata(tmp_path: Path)
         count=1,
         tempo=3,
         mutation_engine=SlotWeightMutationEngine(),
+        import_graph=import_graph_from_rows(
+            (ImportGraphRow(module="Mathlib.Deep", imports=("Mathlib.Algebra.Group.Basic",)),)
+        ),
     )[0]
     inputs = candidate.metadata["slot_weight_inputs"]
 
@@ -2297,13 +2402,13 @@ def test_source_wrapper_with_hidden_source_module_is_serious_weighted() -> None:
     assert weight.inputs["task_pool"] == "serious_paid"
 
 
-def test_pair_congr_source_module_is_serious_weighted() -> None:
+def test_pair_congr_source_module_is_calibration_weighted() -> None:
     task = fixture_candidate(
         slug="weight_pair_congr_source",
         source_stream="procedural",
         source_name="snapshot",
         theorem_name="Weight.pairCongr",
-        type_expr="∀ m : Nat, ((3 : Nat), (3 : Nat)) = (m, m)",
+        type_expr="∀ m : Nat, (3, 3) = (m, m)",
         queue_depth=2,
         metadata={
             "source_import_status": "source_theorem_available",
@@ -2323,8 +2428,8 @@ def test_pair_congr_source_module_is_serious_weighted() -> None:
 
     weight = slot_weight_receipt_for_candidate(task)
 
-    assert weight.inputs["source_reuse_class"] == "source_derived_survived"
-    assert weight.inputs["task_pool"] == "serious_paid"
+    assert weight.inputs["source_reuse_class"] == "direct_source_wrapper"
+    assert weight.inputs["task_pool"] == "calibration"
 
 
 def test_source_oracle_solved_tasks_are_bootstrap_weighted() -> None:
@@ -2402,7 +2507,7 @@ def test_source_theorem_wrapper_exact_applies_remaining_witness_binders() -> Non
     assert exact == "(fun m => ⟨((Source.thm (5 : Nat)) m), rfl⟩)"
 
 
-def test_source_theorem_wrapper_exact_rejects_pair_congr() -> None:
+def test_source_theorem_wrapper_exact_applies_pair_congr() -> None:
     exact = source_theorem_wrapper_exact(
         {
             "source_import_status": "source_theorem_available",
@@ -2418,10 +2523,10 @@ def test_source_theorem_wrapper_exact_rejects_pair_congr() -> None:
             ],
         },
         "Source.thm",
-        type_expr="∀ m : Nat, ((5 : Nat), (5 : Nat)) = (m, m)",
+        type_expr="∀ m : Nat, (5, 5) = (m, m)",
     )
 
-    assert exact is None
+    assert exact == "(fun m => congrArg (fun x => (x, x)) ((Source.thm (5 : Nat)) m))"
 
 
 def test_source_theorem_wrapper_exact_introduces_witness_premises() -> None:

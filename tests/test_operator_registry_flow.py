@@ -110,7 +110,7 @@ class _SeriousTestMutationEngine:
                 {"rule": "pair_congr", "relation": "=", "engine": MUTATION_ENGINE},
             )
         return MutationResult(
-            f"∀ m : Nat, (({value} : Nat), ({value} : Nat)) = (m, m)",
+            f"∀ m : Nat, ({value}, {value}) = (m, m)",
             {"binder": "n", "binder_type": "Nat", "value": str(value), "engine": MUTATION_ENGINE},
         )
 
@@ -345,7 +345,7 @@ def test_operator_registry_flow_smoke(monkeypatch: pytest.MonkeyPatch, tmp_path:
     assert benchmark_record["provenance"]["validator_hotkey"] == "validator-smoke"
 
 
-def test_rebuild_procedural_registry_imports_source_module_for_oracle(
+def test_rebuild_procedural_registry_uses_dependency_imports_to_hide_source_theorem(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     runner = CliRunner()
@@ -388,8 +388,8 @@ def test_rebuild_procedural_registry_imports_source_module_for_oracle(
     assert build.exit_code == 0, build.output
     registry = load_task_registry(registry_path.read_bytes())
     task = registry.tasks[0]
-    assert task.imports == ("Mathlib.OperatorSmoke",)
-    assert task.metadata["source_import_status"] == "source_theorem_available"
+    assert task.imports == ("Mathlib.Init",)
+    assert task.metadata["source_import_status"] == "source_theorem_unavailable"
     assert task.metadata["task_pool"] == "serious_paid"
 
 

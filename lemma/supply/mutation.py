@@ -197,9 +197,8 @@ def _preview_specialize(expr: str, *, param_seed: str) -> MutationResult:
             f"True → ({expr})",
             {"fallback": "unsupported_binder_type", "binder_type": binder_type, "engine": MUTATION_ENGINE},
         )
-    typed_value = value if binder_type == "Prop" else f"({value} : {binder_type})"
     return MutationResult(
-        _replace_ident(body, name, typed_value),
+        _replace_ident(body, name, value),
         {"binder": name, "binder_type": binder_type, "value": value, "engine": MUTATION_ENGINE},
     )
 

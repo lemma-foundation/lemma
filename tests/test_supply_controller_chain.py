@@ -280,7 +280,7 @@ def test_procedural_registry_requires_depth_two_metadata() -> None:
         "source_oracle_checked": True,
         "source_oracle_solved": False,
         "source_oracle_solver": None,
-            "source_import_status": "source_theorem_available",
+        "source_import_status": "source_theorem_unavailable",
         **novelty_cache.metadata(),
         **triviality_budget.metadata(),
     }
@@ -289,7 +289,7 @@ def test_procedural_registry_requires_depth_two_metadata() -> None:
             "id": "lemma.procedural.depth2",
             "source_stream": "procedural",
             "source_ref": SourceRef(kind="procedural", name="tempo-0-depth2", path="Mathlib/Source.lean"),
-                "imports": ("Mathlib.Source",),
+            "imports": ("Mathlib.Init",),
             "metadata": metadata,
         }
     )
