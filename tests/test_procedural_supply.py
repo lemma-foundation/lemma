@@ -1724,7 +1724,8 @@ def test_lean_gate_runner_batches_gate_results(monkeypatch: pytest.MonkeyPatch, 
         assert "set_option autoImplicit false" in gate_source
         assert "containsSyntheticHole" in gate_source
         assert problem.extra["lean_eval_commands"] == ("set_option maxHeartbeats 200000", "#lemma_emit_gate_results")
-        assert problem.extra["lean_skip_axiom_check"] is True
+        assert problem.extra.get("lean_skip_axiom_check") is not True
+        assert problem.extra["lean_skip_submission_axiom_check"] is True
         assert "ancestorBaselineSource" not in gate_source
         assert "sourceOracleProofs" in gate_source
         assert "source_exact" in gate_source
