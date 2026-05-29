@@ -206,7 +206,7 @@ def validate_submission_for_task(
             raise ValueError("live miner submission is missing timelock ciphertext")
         if submission.drand_round is None:
             raise ValueError("live miner submission is missing drand round")
-        if submission.commit_block is None:
+        if submission.commit_block is None or submission.commit_block <= 0:
             raise ValueError("live miner submission is missing commit block")
         if not (submission.commit_extrinsic_hash or "").strip():
             raise ValueError("live miner submission is missing commit extrinsic hash")

@@ -1096,6 +1096,38 @@ def test_production_bucket_reveals_wait_for_completed_chain_tempo(
     assert not (inbox / "processed").exists()
 
 
+def test_production_miner_bucket_polling_requires_positive_commit_blocks(tmp_path) -> None:
+    miners = tmp_path / "miners.json"
+    commit_blocks = tmp_path / "commit-blocks.json"
+    miners.write_text(json.dumps({"hk-a": "https://bucket.example/miner"}), encoding="utf-8")
+    commit_blocks.write_text(json.dumps({"hk-a": 0}), encoding="utf-8")
+
+    result = CliRunner().invoke(
+        main,
+        [
+            "validate",
+            "--once",
+            "--miner-buckets-json",
+            str(miners),
+            "--bucket-commit-blocks-json",
+            str(commit_blocks),
+            "--bucket-drand-round",
+            "77",
+            "--bucket-drand-signature",
+            "0xsig",
+            "--no-set-weights",
+        ],
+        env={
+            "LEMMA_PREFER_PROCESS_ENV": "1",
+            "LEMMA_PROTOCOL_MODE": "production",
+            "LEMMA_TASK_SUPPLY_MODE": "procedural",
+        },
+    )
+
+    assert result.exit_code != 0
+    assert "positive --bucket-commit-blocks-json entries" in result.output
+
+
 def _write_preflight_registry(tmp_path, *, task_count: int = 2) -> tuple[str, str]:
     tasks = [
         make_task(

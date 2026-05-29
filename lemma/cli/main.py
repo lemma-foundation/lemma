@@ -1857,12 +1857,21 @@ def validate_cmd(
         from lemma.chain.miner_buckets import poll_bucket_reveals, submissions_from_bucket_reveals
         from lemma.validator import current_active_tempo, task_registry_for_validation
 
+        miner_bucket_urls = _read_str_mapping(miner_buckets_json)
+        commit_blocks = _read_int_mapping(bucket_commit_blocks_json) if bucket_commit_blocks_json is not None else {}
+        if settings.protocol_mode == "production":
+            missing_blocks = sorted(set(miner_bucket_urls) - set(commit_blocks))
+            nonpositive_blocks = sorted(
+                miner for miner, block in commit_blocks.items() if miner in miner_bucket_urls and block <= 0
+            )
+            if missing_blocks or nonpositive_blocks:
+                raise click.ClickException(
+                    "production --miner-buckets-json requires positive --bucket-commit-blocks-json entries"
+                )
         active_tempo = current_active_tempo(settings)
         validation_tempo = active_tempo
         registry = task_registry_for_validation(settings, tempo=active_tempo)
         chain_commitments = read_all_commitments(settings)
-        miner_bucket_urls = _read_str_mapping(miner_buckets_json)
-        commit_blocks = _read_int_mapping(bucket_commit_blocks_json) if bucket_commit_blocks_json is not None else {}
         reveals = poll_bucket_reveals(
             miner_bucket_urls=miner_bucket_urls,
             chain_commitments=chain_commitments,

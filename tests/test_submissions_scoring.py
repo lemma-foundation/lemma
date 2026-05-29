@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 from lemma.scoring import ScoreEvent, VerificationRecord, VerificationResult, score_epoch
-from lemma.submissions import build_submission, proof_sha256
+from lemma.submissions import build_submission, proof_sha256, validate_submission_for_task
 from lemma.tasks import LemmaTask
 
 
@@ -51,6 +51,22 @@ def test_submission_hash_is_deterministic() -> None:
     assert package.target_sha256 == _task().target_sha256
     assert package.task_version == 1
     assert len(package.signature_payload_sha256) == 64
+
+
+def test_commit_reveal_requires_positive_commit_block() -> None:
+    task = _task()
+    proof = "import Mathlib\n\nnamespace Submission\n\ntheorem test_true : True := by\n  trivial\n\nend Submission\n"
+    submission = build_submission(task, solver_hotkey="hk1", proof_script=proof).model_copy(
+        update={
+            "timelock_ciphertext": "sealed",
+            "drand_round": 77,
+            "commit_block": 0,
+            "commit_extrinsic_hash": "0xabc",
+        }
+    )
+
+    with pytest.raises(ValueError, match="missing commit block"):
+        validate_submission_for_task(submission, task, require_commit_reveal=True)
 
 
 def test_scoring_awards_first_unique_proof_per_task() -> None:
