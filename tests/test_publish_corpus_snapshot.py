@@ -183,6 +183,11 @@ def test_sync_public_inputs_copies_only_publishable_live_outputs(tmp_path: Path)
     _write(live / "corpus/epoch-000041.jsonl", '{"row": 41}\n')
     _write(live / "corpus/epoch-local.jsonl", '{"local": true}\n')
     _write(live / "canonical/tempos/tempo-019958/manifest.json", '{"tempo": 19958}\n')
+    conflicting_sha = "d" * 64
+    _write(
+        live / "registries/tempo-19956.registry.json",
+        f'{{"schema_version": 1, "sha256": "{conflicting_sha}", "tasks": []}}\n',
+    )
     _write(
         live / "registries/tempo-19958.registry.json",
         f'{{"schema_version": 1, "sha256": "{registry_sha}", "tasks": []}}\n',
@@ -202,6 +207,7 @@ def test_sync_public_inputs_copies_only_publishable_live_outputs(tmp_path: Path)
     assert (repo / "corpus/sn467/epoch-000041.jsonl").read_text(encoding="utf-8") == '{"row": 41}\n'
     assert not (repo / "corpus/sn467/epoch-local.jsonl").exists()
     assert (repo / "canonical/sn467/tempos/tempo-019958/manifest.json").exists()
+    assert not (repo / f"registries/sn467/{conflicting_sha}.json").exists()
     assert (repo / f"registries/sn467/{registry_sha}.json").exists()
     assert (repo / f"registries/sn467/{hashlib.sha256(legacy_registry.encode()).hexdigest()}.json").exists()
     index = json.loads((repo / "registries/sn467/index.json").read_text(encoding="utf-8"))

@@ -125,9 +125,13 @@ def sync_public_inputs(
             if not isinstance(sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", sha256):
                 sha256 = load_task_registry(raw).sha256
             filename = f"{sha256}.json"
-            shutil.copy2(path, target / filename)
             if match := re.fullmatch(r"tempo-(\d+)\.registry\.json", path.name):
-                registries[match.group(1)] = {"sha256": sha256, "path": filename}
+                tempo = match.group(1)
+                existing = registries.get(tempo)
+                if isinstance(existing, dict) and existing.get("sha256") != sha256:
+                    continue
+                registries[tempo] = {"sha256": sha256, "path": filename}
+            shutil.copy2(path, target / filename)
             counts["registry_files"] += 1
         index_path.write_text(
             json.dumps(registry_index, sort_keys=True, separators=(",", ":")) + "\n",
