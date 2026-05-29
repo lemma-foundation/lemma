@@ -25,6 +25,7 @@ from lemma.supply.novelty import novelty_cache_from_hashes
 from lemma.supply.operator_bundle import MUTATION_ENGINE, OPERATOR_BUNDLE_VERSION, procedural_operator_bundle_hash
 from lemma.supply.slot_weight import slot_weight_receipt_for_task
 from lemma.supply.source_pool import source_pool_receipt, source_pool_receipt_sha256
+from lemma.supply.source_pricing import source_pricing_metadata
 from lemma.supply.triviality_budget import TrivialityRetargetConfig, triviality_budget_receipt
 from lemma.task_activation import task_reward_eligibility
 from lemma.task_supply import make_task
@@ -83,9 +84,9 @@ def _procedural_metadata(
         "mutation_depth": mutation_depth,
         "mutation_chain": [
             {
-                "operator": "symm",
+                "operator": "witness-relation",
                 "params": {
-                    "rule": "reverse_relation",
+                    "rule": "witness_relation",
                     "relation": "=",
                     "engine": MUTATION_ENGINE,
                 },
@@ -127,6 +128,9 @@ def _procedural_metadata(
         "novelty_status": "passed",
         "baseline_solved": False,
         "license_state": "clean_open",
+        "source_task_id": "lemma.mathlib_snapshot.Mathlib.Source.test_true",
+        "source_theorem_name": "Mathlib.Source.test_true",
+        "source_target_sha256": "8" * 64,
         "triviality_checked": True,
         "gate_runner": "lean",
         "typecheck_reason": "ok",
@@ -146,6 +150,7 @@ def _procedural_metadata(
 def _import_graph():
     return import_graph_from_rows(
         (
+            ImportGraphRow(module="Mathlib.Source", imports=("Mathlib.Init",)),
             ImportGraphRow(module="Mathlib", imports=("Mathlib.Init",)),
             ImportGraphRow(module="Mathlib.Init", imports=()),
         )
@@ -155,6 +160,7 @@ def _import_graph():
 def _write_import_graph(path) -> None:  # noqa: ANN001
     write_import_graph_jsonl(
         (
+            ImportGraphRow(module="Mathlib.Source", imports=("Mathlib.Init",)),
             ImportGraphRow(module="Mathlib", imports=("Mathlib.Init",)),
             ImportGraphRow(module="Mathlib.Init", imports=()),
         ),
@@ -170,7 +176,8 @@ def _production_task(*, mutation_depth: int = 2, generation_seed: str = "pytest-
     task = _task().model_copy(
         update={
             "source_stream": "procedural",
-            "source_ref": SourceRef(kind="procedural", name="pytest-depth2"),
+            "source_ref": SourceRef(kind="procedural", name="pytest-depth2", path="Mathlib/Source.lean"),
+            "imports": ("Mathlib.Init",),
             "metadata": metadata,
         }
     )
@@ -635,7 +642,32 @@ def test_production_mode_rejects_tampered_slot_weight_receipt() -> None:
 
 def test_production_mode_rejects_source_wrapper_task_pool() -> None:
     task = _production_task()
-    wrapper = task.model_copy(update={"metadata": {**task.metadata, "source_theorem_name": "test_true"}})
+    wrapper_chain = [
+        {
+            **task.metadata["mutation_chain"][0],
+            "params": {"rule": "reverse_relation", "relation": "=", "engine": MUTATION_ENGINE},
+        },
+        task.metadata["mutation_chain"][1],
+    ]
+    wrapper = task.model_copy(
+        update={
+            "imports": ("Mathlib",),
+            "metadata": {
+                **task.metadata,
+                "source_theorem_name": "test_true",
+                "source_import_status": "source_theorem_available",
+                "mutation_chain": wrapper_chain,
+            }
+        }
+    )
+    wrapper = wrapper.model_copy(
+        update={
+            "metadata": {
+                **wrapper.metadata,
+                **source_pricing_metadata(wrapper.source_stream, wrapper.metadata),
+            }
+        }
+    )
     wrapper = wrapper.model_copy(
         update={
             "metadata": {

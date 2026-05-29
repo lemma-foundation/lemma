@@ -38,7 +38,7 @@ The previous-weight fallback rule is removed from scoring.
 - Each task pays at most one miner per validator epoch; committed reveals rank by commit block before local receipt time.
 - Slot weights are deterministic registry values, not subjective validator scores.
 - `queue_depth` is a weak priority signal, not a calibrated difficulty ratio.
-- Source-derived tasks enter the serious paid pool only after cheap source-reuse and source-oracle checks fail. If the source theorem is a direct answer key, `simpa` proof, or simple `apply` proof, the task is calibration/bootstrap work, not frontier work.
+- Source-derived tasks enter the serious paid pool only after cheap source-reuse and source-oracle checks fail. If the source theorem remains importable and gives a direct wrapper/source-oracle proof, the task is calibration/bootstrap work, not frontier work.
 - Valid alternates become corpus rows with `rewarded: false`.
 - Duplicate proof identities do not create extra rows or credit.
 

@@ -19,6 +19,7 @@ from loguru import logger
 from lemma.license import license_state_for, paid_license_allowed
 from lemma.protocol_invariants import procedural_gate_receipt_sha256, production_supply_rejection_reason
 from lemma.supply.gates import GATE_VERSION, AssumedProceduralGateRunner, ProceduralGateRunner, ProceduralGateVerdict
+from lemma.supply.import_graph import ImportGraph
 from lemma.supply.mutation import PreviewMutationEngine, ProceduralMutationEngine
 from lemma.supply.novelty import statement_hash
 from lemma.supply.operator_bundle import (
@@ -29,7 +30,7 @@ from lemma.supply.operator_bundle import (
     procedural_operator_bundle_hash,
 )
 from lemma.supply.source_pool import source_pool_receipt, source_pool_receipt_sha256
-from lemma.supply.source_pricing import TaskPool, parse_task_pool, source_pricing_metadata
+from lemma.supply.source_pricing import TaskPool, parse_task_pool, source_import_status, source_pricing_metadata
 from lemma.supply.types import TaskCandidate
 from lemma.task_supply import depth_spread_order, deterministic_queue
 from lemma.tasks import LemmaTask, SourceRef
@@ -57,6 +58,7 @@ class _Depth2GenerationContext:
     yield_history_metadata: dict[str, object]
     operator_hash: str
     tempo: int
+    import_graph: ImportGraph | None
     mutation_engine: ProceduralMutationEngine
     gate_runner: ProceduralGateRunner
     require_serious_candidates: bool
@@ -113,7 +115,7 @@ _LOW_VALUE_MUTATION_FALLBACKS = frozenset(
 _LOW_VALUE_MUTATION_MODES = frozenset({"peer_premise"})
 _LOW_VALUE_MUTATION_RULES = frozenset({"conjoin_peer_conclusion", "false_disjunct"})
 _LOW_VALUE_MUTATION_TARGETS: frozenset[str] = frozenset()
-_PRODUCTIVE_OPERATOR_NAMES = ("symm",)
+_PRODUCTIVE_OPERATOR_NAMES = ("witness-relation",)
 _PEER_OPERATOR_NAMES = frozenset({"conjoin", "strengthen"})
 _LEAN_GATE_BATCH_ATTEMPTS = 8
 _TOY_BASIC_SOURCE_PATHS = frozenset(
@@ -357,6 +359,7 @@ def generate_depth2_candidates(
     citation_weight_cap: float = 64.0,
     citation_window_tempos: int = 2000,
     yield_history: ProceduralYieldHistory | None = None,
+    import_graph: ImportGraph | None = None,
     gate_runner: ProceduralGateRunner | None = None,
     mutation_engine: ProceduralMutationEngine | None = None,
     generation_workers: int | None = None,
@@ -402,6 +405,7 @@ def generate_depth2_candidates(
         yield_history_metadata=yield_history.metadata() if yield_history is not None else {},
         operator_hash=operator_hash,
         tempo=tempo,
+        import_graph=import_graph,
         mutation_engine=mutation_engine or PreviewMutationEngine(),
         gate_runner=gate_runner or AssumedProceduralGateRunner(),
         require_serious_candidates=bool(getattr(gate_runner, "requires_serious_candidates", False)),
@@ -637,6 +641,7 @@ def _attempt_depth2_candidate(
             operator_bundle_hash=ctx.operator_hash,
             tempo=ctx.tempo,
             sequence=cursor,
+            import_graph=ctx.import_graph,
         )
     except ValueError as exc:
         return _Depth2Attempt(cursor=cursor, candidate=None, verdict=None, rejection_reason=_mutation_rejection(exc))
@@ -665,6 +670,7 @@ def _candidate_attempt(ctx: _Depth2GenerationContext, *, cursor: int) -> _Depth2
             operator_bundle_hash=ctx.operator_hash,
             tempo=ctx.tempo,
             sequence=cursor,
+            import_graph=ctx.import_graph,
         )
     except ValueError as exc:
         return _Depth2Attempt(cursor=cursor, candidate=None, verdict=None, rejection_reason=_mutation_rejection(exc))
@@ -897,10 +903,11 @@ def _candidate_from_source(
     operator_bundle_hash: str,
     tempo: int,
     sequence: int,
+    import_graph: ImportGraph | None = None,
     operator_chain: tuple[str, ...] | None = None,
 ) -> TaskCandidate:
     type_expr = source.type_expr.strip()
-    imports = source.imports
+    imports = _challenge_imports_for_source(source, import_graph)
     mutation_chain: list[dict[str, object]] = []
     input_hash = _hash_text(type_expr)
     for step in range(2):
@@ -990,6 +997,7 @@ def _candidate_from_source(
         "source_theorem_name": source.theorem_name,
         "source_target_sha256": _hash_text(source.statement),
     }
+    metadata["source_import_status"] = source_import_status(imports, metadata, source_path=source.source_ref.path)
     for key in (
         "topic",
         "subtopic",
@@ -1121,6 +1129,25 @@ def _peer_source(
 ) -> TaskCandidate:
     peers = tuple(source for source in sources if source.id != source_id) or sources
     return peers[_hash_int(f"{seed}:{sequence}:{step}:peer") % len(peers)]
+
+
+def _challenge_imports_for_source(source: TaskCandidate, import_graph: ImportGraph | None) -> tuple[str, ...]:
+    module = _source_module_from_path(source.source_ref.path)
+    if import_graph is not None and module is not None and module in import_graph.edges:
+        return import_graph.edges[module]
+    return source.imports
+
+
+def _source_module_from_path(path: str | None) -> str | None:
+    if path is None:
+        return None
+    text = path.strip()
+    if not text.endswith(".lean") or text.startswith("/") or "\\" in text:
+        return None
+    parts = text.removesuffix(".lean").split("/")
+    if not parts or any(part in {"", ".", ".."} for part in parts):
+        return None
+    return ".".join(parts)
 
 
 def _combined_imports(left: tuple[str, ...], right: tuple[str, ...]) -> tuple[str, ...]:

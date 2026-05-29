@@ -105,7 +105,8 @@ Plain difficulty rules:
 - The validator does not restrict production source rows to lightweight Data/Logic topics; any source row that supports the public depth-2 mutation path and passes gates can enter.
 - Active ordering interleaves frontier and foundation levels, then balances source families inside each level.
 - Slot weights use a capped `sqrt(queue_depth + 1)` depth prior, before normalization across the active set.
-- Source-derived tasks are stamped with `source_reuse_class`, `source_oracle_*`, `source_import_status`, and `task_pool`; a source theorem may seed a task, but if it is an easy `exact`, `simpa`, or `apply` proof witness the task is calibration/bootstrap, not serious paid frontier work.
+- Source-derived tasks are stamped with `source_reuse_class`, `source_oracle_*`, `source_import_status`, and `task_pool`; if the source theorem remains importable and gives a direct wrapper/source-oracle proof, the task is calibration/bootstrap, not serious paid frontier work.
+- The current production chain turns a source relation into a proof-witness target, then specializes one public binder. It is serious paid work only when the public import graph trims the challenge imports so the source theorem's own module is not inside the strict submission envelope.
 - The generator targets at least `LEMMA_ACTIVE_K`; `LEMMA_PROCEDURAL_CANDIDATE_COUNT` can ask for a larger cache, but it cannot shrink the paid active set.
 - Generation gets at most 50 attempts per target task. If it cannot fill the target count, it fails closed instead of filling slots with weaker tasks.
 - If miners solve enough slots, the next public retarget row can raise `frontier_depth`. If no slots are solved, frontier advancement stops and the system asks for variants.
@@ -133,7 +134,7 @@ Run the operator preflight before accepting submissions:
 uv run lemma operator preflight
 ```
 
-The command fails if the procedural source pool is not pinned in production mode, generated rows do not carry the chain-pinned Lean AST/elaborator mutation bundle plus drand-keyed mutation params, the active window cannot fill `K`, output directories cannot be prepared, or the Lean verifier backend is not configured.
+The command fails if the procedural source pool is not pinned in production mode, generated rows do not carry the chain-pinned mutation bundle plus drand-keyed mutation params, the active window cannot fill `K`, output directories cannot be prepared, or the Lean verifier backend is not configured.
 It emits a versioned JSON report with `schema_version`, `ok`, `registry_sha256`, `active_K`, `frontier_depth`, and `checks`. The checks include the curriculum controller status so operators can see whether retargeting is disabled, capped, or able to raise `K`.
 
 For reproducible support/debugging, write a diagnostics file before accepting submissions:

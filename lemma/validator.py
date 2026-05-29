@@ -415,6 +415,7 @@ def _procedural_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> Ta
         citation_weight_cap=settings.procedural_citation_weight_cap,
         citation_window_tempos=settings.procedural_citation_window_tempos,
         yield_history=yield_history,
+        import_graph=import_graph,
         mutation_engine=StructuralMutationEngine() if settings.protocol_mode == "production" else None,
         gate_runner=(
             LeanProceduralGateRunner(

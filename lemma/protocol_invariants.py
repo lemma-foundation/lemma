@@ -19,7 +19,7 @@ from lemma.supply.operator_bundle import (
 )
 from lemma.supply.slot_weight import SLOT_WEIGHT_VERSION, slot_weight_receipt_for_task
 from lemma.supply.source_pool import SOURCE_POOL_RECEIPT_VERSION, SOURCE_SAMPLING_VERSION, source_pool_receipt_sha256
-from lemma.supply.source_pricing import TaskPool, is_source_derived, parse_task_pool
+from lemma.supply.source_pricing import TaskPool, is_source_derived, parse_task_pool, source_import_status
 from lemma.supply.triviality_budget import TRIVIALITY_BUDGET_VERSION
 from lemma.task_activation import activation_status_for, task_reward_eligibility
 from lemma.tasks import LemmaTask, TaskRegistry
@@ -109,6 +109,12 @@ def production_supply_rejection_reason(task: LemmaTask) -> str:
     if retarget_inputs.get("target_tempo") != metadata.get("tempo"):
         return "triviality_retarget_inputs"
     if is_source_derived(task.source_stream, metadata):
+        if metadata.get("source_import_status") != source_import_status(
+            task.imports,
+            metadata,
+            source_path=task.source_ref.path,
+        ):
+            return "source_import_status"
         if metadata.get("source_oracle_checked") is not True:
             return "source_oracle"
         if metadata.get("source_oracle_solved") is True:

@@ -52,6 +52,8 @@ class StructuralMutationEngine:
         expr = type_expr.strip()
         if operator == "symm":
             return _preview_symm(expr)
+        if operator == "witness-relation":
+            return _preview_witness_relation(expr)
         if operator == "generalize":
             binder = f"lemma_p{step}_{param_seed[:6]}"
             return MutationResult(
@@ -244,6 +246,29 @@ def _preview_symm(expr: str) -> MutationResult:
     return MutationResult(
         f"{prefix}{right} {operator} {left}",
         {"rule": "reverse_relation", "relation": operator, "engine": MUTATION_ENGINE},
+    )
+
+
+def _preview_witness_relation(expr: str) -> MutationResult:
+    prefix, body = _split_forall_prefix(expr)
+    implication = _split_top_level_arrow(body)
+    if implication is not None:
+        premise, conclusion = implication
+        relation = _split_top_level_relation(conclusion)
+        if relation is None:
+            raise ValueError("no witnessable top-level relation")
+        left, operator, right = relation
+        return MutationResult(
+            f"{prefix}{premise} → ∃ h : {left} {operator} {right}, h = h",
+            {"rule": "witness_relation", "relation": operator, "engine": MUTATION_ENGINE},
+        )
+    relation = _split_top_level_relation(body)
+    if relation is None:
+        raise ValueError("no witnessable top-level relation")
+    left, operator, right = relation
+    return MutationResult(
+        f"{prefix}∃ h : {left} {operator} {right}, h = h",
+        {"rule": "witness_relation", "relation": operator, "engine": MUTATION_ENGINE},
     )
 
 
@@ -567,6 +592,22 @@ def mutate (expr peer : TSyntax `term) : Elab.Command.CommandElabM (TSyntax `ter
       ("binder", Json.str binderName),
       ("binder_type", Json.str "Prop")
     ])
+  else if operatorName == "witness-relation" then
+    match expr with
+    | `(term| $premise → $left = $right) =>
+        let output ← `(term| $premise → ∃ h : $left = $right, h = h)
+        pure (output, jsonObj [("rule", Json.str "witness_relation"), ("relation", Json.str "=")])
+    | `(term| $premise → $left ↔ $right) =>
+        let output ← `(term| $premise → ∃ h : $left ↔ $right, h = h)
+        pure (output, jsonObj [("rule", Json.str "witness_relation"), ("relation", Json.str "↔")])
+    | `(term| $left = $right) =>
+        let output ← `(term| ∃ h : $left = $right, h = h)
+        pure (output, jsonObj [("rule", Json.str "witness_relation"), ("relation", Json.str "=")])
+    | `(term| $left ↔ $right) =>
+        let output ← `(term| ∃ h : $left ↔ $right, h = h)
+        pure (output, jsonObj [("rule", Json.str "witness_relation"), ("relation", Json.str "↔")])
+    | _ =>
+        throwError "no witnessable top-level relation"
   else if operatorName == "conjoin-self" then
     let output ← `(term| ($expr) ∧ ($expr))
     pure (output, jsonObj [("rule", Json.str "conjoin_self")])

@@ -105,13 +105,13 @@ uv run lemma tasks rebuild-procedural-registry \
 ```
 
 The procedural generator derives rows from the source pool and epoch seed; it is
-not a static playlist. Each mutation step runs through the chain-pinned Lean
-AST/elaborator mutation engine, then records the selected operator, its
-drand-keyed params, and the input/output statement hashes. Generated rows also
-carry a source-pool receipt covering the source-pool hash, source count, stream
-counts, citation-weighted fraction, per-entry cap, and citation window. The
-procedural builder rejects paid rows unless they carry procedural depth-2
-provenance, chain/drand anchoring, source-pool and operator-bundle hashes, clean
+not a static playlist. Each mutation step runs through the chain-pinned mutation
+engine, then records the selected operator, its drand-keyed params, and the
+input/output statement hashes. Generated rows also carry a source-pool receipt
+covering the source-pool hash, source count, stream counts, citation-weighted
+fraction, per-entry cap, and citation window. The procedural builder rejects paid
+rows unless they carry procedural depth-2 provenance, chain/drand anchoring,
+source-pool and operator-bundle hashes, clean
 license state, a pre-proof public import-graph `slot_weight` estimate, a
 recomputable public novelty-cache receipt, a recomputable `T(t)`
 triviality-budget receipt, and a Lean-backed gate receipt. Production receipts

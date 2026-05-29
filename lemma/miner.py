@@ -17,7 +17,10 @@ from lemma.common.config import LemmaSettings
 from lemma.lean.sandbox import VerifyResult
 from lemma.store import append_jsonl
 from lemma.submissions import LemmaSubmission, build_submission, sign_submission
-from lemma.supply.source_pricing import is_lean_decl_name, reusable_source_theorem_name, source_specialize_value
+from lemma.supply.source_pricing import (
+    reusable_source_theorem_name,
+    source_theorem_wrapper_exact,
+)
 from lemma.task_supply import eligible_tasks
 from lemma.tasks import LemmaTask, TaskRegistry
 from lemma.validator import active_tasks_for_validation, current_active_tempo, task_registry_for_validation
@@ -132,7 +135,9 @@ def _source_theorem_wrapper_prover(task: LemmaTask) -> ProverResult | None:
     source_theorem = _reusable_source_theorem_name(task)
     if source_theorem is None or "\n  sorry" not in task.submission_stub:
         return None
-    exact = _source_theorem_exact(task, source_theorem)
+    exact = source_theorem_wrapper_exact(task.metadata, source_theorem, type_expr=task.type_expr)
+    if exact is None:
+        return None
     intro_count = _source_theorem_wrapper_intro_count(task)
     intros = "".join("\n  intro _" for _ in range(intro_count))
     proof_script = task.submission_stub.replace("\n  sorry", f"{intros}\n  exact {exact}", 1)
@@ -187,53 +192,6 @@ def _strip_outer_parens(text: str) -> str:
                     return text
         text = text[1:-1].strip()
     return text
-
-
-def _source_theorem_exact(task: LemmaTask, source_theorem: str) -> str:
-    exact = source_theorem
-    wraps_false = False
-    pending_symm = False
-    for step in task.metadata.get("mutation_chain", ()):
-        if not isinstance(step, dict):
-            continue
-        params = step.get("params")
-        if not isinstance(params, dict):
-            continue
-        if params.get("target") == "fresh_prop_hypothesis" and params.get("binder_type") == "Prop":
-            exact = _flush_symm(exact, pending_symm)
-            pending_symm = False
-            exact = f"(fun _ _ => {exact})"
-        elif params.get("fallback") in {"true_premise", "no_supported_type_occurrence"}:
-            exact = _flush_symm(exact, pending_symm)
-            pending_symm = False
-            exact = f"(fun _ => {exact})"
-        elif params.get("rule") == "reverse_relation" and params.get("relation") in {"=", "↔"}:
-            pending_symm = not pending_symm
-        elif step.get("operator") == "specialize" and (value := source_specialize_value(params)) is not None:
-            exact = f"({exact} {value})"
-        elif params.get("rule") == "conjoin_peer_conclusion":
-            exact = _flush_symm(exact, pending_symm)
-            pending_symm = False
-            peer = params.get("peer_theorem_name")
-            if isinstance(peer, str) and is_lean_decl_name(peer):
-                exact = f"And.intro ({exact}) {peer.strip()}"
-        elif params.get("rule") == "conjoin_self":
-            exact = _flush_symm(exact, pending_symm)
-            pending_symm = False
-            exact = f"And.intro ({exact}) ({exact})"
-        elif params.get("rule") == "false_disjunct":
-            exact = _flush_symm(exact, pending_symm)
-            pending_symm = False
-            exact = f"Or.inl ({exact})"
-            wraps_false = True
-    exact = _flush_symm(exact, pending_symm)
-    if not wraps_false and "∨" in task.type_expr and "False" in task.type_expr:
-        exact = f"Or.inl {exact}"
-    return exact
-
-
-def _flush_symm(exact: str, pending_symm: bool) -> str:
-    return f"({exact}).symm" if pending_symm else exact
 
 
 def run_openai_compatible_prover(

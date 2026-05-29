@@ -117,6 +117,15 @@ def _docker_container_logs_text(container: Any) -> str:
     return str(raw.decode("utf-8", errors="replace"))
 
 
+def _docker_cli_infrastructure_failed(text: str) -> bool:
+    lower = text.lower()
+    return (
+        "failed to connect to the docker api" in lower
+        or "cannot connect to the docker daemon" in lower
+        or ("docker.sock" in lower and "connect" in lower)
+    )
+
+
 def _verification_stdout_tail(text: str, *, limit: int = 2000) -> str:
     tail = text[-limit:]
     marker_lines = [line for line in text.splitlines() if line.startswith(_LEMMA_OUTPUT_PREFIX)]
@@ -611,6 +620,14 @@ class LeanSandbox:
                 text=True,
                 timeout=float(self.timeout_s),
             )
+        except FileNotFoundError as e:
+            elapsed = time.monotonic() - t0
+            return VerifyResult(
+                passed=False,
+                reason="docker_error",
+                stderr_tail=str(e),
+                build_seconds=elapsed,
+            )
         except subprocess.TimeoutExpired:
             elapsed = time.monotonic() - t0
             return VerifyResult(
@@ -631,6 +648,13 @@ class LeanSandbox:
         rc = r.returncode
         if rc is None:
             rc = -1
+        if rc != 0 and _docker_cli_infrastructure_failed(text):
+            return VerifyResult(
+                passed=False,
+                reason="docker_error",
+                stderr_tail=_verification_stdout_tail(text, limit=log_tail),
+                build_seconds=elapsed,
+            )
         return self._verify_docker_parse_logs(text, int(rc), elapsed, work, log_tail)
 
     def _verify_docker(self, work: Path) -> VerifyResult:

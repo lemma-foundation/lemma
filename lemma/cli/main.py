@@ -928,6 +928,7 @@ def tasks_generate_procedural_depth2_cmd(
         citation_weight_cap=citation_weight_cap,
         citation_window_tempos=citation_window_tempos,
         yield_history=yield_history,
+        import_graph=import_graph,
         mutation_engine=None if assume_gates else StructuralMutationEngine(),
         gate_runner=AssumedProceduralGateRunner(novelty_cache=novelty_cache, import_graph=import_graph)
         if assume_gates
@@ -1071,6 +1072,7 @@ def tasks_rebuild_procedural_registry_cmd(
         citation_weight_cap=citation_weight_cap,
         citation_window_tempos=citation_window_tempos,
         yield_history=yield_history,
+        import_graph=import_graph,
         mutation_engine=StructuralMutationEngine(),
         gate_runner=LeanProceduralGateRunner(
             settings,

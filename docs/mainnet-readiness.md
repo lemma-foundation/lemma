@@ -230,7 +230,7 @@ uv run lemma tasks rebuild-procedural-registry \
   --output tasks/mainnet.registry.json
 ```
 
-Cut scale, not shape: reduce `K` caps, frontier-depth bounds, source samples, and enabled operator families if needed, but keep the chain-pinned Lean AST/elaborator mutation bundle, depth-2 generation, drand-keyed mutation params, public novelty-cache receipts, Lean-backed kernel-canonical novelty/typecheck/Prop/triviality gates, verifier-recorded kernel dependency slot weights, burn-rate-retargeted `T(t)`, public curriculum retarget state, miner hotkey authentication, and strong proof identity. The registry file is a cache; validators rebuild from pinned source rows plus chain/drand and the latest prior public curriculum state. Tempo is the chain tempo: SN467 currently uses 360-block epochs. Wall-clock timers are only approximate wakeups.
+Cut scale, not shape: reduce `K` caps, frontier-depth bounds, source samples, and enabled operator families if needed, but keep the chain-pinned mutation bundle, depth-2 generation, drand-keyed mutation params, public novelty-cache receipts, Lean-backed kernel-canonical novelty/typecheck/Prop/triviality gates, verifier-recorded kernel dependency slot weights, burn-rate-retargeted `T(t)`, public curriculum retarget state, miner hotkey authentication, and strong proof identity. The registry file is a cache; validators rebuild from pinned source rows plus chain/drand and the latest prior public curriculum state. Tempo is the chain tempo: SN467 currently uses 360-block epochs. Wall-clock timers are only approximate wakeups.
 
 On the launch host, production preflight must be green before accepting submissions:
 

@@ -18,7 +18,12 @@ from lemma.problems.base import Problem
 from lemma.supply.import_graph import ImportGraph, empty_import_graph
 from lemma.supply.novelty import NoveltyCache, empty_novelty_cache
 from lemma.supply.slot_weight import slot_weight_receipt_for_candidate
-from lemma.supply.source_pricing import is_lean_decl_name, source_import_status, source_pricing_metadata
+from lemma.supply.source_pricing import (
+    is_lean_decl_name,
+    source_import_status,
+    source_pricing_metadata,
+    source_theorem_wrapper_exact,
+)
 from lemma.supply.triviality_budget import (
     TrivialityBudgetReceipt,
     static_triviality_budget_receipt,
@@ -32,6 +37,7 @@ _KERNEL_NORMAL_MARKER = "LEMMA_KERNEL_NORMAL_FORM "
 _TRIVIALITY_MARKER = "LEMMA_TRIVIALITY "
 _BATCH_GATE_MARKER = "LEMMA_GATE_RESULT "
 _BATCH_GATE_DONE_MARKER = "LEMMA_GATE_DONE "
+_INFRA_GATE_REASONS = frozenset({"docker_error", "remote_error"})
 TRIVIALITY_STACK = (
     ("decide", "  decide"),
     ("simp_all", "  simp_all"),
@@ -280,6 +286,7 @@ class LeanProceduralGateRunner:
                 "#lemma_emit_triviality",
             ),
         )
+        _raise_infra_gate_failure(prop)
         kernel_hash = _gate_canonical_hash(prop) if prop.passed else ""
         novelty = (
             _novelty_status(candidate, seen_canonical_hashes, self.novelty_cache, canonical_hash=kernel_hash)
@@ -441,6 +448,7 @@ class LeanProceduralGateRunner:
         compile_split_lock: threading.Lock,
     ) -> tuple[_BatchGateRow, ...]:
         result = self._compile_batch_gate(tuple(candidate for _index, candidate in group))
+        _raise_infra_gate_failure(result)
         parsed = _batch_gate_results(result)
         batch_complete = _batch_gate_complete(result, expected_count=len(group)) and len(parsed) == len(group)
         if not result.passed and not batch_complete:
@@ -576,15 +584,21 @@ def _source_import_status(candidate: TaskCandidate) -> str:
 
 
 def _source_oracle_proofs(candidate: TaskCandidate) -> tuple[tuple[str, str], ...]:
+    if _source_import_status(candidate) == "source_theorem_unavailable":
+        return ()
     source = candidate.metadata.get("source_theorem_name")
     if not is_lean_decl_name(source):
         return ()
     name = str(source).strip()
-    return (
+    proofs = [
         ("source_exact", f"by\n  exact {name}"),
         ("source_simpa", f"by\n  simpa using {name}"),
         ("source_apply", f"by\n  apply {name}\n  all_goals first | assumption | simp | aesop"),
-    )
+    ]
+    wrapper = source_theorem_wrapper_exact(candidate.metadata, name, type_expr=candidate.type_expr)
+    if wrapper is not None:
+        proofs.insert(0, ("source_wrapper", f"by\n  exact {wrapper}"))
+    return tuple(proofs)
 
 
 def _lean_proof_specs(proofs: tuple[tuple[str, str], ...]) -> str:
@@ -608,6 +622,13 @@ def _resolve_lean_workers(settings: LemmaSettings) -> int:
     if generation_workers > 0:
         return generation_workers
     return min(8, max(1, os.cpu_count() or 1))
+
+
+def _raise_infra_gate_failure(result: VerifyResult) -> None:
+    if result.passed or result.reason not in _INFRA_GATE_REASONS:
+        return
+    detail = (result.stderr_tail or result.stdout_tail or result.reason).strip()
+    raise RuntimeError(f"procedural Lean gate infrastructure failed: {detail[:500]}")
 
 
 def _novelty_status(

@@ -48,6 +48,7 @@ def _fixture_tasks():
 def _import_graph():
     return import_graph_from_rows(
         (
+            ImportGraphRow(module="Mathlib.Source", imports=("Mathlib.Init",)),
             ImportGraphRow(module="Mathlib", imports=("Mathlib.Init",)),
             ImportGraphRow(module="Mathlib.Init", imports=()),
         )
@@ -221,9 +222,9 @@ def test_procedural_registry_requires_depth_two_metadata() -> None:
         "mutation_depth": 2,
         "mutation_chain": [
             {
-                "operator": "symm",
+                "operator": "witness-relation",
                 "params": {
-                    "rule": "reverse_relation",
+                    "rule": "witness_relation",
                     "relation": "=",
                     "engine": MUTATION_ENGINE,
                 },
@@ -273,6 +274,9 @@ def test_procedural_registry_requires_depth_two_metadata() -> None:
         "triviality_stack": ["pytest"],
         "triviality_reason": "baseline_failed",
         "baseline_solver": None,
+        "source_task_id": "lemma.mathlib_snapshot.Mathlib.Source.test_true",
+        "source_theorem_name": "Mathlib.Source.test_true",
+        "source_target_sha256": "8" * 64,
         "source_oracle_checked": True,
         "source_oracle_solved": False,
         "source_oracle_solver": None,
@@ -284,7 +288,8 @@ def test_procedural_registry_requires_depth_two_metadata() -> None:
         update={
             "id": "lemma.procedural.depth2",
             "source_stream": "procedural",
-            "source_ref": SourceRef(kind="procedural", name="tempo-0-depth2"),
+            "source_ref": SourceRef(kind="procedural", name="tempo-0-depth2", path="Mathlib/Source.lean"),
+            "imports": ("Mathlib.Init",),
             "metadata": metadata,
         }
     )

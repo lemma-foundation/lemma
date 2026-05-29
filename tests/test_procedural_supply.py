@@ -18,7 +18,12 @@ from lemma.supply.gates import (
     LeanProceduralGateRunner,
     ProceduralGateVerdict,
 )
-from lemma.supply.import_graph import ImportGraphRow, extract_import_graph_rows, read_import_graph
+from lemma.supply.import_graph import (
+    ImportGraphRow,
+    extract_import_graph_rows,
+    import_graph_from_rows,
+    read_import_graph,
+)
 from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
 from lemma.supply.mutation import LeanAstMutationEngine, MutationResult, PreviewMutationEngine, StructuralMutationEngine
 from lemma.supply.novelty import novelty_cache_from_hashes, read_novelty_cache, statement_hash
@@ -44,7 +49,7 @@ from lemma.supply.procedural import (
 )
 from lemma.supply.slot_weight import slot_weight_receipt_for_candidate
 from lemma.supply.source_pool import SOURCE_SAMPLING_VERSION
-from lemma.supply.source_pricing import source_import_status
+from lemma.supply.source_pricing import source_import_status, source_theorem_wrapper_exact
 from lemma.supply.triviality_budget import TrivialityRetargetConfig, triviality_budget_receipt
 from lemma.supply.types import TaskCandidate, fixture_candidate
 from lemma.task_supply import make_task, write_registry
@@ -80,7 +85,7 @@ def test_structural_mutation_engine_marks_current_bundle_engine() -> None:
     first = StructuralMutationEngine().apply(
         source,
         "true = false",
-        "symm",
+        "witness-relation",
         step=0,
         param_seed="a" * 64,
         peer=source,
@@ -94,30 +99,30 @@ def test_structural_mutation_engine_marks_current_bundle_engine() -> None:
         peer=source,
     )
 
-    assert first.type_expr == "false = true"
+    assert first.type_expr == "∃ h : true = false, h = h"
     assert first.params["engine"] == MUTATION_ENGINE
-    assert second.type_expr == "∀ lemma_p1_bbbbbb : Prop, lemma_p1_bbbbbb → (false = true)"
+    assert second.type_expr == "∀ lemma_p1_bbbbbb : Prop, lemma_p1_bbbbbb → (∃ h : true = false, h = h)"
     assert second.params["engine"] == MUTATION_ENGINE
 
     implication = StructuralMutationEngine().apply(
         source,
         "¬b = false → b = true",
-        "symm",
+        "witness-relation",
         step=0,
         param_seed="c" * 64,
         peer=source,
     )
-    assert implication.type_expr == "¬b = false → true = b"
+    assert implication.type_expr == "¬b = false → ∃ h : b = true, h = h"
 
     bind_relation = StructuralMutationEngine().apply(
         source,
         "x >>= f = x.bind f",
-        "symm",
+        "witness-relation",
         step=0,
         param_seed="d" * 64,
         peer=source,
     )
-    assert bind_relation.type_expr == "x.bind f = x >>= f"
+    assert bind_relation.type_expr == "∃ h : x >>= f = x.bind f, h = h"
 
     field_notation = StructuralMutationEngine().apply(
         source,
@@ -261,7 +266,7 @@ def _fake_lean_gate(self, candidate, *, seen_canonical_hashes) -> ProceduralGate
             "source_oracle_checked": True,
             "source_oracle_solved": False,
             "source_oracle_solver": None,
-            "source_import_status": "source_theorem_unavailable",
+            "source_import_status": str(candidate.metadata.get("source_import_status") or "unknown"),
             **novelty_cache.metadata(),
             **triviality_budget.metadata(),
             **slot_weight.metadata(),
@@ -649,7 +654,7 @@ def test_candidate_from_source_uses_specialize_as_second_step() -> None:
         sequence=0,
     )
 
-    assert operators == ["symm", "specialize"]
+    assert operators == ["witness-relation", "specialize"]
     assert [step["operator"] for step in candidate.metadata["mutation_chain"]] == operators
     assert candidate.type_expr == "∀ m : Nat, (1 : Nat) = m"
 
@@ -673,7 +678,7 @@ def test_candidate_from_source_skips_peer_lookup_for_non_peer_operators(monkeypa
         source_pool=(source,),
         generation_seed="epoch-a",
         epoch_fields={},
-        operator_chain=("symm", "specialize"),
+        operator_chain=("witness-relation", "specialize"),
         mutation_engine=StructuralMutationEngine(),
         source_pool_hash_value="a" * 64,
         source_pool_receipt_value={
@@ -690,7 +695,7 @@ def test_candidate_from_source_skips_peer_lookup_for_non_peer_operators(monkeypa
         sequence=0,
     )
 
-    assert [step["operator"] for step in candidate.metadata["mutation_chain"]] == ["symm", "specialize"]
+    assert [step["operator"] for step in candidate.metadata["mutation_chain"]] == ["witness-relation", "specialize"]
 
 
 def test_candidate_from_source_rejects_placeholder_mutation() -> None:
@@ -1053,6 +1058,10 @@ def test_depth2_generation_rejects_mismatched_mutation_engine_before_lean() -> N
 
 
 def test_depth2_generation_rejects_source_wrappers_before_lean() -> None:
+    class DirectWrapperMutationEngine:
+        def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001, ARG002
+            return _test_valid_mutation(source, step=step)
+
     class NoLeanGate:
         requires_serious_candidates = True
 
@@ -1083,8 +1092,88 @@ def test_depth2_generation_rejects_source_wrappers_before_lean() -> None:
             tempo=3,
             gate_runner=NoLeanGate(),
             generation_workers=2,
-            mutation_engine=StructuralMutationEngine(),
+            mutation_engine=DirectWrapperMutationEngine(),
         )
+
+
+def test_depth2_generation_current_chain_reaches_serious_lean_gate_with_source_module_hidden() -> None:
+    class RecordingGate:
+        requires_serious_candidates = True
+
+        def __init__(self) -> None:
+            self.seen: list[TaskCandidate] = []
+
+        def __call__(self, candidate, *, seen_canonical_hashes):  # noqa: ANN001, ARG002
+            raise AssertionError("parallel batch path should be used")
+
+        def batch(self, candidates, *, seen_canonical_hashes):  # noqa: ANN001, ARG002
+            self.seen.extend(candidates)
+            return tuple(
+                ProceduralGateVerdict(
+                    typechecked=True,
+                    prop_gate_passed=True,
+                    triviality_checked=True,
+                    baseline_solved=False,
+                    novelty_status="passed",
+                    slot_weight=1.0,
+                    metadata={
+                        "gate_runner": "lean",
+                        "typecheck_reason": "ok",
+                        "prop_gate_reason": "ok",
+                        "kernel_canonical_hash": str(candidate.metadata["canonical_hash"]),
+                        "kernel_canonical_name": "LemmaProceduralGate.prop_gate",
+                        "canonical_hash": str(candidate.metadata["canonical_hash"]),
+                        "triviality_stack": ["pytest"],
+                        "triviality_reason": "baseline_failed",
+                        "baseline_solver": None,
+                        "source_oracle_checked": True,
+                        "source_oracle_solved": False,
+                        "source_oracle_solver": None,
+                        "source_import_status": str(candidate.metadata["source_import_status"]),
+                    },
+                )
+                for candidate in candidates
+            )
+
+    sources = tuple(
+        fixture_candidate(
+            slug=f"source_{index}",
+            source_stream="mathlib_snapshot",
+            source_name="snapshot",
+            theorem_name=f"source_{index}",
+            type_expr="∀ n m : Nat, n = m",
+            queue_depth=0,
+        ).model_copy(
+            update={
+                "imports": ("Mathlib.Data.Nat.Basic",),
+                "source_ref": SourceRef(kind="mathlib", name=f"source_{index}", path="Mathlib/Source.lean"),
+            }
+        )
+        for index in range(3)
+    )
+    import_graph = import_graph_from_rows(
+        (ImportGraphRow(module="Mathlib.Source", imports=("Mathlib.Data.Nat.Basic",)),)
+    )
+    gate = RecordingGate()
+
+    (candidate,) = generate_depth2_candidates(
+        sources,
+        generation_seed="epoch-a",
+        epoch_randomness=json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
+        count=1,
+        tempo=3,
+        gate_runner=gate,
+        generation_workers=2,
+        mutation_engine=StructuralMutationEngine(),
+        import_graph=import_graph,
+    )
+
+    assert gate.seen
+    assert candidate.metadata["task_pool"] == "serious_paid"
+    assert candidate.metadata["source_reuse_class"] == "source_derived_survived"
+    assert candidate.metadata["source_import_status"] == "source_theorem_unavailable"
+    assert [step["operator"] for step in candidate.metadata["mutation_chain"]] == ["witness-relation", "specialize"]
+    assert "∃ h :" in candidate.type_expr
 
 
 def test_depth2_generation_parallel_matches_sequential(tmp_path: Path) -> None:
@@ -1332,6 +1421,7 @@ def test_lean_gate_runner_embeds_source_oracle_baseline(
         gate_source = str(problem.extra["challenge_full"])
         assert "ancestorBaselineSource" not in gate_source
         assert "sourceOracleProofs" in gate_source
+        assert "source_wrapper" in gate_source
         assert "source_exact" in gate_source
         assert "source_simpa" in gate_source
         assert "source_apply" in gate_source
@@ -1676,6 +1766,30 @@ def test_lean_gate_runner_compile_error_split_budget_can_stop_salvage(
     assert [verdict.metadata["lean_gate_batch_size"] for verdict in verdicts] == [2, 2]
 
 
+def test_lean_gate_runner_fails_fast_on_docker_infrastructure_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    snapshot = tmp_path / "snapshot.jsonl"
+    _write_snapshot(snapshot)
+    (candidate,) = generate_depth2_candidates(
+        mathlib_candidates_from_jsonl(snapshot),
+        generation_seed="epoch-a",
+        epoch_randomness=json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
+        count=1,
+        tempo=3,
+    )
+
+    def fake_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001, ARG001
+        return VerifyResult(passed=False, reason="docker_error", stderr_tail="docker worker unavailable")
+
+    monkeypatch.setattr("lemma.supply.gates.run_lean_verify", fake_verify)
+    runner = LeanProceduralGateRunner(LemmaSettings(_env_file=None, lean_use_docker=False))
+
+    with pytest.raises(RuntimeError, match="procedural Lean gate infrastructure failed"):
+        runner.batch((candidate,), seen_canonical_hashes=())
+
+
 def test_lean_gate_runner_uses_configured_batch_capacity() -> None:
     default_runner = LeanProceduralGateRunner(LemmaSettings(_env_file=None, lean_use_docker=False))
     assert default_runner.batch_capacity(2) == 96
@@ -1871,7 +1985,7 @@ def test_procedural_slot_weight_receipt_uses_dependency_metadata(tmp_path: Path)
             {
                 "theorem_name": "Deep.weight",
                 "type_expr": "∀ n m : Nat, n = m",
-                "imports": ["Mathlib.Data.Nat.Basic", "Mathlib.Algebra.Group.Basic"],
+                "imports": ["Mathlib.Deep", "Mathlib.Algebra.Group.Basic"],
                 "mathlib_rev": "abc123",
                 "source_path": "Mathlib/Deep.lean",
                 "source_license": "Apache-2.0",
@@ -1957,6 +2071,36 @@ def test_source_wrapper_tasks_are_calibration_weighted() -> None:
     assert weight.inputs["depth_multiplier_micros"] == 1_000_000
 
 
+def test_source_wrapper_with_hidden_source_module_is_serious_weighted() -> None:
+    task = fixture_candidate(
+        slug="weight_hidden_source_wrapper",
+        source_stream="procedural",
+        source_name="snapshot",
+        theorem_name="Weight.hiddenSource",
+        type_expr="∀ n m : Nat, n = m",
+        queue_depth=2,
+        metadata={
+            "source_import_status": "source_theorem_unavailable",
+            "source_theorem_name": "Weight.hiddenSource",
+            "mutation_chain": [
+                {
+                    "operator": "witness-relation",
+                    "params": {"rule": "witness_relation", "relation": "="},
+                },
+                {
+                    "operator": "specialize",
+                    "params": {"binder": "n", "binder_type": "Nat", "value": "3"},
+                },
+            ],
+        },
+    )
+
+    weight = slot_weight_receipt_for_candidate(task)
+
+    assert weight.inputs["source_reuse_class"] == "source_derived_survived"
+    assert weight.inputs["task_pool"] == "serious_paid"
+
+
 def test_source_oracle_solved_tasks_are_bootstrap_weighted() -> None:
     task = fixture_candidate(
         slug="weight_source_oracle",
@@ -2001,6 +2145,27 @@ def test_source_import_status_marks_available_source_modules() -> None:
         source_import_status(("Mathlib",), metadata, source_path="Mathlib/Data/Nat/Basic.lean")
         == "source_theorem_available"
     )
+
+
+def test_source_theorem_wrapper_exact_applies_remaining_witness_binders() -> None:
+    exact = source_theorem_wrapper_exact(
+        {
+            "mutation_chain": [
+                {
+                    "operator": "witness-relation",
+                    "params": {"rule": "witness_relation", "relation": "="},
+                },
+                {
+                    "operator": "specialize",
+                    "params": {"binder": "n", "binder_type": "Nat", "value": "5"},
+                },
+            ]
+        },
+        "Source.thm",
+        type_expr="∀ m : Nat, ∃ h : (5 : Nat) = m, h = h",
+    )
+
+    assert exact == "(fun m => ⟨((Source.thm (5 : Nat)) m), rfl⟩)"
 
 
 def test_procedural_slot_weight_receipt_uses_public_import_graph(tmp_path: Path) -> None:
@@ -2549,7 +2714,7 @@ def test_depth2_generation_uses_public_yield_history_for_source_order(tmp_path: 
     history_path.write_text(
         json.dumps(
             {
-                "accepted_operator_chains": {"symm,specialize": 2},
+                "accepted_operator_chains": {"witness-relation,specialize": 2},
                 "accepted_source_families": {"Mathlib/High.lean": 5},
             },
             sort_keys=True,

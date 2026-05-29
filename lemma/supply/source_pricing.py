@@ -44,6 +44,8 @@ def is_lean_decl_name(value: object) -> bool:
 
 
 def reusable_source_theorem_name(metadata: Mapping[str, object]) -> str | None:
+    if metadata.get("source_import_status") == "source_theorem_unavailable":
+        return None
     name = metadata.get("source_theorem_name")
     if not is_lean_decl_name(name) or not source_theorem_is_direct_proof(metadata):
         return None
@@ -65,6 +67,8 @@ def source_theorem_is_direct_proof(metadata: Mapping[str, object]) -> bool:
             continue
         if params.get("rule") == "reverse_relation" and params.get("relation") in {"=", "↔"}:
             continue
+        if params.get("rule") == "witness_relation" and params.get("relation") in {"=", "↔"}:
+            continue
         if params.get("mode") == "peer_premise":
             continue
         if params.get("rule") in {"conjoin_peer_conclusion", "conjoin_self", "false_disjunct"}:
@@ -81,6 +85,104 @@ def source_specialize_value(params: Mapping[str, object]) -> str | None:
     if binder_type.strip() == "Prop":
         return value.strip()
     return f"({value.strip()} : {binder_type.strip()})"
+
+
+def source_theorem_wrapper_exact(
+    metadata: Mapping[str, object],
+    source_theorem: str,
+    *,
+    type_expr: str = "",
+) -> str | None:
+    exact = source_theorem
+    wraps_false = False
+    pending_symm = False
+    pending_witness = False
+    for step in _mutation_chain(metadata):
+        params = step.get("params")
+        if not isinstance(params, Mapping):
+            return None
+        if params.get("target") == "fresh_prop_hypothesis" and params.get("binder_type") == "Prop":
+            exact = _flush_source_transforms(exact, pending_symm=pending_symm, pending_witness=pending_witness)
+            pending_symm = False
+            pending_witness = False
+            exact = f"(fun _ _ => {exact})"
+        elif params.get("fallback") in {"true_premise", "no_supported_type_occurrence"}:
+            exact = _flush_source_transforms(exact, pending_symm=pending_symm, pending_witness=pending_witness)
+            pending_symm = False
+            pending_witness = False
+            exact = f"(fun _ => {exact})"
+        elif params.get("rule") == "reverse_relation" and params.get("relation") in {"=", "↔"}:
+            pending_symm = not pending_symm
+        elif params.get("rule") == "witness_relation" and params.get("relation") in {"=", "↔"}:
+            pending_witness = True
+        elif step.get("operator") == "specialize" and (value := source_specialize_value(params)) is not None:
+            exact = f"({exact} {value})"
+        elif params.get("mode") == "peer_premise":
+            continue
+        elif params.get("rule") == "conjoin_peer_conclusion":
+            exact = _flush_source_transforms(exact, pending_symm=pending_symm, pending_witness=pending_witness)
+            pending_symm = False
+            pending_witness = False
+            peer = params.get("peer_theorem_name")
+            if not isinstance(peer, str) or not is_lean_decl_name(peer):
+                return None
+            exact = f"And.intro ({exact}) {peer.strip()}"
+        elif params.get("rule") == "conjoin_self":
+            exact = _flush_source_transforms(exact, pending_symm=pending_symm, pending_witness=pending_witness)
+            pending_symm = False
+            pending_witness = False
+            exact = f"And.intro ({exact}) ({exact})"
+        elif params.get("rule") == "false_disjunct":
+            exact = _flush_source_transforms(exact, pending_symm=pending_symm, pending_witness=pending_witness)
+            pending_symm = False
+            pending_witness = False
+            exact = f"Or.inl ({exact})"
+            wraps_false = True
+        else:
+            return None
+    exact = _flush_source_transforms(
+        exact,
+        pending_symm=pending_symm,
+        pending_witness=pending_witness,
+        witness_type_expr=type_expr,
+    )
+    if not wraps_false and "∨" in type_expr and "False" in type_expr:
+        exact = f"Or.inl {exact}"
+    return exact
+
+
+def _flush_source_transforms(
+    exact: str,
+    *,
+    pending_symm: bool,
+    pending_witness: bool,
+    witness_type_expr: str = "",
+) -> str:
+    if pending_symm:
+        exact = f"({exact}).symm"
+    if pending_witness:
+        exact = _witness_relation_exact(exact, witness_type_expr)
+    return exact
+
+
+def _witness_relation_exact(exact: str, type_expr: str) -> str:
+    binders = _leading_forall_binder_names(type_expr)
+    if not binders:
+        return f"⟨{exact}, rfl⟩"
+    args = " ".join(binders)
+    return f"(fun {args} => ⟨({exact} {args}), rfl⟩)"
+
+
+def _leading_forall_binder_names(type_expr: str) -> tuple[str, ...]:
+    from lemma.supply.mutation import _split_forall
+
+    names: list[str] = []
+    remaining = type_expr.strip()
+    while binder := _split_forall(remaining):
+        name, _binder_type, body = binder
+        names.append(name)
+        remaining = body.strip()
+    return tuple(names)
 
 
 def source_pricing_metadata(source_stream: str, metadata: Mapping[str, object]) -> dict[str, object]:

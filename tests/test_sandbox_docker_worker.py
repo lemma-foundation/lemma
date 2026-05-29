@@ -151,6 +151,33 @@ def test_docker_worker_exec_does_not_truncate_before_parse(tmp_path: Path, monke
     assert vr.passed is True
 
 
+def test_docker_worker_exec_reports_cli_connection_failures_as_docker_error(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:  # noqa: ARG001
+        return subprocess.CompletedProcess(
+            argv,
+            1,
+            stdout="",
+            stderr="failed to connect to the docker API at unix:///tmp/docker.sock",
+        )
+
+    monkeypatch.setattr("lemma.lean.sandbox.subprocess.run", fake_run)
+
+    vr = LeanSandbox(use_docker=True)._verify_docker_cli_exec(
+        "worker-1",
+        "/lemma-workspace/template",
+        ".lemma_verify.sh",
+        tmp_path,
+        123,
+    )
+
+    assert vr.passed is False
+    assert vr.reason == "docker_error"
+    assert "docker API" in vr.stderr_tail
+
+
 def test_docker_failure_tail_preserves_lemma_markers(tmp_path: Path) -> None:
     text = 'LEMMA_AST_MUTATION {"ok":true}\n' + ("x" * 70_000) + "\nerror: boom"
 

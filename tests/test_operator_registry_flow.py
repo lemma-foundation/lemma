@@ -51,6 +51,7 @@ def _proof_for(theorem_name: str, type_expr: str) -> str:
 
 def _write_import_graph(path: Path) -> None:
     rows = (
+        ImportGraphRow(module="Mathlib.OperatorSmoke", imports=("Mathlib.Init",)),
         ImportGraphRow(module="Mathlib", imports=("Mathlib.Init",)),
         ImportGraphRow(module="Mathlib.Init", imports=()),
     )
@@ -85,7 +86,7 @@ def _fake_lean_gate(self, candidate, *, seen_canonical_hashes) -> ProceduralGate
             "source_oracle_checked": True,
             "source_oracle_solved": False,
             "source_oracle_solver": None,
-            "source_import_status": "source_theorem_unavailable",
+            "source_import_status": str(candidate.metadata["source_import_status"]),
             **novelty_cache.metadata(),
             **triviality_budget.metadata(),
             **slot_weight.metadata(),
@@ -342,6 +343,54 @@ def test_operator_registry_flow_smoke(monkeypatch: pytest.MonkeyPatch, tmp_path:
     benchmark_record = json.loads(benchmark_jsonl.read_text(encoding="utf-8").splitlines()[0])
     assert benchmark_record["reward"]["active_K"] == 10
     assert benchmark_record["provenance"]["validator_hotkey"] == "validator-smoke"
+
+
+def test_rebuild_procedural_registry_trims_imports_before_serious_gate(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runner = CliRunner()
+    snapshot_path = Path("examples/operator-smoke/snapshot.jsonl")
+    novelty_cache_path = tmp_path / "novelty-cache.jsonl"
+    import_graph_path = tmp_path / "import-graph.jsonl"
+    registry_path = tmp_path / "tasks" / "trimmed.procedural.registry.json"
+    novelty_cache_path.write_text(json.dumps({"statement_hash": "0" * 64}, sort_keys=True) + "\n", encoding="utf-8")
+    _write_import_graph(import_graph_path)
+    monkeypatch.setattr("lemma.supply.gates.LeanProceduralGateRunner.__call__", _fake_lean_gate)
+    monkeypatch.setattr("lemma.supply.gates.LeanProceduralGateRunner.batch", _fake_lean_gate_batch)
+
+    build = runner.invoke(
+        main,
+        [
+            "tasks",
+            "rebuild-procedural-registry",
+            "--mathlib-snapshot",
+            str(snapshot_path),
+            "--output",
+            str(registry_path),
+            "--generation-seed",
+            "trim-source-imports",
+            "--epoch-randomness",
+            json.dumps({"anchor_block": 360, "drand_round": 10}, sort_keys=True),
+            "--tempo",
+            "7",
+            "--count",
+            "1",
+            "--frontier-depth",
+            "0",
+            "--novelty-cache-jsonl",
+            str(novelty_cache_path),
+            "--import-graph-jsonl",
+            str(import_graph_path),
+        ],
+        env={"LEMMA_PREFER_PROCESS_ENV": "1"},
+    )
+
+    assert build.exit_code == 0, build.output
+    registry = load_task_registry(registry_path.read_bytes())
+    task = registry.tasks[0]
+    assert task.imports == ("Mathlib.Init",)
+    assert task.metadata["source_import_status"] == "source_theorem_unavailable"
+    assert task.metadata["task_pool"] == "serious_paid"
 
 
 def test_production_like_procedural_submission_smoke(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
