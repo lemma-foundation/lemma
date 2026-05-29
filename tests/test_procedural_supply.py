@@ -1070,6 +1070,51 @@ def test_depth2_generation_rejects_mismatched_mutation_engine_before_lean() -> N
         )
 
 
+def test_depth2_generation_allows_prime_import_modules_before_lean() -> None:
+    class AlwaysGoodMutationEngine:
+        def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001, ARG002
+            return _test_valid_mutation(source, step=step)
+
+    class RecordingGate:
+        def __init__(self) -> None:
+            self.seen: list[TaskCandidate] = []
+
+        def __call__(self, candidate, *, seen_canonical_hashes):  # noqa: ANN001, ARG002
+            self.seen.append(candidate)
+            return ProceduralGateVerdict(
+                typechecked=True,
+                prop_gate_passed=True,
+                triviality_checked=True,
+                baseline_solved=False,
+                novelty_status="passed",
+                slot_weight=1.0,
+            )
+
+    source = fixture_candidate(
+        slug="source",
+        source_stream="mathlib_snapshot",
+        source_name="snapshot",
+        theorem_name="source",
+        type_expr="∀ n m : Nat, n = m",
+        queue_depth=0,
+    ).model_copy(update={"imports": ("Mathlib.Tactic.Widget'",)})
+    gate = RecordingGate()
+
+    (candidate,) = generate_depth2_candidates(
+        (source,),
+        generation_seed="epoch-a",
+        epoch_randomness=json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
+        count=1,
+        tempo=3,
+        gate_runner=gate,
+        mutation_engine=AlwaysGoodMutationEngine(),
+        generation_workers=1,
+    )
+
+    assert gate.seen
+    assert candidate.imports == ("Mathlib.Tactic.Widget'",)
+
+
 def test_depth2_generation_rejects_source_wrappers_before_lean() -> None:
     class DirectWrapperMutationEngine:
         def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001, ARG002
@@ -1146,6 +1191,42 @@ def test_depth2_generation_rejects_hidden_sources_without_usable_dependency_impo
                 import_graph=import_graph,
             )
         assert "without dependency imports" in str(exc_info.value)
+
+
+def test_depth2_generation_rejects_sources_with_unbound_short_identifiers_before_lean() -> None:
+    class NoLeanGate:
+        requires_serious_candidates = True
+
+        def __call__(self, candidate, *, seen_canonical_hashes):  # noqa: ANN001, ARG002
+            raise AssertionError("sources with unbound short identifiers should be rejected before Lean")
+
+        def batch(self, candidates, *, seen_canonical_hashes):  # noqa: ANN001, ARG002
+            raise AssertionError("sources with unbound short identifiers should be rejected before Lean")
+
+    source = fixture_candidate(
+        slug="source",
+        source_stream="mathlib_snapshot",
+        source_name="snapshot",
+        theorem_name="Source.t",
+        type_expr="∀ x : ℝ, ψ x = θ x",
+        queue_depth=0,
+    ).model_copy(update={"source_ref": SourceRef(kind="mathlib", name="Source.t", path="Mathlib/Source.lean")})
+    import_graph = import_graph_from_rows(
+        (ImportGraphRow(module="Mathlib.Source", imports=("Mathlib.Data.Real.Basic",)),)
+    )
+
+    with pytest.raises(ValueError, match="source pool has no paid depth-2 candidates"):
+        generate_depth2_candidates(
+            (source,),
+            generation_seed="epoch-a",
+            epoch_randomness=json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
+            count=1,
+            tempo=3,
+            gate_runner=NoLeanGate(),
+            generation_workers=1,
+            mutation_engine=StructuralMutationEngine(),
+            import_graph=import_graph,
+        )
 
 
 def test_depth2_generation_current_chain_reaches_serious_lean_gate_with_source_module_hidden() -> None:
@@ -1229,8 +1310,9 @@ def test_depth2_generation_current_chain_reaches_serious_lean_gate_with_source_m
 
 
 def test_depth2_generation_uses_verified_substrate_sources_as_unavailable() -> None:
-    class RecordingGate:
+    class LeanLikeGate:
         requires_serious_candidates = True
+        import_graph = import_graph_from_rows((ImportGraphRow(module="Mathlib.Data.Nat.Basic", imports=()),))
 
         def __init__(self) -> None:
             self.seen: list[TaskCandidate] = []
@@ -1240,21 +1322,7 @@ def test_depth2_generation_uses_verified_substrate_sources_as_unavailable() -> N
 
         def batch(self, candidates, *, seen_canonical_hashes):  # noqa: ANN001, ARG002
             self.seen.extend(candidates)
-            return tuple(
-                ProceduralGateVerdict(
-                    typechecked=True,
-                    prop_gate_passed=True,
-                    triviality_checked=True,
-                    baseline_solved=False,
-                    novelty_status="passed",
-                    slot_weight=1.0,
-                    metadata={
-                        "canonical_hash": str(candidate.metadata["canonical_hash"]),
-                        "source_import_status": str(candidate.metadata["source_import_status"]),
-                    },
-                )
-                for candidate in candidates
-            )
+            return _fake_lean_gate_batch(self, candidates, seen_canonical_hashes=seen_canonical_hashes)
 
     source = fixture_candidate(
         slug="substrate",
@@ -1273,10 +1341,18 @@ def test_depth2_generation_uses_verified_substrate_sources_as_unavailable() -> N
             ),
         }
     )
-    gate = RecordingGate()
+    mathlib_source = fixture_candidate(
+        slug="mathlib",
+        source_stream="mathlib_snapshot",
+        source_name="snapshot",
+        theorem_name="Mathlib.closed",
+        type_expr="True",
+        queue_depth=0,
+    )
+    gate = LeanLikeGate()
 
     (candidate,) = generate_depth2_candidates(
-        (source,),
+        (source, mathlib_source),
         generation_seed="epoch-a",
         epoch_randomness=json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
         count=1,
@@ -1290,6 +1366,10 @@ def test_depth2_generation_uses_verified_substrate_sources_as_unavailable() -> N
     assert candidate.metadata["task_pool"] == "serious_paid"
     assert candidate.metadata["source_reuse_class"] == "source_derived_survived"
     assert candidate.metadata["source_import_status"] == "source_theorem_unavailable"
+    assert candidate.metadata["source_origin_stream"] == "lemma_substrate"
+    build = build_procedural_registry_tasks((candidate,), seed="epoch-a")
+    assert build.rejected == ()
+    assert len(build.tasks) == 1
 
 
 def test_depth2_generation_parallel_matches_sequential(tmp_path: Path) -> None:
@@ -2261,6 +2341,14 @@ def test_source_import_status_marks_available_source_modules() -> None:
     assert (
         source_import_status(("Mathlib",), metadata, source_path="Mathlib/Data/Nat/Basic.lean")
         == "source_theorem_available"
+    )
+    assert (
+        source_import_status(
+            ("Mathlib.Data.Nat.Basic",),
+            {"source_origin_stream": "lemma_substrate", **metadata},
+            source_path="tempo-1/accepted/row.json",
+        )
+        == "source_theorem_unavailable"
     )
 
 

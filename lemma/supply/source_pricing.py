@@ -283,6 +283,8 @@ def source_import_status(
     if any(module.strip() == "Mathlib" for module in imports):
         return "source_theorem_available"
     if source_module is None:
+        if metadata.get("source_origin_stream") == "lemma_substrate":
+            return "source_theorem_unavailable"
         return "unknown"
     return "source_theorem_available" if source_module in imports else "source_theorem_unavailable"
 

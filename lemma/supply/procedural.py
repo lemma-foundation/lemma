@@ -100,7 +100,8 @@ class ProceduralYieldHistory:
 
 _SAFE_IDENT = re.compile(r"[^A-Za-z0-9_]+")
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
-_LEAN_MODULE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
+_LEAN_MODULE = re.compile(r"^[A-Za-z_][A-Za-z0-9_']*(?:\.[A-Za-z_][A-Za-z0-9_']*)*$")
+_LEAN_IDENT_TOKEN = re.compile(r"(?<![A-Za-z0-9_'.])([A-Za-z_][A-Za-z0-9_']*|[α-ωΑ-Ω][A-Za-z0-9_']*)(?![A-Za-z0-9_'])")
 _GENERATED_PROP_BINDER = re.compile(
     r"^∀\s+(lemma_p\d+_[A-Za-z0-9_]+)\s*:\s*Prop,\s*\1\s*→\s*\((.*)\)$"
 )
@@ -971,6 +972,7 @@ def _candidate_from_source(
         "canonical_hash": canonical_hash,
         "statement_hash": mutated_statement_hash,
         "license_state": license_state_for(source.source_license, str(source.metadata.get("license_state") or "")),
+        "source_origin_stream": source.source_stream,
         "source_task_id": source.id,
         "source_theorem_name": source.theorem_name,
         "source_target_sha256": _hash_text(source.statement),
@@ -1065,6 +1067,7 @@ def _eligible_depth2_sources(
         for source in sources
         if (max_queue_depth is None or source.queue_depth <= max_queue_depth)
         and _supports_depth2_chain(source.type_expr)
+        and not _has_unbound_short_identifiers(source.type_expr)
         and _not_toy_basic_source(source)
         and (not require_source_unavailable or _source_theorem_unavailable_for_source(source, import_graph))
     )
@@ -1107,7 +1110,7 @@ def _source_theorem_unavailable_for_source(source: TaskCandidate, import_graph: 
     status = _source_import_status_for_source(
         source,
         imports,
-        {"source_theorem_name": source.theorem_name},
+        {"source_origin_stream": source.source_stream, "source_theorem_name": source.theorem_name},
     )
     return status == "source_theorem_unavailable"
 
@@ -1117,14 +1120,33 @@ def _source_import_status_for_source(
     imports: tuple[str, ...],
     metadata: dict[str, object],
 ) -> str:
-    status = source_import_status(imports, metadata, source_path=source.source_ref.path)
-    if status == "unknown" and source.source_stream == "lemma_substrate":
-        return "source_theorem_unavailable"
-    return status
+    return source_import_status(imports, metadata, source_path=source.source_ref.path)
 
 
 def _valid_lean_import_module(module: str) -> bool:
     return bool(_LEAN_MODULE.fullmatch(module)) and module not in _INVALID_IMPORT_MODULES
+
+
+def _has_unbound_short_identifiers(type_expr: str) -> bool:
+    bound = _bound_quantifier_names(type_expr)
+    for name in _LEAN_IDENT_TOKEN.findall(type_expr):
+        if name in bound or "." in name:
+            continue
+        if len(name) == 1 or not name.isascii():
+            return True
+    return False
+
+
+def _bound_quantifier_names(type_expr: str) -> set[str]:
+    from lemma.supply.mutation import _split_forall
+
+    bound: set[str] = set()
+    remaining = type_expr.strip()
+    while binder := _split_forall(remaining):
+        name, _binder_type, body = binder
+        bound.add(name)
+        remaining = body.strip()
+    return bound
 
 
 def _peer_source(
