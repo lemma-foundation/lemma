@@ -44,6 +44,7 @@ from lemma.supply.procedural import (
 )
 from lemma.supply.slot_weight import slot_weight_receipt_for_candidate
 from lemma.supply.source_pool import SOURCE_SAMPLING_VERSION
+from lemma.supply.source_pricing import source_import_status
 from lemma.supply.triviality_budget import TrivialityRetargetConfig, triviality_budget_receipt
 from lemma.supply.types import TaskCandidate, fixture_candidate
 from lemma.task_supply import make_task, write_registry
@@ -257,6 +258,10 @@ def _fake_lean_gate(self, candidate, *, seen_canonical_hashes) -> ProceduralGate
             "triviality_stack": ["pytest"],
             "triviality_reason": "baseline_failed",
             "baseline_solver": None,
+            "source_oracle_checked": True,
+            "source_oracle_solved": False,
+            "source_oracle_solver": None,
+            "source_import_status": "source_theorem_unavailable",
             **novelty_cache.metadata(),
             **triviality_budget.metadata(),
             **slot_weight.metadata(),
@@ -1275,7 +1280,7 @@ def test_lean_gate_runner_embeds_triviality_stack(monkeypatch: pytest.MonkeyPatc
     assert calls == ["gate"]
 
 
-def test_lean_gate_runner_does_not_embed_source_theorem_baseline(
+def test_lean_gate_runner_embeds_source_oracle_baseline(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     snapshot = tmp_path / "snapshot.jsonl"
@@ -1291,14 +1296,21 @@ def test_lean_gate_runner_does_not_embed_source_theorem_baseline(
         assert problem.id.endswith(".gate")
         gate_source = str(problem.extra["challenge_full"])
         assert "ancestorBaselineSource" not in gate_source
-        assert "source_theorem" not in gate_source
+        assert "sourceOracleProofs" in gate_source
+        assert "source_exact" in gate_source
+        assert "source_simpa" in gate_source
+        assert "source_apply" in gate_source
+        assert str(candidate.metadata["source_theorem_name"]) in gate_source
         return VerifyResult(
             passed=True,
             reason="ok",
             stdout_tail=(
                 "LEMMA_KERNEL_NORMAL_FORM (forall default const:True:[] const:True:[])\n"
                 'LEMMA_TRIVIALITY {"checked":true,"baseline_solved":false,'
-                '"baseline_solver":null,"triviality_reason":"baseline_failed"}'
+                '"baseline_solver":null,"source_oracle_checked":true,'
+                '"source_oracle_solved":false,"source_oracle_solver":null,'
+                '"source_import_status":"source_theorem_available",'
+                '"triviality_reason":"baseline_failed"}'
             ),
             declaration_fingerprints={
                 "LemmaProceduralGate.typecheck_gate": "7" * 64,
@@ -1314,6 +1326,9 @@ def test_lean_gate_runner_does_not_embed_source_theorem_baseline(
     assert verdict.accepted is True
     assert verdict.baseline_solved is False
     assert verdict.metadata["baseline_solver"] is None
+    assert verdict.metadata["source_oracle_checked"] is True
+    assert verdict.metadata["source_oracle_solved"] is False
+    assert verdict.metadata["source_import_status"] == "source_theorem_available"
 
 
 def test_lean_gate_runner_batches_gate_results(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -1335,7 +1350,8 @@ def test_lean_gate_runner_batches_gate_results(monkeypatch: pytest.MonkeyPatch, 
         assert "containsSyntheticHole" in gate_source
         assert problem.extra["lean_eval_commands"] == ("set_option maxHeartbeats 200000", "#lemma_emit_gate_results")
         assert "ancestorBaselineSource" not in gate_source
-        assert "source_theorem" not in gate_source
+        assert "sourceOracleProofs" in gate_source
+        assert "source_exact" in gate_source
         calls.append("batch")
         return VerifyResult(
             passed=True,
@@ -1845,6 +1861,52 @@ def test_source_wrapper_tasks_are_calibration_weighted() -> None:
     assert weight.inputs["source_reuse_class"] == "direct_source_wrapper"
     assert weight.inputs["task_pool"] == "calibration"
     assert weight.inputs["depth_multiplier_micros"] == 1_000_000
+
+
+def test_source_oracle_solved_tasks_are_bootstrap_weighted() -> None:
+    task = fixture_candidate(
+        slug="weight_source_oracle",
+        source_stream="procedural",
+        source_name="snapshot",
+        theorem_name="Weight.sourceOracle",
+        type_expr="∀ n m : Nat, n = m",
+        queue_depth=12,
+        metadata={
+            "source_theorem_name": "Weight.sourceOracle",
+            "source_oracle_checked": True,
+            "source_oracle_solved": True,
+            "source_oracle_solver": "source_simpa",
+            "mutation_chain": [
+                {
+                    "operator": "symm",
+                    "params": {"rule": "requires_bridge", "relation": "="},
+                },
+            ],
+        },
+    )
+
+    weight = slot_weight_receipt_for_candidate(task)
+
+    assert weight.inputs["source_reuse_class"] == "source_oracle_solved"
+    assert weight.inputs["task_pool"] == "bootstrap"
+    assert weight.inputs["depth_multiplier_micros"] == 1_250_000
+
+
+def test_source_import_status_marks_available_source_modules() -> None:
+    metadata = {"source_theorem_name": "Mathlib.Data.Nat.Basic.someTheorem"}
+
+    assert (
+        source_import_status(("Mathlib.Data.Nat.Basic",), metadata, source_path="Mathlib/Data/Nat/Basic.lean")
+        == "source_theorem_available"
+    )
+    assert (
+        source_import_status(("Mathlib.Data.Bool.Basic",), metadata, source_path="Mathlib/Data/Nat/Basic.lean")
+        == "source_theorem_unavailable"
+    )
+    assert (
+        source_import_status(("Mathlib",), metadata, source_path="Mathlib/Data/Nat/Basic.lean")
+        == "source_theorem_available"
+    )
 
 
 def test_procedural_slot_weight_receipt_uses_public_import_graph(tmp_path: Path) -> None:

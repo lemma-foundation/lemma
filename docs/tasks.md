@@ -179,7 +179,7 @@ The active pool is a deterministic queue window of size `K`.
 - Human difficulty labels are compatibility/display metadata, not protocol inputs.
 - Active selection interleaves frontier and foundation levels, then balances source families inside each level.
 - Slot weights use a capped `sqrt(queue_depth + 1)` depth prior. Queue depth is not treated as a calibrated difficulty ratio.
-- Source-derived tasks carry `source_reuse_class` and `task_pool`; direct source wrappers are calibration work, not serious paid frontier tasks.
+- Source-derived tasks carry `source_reuse_class`, source-oracle metadata, import-hygiene metadata, and `task_pool`; direct source wrappers and source-oracle solves are calibration/bootstrap work, not serious paid frontier tasks.
 - Solved slots advance.
 - Expired unsolved slots are parked.
 - Zero solve rate halts frontier advancement and requests hard-target variants around stalled tasks.

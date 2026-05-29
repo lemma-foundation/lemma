@@ -6,7 +6,7 @@ import hashlib
 import json
 import os
 import threading
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field, replace
 from typing import Protocol
@@ -18,14 +18,14 @@ from lemma.problems.base import Problem
 from lemma.supply.import_graph import ImportGraph, empty_import_graph
 from lemma.supply.novelty import NoveltyCache, empty_novelty_cache
 from lemma.supply.slot_weight import slot_weight_receipt_for_candidate
-from lemma.supply.source_pricing import source_pricing_metadata
+from lemma.supply.source_pricing import is_lean_decl_name, source_import_status, source_pricing_metadata
 from lemma.supply.triviality_budget import (
     TrivialityBudgetReceipt,
     static_triviality_budget_receipt,
 )
 from lemma.supply.types import TaskCandidate
 
-GATE_VERSION = "lemma-procedural-gates-v6"
+GATE_VERSION = "lemma-procedural-gates-v7"
 _TYPECHECK_GATE_DECL = "LemmaProceduralGate.typecheck_gate"
 _PROP_GATE_DECL = "LemmaProceduralGate.prop_gate"
 _KERNEL_NORMAL_MARKER = "LEMMA_KERNEL_NORMAL_FORM "
@@ -45,6 +45,18 @@ TRIVIALITY_STACK = (
 )
 _BatchGateInput = tuple[int, TaskCandidate]
 _BatchGateRow = tuple[int, TaskCandidate, dict[str, object] | None, VerifyResult, int]
+
+
+@dataclass(frozen=True)
+class _BaselineCheck:
+    triviality_checked: bool
+    baseline_solved: bool
+    baseline_solver: str | None
+    baseline_reason: str
+    source_oracle_checked: bool
+    source_oracle_solved: bool
+    source_oracle_solver: str | None
+    source_import_status: str
 
 
 @dataclass(frozen=True)
@@ -101,6 +113,7 @@ class AssumedProceduralGateRunner:
         priced = candidate.model_copy(update={"metadata": {**candidate.metadata, **pricing, "baseline_solved": False}})
         slot_weight = slot_weight_receipt_for_candidate(priced, import_graph=self.import_graph)
         budget = static_triviality_budget_receipt(1)
+        import_status = _source_import_status(candidate)
         return ProceduralGateVerdict(
             typechecked=True,
             prop_gate_passed=True,
@@ -111,6 +124,10 @@ class AssumedProceduralGateRunner:
             metadata={
                 "gate_runner": "assumed",
                 "triviality_stack": _triviality_stack_names(candidate),
+                "source_oracle_checked": False,
+                "source_oracle_solved": False,
+                "source_oracle_solver": None,
+                "source_import_status": import_status,
                 **pricing,
                 **self.novelty_cache.metadata(),
                 **budget.metadata(),
@@ -178,6 +195,10 @@ class LeanProceduralGateRunner:
                     baseline_solved=False,
                     baseline_solver=None,
                     baseline_reason="not_run",
+                    source_oracle_checked=False,
+                    source_oracle_solved=False,
+                    source_oracle_solver=None,
+                    source_import_status=_source_import_status(candidate),
                     prop_gate_reason="skipped_statement_duplicate",
                     lean_gate_invocations=0,
                 )
@@ -264,9 +285,9 @@ class LeanProceduralGateRunner:
             else "missing_kernel_fingerprint"
         )
         if prop.passed and novelty == "passed":
-            triviality_checked, baseline_solved, baseline_solver, baseline_reason = _triviality_result(prop)
+            baseline = _triviality_result(prop, source_import_status=_source_import_status(candidate))
         else:
-            triviality_checked, baseline_solved, baseline_solver, baseline_reason = False, False, None, "not_run"
+            baseline = _baseline_not_run(_source_import_status(candidate))
         return self._gate_verdict(
             candidate,
             seen_canonical_hashes=seen_canonical_hashes,
@@ -274,10 +295,14 @@ class LeanProceduralGateRunner:
             prop=prop,
             kernel_hash=kernel_hash,
             novelty=novelty,
-            triviality_checked=triviality_checked,
-            baseline_solved=baseline_solved,
-            baseline_solver=baseline_solver,
-            baseline_reason=baseline_reason,
+            triviality_checked=baseline.triviality_checked,
+            baseline_solved=baseline.baseline_solved,
+            baseline_solver=baseline.baseline_solver,
+            baseline_reason=baseline.baseline_reason,
+            source_oracle_checked=baseline.source_oracle_checked,
+            source_oracle_solved=baseline.source_oracle_solved,
+            source_oracle_solver=baseline.source_oracle_solver,
+            source_import_status=baseline.source_import_status,
         )
 
     def _gate_verdict(
@@ -293,6 +318,10 @@ class LeanProceduralGateRunner:
         baseline_solved: bool,
         baseline_solver: str | None,
         baseline_reason: str,
+        source_oracle_checked: bool = False,
+        source_oracle_solved: bool = False,
+        source_oracle_solver: str | None = None,
+        source_import_status: str = "unknown",
         prop_gate_reason: str | None = None,
         lean_gate_invocations: int = 1,
         lean_gate_mode: str = "combined_prop_triviality",
@@ -301,7 +330,14 @@ class LeanProceduralGateRunner:
     ) -> ProceduralGateVerdict:
         _ = seen_canonical_hashes
         _ = lean_gate_batch_seconds
-        metadata = {**candidate.metadata, "baseline_solved": baseline_solved}
+        metadata = {
+            **candidate.metadata,
+            "baseline_solved": baseline_solved,
+            "source_oracle_checked": source_oracle_checked,
+            "source_oracle_solved": source_oracle_solved,
+            "source_oracle_solver": source_oracle_solver,
+            "source_import_status": source_import_status,
+        }
         pricing = source_pricing_metadata(candidate.source_stream, metadata)
         priced = candidate.model_copy(update={"metadata": {**metadata, **pricing}})
         slot_weight = slot_weight_receipt_for_candidate(priced, import_graph=self.import_graph)
@@ -325,6 +361,10 @@ class LeanProceduralGateRunner:
                 "triviality_stack": _triviality_stack_names(candidate),
                 "triviality_reason": baseline_reason,
                 "baseline_solver": baseline_solver,
+                "source_oracle_checked": source_oracle_checked,
+                "source_oracle_solved": source_oracle_solved,
+                "source_oracle_solver": source_oracle_solver,
+                "source_import_status": source_import_status,
                 "lean_gate_mode": lean_gate_mode,
                 "lean_gate_invocations": lean_gate_invocations,
                 **pricing,
@@ -452,6 +492,10 @@ class LeanProceduralGateRunner:
                 baseline_solved=False,
                 baseline_solver=None,
                 baseline_reason="not_run",
+                source_oracle_checked=False,
+                source_oracle_solved=False,
+                source_oracle_solver=None,
+                source_import_status=_source_import_status(candidate),
                 lean_gate_mode="batched_prop_triviality",
                 lean_gate_invocations=1,
                 lean_gate_batch_size=batch_size,
@@ -463,20 +507,19 @@ class LeanProceduralGateRunner:
         typecheck = VerifyResult(passed=typechecked, reason=reason, build_seconds=result.build_seconds)
         kernel_value = str(payload.get("kernel_normal_form") or "")
         kernel_hash = hashlib.sha256(kernel_value.encode("utf-8")).hexdigest() if kernel_value else ""
-        triviality_checked = payload.get("triviality_checked") is True if typechecked else False
-        baseline_solved = payload.get("baseline_solved") is True if typechecked else False
-        if baseline_solved and not kernel_hash:
+        baseline = _baseline_from_payload(
+            payload,
+            typechecked=typechecked,
+            source_import_status=_source_import_status(candidate),
+        )
+        if baseline.baseline_solved and not kernel_hash:
             novelty = "passed"
         elif kernel_hash:
             novelty = _novelty_status(candidate, seen_canonical_hashes, self.novelty_cache, canonical_hash=kernel_hash)
         else:
             novelty = "missing_kernel_fingerprint"
-        if typechecked and (novelty == "passed" or baseline_solved):
-            solver = payload.get("baseline_solver")
-            baseline_solver = solver if isinstance(solver, str) and solver else None
-            baseline_reason = str(payload.get("triviality_reason") or "baseline_failed")
-        else:
-            triviality_checked, baseline_solved, baseline_solver, baseline_reason = False, False, None, "not_run"
+        if not (typechecked and (novelty == "passed" or baseline.baseline_solved)):
+            baseline = _baseline_not_run(_source_import_status(candidate))
         return self._gate_verdict(
             candidate,
             seen_canonical_hashes=seen_canonical_hashes,
@@ -484,10 +527,14 @@ class LeanProceduralGateRunner:
             prop=typecheck,
             kernel_hash=kernel_hash,
             novelty=novelty,
-            triviality_checked=triviality_checked,
-            baseline_solved=baseline_solved,
-            baseline_solver=baseline_solver,
-            baseline_reason=baseline_reason,
+            triviality_checked=baseline.triviality_checked,
+            baseline_solved=baseline.baseline_solved,
+            baseline_solver=baseline.baseline_solver,
+            baseline_reason=baseline.baseline_reason,
+            source_oracle_checked=baseline.source_oracle_checked,
+            source_oracle_solved=baseline.source_oracle_solved,
+            source_oracle_solver=baseline.source_oracle_solver,
+            source_import_status=baseline.source_import_status,
             lean_gate_mode="batched_prop_triviality",
             lean_gate_invocations=1,
             lean_gate_batch_size=batch_size,
@@ -516,6 +563,39 @@ def _combined_imports(groups: Iterable[Iterable[str]]) -> tuple[str, ...]:
             if module not in out:
                 out.append(module)
     return tuple(out)
+
+
+def _source_import_status(candidate: TaskCandidate) -> str:
+    return source_import_status(
+        candidate.imports,
+        candidate.metadata,
+        source_path=candidate.source_ref.path,
+    )
+
+
+def _source_oracle_proofs(candidate: TaskCandidate) -> tuple[tuple[str, str], ...]:
+    source = candidate.metadata.get("source_theorem_name")
+    if not is_lean_decl_name(source):
+        return ()
+    name = str(source).strip()
+    return (
+        ("source_exact", f"by\n  exact {name}"),
+        ("source_simpa", f"by\n  simpa using {name}"),
+        ("source_apply", f"by\n  apply {name}\n  all_goals first | assumption | simp | aesop"),
+    )
+
+
+def _lean_proof_specs(proofs: tuple[tuple[str, str], ...]) -> str:
+    if not proofs:
+        return "[]"
+    return (
+        "["
+        + ", ".join(
+            "{ name := " + _json_string(name) + ", source := " + _json_string(source) + " }"
+            for name, source in proofs
+        )
+        + "]"
+    )
 
 
 def _resolve_lean_workers(settings: LemmaSettings) -> int:
@@ -586,7 +666,7 @@ def _gate_canonical_hash(result: VerifyResult) -> str:
     return _kernel_normal_hash(result) or result.declaration_fingerprints.get(_PROP_GATE_DECL, "")
 
 
-def _triviality_result(result: VerifyResult) -> tuple[bool, bool, str | None, str]:
+def _triviality_result(result: VerifyResult, *, source_import_status: str) -> _BaselineCheck:
     for line in (result.stdout_tail + "\n" + result.stderr_tail).splitlines():
         if not line.startswith(_TRIVIALITY_MARKER):
             continue
@@ -596,14 +676,39 @@ def _triviality_result(result: VerifyResult) -> tuple[bool, bool, str | None, st
             break
         if not isinstance(payload, dict):
             break
-        solver = payload.get("baseline_solver")
-        return (
-            payload.get("checked") is True,
-            payload.get("baseline_solved") is True,
-            solver if isinstance(solver, str) and solver else None,
-            str(payload.get("triviality_reason") or "baseline_failed"),
-        )
-    return False, False, None, "missing_triviality_marker"
+        return _baseline_from_payload(payload, typechecked=True, source_import_status=source_import_status)
+    return _BaselineCheck(False, False, None, "missing_triviality_marker", False, False, None, source_import_status)
+
+
+def _baseline_from_payload(
+    payload: Mapping[str, object],
+    *,
+    typechecked: bool,
+    source_import_status: str,
+) -> _BaselineCheck:
+    if not typechecked:
+        return _baseline_not_run(source_import_status)
+    solver = payload.get("baseline_solver")
+    source_solver = payload.get("source_oracle_solver")
+    source_oracle_solved = payload.get("source_oracle_solved") is True
+    triviality_solved = payload.get("baseline_solved") is True
+    baseline_solver = solver if isinstance(solver, str) and solver else None
+    if source_oracle_solved:
+        baseline_solver = source_solver if isinstance(source_solver, str) and source_solver else "source_oracle"
+    return _BaselineCheck(
+        triviality_checked=payload.get("checked", payload.get("triviality_checked")) is True,
+        baseline_solved=source_oracle_solved or triviality_solved,
+        baseline_solver=baseline_solver,
+        baseline_reason=str(payload.get("triviality_reason") or "baseline_failed"),
+        source_oracle_checked=payload.get("source_oracle_checked") is True,
+        source_oracle_solved=source_oracle_solved,
+        source_oracle_solver=source_solver if isinstance(source_solver, str) and source_solver else None,
+        source_import_status=str(payload.get("source_import_status") or source_import_status),
+    )
+
+
+def _baseline_not_run(source_import_status: str) -> _BaselineCheck:
+    return _BaselineCheck(False, False, None, "not_run", False, False, None, source_import_status)
 
 
 def _batch_gate_groups(
@@ -666,7 +771,9 @@ def _batch_gate_source(candidates: tuple[TaskCandidate, ...]) -> str:
         "  { "
         f"id := {_json_string(str(index))}, "
         f"canonicalSource := {_json_string(candidate.type_expr)}, "
-        f"combinedTrivialitySource := {_json_string(_combined_triviality_source())} "
+        f"combinedTrivialitySource := {_json_string(_combined_triviality_source())}, "
+        f"sourceOracleProofs := {_lean_proof_specs(_source_oracle_proofs(candidate))}, "
+        f"sourceImportStatus := {_json_string(_source_import_status(candidate))} "
         "}"
         for index, candidate in enumerate(candidates)
     ]
@@ -681,10 +788,16 @@ def _batch_gate_source(candidates: tuple[TaskCandidate, ...]) -> str:
             "",
             "namespace LemmaProceduralGate",
             "",
+            "structure ProofSpec where",
+            "  name : String",
+            "  source : String",
+            "",
             "structure CandidateSpec where",
             "  id : String",
             "  canonicalSource : String",
             "  combinedTrivialitySource : String",
+            "  sourceOracleProofs : List ProofSpec",
+            "  sourceImportStatus : String",
             "",
             "def candidateSpecs : List CandidateSpec := [",
             spec_body,
@@ -726,6 +839,15 @@ def _batch_gate_source(candidates: tuple[TaskCandidate, ...]) -> str:
             "    catch _ =>",
             "      pure false",
             "",
+            "def firstSuccessfulProof",
+            "    (typeSource : String)",
+            "    (proofs : List ProofSpec) : Elab.Command.CommandElabM (Option String) := do",
+            "  for proof in proofs do",
+            "    let solved ← proofSourceSucceeds typeSource proof.source",
+            "    if solved then",
+            "      return some proof.name",
+            "  pure none",
+            "",
             "def nullableString : Option String → Json",
             "  | none => Json.null",
             "  | some value => Json.str value",
@@ -765,6 +887,9 @@ def _batch_gate_source(candidates: tuple[TaskCandidate, ...]) -> str:
             "    (trivialityChecked : Bool)",
             "    (baselineSolved : Bool)",
             "    (solver : Option String)",
+            "    (sourceOracleChecked : Bool)",
+            "    (sourceOracleSolved : Bool)",
+            "    (sourceOracleSolver : Option String)",
             "    (reason : String) : IO Unit := do",
             "  let payload := Json.mkObj [",
             "    (\"id\", Json.str spec.id),",
@@ -773,6 +898,10 @@ def _batch_gate_source(candidates: tuple[TaskCandidate, ...]) -> str:
             "    (\"triviality_checked\", Json.bool trivialityChecked),",
             "    (\"baseline_solved\", Json.bool baselineSolved),",
             "    (\"baseline_solver\", nullableString solver),",
+            "    (\"source_oracle_checked\", Json.bool sourceOracleChecked),",
+            "    (\"source_oracle_solved\", Json.bool sourceOracleSolved),",
+            "    (\"source_oracle_solver\", nullableString sourceOracleSolver),",
+            "    (\"source_import_status\", Json.str spec.sourceImportStatus),",
             "    (\"triviality_reason\", Json.str reason),",
             "    (\"reason\", Json.str reason)",
             "  ]",
@@ -787,15 +916,26 @@ def _batch_gate_source(candidates: tuple[TaskCandidate, ...]) -> str:
             "      if containsSyntheticHole expr then",
             "        throwError \"gate type contains unresolved identifiers\"",
             "      pure ()",
+            "    let sourceOracleSolver ← firstSuccessfulProof spec.canonicalSource spec.sourceOracleProofs",
+            "    let sourceOracleSolved := sourceOracleSolver.isSome",
             "    let baselineSolved ← proofSourceSucceeds spec.canonicalSource spec.combinedTrivialitySource",
             "    let solver : Option String :=",
-            "      if baselineSolved then",
+            "      if sourceOracleSolved then",
+            "        sourceOracleSolver",
+            "      else if baselineSolved then",
             "        some \"triviality_stack\"",
             "      else",
             "        none",
-            "    let reason := if baselineSolved then \"baseline_solved\" else \"baseline_failed\"",
-            "    if baselineSolved then",
-            "      emitPayload spec true \"\" true baselineSolved solver reason",
+            "    let solved := sourceOracleSolved || baselineSolved",
+            "    let reason : String :=",
+            "      if sourceOracleSolved then",
+            "        \"source_oracle_solved\"",
+            "      else if baselineSolved then",
+            "        \"baseline_solved\"",
+            "      else",
+            "        \"baseline_failed\"",
+            "    if solved then",
+            "      emitPayload spec true \"\" true solved solver true sourceOracleSolved sourceOracleSolver reason",
             "    else",
             "      let kernelNormal ← Elab.Command.runTermElabM fun _ => do",
             "        let expr ← Elab.Term.elabType typeStx.raw",
@@ -804,9 +944,10 @@ def _batch_gate_source(candidates: tuple[TaskCandidate, ...]) -> str:
             "          throwError \"gate type contains unresolved identifiers\"",
             "        let normal ← Meta.reduceAll expr",
             "        pure (exprKey normal)",
-            "      emitPayload spec true kernelNormal true baselineSolved solver reason",
+            "      emitPayload spec true kernelNormal true solved solver true",
+            "        sourceOracleSolved sourceOracleSolver reason",
             "  catch _ =>",
-            "    emitPayload spec false \"\" false false none \"compile_error\"",
+            "    emitPayload spec false \"\" false false none false false none \"compile_error\"",
             "",
             "def emit_gate_results : Elab.Command.CommandElabM Unit := do",
             "  for spec in candidateSpecs do",
@@ -833,6 +974,13 @@ def _prop_gate_source(candidate: TaskCandidate) -> str:
             "",
             f"def canonicalSource : String := {_json_string(candidate.type_expr)}",
             f"def combinedTrivialitySource : String := {_json_string(_combined_triviality_source())}",
+            f"def sourceImportStatus : String := {_json_string(_source_import_status(candidate))}",
+            "",
+            "structure ProofSpec where",
+            "  name : String",
+            "  source : String",
+            "",
+            f"def sourceOracleProofs : List ProofSpec := {_lean_proof_specs(_source_oracle_proofs(candidate))}",
             "",
             f"def typecheck_gate : ({candidate.type_expr}) := by",
             "  sorry",
@@ -873,22 +1021,44 @@ def _prop_gate_source(candidate: TaskCandidate) -> str:
             "    catch _ =>",
             "      pure false",
             "",
+            "def firstSuccessfulProof (proofs : List ProofSpec) : Elab.Command.CommandElabM (Option String) := do",
+            "  for proof in proofs do",
+            "    let solved ← proofSourceSucceeds proof.source",
+            "    if solved then",
+            "      return some proof.name",
+            "  pure none",
+            "",
             "def nullableString : Option String → Json",
             "  | none => Json.null",
             "  | some value => Json.str value",
             "",
             "def emit_triviality : Elab.Command.CommandElabM Unit := do",
+            "  let sourceOracleSolver ← firstSuccessfulProof sourceOracleProofs",
+            "  let sourceOracleSolved := sourceOracleSolver.isSome",
             "  let baselineSolved ← proofSourceSucceeds combinedTrivialitySource",
             "  let solver : Option String :=",
-            "    if baselineSolved then",
+            "    if sourceOracleSolved then",
+            "      sourceOracleSolver",
+            "    else if baselineSolved then",
             "      some \"triviality_stack\"",
             "    else",
             "      none",
-            "  let reason := if baselineSolved then \"baseline_solved\" else \"baseline_failed\"",
+            "  let solved := sourceOracleSolved || baselineSolved",
+            "  let reason : String :=",
+            "    if sourceOracleSolved then",
+            "      \"source_oracle_solved\"",
+            "    else if baselineSolved then",
+            "      \"baseline_solved\"",
+            "    else",
+            "      \"baseline_failed\"",
             "  let payload := Json.mkObj [",
             "    (\"checked\", Json.bool true),",
-            "    (\"baseline_solved\", Json.bool baselineSolved),",
+            "    (\"baseline_solved\", Json.bool solved),",
             "    (\"baseline_solver\", nullableString solver),",
+            "    (\"source_oracle_checked\", Json.bool true),",
+            "    (\"source_oracle_solved\", Json.bool sourceOracleSolved),",
+            "    (\"source_oracle_solver\", nullableString sourceOracleSolver),",
+            "    (\"source_import_status\", Json.str sourceImportStatus),",
             "    (\"triviality_reason\", Json.str reason)",
             "  ]",
             f"  IO.println <| {_json_string(_TRIVIALITY_MARKER)} ++ payload.compress",

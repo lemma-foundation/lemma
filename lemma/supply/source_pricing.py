@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from enum import StrEnum
 
 SOURCE_PRICING_VERSION = 1
@@ -15,6 +15,7 @@ _SOURCE_DERIVED_STREAMS = frozenset({"procedural", "mathlib_snapshot", "lemma_su
 
 class SourceReuseClass(StrEnum):
     DIRECT_SOURCE_WRAPPER = "direct_source_wrapper"
+    SOURCE_ORACLE_SOLVED = "source_oracle_solved"
     SOURCE_BASELINE_SOLVED = "source_baseline_solved"
     SOURCE_DERIVED_SURVIVED = "source_derived_survived"
     NON_SOURCE = "non_source"
@@ -95,6 +96,8 @@ def source_pricing_metadata(source_stream: str, metadata: Mapping[str, object]) 
 def source_reuse_class(source_stream: str, metadata: Mapping[str, object]) -> SourceReuseClass:
     if reusable_source_theorem_name(metadata) is not None:
         return SourceReuseClass.DIRECT_SOURCE_WRAPPER
+    if metadata.get("source_oracle_solved") is True and _is_source_derived(source_stream, metadata):
+        return SourceReuseClass.SOURCE_ORACLE_SOLVED
     if metadata.get("baseline_solved") is True and _is_source_derived(source_stream, metadata):
         return SourceReuseClass.SOURCE_BASELINE_SOLVED
     explicit = parse_source_reuse_class(metadata.get("source_reuse_class") or metadata.get("source_pricing_class"))
@@ -108,7 +111,7 @@ def source_reuse_class(source_stream: str, metadata: Mapping[str, object]) -> So
 def task_pool_for_source_reuse(reuse_class: SourceReuseClass, metadata: Mapping[str, object]) -> TaskPool:
     if reuse_class is SourceReuseClass.DIRECT_SOURCE_WRAPPER:
         return TaskPool.CALIBRATION
-    if reuse_class is SourceReuseClass.SOURCE_BASELINE_SOLVED:
+    if reuse_class in {SourceReuseClass.SOURCE_ORACLE_SOLVED, SourceReuseClass.SOURCE_BASELINE_SOLVED}:
         return TaskPool.BOOTSTRAP
     explicit = parse_task_pool(metadata.get("task_pool"))
     if explicit is not TaskPool.UNKNOWN:
@@ -149,6 +152,26 @@ def depth_multiplier_micros(queue_depth: int, task_pool: TaskPool) -> int:
     return max(1_000_000, int(round(min(raw, cap) * 1_000_000)))
 
 
+def is_source_derived(source_stream: str, metadata: Mapping[str, object]) -> bool:
+    return _is_source_derived(source_stream, metadata)
+
+
+def source_import_status(
+    imports: Sequence[str],
+    metadata: Mapping[str, object],
+    *,
+    source_path: str | None = None,
+) -> str:
+    if not is_lean_decl_name(metadata.get("source_theorem_name")):
+        return "no_source_theorem"
+    source_module = _source_module_from_path(source_path)
+    if any(module.strip() == "Mathlib" for module in imports):
+        return "source_theorem_available"
+    if source_module is None:
+        return "unknown"
+    return "source_theorem_available" if source_module in imports else "source_theorem_unavailable"
+
+
 def _mutation_chain(metadata: Mapping[str, object]) -> tuple[Mapping[str, object], ...]:
     chain = metadata.get("mutation_chain")
     if not isinstance(chain, list):
@@ -163,3 +186,15 @@ def _is_source_derived(source_stream: str, metadata: Mapping[str, object]) -> bo
         or "source_task_id" in metadata
         or "source_target_sha256" in metadata
     )
+
+
+def _source_module_from_path(source_path: str | None) -> str | None:
+    if source_path is None:
+        return None
+    text = source_path.strip()
+    if not text.endswith(".lean") or text.startswith("/") or "\\" in text:
+        return None
+    parts = text.removesuffix(".lean").split("/")
+    if not parts or any(part in {"", ".", ".."} for part in parts):
+        return None
+    return ".".join(parts)

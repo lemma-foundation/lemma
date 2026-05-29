@@ -134,6 +134,10 @@ def _procedural_metadata(
         "triviality_stack": ["pytest"],
         "triviality_reason": "baseline_failed",
         "baseline_solver": None,
+        "source_oracle_checked": True,
+        "source_oracle_solved": False,
+        "source_oracle_solver": None,
+        "source_import_status": "source_theorem_unavailable",
         **novelty_cache.metadata(),
         **triviality_budget.metadata(),
     }
@@ -647,6 +651,34 @@ def test_production_mode_rejects_source_wrapper_task_pool() -> None:
     assert wrapper.metadata["task_pool"] == "calibration"
     assert wrapper.metadata["slot_weight_inputs"]["task_pool"] == "calibration"
     assert production_supply_rejection_reason(wrapper) == "task_pool:calibration"
+
+
+def test_production_mode_rejects_source_oracle_solved_tasks() -> None:
+    task = _production_task()
+    solved = task.model_copy(
+        update={
+            "metadata": {
+                **task.metadata,
+                "source_oracle_checked": True,
+                "source_oracle_solved": True,
+                "source_oracle_solver": "source_simpa",
+            }
+        }
+    )
+    solved = solved.model_copy(
+        update={
+            "metadata": {
+                **solved.metadata,
+                **slot_weight_receipt_for_task(solved, import_graph=_import_graph()).metadata(),
+            }
+        }
+    )
+    solved = solved.model_copy(
+        update={"metadata": {**solved.metadata, "gate_receipt_sha256": procedural_gate_receipt_sha256(solved)}}
+    )
+
+    assert solved.metadata["task_pool"] == "bootstrap"
+    assert production_supply_rejection_reason(solved) == "source_oracle_solved"
 
 
 def test_production_validator_recomputes_slot_weights_from_public_import_graph(tmp_path) -> None:  # noqa: ANN001

@@ -105,7 +105,7 @@ Plain difficulty rules:
 - The validator does not restrict production source rows to lightweight Data/Logic topics; any source row that supports the public depth-2 mutation path and passes gates can enter.
 - Active ordering interleaves frontier and foundation levels, then balances source families inside each level.
 - Slot weights use a capped `sqrt(queue_depth + 1)` depth prior, before normalization across the active set.
-- Source-derived tasks are stamped with `source_reuse_class` and `task_pool`; a source theorem may seed a task, but if it is an easy proof witness the task is calibration/bootstrap, not serious paid frontier work.
+- Source-derived tasks are stamped with `source_reuse_class`, `source_oracle_*`, `source_import_status`, and `task_pool`; a source theorem may seed a task, but if it is an easy `exact`, `simpa`, or `apply` proof witness the task is calibration/bootstrap, not serious paid frontier work.
 - The generator targets at least `LEMMA_ACTIVE_K`; `LEMMA_PROCEDURAL_CANDIDATE_COUNT` can ask for a larger cache, but it cannot shrink the paid active set.
 - Generation gets at most 50 attempts per target task. If it cannot fill the target count, it fails closed instead of filling slots with weaker tasks.
 - If miners solve enough slots, the next public retarget row can raise `frontier_depth`. If no slots are solved, frontier advancement stops and the system asks for variants.

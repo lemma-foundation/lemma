@@ -19,7 +19,7 @@ from lemma.supply.operator_bundle import (
 )
 from lemma.supply.slot_weight import SLOT_WEIGHT_VERSION, slot_weight_receipt_for_task
 from lemma.supply.source_pool import SOURCE_POOL_RECEIPT_VERSION, SOURCE_SAMPLING_VERSION, source_pool_receipt_sha256
-from lemma.supply.source_pricing import TaskPool, parse_task_pool
+from lemma.supply.source_pricing import TaskPool, is_source_derived, parse_task_pool
 from lemma.supply.triviality_budget import TRIVIALITY_BUDGET_VERSION
 from lemma.task_activation import activation_status_for, task_reward_eligibility
 from lemma.tasks import LemmaTask, TaskRegistry
@@ -108,6 +108,11 @@ def production_supply_rejection_reason(task: LemmaTask) -> str:
         return "triviality_retarget_inputs"
     if retarget_inputs.get("target_tempo") != metadata.get("tempo"):
         return "triviality_retarget_inputs"
+    if is_source_derived(task.source_stream, metadata):
+        if metadata.get("source_oracle_checked") is not True:
+            return "source_oracle"
+        if metadata.get("source_oracle_solved") is True:
+            return "source_oracle_solved"
     if metadata.get("baseline_solved") is True:
         return "baseline_solved"
     task_pool = parse_task_pool(metadata.get("task_pool"))
@@ -166,6 +171,10 @@ def _procedural_gate_receipt_sha256(task: LemmaTask, budget_key: str) -> str:
         "triviality_reason": metadata.get("triviality_reason"),
         "baseline_solved": metadata.get("baseline_solved"),
         "baseline_solver": metadata.get("baseline_solver"),
+        "source_oracle_checked": metadata.get("source_oracle_checked"),
+        "source_oracle_solved": metadata.get("source_oracle_solved"),
+        "source_oracle_solver": metadata.get("source_oracle_solver"),
+        "source_import_status": metadata.get("source_import_status"),
         "novelty_status": metadata.get("novelty_status"),
         "novelty_cache_version": metadata.get("novelty_cache_version"),
         "novelty_cache_entries": metadata.get("novelty_cache_entries"),

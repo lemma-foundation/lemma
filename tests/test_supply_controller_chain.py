@@ -273,6 +273,10 @@ def test_procedural_registry_requires_depth_two_metadata() -> None:
         "triviality_stack": ["pytest"],
         "triviality_reason": "baseline_failed",
         "baseline_solver": None,
+        "source_oracle_checked": True,
+        "source_oracle_solved": False,
+        "source_oracle_solver": None,
+        "source_import_status": "source_theorem_unavailable",
         **novelty_cache.metadata(),
         **triviality_budget.metadata(),
     }
