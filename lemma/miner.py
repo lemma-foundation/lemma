@@ -215,7 +215,7 @@ def _source_theorem_exact(task: LemmaTask, source_theorem: str) -> str:
             exact = _flush_symm(exact, pending_symm)
             pending_symm = False
             peer = params.get("peer_theorem_name")
-            if is_lean_decl_name(peer):
+            if isinstance(peer, str) and is_lean_decl_name(peer):
                 exact = f"And.intro ({exact}) {peer.strip()}"
         elif params.get("rule") == "conjoin_self":
             exact = _flush_symm(exact, pending_symm)
