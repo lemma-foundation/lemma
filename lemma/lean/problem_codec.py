@@ -23,7 +23,7 @@ def problem_to_payload(problem: Problem) -> dict[str, Any]:
 
 def problem_from_payload(data: dict[str, Any]) -> Problem:
     """Restore a Problem from :func:`problem_to_payload`."""
-    imps = data.get("imports") or ["Mathlib"]
+    imps = data.get("imports", ["Mathlib"])
     if not isinstance(imps, list):
         raise ValueError("imports must be a list of strings")
     extra = data.get("extra")

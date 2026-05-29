@@ -7,6 +7,7 @@ import json
 import httpx
 import pytest
 from lemma.common.config import LemmaSettings
+from lemma.lean.problem_codec import problem_from_payload, problem_to_payload
 from lemma.lean.verify_runner import run_lean_verify
 from lemma.problems.base import Problem
 
@@ -62,6 +63,23 @@ def test_remote_verify_http_success(monkeypatch: pytest.MonkeyPatch, tiny_proble
     vr = run_lean_verify(s, verify_timeout_s=120, problem=tiny_problem, proof_script=proof)
     assert vr.passed is True
     assert vr.reason == "ok"
+
+
+def test_problem_codec_preserves_explicit_empty_imports() -> None:
+    problem = Problem(
+        id="empty-imports",
+        theorem_name="p",
+        type_expr="True",
+        split="procedural_gate",
+        lean_toolchain="leanprover/lean4:v4.22.0",
+        mathlib_rev="abc",
+        imports=(),
+        extra={},
+    )
+
+    restored = problem_from_payload(problem_to_payload(problem))
+
+    assert restored.imports == ()
 
 
 def test_remote_verify_transport_error(monkeypatch: pytest.MonkeyPatch, tiny_problem: Problem) -> None:

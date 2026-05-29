@@ -1083,7 +1083,7 @@ def test_depth2_generation_rejects_source_wrappers_before_lean() -> None:
         for index in range(100)
     )
 
-    with pytest.raises(ValueError, match="procedural gates accepted 0 candidates, needed 1") as exc_info:
+    with pytest.raises(ValueError, match="source pool has no paid depth-2 candidates") as exc_info:
         generate_depth2_candidates(
             sources,
             generation_seed="epoch-a",
@@ -1094,7 +1094,7 @@ def test_depth2_generation_rejects_source_wrappers_before_lean() -> None:
             generation_workers=2,
             mutation_engine=DirectWrapperMutationEngine(),
         )
-    assert "prelean:task_pool:calibration" in str(exc_info.value)
+    assert "import graph leaves all 100 eligible source theorems importable" in str(exc_info.value)
 
 
 def test_depth2_generation_current_chain_reaches_serious_lean_gate_with_source_module_hidden() -> None:

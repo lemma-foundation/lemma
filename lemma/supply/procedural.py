@@ -375,8 +375,24 @@ def generate_depth2_candidates(
         raise ValueError("count must be positive")
     if not sources:
         raise ValueError("source pool must not be empty")
-    eligible_sources = _eligible_depth2_sources(sources, max_queue_depth=max_queue_depth)
+    resolved_gate_runner = gate_runner or AssumedProceduralGateRunner()
+    require_serious_candidates = bool(getattr(resolved_gate_runner, "requires_serious_candidates", False))
+    eligible_sources = _eligible_depth2_sources(
+        sources,
+        max_queue_depth=max_queue_depth,
+        import_graph=import_graph,
+        require_source_unavailable=require_serious_candidates,
+    )
     if not eligible_sources:
+        if require_serious_candidates:
+            covered_count = len(
+                _eligible_depth2_sources(sources, max_queue_depth=max_queue_depth)
+            )
+            raise ValueError(
+                "source pool has no paid depth-2 candidates at "
+                f"max_queue_depth={max_queue_depth}; import graph leaves all "
+                f"{covered_count} eligible source theorems importable"
+            )
         raise ValueError(f"source pool has no candidates at max_queue_depth={max_queue_depth}")
 
     pool_hash = source_pool_hash(sources)
@@ -407,8 +423,8 @@ def generate_depth2_candidates(
         tempo=tempo,
         import_graph=import_graph,
         mutation_engine=mutation_engine or PreviewMutationEngine(),
-        gate_runner=gate_runner or AssumedProceduralGateRunner(),
-        require_serious_candidates=bool(getattr(gate_runner, "requires_serious_candidates", False)),
+        gate_runner=resolved_gate_runner,
+        require_serious_candidates=require_serious_candidates,
     )
     workers = _resolve_generation_workers(generation_workers)
     attempt_limit = count * 50
@@ -1087,6 +1103,8 @@ def _eligible_depth2_sources(
     sources: tuple[TaskCandidate, ...],
     *,
     max_queue_depth: int | None,
+    import_graph: ImportGraph | None = None,
+    require_source_unavailable: bool = False,
 ) -> tuple[TaskCandidate, ...]:
     return tuple(
         source
@@ -1094,6 +1112,7 @@ def _eligible_depth2_sources(
         if (max_queue_depth is None or source.queue_depth <= max_queue_depth)
         and _supports_depth2_chain(source.type_expr)
         and _not_toy_basic_source(source)
+        and (not require_source_unavailable or _source_theorem_unavailable_for_source(source, import_graph))
     )
 
 
@@ -1125,6 +1144,16 @@ def _supports_specialize(type_expr: str) -> bool:
 
 def _not_toy_basic_source(source: TaskCandidate) -> bool:
     return str(source.source_ref.path or "").strip() not in _TOY_BASIC_SOURCE_PATHS
+
+
+def _source_theorem_unavailable_for_source(source: TaskCandidate, import_graph: ImportGraph | None) -> bool:
+    imports = _challenge_imports_for_source(source, import_graph)
+    status = source_import_status(
+        imports,
+        {"source_theorem_name": source.theorem_name},
+        source_path=source.source_ref.path,
+    )
+    return status == "source_theorem_unavailable"
 
 
 def _peer_source(
