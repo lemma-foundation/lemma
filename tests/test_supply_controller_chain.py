@@ -311,7 +311,7 @@ def test_procedural_registry_requires_depth_two_metadata() -> None:
 
     assert [task.id for task in build.tasks] == [good.id]
     assert build.tasks[0].source_stream == "procedural"
-    assert build.tasks[0].metadata["slot_weight_version"] == "lemma-slot-weight-v4"
+    assert build.tasks[0].metadata["slot_weight_version"] == "lemma-slot-weight-v5"
     assert build.rejected[0].reason == "mutation_depth"
 
 

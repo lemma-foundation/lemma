@@ -11,7 +11,7 @@ The reward is attached to verified work, not prose, claimed effort, or model ide
 ```text
 credit(miner) = count(rank_0_unique_verified_proof_per_task_by_miner)
 score(miner) = sum(winning_slot_weight_by_miner) / sum(active_slot_weights)
-slot_weight(task) includes 2^queue_depth
+slot_weight(task) includes a capped sqrt(queue_depth + 1) depth prior
 weight(miner) = score(miner)
 unearned_share = 1 - sum(miner_weights)
 ```
@@ -37,6 +37,8 @@ The previous-weight fallback rule is removed from scoring.
 - In production mode, full reward requires `proof_identity_strength: strong`.
 - Each task pays at most one miner per validator epoch; committed reveals rank by commit block before local receipt time.
 - Slot weights are deterministic registry values, not subjective validator scores.
+- `queue_depth` is a weak priority signal, not a calibrated difficulty ratio.
+- Source-derived tasks enter the serious paid pool only after cheap source-reuse checks fail. If the source theorem is a direct answer key, the task is calibration/bootstrap work, not frontier work.
 - Valid alternates become corpus rows with `rewarded: false`.
 - Duplicate proof identities do not create extra rows or credit.
 

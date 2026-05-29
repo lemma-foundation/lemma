@@ -29,6 +29,7 @@ from lemma.supply.operator_bundle import (
     procedural_operator_bundle_hash,
 )
 from lemma.supply.source_pool import source_pool_receipt, source_pool_receipt_sha256
+from lemma.supply.source_pricing import source_pricing_metadata
 from lemma.supply.types import TaskCandidate
 from lemma.task_supply import depth_spread_order, deterministic_queue
 from lemma.tasks import LemmaTask, SourceRef
@@ -995,6 +996,7 @@ def _candidate_from_source(
     ):
         if key in source.metadata:
             metadata[key] = source.metadata[key]
+    metadata.update(source_pricing_metadata("procedural", metadata))
     return TaskCandidate(
         id=f"lemma.procedural.{canonical_hash[:16]}",
         title=source.title or source.theorem_name,

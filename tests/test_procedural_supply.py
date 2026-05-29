@@ -194,6 +194,14 @@ def _test_valid_mutation(source, *, step: int, engine: str = MUTATION_ENGINE) ->
     )
 
 
+class _SeriousTestMutationEngine:
+    def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001, ARG002
+        mutation = _test_valid_mutation(source, step=step)
+        if step == 0:
+            return MutationResult(mutation.type_expr, {**mutation.params, "rule": "requires_bridge"})
+        return mutation
+
+
 def test_materialize_workspace_writes_lean_heartbeat_budget(tmp_path: Path) -> None:
     problem = Problem(
         id="heartbeat",
@@ -1779,18 +1787,20 @@ def test_procedural_slot_weight_receipt_uses_dependency_metadata(tmp_path: Path)
     )[0]
     inputs = candidate.metadata["slot_weight_inputs"]
 
-    assert candidate.metadata["slot_weight_version"] == "lemma-slot-weight-v4"
+    assert candidate.metadata["slot_weight_version"] == "lemma-slot-weight-v5"
     assert inputs["queue_depth"] == 2
     assert inputs["direct_dependency_count"] == 0
     assert inputs["dependency_depth"] == 2
     assert inputs["import_breadth"] == 2
-    assert candidate.metadata["slot_weight_basis_points"] > 4000
+    assert inputs["source_reuse_class"] == "direct_source_wrapper"
+    assert inputs["task_pool"] == "calibration"
+    assert inputs["depth_multiplier_micros"] == 1_000_000
 
 
-def test_slot_weight_doubles_per_queue_depth() -> None:
+def test_slot_weight_uses_smoothed_depth_multiplier() -> None:
     shallow = fixture_candidate(
         slug="weight_shallow",
-        source_stream="mathlib_snapshot",
+        source_stream="human_curated",
         source_name="snapshot",
         theorem_name="Weight.shallow",
         type_expr="∀ n m : Nat, n = m",
@@ -1802,7 +1812,39 @@ def test_slot_weight_doubles_per_queue_depth() -> None:
     shallow_weight = slot_weight_receipt_for_candidate(shallow)
     deep_weight = slot_weight_receipt_for_candidate(deep)
 
-    assert deep_weight.basis_points == shallow_weight.basis_points * 8
+    assert shallow_weight.inputs["task_pool"] == "serious_paid"
+    assert deep_weight.inputs["depth_multiplier_micros"] == 2_000_000
+    assert deep_weight.basis_points == shallow_weight.basis_points * 2
+
+
+def test_source_wrapper_tasks_are_calibration_weighted() -> None:
+    task = fixture_candidate(
+        slug="weight_source_wrapper",
+        source_stream="procedural",
+        source_name="snapshot",
+        theorem_name="Weight.source",
+        type_expr="∀ n m : Nat, n = m",
+        queue_depth=12,
+        metadata={
+            "source_theorem_name": "Weight.source",
+            "mutation_chain": [
+                {
+                    "operator": "symm",
+                    "params": {"rule": "reverse_relation", "relation": "="},
+                },
+                {
+                    "operator": "specialize",
+                    "params": {"binder": "n", "binder_type": "Nat", "value": "3"},
+                },
+            ],
+        },
+    )
+
+    weight = slot_weight_receipt_for_candidate(task)
+
+    assert weight.inputs["source_reuse_class"] == "direct_source_wrapper"
+    assert weight.inputs["task_pool"] == "calibration"
+    assert weight.inputs["depth_multiplier_micros"] == 1_000_000
 
 
 def test_procedural_slot_weight_receipt_uses_public_import_graph(tmp_path: Path) -> None:
@@ -1822,7 +1864,7 @@ def test_procedural_slot_weight_receipt_uses_public_import_graph(tmp_path: Path)
     )[0]
     inputs = candidate.metadata["slot_weight_inputs"]
 
-    assert candidate.metadata["slot_weight_version"] == "lemma-slot-weight-v4"
+    assert candidate.metadata["slot_weight_version"] == "lemma-slot-weight-v5"
     assert inputs["queue_depth"] == candidate.queue_depth
     assert inputs["import_graph_resolved"] is True
     assert inputs["import_graph_sha256"] == import_graph.sha256
@@ -1855,6 +1897,7 @@ def test_procedural_supply_mode_rebuilds_active_registry_from_public_inputs(
         sort_keys=True,
     )
     monkeypatch.setattr("lemma.validator.resolve_active_epoch_randomness", lambda settings, *, tempo: randomness)
+    monkeypatch.setattr("lemma.supply.mutation.StructuralMutationEngine", _SeriousTestMutationEngine)
     monkeypatch.setattr("lemma.supply.gates.LeanProceduralGateRunner.__call__", _fake_lean_gate)
     monkeypatch.setattr("lemma.supply.gates.LeanProceduralGateRunner.batch", _fake_lean_gate_batch)
     settings = LemmaSettings(
@@ -2596,6 +2639,7 @@ def test_procedural_source_pool_includes_prior_accepted_corpus(
         "lemma.validator.resolve_active_epoch_randomness",
         lambda settings, *, tempo: json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
     )
+    monkeypatch.setattr("lemma.supply.mutation.StructuralMutationEngine", _SeriousTestMutationEngine)
     monkeypatch.setattr("lemma.supply.gates.LeanProceduralGateRunner.__call__", _fake_lean_gate)
     monkeypatch.setattr("lemma.supply.gates.LeanProceduralGateRunner.batch", _fake_lean_gate_batch)
     settings = LemmaSettings(

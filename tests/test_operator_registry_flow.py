@@ -23,7 +23,9 @@ from lemma.supply.controller import CurriculumTempoRecord, append_curriculum_rec
 from lemma.supply.gates import ProceduralGateVerdict
 from lemma.supply.import_graph import ImportGraphRow, read_import_graph
 from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
+from lemma.supply.mutation import MutationResult
 from lemma.supply.novelty import novelty_cache_from_hashes
+from lemma.supply.operator_bundle import MUTATION_ENGINE
 from lemma.supply.procedural import procedural_operator_bundle_hash, source_pool_hash
 from lemma.supply.slot_weight import slot_weight_receipt_for_candidate
 from lemma.supply.triviality_budget import TrivialityRetargetConfig, triviality_budget_receipt
@@ -91,6 +93,21 @@ def _fake_lean_gate_batch(self, candidates, *, seen_canonical_hashes) -> tuple[P
     return tuple(
         _fake_lean_gate(self, candidate, seen_canonical_hashes=seen_canonical_hashes) for candidate in candidates
     )
+
+
+class _SeriousTestMutationEngine:
+    def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001, ARG002
+        suffix = source.theorem_name.rsplit("_", 1)[-1]
+        value = int(suffix) + 1 if suffix.isdigit() else 1
+        if step == 0:
+            return MutationResult(
+                "∀ n m : Nat, m = n",
+                {"rule": "requires_bridge", "relation": "=", "engine": MUTATION_ENGINE},
+            )
+        return MutationResult(
+            f"∀ m : Nat, ({value} : Nat) = m",
+            {"binder": "n", "binder_type": "Nat", "value": str(value), "engine": MUTATION_ENGINE},
+        )
 
 
 def test_operator_registry_flow_smoke(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -347,6 +364,7 @@ def test_production_like_procedural_submission_smoke(monkeypatch: pytest.MonkeyP
         "lemma.validator.resolve_active_epoch_randomness",
         lambda settings, *, tempo: active_randomness,
     )
+    monkeypatch.setattr("lemma.supply.mutation.StructuralMutationEngine", _SeriousTestMutationEngine)
     monkeypatch.setattr("lemma.supply.gates.LeanProceduralGateRunner.__call__", _fake_lean_gate)
     monkeypatch.setattr("lemma.supply.gates.LeanProceduralGateRunner.batch", _fake_lean_gate_batch)
     source_hash = source_pool_hash(mathlib_candidates_from_jsonl(snapshot_path))

@@ -629,6 +629,26 @@ def test_production_mode_rejects_tampered_slot_weight_receipt() -> None:
     assert production_supply_rejection_reason(tampered) == "slot_weight_basis_points"
 
 
+def test_production_mode_rejects_source_wrapper_task_pool() -> None:
+    task = _production_task()
+    wrapper = task.model_copy(update={"metadata": {**task.metadata, "source_theorem_name": "test_true"}})
+    wrapper = wrapper.model_copy(
+        update={
+            "metadata": {
+                **wrapper.metadata,
+                **slot_weight_receipt_for_task(wrapper, import_graph=_import_graph()).metadata(),
+            }
+        }
+    )
+    wrapper = wrapper.model_copy(
+        update={"metadata": {**wrapper.metadata, "gate_receipt_sha256": procedural_gate_receipt_sha256(wrapper)}}
+    )
+
+    assert wrapper.metadata["task_pool"] == "calibration"
+    assert wrapper.metadata["slot_weight_inputs"]["task_pool"] == "calibration"
+    assert production_supply_rejection_reason(wrapper) == "task_pool:calibration"
+
+
 def test_production_validator_recomputes_slot_weights_from_public_import_graph(tmp_path) -> None:  # noqa: ANN001
     import_graph_path = tmp_path / "import-graph.jsonl"
     _write_import_graph(import_graph_path)

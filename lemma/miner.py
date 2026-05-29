@@ -17,6 +17,7 @@ from lemma.common.config import LemmaSettings
 from lemma.lean.sandbox import VerifyResult
 from lemma.store import append_jsonl
 from lemma.submissions import LemmaSubmission, build_submission, sign_submission
+from lemma.supply.source_pricing import is_lean_decl_name, reusable_source_theorem_name, source_specialize_value
 from lemma.task_supply import eligible_tasks
 from lemma.tasks import LemmaTask, TaskRegistry
 from lemma.validator import active_tasks_for_validation, current_active_tempo, task_registry_for_validation
@@ -120,46 +121,11 @@ def _normalize_prover_result(task: LemmaTask, proof: ProverResult) -> ProverResu
     return proof.model_copy(update={"proof_script": script})
 
 
-_LEAN_DECL_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_']*(?:\.[A-Za-z_][A-Za-z0-9_']*)*")
 _TRUE_ARROW_PREFIX_RE = re.compile(r"^True\s*→\s*")
 
 
-def _source_theorem_name(task: LemmaTask) -> str | None:
-    name = task.metadata.get("source_theorem_name")
-    if not isinstance(name, str):
-        return None
-    name = name.strip()
-    return name if _LEAN_DECL_RE.fullmatch(name) else None
-
-
 def _reusable_source_theorem_name(task: LemmaTask) -> str | None:
-    name = _source_theorem_name(task)
-    return name if name is not None and _source_theorem_is_direct_proof(task) else None
-
-
-def _source_theorem_is_direct_proof(task: LemmaTask) -> bool:
-    for step in task.metadata.get("mutation_chain", ()):
-        if not isinstance(step, dict):
-            return False
-        params = step.get("params")
-        if not isinstance(params, dict):
-            return False
-        if step.get("operator") == "substitute-type" and params.get("fallback") != "no_supported_type_occurrence":
-            return False
-        if params.get("target") == "fresh_prop_hypothesis" and params.get("binder_type") == "Prop":
-            continue
-        if step.get("operator") == "specialize" and _specialize_value(params) is not None:
-            continue
-        if params.get("fallback") in {"true_premise", "no_supported_type_occurrence"}:
-            continue
-        if params.get("rule") == "reverse_relation" and params.get("relation") in {"=", "↔"}:
-            continue
-        if params.get("mode") == "peer_premise":
-            continue
-        if params.get("rule") in {"conjoin_peer_conclusion", "conjoin_self", "false_disjunct"}:
-            continue
-        return False
-    return True
+    return reusable_source_theorem_name(task.metadata)
 
 
 def _source_theorem_wrapper_prover(task: LemmaTask) -> ProverResult | None:
@@ -243,13 +209,13 @@ def _source_theorem_exact(task: LemmaTask, source_theorem: str) -> str:
             exact = f"(fun _ => {exact})"
         elif params.get("rule") == "reverse_relation" and params.get("relation") in {"=", "↔"}:
             pending_symm = not pending_symm
-        elif step.get("operator") == "specialize" and (value := _specialize_value(params)) is not None:
+        elif step.get("operator") == "specialize" and (value := source_specialize_value(params)) is not None:
             exact = f"({exact} {value})"
         elif params.get("rule") == "conjoin_peer_conclusion":
             exact = _flush_symm(exact, pending_symm)
             pending_symm = False
             peer = params.get("peer_theorem_name")
-            if isinstance(peer, str) and _LEAN_DECL_RE.fullmatch(peer.strip()):
+            if is_lean_decl_name(peer):
                 exact = f"And.intro ({exact}) {peer.strip()}"
         elif params.get("rule") == "conjoin_self":
             exact = _flush_symm(exact, pending_symm)
@@ -268,16 +234,6 @@ def _source_theorem_exact(task: LemmaTask, source_theorem: str) -> str:
 
 def _flush_symm(exact: str, pending_symm: bool) -> str:
     return f"({exact}).symm" if pending_symm else exact
-
-
-def _specialize_value(params: dict[str, object]) -> str | None:
-    value = params.get("value")
-    binder_type = params.get("binder_type")
-    if not isinstance(value, str) or not value.strip() or not isinstance(binder_type, str) or not binder_type.strip():
-        return None
-    if binder_type.strip() == "Prop":
-        return value.strip()
-    return f"({value.strip()} : {binder_type.strip()})"
 
 
 def run_openai_compatible_prover(

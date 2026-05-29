@@ -9,10 +9,17 @@ from dataclasses import dataclass
 from typing import Any
 
 from lemma.supply.import_graph import IMPORT_GRAPH_VERSION, ImportGraph
+from lemma.supply.source_pricing import (
+    SOURCE_PRICING_VERSION,
+    depth_multiplier_micros,
+    parse_source_reuse_class,
+    parse_task_pool,
+    source_pricing_metadata,
+)
 from lemma.supply.types import TaskCandidate
 from lemma.tasks import LemmaTask
 
-SLOT_WEIGHT_VERSION = "lemma-slot-weight-v4"
+SLOT_WEIGHT_VERSION = "lemma-slot-weight-v5"
 
 
 @dataclass(frozen=True)
@@ -27,6 +34,9 @@ class SlotWeightReceipt:
             "slot_weight_version": SLOT_WEIGHT_VERSION,
             "slot_weight_basis_points": self.basis_points,
             "slot_weight_inputs": self.inputs,
+            "source_pricing_version": self.inputs["source_pricing_version"],
+            "source_reuse_class": self.inputs["source_reuse_class"],
+            "task_pool": self.inputs["task_pool"],
         }
 
 
@@ -76,6 +86,7 @@ def slot_weight_receipt_for_kernel_dependencies(
         "citation_weight": _bounded_float(task.metadata.get("citation_weight"), default=1.0, cap=100.0),
         "transitive_dependency_hash": _hash_names(dependencies),
         "kernel_dependency_count": len(dependencies),
+        **source_pricing_metadata(task.source_stream, task.metadata),
     }
     return _receipt_from_inputs(inputs)
 
@@ -125,6 +136,7 @@ def _slot_weight_receipt(
     mutation_depth = _nonnegative_int(metadata.get("mutation_depth"), default=0)
     lemma_rows_used = _lemma_rows_used(source_stream, metadata)
     citation_weight = _bounded_float(metadata.get("citation_weight"), default=1.0, cap=100.0)
+    pricing = source_pricing_metadata(source_stream, metadata)
 
     inputs: dict[str, object] = {
         **graph_inputs,
@@ -138,6 +150,7 @@ def _slot_weight_receipt(
         "lemma_rows_used_count": len(lemma_rows_used),
         "citation_weight": citation_weight,
         "transitive_dependency_hash": transitive_hash,
+        **pricing,
     }
     return _receipt_from_inputs(inputs)
 
@@ -152,6 +165,7 @@ def _receipt_from_inputs(inputs: Mapping[str, Any]) -> SlotWeightReceipt:
     lemma_rows_used_count = _nonnegative_int(inputs.get("lemma_rows_used_count"), default=0)
     citation_weight = _bounded_float(inputs.get("citation_weight"), default=1.0, cap=100.0)
     transitive_count = _nonnegative_int(inputs.get("transitive_dependency_count"), default=0)
+    task_pool = parse_task_pool(inputs.get("task_pool"))
     base_basis_points = (
         1000
         + 200 * min(mutation_depth, 10)
@@ -163,11 +177,12 @@ def _receipt_from_inputs(inputs: Mapping[str, Any]) -> SlotWeightReceipt:
         + 100 * min(lemma_rows_used_count, 50)
         + min(1000, int(round(citation_weight * 10)))
     )
-    basis_points = base_basis_points * (2 ** min(queue_depth, 30))
+    multiplier_micros = depth_multiplier_micros(queue_depth, task_pool)
+    basis_points = (base_basis_points * multiplier_micros + 500_000) // 1_000_000
     return SlotWeightReceipt(
         weight=round(basis_points / 1000.0, 6),
         basis_points=basis_points,
-        inputs=_canonical_inputs(inputs),
+        inputs={**_canonical_inputs(inputs), "depth_multiplier_micros": multiplier_micros},
     )
 
 
@@ -185,6 +200,14 @@ def _canonical_inputs(inputs: Mapping[str, Any]) -> dict[str, object]:
         "lemma_rows_used_count": _nonnegative_int(inputs.get("lemma_rows_used_count"), default=0),
         "citation_weight": _bounded_float(inputs.get("citation_weight"), default=1.0, cap=100.0),
         "transitive_dependency_hash": str(inputs.get("transitive_dependency_hash") or ""),
+        "source_pricing_version": _nonnegative_int(
+            inputs.get("source_pricing_version"),
+            default=SOURCE_PRICING_VERSION,
+        ),
+        "source_reuse_class": parse_source_reuse_class(
+            inputs.get("source_reuse_class") or inputs.get("source_pricing_class")
+        ).value,
+        "task_pool": parse_task_pool(inputs.get("task_pool")).value,
     }
     if out["kernel_dependencies_recorded"]:
         out["kernel_dependency_count"] = _nonnegative_int(inputs.get("kernel_dependency_count"), default=0)

@@ -18,6 +18,7 @@ from lemma.problems.base import Problem
 from lemma.supply.import_graph import ImportGraph, empty_import_graph
 from lemma.supply.novelty import NoveltyCache, empty_novelty_cache
 from lemma.supply.slot_weight import slot_weight_receipt_for_candidate
+from lemma.supply.source_pricing import source_pricing_metadata
 from lemma.supply.triviality_budget import (
     TrivialityBudgetReceipt,
     static_triviality_budget_receipt,
@@ -96,7 +97,9 @@ class AssumedProceduralGateRunner:
         seen_canonical_hashes: Iterable[str],
     ) -> ProceduralGateVerdict:
         novelty = _novelty_status(candidate, seen_canonical_hashes, self.novelty_cache)
-        slot_weight = slot_weight_receipt_for_candidate(candidate, import_graph=self.import_graph)
+        pricing = source_pricing_metadata(candidate.source_stream, {**candidate.metadata, "baseline_solved": False})
+        priced = candidate.model_copy(update={"metadata": {**candidate.metadata, **pricing, "baseline_solved": False}})
+        slot_weight = slot_weight_receipt_for_candidate(priced, import_graph=self.import_graph)
         budget = static_triviality_budget_receipt(1)
         return ProceduralGateVerdict(
             typechecked=True,
@@ -108,6 +111,7 @@ class AssumedProceduralGateRunner:
             metadata={
                 "gate_runner": "assumed",
                 "triviality_stack": _triviality_stack_names(candidate),
+                **pricing,
                 **self.novelty_cache.metadata(),
                 **budget.metadata(),
                 **slot_weight.metadata(),
@@ -297,7 +301,10 @@ class LeanProceduralGateRunner:
     ) -> ProceduralGateVerdict:
         _ = seen_canonical_hashes
         _ = lean_gate_batch_seconds
-        slot_weight = slot_weight_receipt_for_candidate(candidate, import_graph=self.import_graph)
+        metadata = {**candidate.metadata, "baseline_solved": baseline_solved}
+        pricing = source_pricing_metadata(candidate.source_stream, metadata)
+        priced = candidate.model_copy(update={"metadata": {**metadata, **pricing}})
+        slot_weight = slot_weight_receipt_for_candidate(priced, import_graph=self.import_graph)
         batch_metadata: dict[str, object] = {}
         if lean_gate_batch_size is not None:
             batch_metadata["lean_gate_batch_size"] = lean_gate_batch_size
@@ -320,6 +327,7 @@ class LeanProceduralGateRunner:
                 "baseline_solver": baseline_solver,
                 "lean_gate_mode": lean_gate_mode,
                 "lean_gate_invocations": lean_gate_invocations,
+                **pricing,
                 **batch_metadata,
                 **self.novelty_cache.metadata(),
                 **self.triviality_budget_receipt.metadata(),

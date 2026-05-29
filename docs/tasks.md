@@ -178,7 +178,8 @@ The active pool is a deterministic queue window of size `K`.
 - The dashboard should describe this plainly: `K` is how many tasks are live, and `frontier_depth` is how deep the task pool is open.
 - Human difficulty labels are compatibility/display metadata, not protocol inputs.
 - Active selection interleaves frontier and foundation levels, then balances source families inside each level.
-- Slot weights include an exponential difficulty multiplier: each additional `queue_depth` doubles the task's base slot weight.
+- Slot weights use a capped `sqrt(queue_depth + 1)` depth prior. Queue depth is not treated as a calibrated difficulty ratio.
+- Source-derived tasks carry `source_reuse_class` and `task_pool`; direct source wrappers are calibration work, not serious paid frontier tasks.
 - Solved slots advance.
 - Expired unsolved slots are parked.
 - Zero solve rate halts frontier advancement and requests hard-target variants around stalled tasks.
