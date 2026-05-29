@@ -109,6 +109,12 @@ def sync_public_inputs(
         target = repo / "registries" / netuid
         target.mkdir(parents=True, exist_ok=True)
         registries: dict[str, object] = {}
+        index_path = target / "index.json"
+        if index_path.is_file():
+            existing_index = json.loads(index_path.read_text(encoding="utf-8"))
+            existing_registries = existing_index.get("registries") if isinstance(existing_index, dict) else None
+            if isinstance(existing_registries, dict):
+                registries.update(existing_registries)
         registry_index: dict[str, object] = {"schema_version": 1, "netuid": netuid, "registries": registries}
         for path in sorted(registry_cache_dir.glob("tempo-*.registry.json")):
             if not path.is_file():
@@ -123,7 +129,7 @@ def sync_public_inputs(
             if match := re.fullmatch(r"tempo-(\d+)\.registry\.json", path.name):
                 registries[match.group(1)] = {"sha256": sha256, "path": filename}
             counts["registry_files"] += 1
-        (target / "index.json").write_text(
+        index_path.write_text(
             json.dumps(registry_index, sort_keys=True, separators=(",", ":")) + "\n",
             encoding="utf-8",
         )

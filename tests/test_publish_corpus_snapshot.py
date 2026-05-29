@@ -165,6 +165,21 @@ def test_sync_public_inputs_copies_only_publishable_live_outputs(tmp_path: Path)
     repo = tmp_path / "lemma-corpus"
     live = tmp_path / "live"
     registry_sha = "a" * 64
+    existing_sha = "c" * 64
+    _write(repo / f"registries/sn467/{existing_sha}.json", '{"schema_version": 1, "tasks": []}\n')
+    _write(
+        repo / "registries/sn467/index.json",
+        json.dumps(
+            {
+                "schema_version": 1,
+                "netuid": "sn467",
+                "registries": {"19956": {"path": f"{existing_sha}.json", "sha256": existing_sha}},
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n",
+    )
     _write(live / "corpus/epoch-000041.jsonl", '{"row": 41}\n')
     _write(live / "corpus/epoch-local.jsonl", '{"local": true}\n')
     _write(live / "canonical/tempos/tempo-019958/manifest.json", '{"tempo": 19958}\n')
@@ -190,6 +205,7 @@ def test_sync_public_inputs_copies_only_publishable_live_outputs(tmp_path: Path)
     assert (repo / f"registries/sn467/{registry_sha}.json").exists()
     assert (repo / f"registries/sn467/{hashlib.sha256(legacy_registry.encode()).hexdigest()}.json").exists()
     index = json.loads((repo / "registries/sn467/index.json").read_text(encoding="utf-8"))
+    assert index["registries"]["19956"] == {"path": f"{existing_sha}.json", "sha256": existing_sha}
     assert index["registries"]["19958"] == {"path": f"{registry_sha}.json", "sha256": registry_sha}
 
 
