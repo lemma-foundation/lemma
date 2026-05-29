@@ -139,6 +139,8 @@ class AssumedProceduralGateRunner:
 class LeanProceduralGateRunner:
     """Lean-backed implementation of the four paid-production gates."""
 
+    requires_serious_candidates = True
+
     def __init__(
         self,
         settings: LemmaSettings,
@@ -716,10 +718,10 @@ def _batch_gate_groups(
     *,
     batch_size: int,
 ) -> tuple[tuple[_BatchGateInput, ...], ...]:
-    groups: dict[tuple[str, str], list[tuple[int, TaskCandidate]]] = {}
+    groups: dict[tuple[str, str, tuple[str, ...]], list[tuple[int, TaskCandidate]]] = {}
     for item in indexed:
         candidate = item[1]
-        groups.setdefault((candidate.lean_toolchain, candidate.mathlib_rev), []).append(item)
+        groups.setdefault((candidate.lean_toolchain, candidate.mathlib_rev, candidate.imports), []).append(item)
     out: list[tuple[_BatchGateInput, ...]] = []
     for group in groups.values():
         for start in range(0, len(group), max(1, batch_size)):

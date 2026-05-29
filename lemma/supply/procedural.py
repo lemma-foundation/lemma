@@ -29,7 +29,7 @@ from lemma.supply.operator_bundle import (
     procedural_operator_bundle_hash,
 )
 from lemma.supply.source_pool import source_pool_receipt, source_pool_receipt_sha256
-from lemma.supply.source_pricing import source_pricing_metadata
+from lemma.supply.source_pricing import TaskPool, parse_task_pool, source_pricing_metadata
 from lemma.supply.types import TaskCandidate
 from lemma.task_supply import depth_spread_order, deterministic_queue
 from lemma.tasks import LemmaTask, SourceRef
@@ -59,6 +59,7 @@ class _Depth2GenerationContext:
     tempo: int
     mutation_engine: ProceduralMutationEngine
     gate_runner: ProceduralGateRunner
+    require_serious_candidates: bool
 
 
 @dataclass(frozen=True)
@@ -403,6 +404,7 @@ def generate_depth2_candidates(
         tempo=tempo,
         mutation_engine=mutation_engine or PreviewMutationEngine(),
         gate_runner=gate_runner or AssumedProceduralGateRunner(),
+        require_serious_candidates=bool(getattr(gate_runner, "requires_serious_candidates", False)),
     )
     workers = _resolve_generation_workers(generation_workers)
     attempt_limit = count * 50
@@ -638,7 +640,7 @@ def _attempt_depth2_candidate(
         )
     except ValueError as exc:
         return _Depth2Attempt(cursor=cursor, candidate=None, verdict=None, rejection_reason=_mutation_rejection(exc))
-    prelean_rejection = _prelean_candidate_rejection(candidate)
+    prelean_rejection = _prelean_candidate_rejection(candidate, require_serious=ctx.require_serious_candidates)
     if prelean_rejection:
         return _Depth2Attempt(cursor=cursor, candidate=candidate, verdict=None, rejection_reason=prelean_rejection)
     duplicate_rejection = _prelean_duplicate_rejection(candidate, seen_prelean_keys)
@@ -666,7 +668,7 @@ def _candidate_attempt(ctx: _Depth2GenerationContext, *, cursor: int) -> _Depth2
         )
     except ValueError as exc:
         return _Depth2Attempt(cursor=cursor, candidate=None, verdict=None, rejection_reason=_mutation_rejection(exc))
-    prelean_rejection = _prelean_candidate_rejection(candidate)
+    prelean_rejection = _prelean_candidate_rejection(candidate, require_serious=ctx.require_serious_candidates)
     if prelean_rejection:
         return _Depth2Attempt(cursor=cursor, candidate=candidate, verdict=None, rejection_reason=prelean_rejection)
     return _Depth2Attempt(cursor=cursor, candidate=candidate, verdict=None)
@@ -790,7 +792,7 @@ def _log_depth2_telemetry(telemetry: _Depth2Telemetry, *, count: int, attempt_li
     )
 
 
-def _prelean_candidate_rejection(candidate: TaskCandidate) -> str:
+def _prelean_candidate_rejection(candidate: TaskCandidate, *, require_serious: bool = False) -> str:
     metadata = candidate.metadata
     chain = metadata.get("mutation_chain")
     if not isinstance(chain, list) or len(chain) != 2:
@@ -817,6 +819,10 @@ def _prelean_candidate_rejection(candidate: TaskCandidate) -> str:
         return "prelean:duplicate_import"
     if any(not _LEAN_MODULE.fullmatch(module) for module in candidate.imports):
         return "prelean:import_module"
+    if require_serious:
+        task_pool = parse_task_pool(metadata.get("task_pool"))
+        if task_pool not in {TaskPool.SERIOUS_PAID, TaskPool.FRONTIER}:
+            return f"prelean:task_pool:{task_pool.value}"
     return ""
 
 

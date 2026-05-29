@@ -1052,6 +1052,41 @@ def test_depth2_generation_rejects_mismatched_mutation_engine_before_lean() -> N
         )
 
 
+def test_depth2_generation_rejects_source_wrappers_before_lean() -> None:
+    class NoLeanGate:
+        requires_serious_candidates = True
+
+        def __call__(self, candidate, *, seen_canonical_hashes):  # noqa: ANN001, ARG002
+            raise AssertionError("source-wrapper candidates should be rejected before Lean")
+
+        def batch(self, candidates, *, seen_canonical_hashes):  # noqa: ANN001, ARG002
+            raise AssertionError("source-wrapper candidates should be rejected before Lean")
+
+    sources = tuple(
+        fixture_candidate(
+            slug=f"source_{index}",
+            source_stream="mathlib_snapshot",
+            source_name="snapshot",
+            theorem_name=f"source_{index}",
+            type_expr="∀ n m : Nat, n = m",
+            queue_depth=0,
+        )
+        for index in range(100)
+    )
+
+    with pytest.raises(ValueError, match="procedural gates accepted 0 candidates, needed 1"):
+        generate_depth2_candidates(
+            sources,
+            generation_seed="epoch-a",
+            epoch_randomness=json.dumps({"anchor_block": 720, "drand_round": 11}, sort_keys=True),
+            count=1,
+            tempo=3,
+            gate_runner=NoLeanGate(),
+            generation_workers=2,
+            mutation_engine=StructuralMutationEngine(),
+        )
+
+
 def test_depth2_generation_parallel_matches_sequential(tmp_path: Path) -> None:
     class LatencyGate:
         def __call__(self, candidate, *, seen_canonical_hashes):  # noqa: ANN001, ARG002
@@ -1341,6 +1376,7 @@ def test_lean_gate_runner_batches_gate_results(monkeypatch: pytest.MonkeyPatch, 
         count=2,
         tempo=3,
     )
+    candidates = tuple(candidate.model_copy(update={"imports": ("Mathlib",)}) for candidate in candidates)
     calls: list[str] = []
 
     def fake_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001, ARG001
@@ -1383,6 +1419,60 @@ def test_lean_gate_runner_batches_gate_results(monkeypatch: pytest.MonkeyPatch, 
     assert verdicts[0].metadata["lean_gate_batch_size"] == 2
     assert "lean_gate_batch_seconds" not in verdicts[0].metadata
     assert calls == ["batch"]
+
+
+def test_lean_gate_runner_batches_by_submission_imports(monkeypatch: pytest.MonkeyPatch) -> None:
+    left = fixture_candidate(
+        slug="left_import",
+        source_stream="procedural",
+        source_name="snapshot",
+        theorem_name="left_import",
+        type_expr="True",
+        queue_depth=0,
+        metadata={"source_theorem_name": "Left.source", "statement_hash": "1" * 64},
+    ).model_copy(
+        update={
+            "imports": ("Mathlib.Data.Nat.Basic",),
+            "source_ref": SourceRef(kind="fixture", name="left", path="Mathlib/Data/Nat/Basic.lean"),
+        }
+    )
+    right = fixture_candidate(
+        slug="right_import",
+        source_stream="procedural",
+        source_name="snapshot",
+        theorem_name="right_import",
+        type_expr="True",
+        queue_depth=0,
+        metadata={"source_theorem_name": "Right.source", "statement_hash": "2" * 64},
+    ).model_copy(
+        update={
+            "imports": ("Mathlib.Data.Bool.Basic",),
+            "source_ref": SourceRef(kind="fixture", name="right", path="Mathlib/Data/Bool/Basic.lean"),
+        }
+    )
+    imports_seen: list[tuple[str, ...]] = []
+
+    def fake_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001, ARG001
+        imports_seen.append(problem.imports)
+        assert proof_script.startswith(f"import {problem.imports[0]}")
+        return VerifyResult(
+            passed=True,
+            reason="ok",
+            stdout_tail=(
+                'LEMMA_GATE_RESULT {"id":"0","typechecked":true,"kernel_normal_form":"single",'
+                '"triviality_checked":true,"baseline_solved":false,"baseline_solver":null,'
+                '"source_oracle_checked":true,"source_oracle_solved":false,"source_oracle_solver":null,'
+                '"triviality_reason":"baseline_failed"}'
+            ),
+        )
+
+    monkeypatch.setattr("lemma.supply.gates.run_lean_verify", fake_verify)
+    verdicts = LeanProceduralGateRunner(
+        LemmaSettings(_env_file=None, lean_use_docker=False, procedural_gate_timeout_s=5)
+    ).batch((left, right), seen_canonical_hashes=())
+
+    assert imports_seen == [left.imports, right.imports]
+    assert [verdict.accepted for verdict in verdicts] == [True, True]
 
 
 def test_lean_gate_runner_ignores_payload_from_failed_batch(
@@ -1433,6 +1523,7 @@ def test_lean_gate_runner_uses_complete_failed_batch_payload(
         count=2,
         tempo=3,
     )
+    candidates = tuple(candidate.model_copy(update={"imports": ("Mathlib",)}) for candidate in candidates)
     batch_sizes: list[int] = []
 
     def fake_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001, ARG001
@@ -1476,6 +1567,7 @@ def test_lean_gate_runner_splits_failed_batch_to_salvage_candidates(
         count=2,
         tempo=3,
     )
+    candidates = tuple(candidate.model_copy(update={"imports": ("Mathlib",)}) for candidate in candidates)
     batch_sizes: list[int] = []
 
     def fake_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001, ARG001
@@ -1519,6 +1611,7 @@ def test_lean_gate_runner_splits_compile_error_batch_with_budget(
         count=2,
         tempo=3,
     )
+    candidates = tuple(candidate.model_copy(update={"imports": ("Mathlib",)}) for candidate in candidates)
     batch_sizes: list[int] = []
 
     def fake_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001, ARG001
@@ -1561,6 +1654,7 @@ def test_lean_gate_runner_compile_error_split_budget_can_stop_salvage(
         count=2,
         tempo=3,
     )
+    candidates = tuple(candidate.model_copy(update={"imports": ("Mathlib",)}) for candidate in candidates)
     batch_sizes: list[int] = []
 
     def fake_verify(settings, *, verify_timeout_s, problem, proof_script, submission_policy):  # noqa: ANN001, ARG001
