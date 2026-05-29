@@ -256,7 +256,10 @@ class LeanSandbox:
                     preserve_lake=True,
                     submission_policy=policy,
                 )
-                return self._verify_docker(slot) if self.use_docker else self._verify_host(slot)
+                try:
+                    return self._verify_docker(slot) if self.use_docker else self._verify_host(slot)
+                finally:
+                    self._prune_workspace_cache(protect_name=cache_key, check_bytes=True)
 
             work = Path(tempfile.mkdtemp(prefix="lemma-lean-", dir=str(self.workspace_cache_dir)))
             try:

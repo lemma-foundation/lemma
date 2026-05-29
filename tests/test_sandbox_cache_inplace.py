@@ -247,3 +247,41 @@ end Submission
     assert current.is_dir()
     assert newer_small.is_dir()
     assert not old_big.exists()
+
+
+def test_warm_workspace_cache_prunes_by_total_bytes_after_verify(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    p = _minimal_problem()
+    sub = """import Mathlib
+namespace Submission
+theorem t_test : True := by trivial
+end Submission
+"""
+    cache = tmp_path / "ws_cache"
+    key = workspace_verify_cache_key(p, sub, include_submission_fingerprint=False)
+    current = cache / key
+    old_big = cache / "old_big"
+    for i, (path, size) in enumerate([(old_big, 2000), (current, 20)], start=1):
+        (path / ".lake").mkdir(parents=True)
+        (path / "payload.bin").write_bytes(b"x" * size)
+        os.utime(path, (float(i), float(i)))
+
+    def fake_host(self: LeanSandbox, work: Path) -> VerifyResult:  # noqa: ARG001
+        (work / "payload.bin").write_bytes(b"x" * 20)
+        return VerifyResult(passed=True, reason="ok")
+
+    monkeypatch.setattr(LeanSandbox, "_verify_host", fake_host)
+    sb = LeanSandbox(
+        use_docker=False,
+        timeout_s=30,
+        workspace_cache_dir=cache,
+        workspace_cache_max_dirs=8,
+        workspace_cache_max_bytes=500,
+    )
+    vr = sb.verify(p, sub)
+
+    assert vr.passed
+    assert current.is_dir()
+    assert not old_big.exists()
