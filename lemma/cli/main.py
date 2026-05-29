@@ -1947,7 +1947,7 @@ def validate_cmd(
         bucket_submissions, bucket_authenticated = submissions_from_bucket_reveals(
             reveals,
             active_tasks_for_validation(registry, settings, tempo=active_tempo),
-            verify_drand=False,
+            verify_drand=verify_drand_reveals or settings.protocol_mode == "production",
             chain_commitments=chain_commitments,
             chain_commitments_by_block=chain_commitments_by_block,
             strict=False,

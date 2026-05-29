@@ -1195,6 +1195,7 @@ def test_production_miner_bucket_polling_uses_completed_tempo_commit_blocks(
         return ()
 
     def fake_submissions_from_bucket_reveals(reveals, active_tasks, **kwargs):  # noqa: ANN001
+        calls["verify_drand"] = kwargs["verify_drand"]
         calls["submission_commitments_by_block"] = kwargs["chain_commitments_by_block"]
         return [], frozenset()
 
@@ -1249,6 +1250,7 @@ def test_production_miner_bucket_polling_uses_completed_tempo_commit_blocks(
     assert calls["validate_tempo"] == 7
     assert calls["commitment_blocks"] == [123]
     assert calls["poll_commitments"] == {"hk-a": "commit-at-123"}
+    assert calls["verify_drand"] is True
     assert calls["submission_commitments_by_block"] == {123: {"hk-a": "commit-at-123"}}
 
 
