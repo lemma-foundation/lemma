@@ -2,6 +2,7 @@
 set -euo pipefail
 
 export LEMMA_PREFER_PROCESS_ENV="${LEMMA_PREFER_PROCESS_ENV:-1}"
+export LEMMA_ACTIVE_REGISTRY_ROLE="${LEMMA_ACTIVE_REGISTRY_ROLE:-auditor}"
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 "${LEMMA_CURRICULUM_SYNC_BIN:-$script_dir/lemma-sync-curriculum-state}"
@@ -12,7 +13,7 @@ cache_sync_output="$("${UV_BIN:-uv}" run python "$script_dir/lemma-sync-active-r
 if [[ -n "$cache_sync_output" ]]; then
   echo "$cache_sync_output"
 fi
-if [[ "${LEMMA_ACTIVE_REGISTRY_ROLE:-builder}" == "auditor" ]]; then
+if [[ "$LEMMA_ACTIVE_REGISTRY_ROLE" == "auditor" ]]; then
   if [[ "$cache_sync_output" != *'"cache": "present"'* && "$cache_sync_output" != *'"cache": "hydrated"'* ]]; then
     echo '{"idle":true,"reason":"auditor mode waits for public active registry cache"}'
     exit 0

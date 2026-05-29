@@ -60,11 +60,11 @@ def main() -> None:
 
     index_url = os.environ.get("LEMMA_ACTIVE_REGISTRY_CACHE_INDEX_URL", "").strip()
     if not index_url:
-        if cached is not None and not cached_stale:
-            print(json.dumps({"cache": "present", "tempo": tempo, "registry_sha256": cached.sha256}))
-            return
         if settings.active_registry_role == "auditor":
             print(json.dumps({"cache": "missing_public_index_url", "tempo": tempo}))
+            return
+        if cached is not None and not cached_stale:
+            print(json.dumps({"cache": "present", "tempo": tempo, "registry_sha256": cached.sha256}))
         return
 
     index = json.loads(_fetch(index_url).decode("utf-8"))
