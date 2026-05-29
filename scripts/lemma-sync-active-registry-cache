@@ -92,6 +92,7 @@ def main() -> None:
     with os.fdopen(fd, "wb") as handle:
         handle.write(raw)
     Path(tmp_name).replace(cache_path)
+    cache_path.chmod(0o644)
     print(json.dumps({"cache": "hydrated", "tempo": tempo, "registry_sha256": registry.sha256}))
 
 

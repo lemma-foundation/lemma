@@ -64,6 +64,7 @@ def test_sync_active_registry_cache_hydrates_public_tempo_cache(monkeypatch, tmp
 
     hydrated = cache / "tempo-7.registry.json"
     assert hydrated.is_file()
+    assert hydrated.stat().st_mode & 0o777 == 0o644
     assert load_task_registry(hydrated.read_bytes()).sha256 == registry_sha
 
 
