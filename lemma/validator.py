@@ -38,6 +38,7 @@ VerifySubmission = Callable[[LemmaTask, LemmaSubmission], VerifyResult]
 SubmitWeights = Callable[[LemmaSettings, dict[str, float]], ChainWeightSubmission]
 SubmitCommitment = Callable[[LemmaSettings, str], ChainCommitmentSubmission]
 ChainAuthenticatedKey = tuple[str, str, str]
+AcceptedEntry = tuple[LemmaTask, LemmaSubmission, VerifyResult, VerificationRecord]
 
 
 class ValidatorRunSummary(BaseModel):
@@ -839,6 +840,8 @@ def _publish_public_tempo_artifacts(
                 },
             ],
         )
+        if settings.enable_set_commitment:
+            raise RuntimeError(f"canonical S3 publish failed before chain commitment: {exc}") from exc
         return tuple(rows)
     rows.extend(
         {
@@ -875,7 +878,7 @@ def _verified_slot_weights(
     settings: LemmaSettings,
     active_tasks: Sequence[LemmaTask],
     records: Sequence[VerificationRecord],
-    accepted: dict[tuple[str, str, str], tuple[LemmaTask, LemmaSubmission, VerifyResult]],
+    accepted: dict[tuple[str, str, str], AcceptedEntry],
     *,
     require_strong_identity: bool,
 ) -> dict[str, float]:
@@ -1017,7 +1020,7 @@ def validate_once(
     require_strong_identity = settings.require_strong_proof_identity or settings.protocol_mode == "production"
 
     records: list[VerificationRecord] = []
-    accepted: dict[tuple[str, str, str], tuple[LemmaTask, LemmaSubmission, VerifyResult]] = {}
+    accepted: dict[tuple[str, str, str], AcceptedEntry] = {}
     receipts: list[dict[str, object]] = []
 
     for submission in submissions:
@@ -1110,7 +1113,11 @@ def validate_once(
             }
         )
         if result.passed:
-            accepted[(task.id, submission.solver_hotkey, submission.proof_sha256)] = (task, submission, result)
+            key = (task.id, submission.solver_hotkey, submission.proof_sha256)
+            entry = (task, submission, result, record)
+            existing = accepted.get(key)
+            if existing is None or _record_rank_key(record) < _record_rank_key(existing[3]):
+                accepted[key] = entry
 
     append_jsonl(settings.operator_data_dir / "verification-records.jsonl", receipts)
 
@@ -1143,7 +1150,7 @@ def validate_once(
     rows: list[CorpusRow] = []
     for scored in score.valid_unique_proofs:
         key = (scored.record.task_id, scored.record.solver_hotkey, scored.record.proof_sha256)
-        task, submission, result = accepted[key]
+        task, submission, result, _record = accepted[key]
         task = _task_with_verified_slot_weight(task, result)
         rows.append(
             build_corpus_row(

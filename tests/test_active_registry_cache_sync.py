@@ -222,6 +222,52 @@ def test_sync_active_registry_cache_reports_present_cache_without_public_index(
 
     payload = json.loads(capsys.readouterr().out)
     assert payload == {"cache": "present", "tempo": 7, "registry_sha256": registry_sha}
+    assert cache_path.stat().st_mode & 0o777 == 0o644
+
+
+def test_sync_active_registry_cache_repairs_present_public_cache_permissions(
+    monkeypatch, tmp_path: Path, capsys
+) -> None:
+    module = _load_sync_module()
+    public = tmp_path / "public"
+    public.mkdir()
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    task = make_task(
+        task_id="lemma.procedural.readable-cache",
+        title="Readable cache",
+        theorem_name="readable_cache",
+        type_expr="True",
+        source_stream="procedural",
+        source_name="pytest",
+        frontier_depth=0,
+        metadata={
+            "gate_version": GATE_VERSION,
+            "operator_bundle_hash": procedural_operator_bundle_hash(),
+            "operator_bundle_version": OPERATOR_BUNDLE_VERSION,
+            "source_sampling_version": SOURCE_SAMPLING_VERSION,
+        },
+    )
+    cache_path = cache / "tempo-7.registry.json"
+    write_registry([task], cache_path)
+    cache_path.chmod(0o600)
+    registry_sha = load_task_registry(cache_path.read_bytes()).sha256
+    index_path = public / "index.json"
+    index_path.write_text(
+        json.dumps({"schema_version": 1, "netuid": "sn467", "registries": {"7": {"sha256": registry_sha}}}),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("LEMMA_ACTIVE_REGISTRY_CACHE_DIR", str(cache))
+    monkeypatch.setenv("LEMMA_ACTIVE_REGISTRY_CACHE_INDEX_URL", index_path.as_uri())
+    monkeypatch.setenv("LEMMA_ACTIVE_K", "1")
+    monkeypatch.setattr(module, "current_active_tempo", lambda settings: 7)
+
+    module.main()
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == {"cache": "present", "tempo": 7, "registry_sha256": registry_sha}
+    assert cache_path.stat().st_mode & 0o777 == 0o644
 
 
 def test_sync_active_registry_cache_reports_missing_index_for_auditors(monkeypatch, tmp_path: Path, capsys) -> None:

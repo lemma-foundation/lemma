@@ -164,7 +164,6 @@ def test_commit_repo_changes_stages_only_public_corpus_paths(tmp_path: Path) -> 
 def test_sync_public_inputs_copies_only_publishable_live_outputs(tmp_path: Path) -> None:
     repo = tmp_path / "lemma-corpus"
     live = tmp_path / "live"
-    registry_sha = "a" * 64
     existing_sha = "c" * 64
     _write(repo / f"registries/sn467/{existing_sha}.json", '{"schema_version": 1, "tasks": []}\n')
     _write(
@@ -188,9 +187,12 @@ def test_sync_public_inputs_copies_only_publishable_live_outputs(tmp_path: Path)
         live / "registries/tempo-19956.registry.json",
         f'{{"schema_version": 1, "sha256": "{conflicting_sha}", "tasks": []}}\n',
     )
+    embedded_sha = "a" * 64
+    registry = f'{{"schema_version": 1, "sha256": "{embedded_sha}", "tasks": []}}\n'
+    registry_sha = hashlib.sha256(registry.encode()).hexdigest()
     _write(
         live / "registries/tempo-19958.registry.json",
-        f'{{"schema_version": 1, "sha256": "{registry_sha}", "tasks": []}}\n',
+        registry,
     )
     legacy_registry = '{"schema_version": 1, "tasks": []}\n'
     _write(live / "registries/tempo-19957.registry.json", legacy_registry)
@@ -220,10 +222,12 @@ def test_registry_cache_only_skips_snapshot_artifacts(
 ) -> None:  # noqa: ANN001
     repo = tmp_path / "lemma-corpus"
     live = tmp_path / "registries"
-    registry_sha = "b" * 64
+    embedded_sha = "b" * 64
+    registry = f'{{"schema_version": 1, "sha256": "{embedded_sha}", "tasks": []}}\n'
+    registry_sha = hashlib.sha256(registry.encode()).hexdigest()
     _write(
         live / "tempo-19987.registry.json",
-        f'{{"schema_version": 1, "sha256": "{registry_sha}", "tasks": []}}\n',
+        registry,
     )
     monkeypatch.setattr(
         sys,

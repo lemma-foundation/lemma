@@ -120,10 +120,7 @@ def sync_public_inputs(
             if not path.is_file():
                 continue
             raw = path.read_bytes()
-            payload = json.loads(raw)
-            sha256 = payload.get("sha256")
-            if not isinstance(sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", sha256):
-                sha256 = load_task_registry(raw).sha256
+            sha256 = load_task_registry(raw).sha256
             filename = f"{sha256}.json"
             if match := re.fullmatch(r"tempo-(\d+)\.registry\.json", path.name):
                 tempo = match.group(1)

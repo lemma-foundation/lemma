@@ -52,7 +52,8 @@ Before calling SN467 production-ready, prove:
 - one full natural tempo with no manual starts: registry cache warming, miner bucket
   delivery, validator intake, Lean verification, weight write, and commitment
   readback;
-- a 24- to 72-hour burn-in with repeated natural tempos and no operator nudges;
+- at least 72 continuous closed burn-in hours with repeated natural tempos and
+  no operator nudges, followed by 7 days of public burn-in before mainnet;
 - at least one second validator or clean rebuild that reproduces active-registry
   and Lean-verification behavior from public inputs;
 - a short runbook for active tempo, registry cache, miner marker, reveal queue,

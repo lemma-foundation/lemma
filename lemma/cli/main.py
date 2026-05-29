@@ -1263,7 +1263,10 @@ def _warm_active_procedural_registry(*, tempo: int | None, force: bool) -> None:
         tmp_path = cache_path.with_name(cache_path.name + ".tmp")
         write_registry(registry.tasks, tmp_path)
         tmp_path.replace(cache_path)
+        cache_path.chmod(0o644)
         built = True
+    else:
+        cache_path.chmod(0o644)
     if registry is None:
         raise click.ClickException("active registry cache warming failed to load or build registry")
 

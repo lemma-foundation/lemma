@@ -64,6 +64,7 @@ def main() -> None:
             print(json.dumps({"cache": "missing_public_index_url", "tempo": tempo}))
             return
         if cached is not None and not cached_stale:
+            cache_path.chmod(0o644)
             print(json.dumps({"cache": "present", "tempo": tempo, "registry_sha256": cached.sha256}))
         return
 
@@ -79,6 +80,7 @@ def main() -> None:
         print(json.dumps({"cache": "invalid_public_index_row", "tempo": tempo}))
         return
     if cached is not None and not cached_stale and cached.sha256 == expected:
+        cache_path.chmod(0o644)
         print(json.dumps({"cache": "present", "tempo": tempo, "registry_sha256": cached.sha256}))
         return
 

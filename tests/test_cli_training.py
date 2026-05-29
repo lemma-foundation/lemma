@@ -195,7 +195,9 @@ def test_prebuild_active_procedural_registry_writes_configured_cache(
     assert payload["rebuild_started_at"] is not None
     assert payload["rebuild_finished_at"] is not None
     assert calls == {"tempo": 23, "active_registry_json": None, "active_registry_cache_dir": None}
-    assert "lemma.procedural.prebuilt" in (cache_dir / "tempo-23.registry.json").read_text(encoding="utf-8")
+    cache_path = cache_dir / "tempo-23.registry.json"
+    assert "lemma.procedural.prebuilt" in cache_path.read_text(encoding="utf-8")
+    assert cache_path.stat().st_mode & 0o777 == 0o644
 
 
 def test_prebuild_active_procedural_registry_skips_existing_cache(
@@ -217,7 +219,9 @@ def test_prebuild_active_procedural_registry_skips_existing_cache(
     ).model_copy(update={"frontier_depth": 0})
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
-    write_registry([task], cache_dir / "tempo-29.registry.json")
+    cache_path = cache_dir / "tempo-29.registry.json"
+    write_registry([task], cache_path)
+    cache_path.chmod(0o600)
 
     def fail_registry(settings, *, tempo):  # noqa: ANN001
         raise AssertionError("existing cache should not rebuild")
@@ -241,6 +245,7 @@ def test_prebuild_active_procedural_registry_skips_existing_cache(
     assert payload["tasks"] == 1
     assert payload["rebuild_wall_seconds"] == 0
     assert payload["wall_seconds"] >= 0
+    assert cache_path.stat().st_mode & 0o777 == 0o644
 
 
 def test_prebuild_active_procedural_registry_keeps_existing_stale_cache(tmp_path) -> None:

@@ -1241,6 +1241,39 @@ def test_validate_once_does_not_duplicate_corpus_rows_for_same_tempo(tmp_path: P
     assert rows[0]["tempo"] == 9
 
 
+def test_validate_once_keeps_earliest_ranked_duplicate_submission_metadata(tmp_path: Path) -> None:
+    task = _task()
+    registry = TaskRegistry(schema_version=1, tasks=(task,), sha256="0" * 64)
+    base = build_submission(task, solver_hotkey="hk-a", proof_script=_proof())
+
+    def committed(block: int) -> LemmaSubmission:
+        return LemmaSubmission.model_validate(
+            {
+                **base.model_dump(),
+                "timelock_ciphertext": f"cipher-{block}",
+                "drand_round": 77,
+                "commit_block": block,
+                "commit_extrinsic_hash": f"0x{block}",
+                "signature_payload_sha256": "",
+            }
+        )
+
+    result = validate_once(
+        _settings(tmp_path),
+        [committed(10), committed(20)],
+        registry=registry,
+        verify_submission=lambda task, submission: VerifyResult(passed=True, reason="ok"),
+        tempo=9,
+        require_commit_reveal=True,
+        no_set_weights=True,
+    )
+
+    assert result.score.winners == {task.id: "hk-a"}
+    assert [(row.solver_hotkey, row.commit_block, row.rewarded) for row in result.corpus_rows] == [
+        ("hk-a", 10, True)
+    ]
+
+
 def test_validator_scores_and_writes_alternate_corpus_rows(tmp_path: Path) -> None:
     task = _task()
     submissions = [
@@ -1325,6 +1358,44 @@ def test_validator_keeps_scoring_when_optional_s3_publish_fails(
     assert publish_rows == [
         {"kind": "s3_publish_error", "error_type": "RuntimeError", "error": "object store unavailable"}
     ]
+
+
+def test_validator_does_not_submit_commitment_after_s3_publish_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from lemma.corpus import publish
+
+    def fail_publish(*args: object, **kwargs: object) -> object:
+        raise RuntimeError("object store unavailable")
+
+    calls: list[str] = []
+
+    def fake_submit_commitment(_settings_arg: LemmaSettings, payload: str) -> ChainCommitmentSubmission:
+        calls.append(payload)
+        return ChainCommitmentSubmission(success=True, payload=payload)
+
+    monkeypatch.setattr(publish, "publish_paths_to_s3", fail_publish)
+    settings = _settings(tmp_path).model_copy(
+        update={
+            "canonical_publish_s3_uri": "s3://lemma-corpus/live",
+            "canonical_publish_endpoint_url": "https://s3.example",
+            "canonical_publish_aws_command": "aws",
+            "enable_set_commitment": True,
+        }
+    )
+
+    with pytest.raises(RuntimeError, match="canonical S3 publish failed before chain commitment"):
+        validate_once(
+            settings,
+            [build_submission(_task(), solver_hotkey="hk", proof_script=_proof())],
+            registry=_registry(),
+            verify_submission=lambda task, submission: VerifyResult(passed=True, reason="ok"),  # noqa: ARG005
+            no_set_weights=True,
+            submit_commitment=fake_submit_commitment,
+        )
+
+    assert calls == []
+    assert not (tmp_path / "operator" / "commitment-submissions.jsonl").exists()
 
 
 def test_validator_scores_from_recorded_kernel_dependencies(tmp_path: Path) -> None:
