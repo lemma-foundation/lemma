@@ -170,7 +170,7 @@ def test_mathlib_snapshot_candidates_become_deterministic_registry_tasks() -> No
     tasks = registry_tasks_from_candidates(candidates, seed="pytest", frontier_depth=2)
 
     assert [task.queue_position for task in tasks] == [0, 1]
-    assert tasks[0].theorem_name == "Shallow.target"
+    assert tasks[0].theorem_name == "Deep.target"
     assert all(task.frontier_depth == 2 for task in tasks)
 
 

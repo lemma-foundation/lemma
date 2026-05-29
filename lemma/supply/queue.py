@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass
 
+from lemma.task_supply import deterministic_queue
 from lemma.tasks import LemmaTask
 
 
@@ -34,16 +34,8 @@ class ActivePool:
 
 
 def deterministic_task_queue(tasks: list[LemmaTask] | tuple[LemmaTask, ...], *, seed: str) -> tuple[LemmaTask, ...]:
-    """Sort shallow tasks first, then by a seed-stable hash."""
-    return tuple(
-        sorted(
-            tasks,
-            key=lambda task: (
-                task.queue_depth,
-                hashlib.sha256(f"{seed}:{task.id}:{task.target_sha256}".encode()).hexdigest(),
-            ),
-        )
-    )
+    """Sort tasks with deterministic level and family spread."""
+    return tuple(deterministic_queue(tasks, seed=seed))
 
 
 def initial_active_pool(

@@ -30,7 +30,7 @@ from lemma.supply.operator_bundle import (
 )
 from lemma.supply.source_pool import source_pool_receipt, source_pool_receipt_sha256
 from lemma.supply.types import TaskCandidate
-from lemma.task_supply import deterministic_queue
+from lemma.task_supply import depth_spread_order, deterministic_queue
 from lemma.tasks import LemmaTask, SourceRef
 
 
@@ -114,18 +114,6 @@ _LOW_VALUE_MUTATION_TARGETS: frozenset[str] = frozenset()
 _PRODUCTIVE_OPERATOR_NAMES = ("symm",)
 _PEER_OPERATOR_NAMES = frozenset({"conjoin", "strengthen"})
 _LEAN_GATE_BATCH_ATTEMPTS = 8
-_MAX_SOURCE_DIFFICULTY_SCORE = 4
-_MAX_DIRECT_DEPENDENCY_COUNT = 0
-_MAX_DEPENDENCY_DEPTH = 0
-_LIGHTWEIGHT_IMPORT_PREFIXES = (
-    "Mathlib.Data.Bool.",
-    "Mathlib.Data.Fin.",
-    "Mathlib.Data.List.",
-    "Mathlib.Data.Nat.",
-    "Mathlib.Data.Option.",
-    "Mathlib.Data.Set.",
-    "Mathlib.Logic.",
-)
 _TOY_BASIC_SOURCE_PATHS = frozenset(
     {
         "Mathlib/Data/Bool/Basic.lean",
@@ -1081,7 +1069,7 @@ def _eligible_depth2_sources(
         for source in sources
         if (max_queue_depth is None or source.queue_depth <= max_queue_depth)
         and _supports_depth2_chain(source.type_expr)
-        and _lightweight_source(source)
+        and _not_toy_basic_source(source)
     )
 
 
@@ -1111,33 +1099,8 @@ def _supports_specialize(type_expr: str) -> bool:
     )
 
 
-def _lightweight_source(source: TaskCandidate) -> bool:
-    return (
-        _metadata_leq(source.metadata, "difficulty_score", _MAX_SOURCE_DIFFICULTY_SCORE)
-        and _metadata_leq(source.metadata, "direct_dependency_count", _MAX_DIRECT_DEPENDENCY_COUNT)
-        and _metadata_leq(source.metadata, "dependency_depth", _MAX_DEPENDENCY_DEPTH)
-        and _lightweight_imports(source)
-        and _not_toy_basic_source(source)
-    )
-
-
 def _not_toy_basic_source(source: TaskCandidate) -> bool:
     return str(source.source_ref.path or "").strip() not in _TOY_BASIC_SOURCE_PATHS
-
-
-def _metadata_leq(metadata: dict[str, object], key: str, limit: int) -> bool:
-    value = metadata.get(key)
-    if isinstance(value, bool):
-        return True
-    if isinstance(value, (int, float)):
-        return value <= limit
-    return True
-
-
-def _lightweight_imports(source: TaskCandidate) -> bool:
-    if not all(key in source.metadata for key in ("difficulty_score", "direct_dependency_count", "dependency_depth")):
-        return True
-    return any(module.startswith(_LIGHTWEIGHT_IMPORT_PREFIXES) for module in source.imports)
 
 
 def _peer_source(
@@ -1199,7 +1162,7 @@ def _depth_balanced_sources(sources: tuple[TaskCandidate, ...]) -> tuple[TaskCan
     buckets: dict[int, list[TaskCandidate]] = {}
     for source in sources:
         buckets.setdefault(source.queue_depth, []).append(source)
-    depths = sorted(buckets, reverse=True)
+    depths = depth_spread_order(tuple(buckets))
     out: list[TaskCandidate] = []
     index = 0
     while len(out) < len(sources):

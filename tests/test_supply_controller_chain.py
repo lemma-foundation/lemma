@@ -29,6 +29,7 @@ from lemma.supply.queue import advance_active_pool, initial_active_pool
 from lemma.supply.slot_weight import slot_weight_receipt_for_candidate
 from lemma.supply.source_pool import source_pool_receipt, source_pool_receipt_sha256
 from lemma.supply.triviality_budget import BurnRateRecord, TrivialityRetargetConfig, triviality_budget_receipt
+from lemma.task_supply import make_task
 from lemma.tasks import SourceRef
 
 
@@ -67,6 +68,25 @@ def test_active_pool_is_deterministic_and_parks_expired_tasks() -> None:
 
     assert len(parked_pool.parked) == 2
     assert {item.reason for item in parked_pool.parked} == {"expired"}
+
+
+def test_active_pool_interleaves_frontier_and_foundation_levels() -> None:
+    tasks = tuple(
+        make_task(
+            task_id=f"lemma.test.depth-{depth}",
+            title=f"Depth {depth}",
+            theorem_name=f"depth_{depth}",
+            type_expr="True",
+            source_stream="mathlib_snapshot",
+            source_name=f"depth-{depth}",
+            queue_depth=depth,
+        )
+        for depth in range(9)
+    )
+
+    pool = initial_active_pool(tasks, active_K=6, tempo=0, seed="tempo-0", frontier_depth=8)
+
+    assert [slot.queue_depth for slot in pool.slots] == [8, 0, 7, 1, 6, 2]
 
 
 def test_curriculum_halts_frontier_and_requests_variants_on_zero_solve() -> None:
@@ -291,7 +311,7 @@ def test_procedural_registry_requires_depth_two_metadata() -> None:
 
     assert [task.id for task in build.tasks] == [good.id]
     assert build.tasks[0].source_stream == "procedural"
-    assert build.tasks[0].metadata["slot_weight_version"] == "lemma-slot-weight-v3"
+    assert build.tasks[0].metadata["slot_weight_version"] == "lemma-slot-weight-v4"
     assert build.rejected[0].reason == "mutation_depth"
 
 

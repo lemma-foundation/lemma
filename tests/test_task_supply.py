@@ -29,7 +29,7 @@ def test_activation_excludes_baseline_solved_and_held_out_tasks() -> None:
     assert eligible_tasks([active, baseline, held_out]) == [active]
 
 
-def test_deterministic_queue_is_shallow_first() -> None:
+def test_deterministic_queue_interleaves_frontier_and_foundation_levels() -> None:
     deep = make_task(
         task_id="lemma.test.deep",
         title="Deep",
@@ -40,5 +40,12 @@ def test_deterministic_queue_is_shallow_first() -> None:
         queue_depth=3,
     )
     shallow = deep.model_copy(update={"id": "lemma.test.shallow", "queue_depth": 0})
+    mid = deep.model_copy(update={"id": "lemma.test.mid", "queue_depth": 1})
+    harder = deep.model_copy(update={"id": "lemma.test.harder", "queue_depth": 2})
 
-    assert deterministic_queue([deep, shallow], seed="tempo")[0].id == "lemma.test.shallow"
+    assert [task.queue_depth for task in deterministic_queue([shallow, mid, harder, deep], seed="tempo")] == [
+        3,
+        0,
+        2,
+        1,
+    ]

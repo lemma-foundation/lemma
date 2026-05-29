@@ -82,7 +82,7 @@ uv run lemma tasks build-mathlib-snapshot \
   --output tasks/mathlib-snapshot.registry.json
 ```
 
-The command writes deterministic `queue_position` values after shallow-first task ordering and prints the registry SHA256. Operators can attach externally produced `signed_by` / `signature` metadata, but the command does not sign or verify the registry.
+The command writes deterministic `queue_position` values after level/family-balanced task ordering and prints the registry SHA256. Operators can attach externally produced `signed_by` / `signature` metadata, but the command does not sign or verify the registry.
 
 For production-shaped supply, rebuild depth-2 procedural candidates from the
 public source snapshot and the tempo's chain/drand seed:
@@ -177,6 +177,8 @@ The active pool is a deterministic queue window of size `K`.
 - `queue_depth` / `frontier_depth` is the protocol difficulty proxy.
 - The dashboard should describe this plainly: `K` is how many tasks are live, and `frontier_depth` is how deep the task pool is open.
 - Human difficulty labels are compatibility/display metadata, not protocol inputs.
+- Active selection interleaves frontier and foundation levels, then balances source families inside each level.
+- Slot weights include an exponential difficulty multiplier: each additional `queue_depth` doubles the task's base slot weight.
 - Solved slots advance.
 - Expired unsolved slots are parked.
 - Zero solve rate halts frontier advancement and requests hard-target variants around stalled tasks.

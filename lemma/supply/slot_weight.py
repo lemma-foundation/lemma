@@ -12,7 +12,7 @@ from lemma.supply.import_graph import IMPORT_GRAPH_VERSION, ImportGraph
 from lemma.supply.types import TaskCandidate
 from lemma.tasks import LemmaTask
 
-SLOT_WEIGHT_VERSION = "lemma-slot-weight-v3"
+SLOT_WEIGHT_VERSION = "lemma-slot-weight-v4"
 
 
 @dataclass(frozen=True)
@@ -67,6 +67,7 @@ def slot_weight_receipt_for_kernel_dependencies(
         "import_graph_resolved": False,
         "import_breadth": 0,
         "import_depth": 0,
+        "queue_depth": task.queue_depth,
         "direct_dependency_count": len(dependencies),
         "transitive_dependency_count": len(dependencies),
         "dependency_depth": max((len(name.split(".")) for name in dependencies), default=0),
@@ -129,6 +130,7 @@ def _slot_weight_receipt(
         **graph_inputs,
         "import_breadth": import_breadth,
         "import_depth": import_depth,
+        "queue_depth": queue_depth,
         "direct_dependency_count": direct_count,
         "transitive_dependency_count": transitive_count,
         "dependency_depth": dependency_depth,
@@ -143,13 +145,14 @@ def _slot_weight_receipt(
 def _receipt_from_inputs(inputs: Mapping[str, Any]) -> SlotWeightReceipt:
     import_breadth = _nonnegative_int(inputs.get("import_breadth"), default=0)
     import_depth = _nonnegative_int(inputs.get("import_depth"), default=0)
+    queue_depth = _nonnegative_int(inputs.get("queue_depth"), default=0)
     direct_count = _nonnegative_int(inputs.get("direct_dependency_count"), default=0)
     dependency_depth = _nonnegative_int(inputs.get("dependency_depth"), default=0)
     mutation_depth = _nonnegative_int(inputs.get("mutation_depth"), default=0)
     lemma_rows_used_count = _nonnegative_int(inputs.get("lemma_rows_used_count"), default=0)
     citation_weight = _bounded_float(inputs.get("citation_weight"), default=1.0, cap=100.0)
     transitive_count = _nonnegative_int(inputs.get("transitive_dependency_count"), default=0)
-    basis_points = (
+    base_basis_points = (
         1000
         + 200 * min(mutation_depth, 10)
         + 150 * min(dependency_depth, 100)
@@ -160,6 +163,7 @@ def _receipt_from_inputs(inputs: Mapping[str, Any]) -> SlotWeightReceipt:
         + 100 * min(lemma_rows_used_count, 50)
         + min(1000, int(round(citation_weight * 10)))
     )
+    basis_points = base_basis_points * (2 ** min(queue_depth, 30))
     return SlotWeightReceipt(
         weight=round(basis_points / 1000.0, 6),
         basis_points=basis_points,
@@ -173,6 +177,7 @@ def _canonical_inputs(inputs: Mapping[str, Any]) -> dict[str, object]:
         "import_graph_resolved": inputs.get("import_graph_resolved") is True,
         "import_breadth": _nonnegative_int(inputs.get("import_breadth"), default=0),
         "import_depth": _nonnegative_int(inputs.get("import_depth"), default=0),
+        "queue_depth": _nonnegative_int(inputs.get("queue_depth"), default=0),
         "direct_dependency_count": _nonnegative_int(inputs.get("direct_dependency_count"), default=0),
         "transitive_dependency_count": _nonnegative_int(inputs.get("transitive_dependency_count"), default=0),
         "dependency_depth": _nonnegative_int(inputs.get("dependency_depth"), default=0),

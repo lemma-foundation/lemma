@@ -1779,11 +1779,30 @@ def test_procedural_slot_weight_receipt_uses_dependency_metadata(tmp_path: Path)
     )[0]
     inputs = candidate.metadata["slot_weight_inputs"]
 
-    assert candidate.metadata["slot_weight_version"] == "lemma-slot-weight-v3"
+    assert candidate.metadata["slot_weight_version"] == "lemma-slot-weight-v4"
+    assert inputs["queue_depth"] == 2
     assert inputs["direct_dependency_count"] == 0
     assert inputs["dependency_depth"] == 2
     assert inputs["import_breadth"] == 2
-    assert candidate.metadata["slot_weight_basis_points"] > 1000
+    assert candidate.metadata["slot_weight_basis_points"] > 4000
+
+
+def test_slot_weight_doubles_per_queue_depth() -> None:
+    shallow = fixture_candidate(
+        slug="weight_shallow",
+        source_stream="mathlib_snapshot",
+        source_name="snapshot",
+        theorem_name="Weight.shallow",
+        type_expr="∀ n m : Nat, n = m",
+        queue_depth=0,
+        metadata={"dependency_depth": 3},
+    )
+    deep = shallow.model_copy(update={"id": "weight.deep", "queue_depth": 3})
+
+    shallow_weight = slot_weight_receipt_for_candidate(shallow)
+    deep_weight = slot_weight_receipt_for_candidate(deep)
+
+    assert deep_weight.basis_points == shallow_weight.basis_points * 8
 
 
 def test_procedural_slot_weight_receipt_uses_public_import_graph(tmp_path: Path) -> None:
@@ -1803,7 +1822,8 @@ def test_procedural_slot_weight_receipt_uses_public_import_graph(tmp_path: Path)
     )[0]
     inputs = candidate.metadata["slot_weight_inputs"]
 
-    assert candidate.metadata["slot_weight_version"] == "lemma-slot-weight-v3"
+    assert candidate.metadata["slot_weight_version"] == "lemma-slot-weight-v4"
+    assert inputs["queue_depth"] == candidate.queue_depth
     assert inputs["import_graph_resolved"] is True
     assert inputs["import_graph_sha256"] == import_graph.sha256
     assert inputs["missing_import_count"] == 0
@@ -2153,7 +2173,7 @@ def test_depth2_generation_fills_target_when_one_source_family_is_most_productiv
     assert {candidate.metadata["procedural_generation_accepted_count"] for candidate in candidates} == {6}
 
 
-def test_depth2_source_bound_admits_controlled_deeper_rows() -> None:
+def test_depth2_source_bound_admits_broad_frontier_rows() -> None:
     easy = fixture_candidate(
         slug="easy_set",
         source_stream="mathlib_snapshot",
@@ -2180,19 +2200,19 @@ def test_depth2_source_bound_admits_controlled_deeper_rows() -> None:
             "dependency_depth": 0,
         },
     ).model_copy(update={"imports": ("Mathlib.Data.Nat.Hyperoperation",)})
-    too_broad = fixture_candidate(
+    frontier_algebra = fixture_candidate(
         slug="broad_set",
         source_stream="mathlib_snapshot",
         source_name="snapshot",
-        theorem_name="Set.broad",
-        type_expr="∀ x : Set Nat, x ∩ x = x",
+        theorem_name="Algebra.frontier",
+        type_expr="∀ n m : Nat, n + m = m + n",
         queue_depth=3,
         metadata={
             "difficulty_score": 5,
-            "direct_dependency_count": 0,
-            "dependency_depth": 0,
+            "direct_dependency_count": 9,
+            "dependency_depth": 7,
         },
-    ).model_copy(update={"imports": ("Mathlib.Data.Set.Basic",)})
+    ).model_copy(update={"imports": ("Mathlib.Algebra.Group.Basic",)})
     broad_import = fixture_candidate(
         slug="nat_prime",
         source_stream="mathlib_snapshot",
@@ -2245,7 +2265,7 @@ def test_depth2_source_bound_admits_controlled_deeper_rows() -> None:
         (
             easy,
             medium,
-            too_broad,
+            frontier_algebra,
             broad_import,
             free_type_var,
             free_value_var,
@@ -2257,6 +2277,7 @@ def test_depth2_source_bound_admits_controlled_deeper_rows() -> None:
     assert {source.id for source in eligible} == {
         easy.id,
         medium.id,
+        frontier_algebra.id,
         broad_import.id,
     }
 
@@ -2371,7 +2392,7 @@ def test_depth_balanced_sources_interleave_available_depths() -> None:
 
     ordered = _depth_balanced_sources(sources)
 
-    assert [source.queue_depth for source in ordered] == [2, 1, 0, 1, 0, 0]
+    assert [source.queue_depth for source in ordered] == [2, 0, 1, 0, 1, 0]
 
 
 def test_source_family_balanced_sources_interleave_available_families() -> None:

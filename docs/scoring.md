@@ -2,7 +2,7 @@
 
 Lemma rewards verified work through normal Bittensor miner and validator emissions.
 
-Each epoch has `K` paid theorem slots. A miner earns one credit for the rank-0 unique accepted Lean proof for a slot. On the bucket/commitment path, rank-0 means earliest miner Merkle-root commit block; equal commit blocks are tie-broken by Lean proof identity. Payment is weighted by the accepted proof's verifier-recorded Lean kernel dependencies. Unsolved slots remain unearned by default.
+Each epoch has `K` paid theorem slots. A miner earns one credit for the rank-0 unique accepted Lean proof for a slot. On the bucket/commitment path, rank-0 means earliest miner Merkle-root commit block; equal commit blocks are tie-broken by Lean proof identity. Payment is weighted by task level and the accepted proof's verifier-recorded Lean kernel dependencies. Unsolved slots remain unearned by default.
 
 The reward is attached to verified work, not prose, claimed effort, or model identity.
 
@@ -11,6 +11,7 @@ The reward is attached to verified work, not prose, claimed effort, or model ide
 ```text
 credit(miner) = count(rank_0_unique_verified_proof_per_task_by_miner)
 score(miner) = sum(winning_slot_weight_by_miner) / sum(active_slot_weights)
+slot_weight(task) includes 2^queue_depth
 weight(miner) = score(miner)
 unearned_share = 1 - sum(miner_weights)
 ```

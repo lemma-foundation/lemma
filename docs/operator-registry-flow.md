@@ -102,6 +102,9 @@ Plain difficulty rules:
 - `queue_depth` is the difficulty score on each generated task.
 - `queue_depth <= 1` is easy, `<= 3` is medium, `<= 6` is hard, and `>= 7` is frontier.
 - The validator only generates from source rows with `queue_depth <= frontier_depth`.
+- The validator does not restrict production source rows to lightweight Data/Logic topics; any source row that supports the public depth-2 mutation path and passes gates can enter.
+- Active ordering interleaves frontier and foundation levels, then balances source families inside each level.
+- Slot weights double for each additional `queue_depth`, before normalization across the active set.
 - The generator targets at least `LEMMA_ACTIVE_K`; `LEMMA_PROCEDURAL_CANDIDATE_COUNT` can ask for a larger cache, but it cannot shrink the paid active set.
 - Generation gets at most 50 attempts per target task. If it cannot fill the target count, it fails closed instead of filling slots with weaker tasks.
 - If miners solve enough slots, the next public retarget row can raise `frontier_depth`. If no slots are solved, frontier advancement stops and the system asks for variants.

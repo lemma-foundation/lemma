@@ -96,7 +96,7 @@ uv run lemma tasks build-mathlib-snapshot \
   --output tasks/mathlib-snapshot.registry.json
 ```
 
-The builder validates each row, orders shallow tasks before deeper tasks, writes deterministic `queue_position` values, and prints `registry_sha256`. This is useful for local smoke tests and cache artifacts.
+The builder validates each row, orders tasks with deterministic level/family balance, writes deterministic `queue_position` values, and prints `registry_sha256`. This is useful for local smoke tests and cache artifacts.
 
 Externally produced `signed_by` and `signature` metadata can be attached during registry build, but signatures do not make a registry production-authoritative. Production validators use procedural supply mode with a pinned source-pool hash.
 

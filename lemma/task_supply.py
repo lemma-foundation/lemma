@@ -293,15 +293,90 @@ def deterministic_queue(
     seed: str,
     max_frontier_depth: int | None = None,
 ) -> list[LemmaTask]:
-    """Return a deterministic shallow-first task queue."""
+    """Return a deterministic queue balanced across available levels and families."""
     eligible = [task for task in tasks if max_frontier_depth is None or task.queue_depth <= max_frontier_depth]
-    return sorted(
+    seeded = sorted(
         eligible,
         key=lambda task: (
-            task.queue_depth,
             hashlib.sha256(f"{seed}:{task.id}:{task.target_sha256}".encode()).hexdigest(),
         ),
     )
+    return _level_family_balanced_queue(seeded)
+
+
+def _level_family_balanced_queue(tasks: list[LemmaTask]) -> list[LemmaTask]:
+    by_depth: dict[int, list[LemmaTask]] = {}
+    for task in tasks:
+        by_depth.setdefault(task.queue_depth, []).append(task)
+    depth_order = depth_spread_order(tuple(by_depth))
+    depth_queues = {depth: _family_balanced_queue(items) for depth, items in by_depth.items()}
+    positions = dict.fromkeys(depth_queues, 0)
+    out: list[LemmaTask] = []
+    while len(out) < len(tasks):
+        progressed = False
+        for depth in depth_order:
+            position = positions[depth]
+            bucket = depth_queues[depth]
+            if position >= len(bucket):
+                continue
+            out.append(bucket[position])
+            positions[depth] = position + 1
+            progressed = True
+        if not progressed:
+            break
+    return out
+
+
+def _family_balanced_queue(tasks: list[LemmaTask]) -> list[LemmaTask]:
+    by_family: dict[str, list[LemmaTask]] = {}
+    for task in tasks:
+        by_family.setdefault(_task_family(task), []).append(task)
+    positions = dict.fromkeys(by_family, 0)
+    out: list[LemmaTask] = []
+    while len(out) < len(tasks):
+        progressed = False
+        for family, bucket in by_family.items():
+            position = positions[family]
+            if position >= len(bucket):
+                continue
+            out.append(bucket[position])
+            positions[family] = position + 1
+            progressed = True
+        if not progressed:
+            break
+    return out
+
+
+def depth_spread_order(depths: tuple[int, ...]) -> tuple[int, ...]:
+    ordered = sorted(depths)
+    out: list[int] = []
+    low = 0
+    high = len(ordered) - 1
+    while low <= high:
+        out.append(ordered[high])
+        if low != high:
+            out.append(ordered[low])
+        high -= 1
+        low += 1
+    return tuple(out)
+
+
+def _task_family(task: LemmaTask) -> str:
+    topic = str(task.metadata.get("topic") or "").strip()
+    subtopic = str(task.metadata.get("subtopic") or "").strip()
+    if topic and subtopic:
+        return f"{topic}/{subtopic}"
+    if topic:
+        return topic
+    path = str(task.source_ref.path or "").strip()
+    if path:
+        parts = path.removesuffix(".lean").split("/")
+        if len(parts) >= 3 and parts[0] == "Mathlib":
+            if parts[1] == "Data":
+                return "/".join(parts[1:3])
+            return parts[1]
+        return path
+    return str(task.source_ref.name or task.id)
 
 
 def write_registry(
