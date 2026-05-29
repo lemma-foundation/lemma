@@ -133,6 +133,65 @@ def test_sync_active_registry_cache_keeps_existing_cache_when_public_hash_change
     assert load_task_registry(cache_path.read_bytes()).sha256 == cached_sha
 
 
+def test_sync_active_registry_cache_replaces_stale_existing_cache(
+    monkeypatch, tmp_path: Path, capsys
+) -> None:
+    module = _load_sync_module()
+    public = tmp_path / "public"
+    public.mkdir()
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    fresh_metadata = {
+        "gate_version": GATE_VERSION,
+        "operator_bundle_hash": procedural_operator_bundle_hash(),
+        "operator_bundle_version": OPERATOR_BUNDLE_VERSION,
+        "source_sampling_version": SOURCE_SAMPLING_VERSION,
+    }
+    stale_task = make_task(
+        task_id="lemma.procedural.stale",
+        title="Stale",
+        theorem_name="stale",
+        type_expr="True",
+        source_stream="procedural",
+        source_name="pytest",
+        frontier_depth=0,
+        metadata={**fresh_metadata, "source_sampling_version": "old"},
+    )
+    public_task = make_task(
+        task_id="lemma.procedural.public",
+        title="Public",
+        theorem_name="public",
+        type_expr="True",
+        source_stream="procedural",
+        source_name="pytest",
+        frontier_depth=0,
+        metadata=fresh_metadata,
+    )
+    cache_path = cache / "tempo-7.registry.json"
+    public_path = public / "registry.json"
+    write_registry([stale_task], cache_path)
+    write_registry([public_task], public_path)
+    public_sha = load_task_registry(public_path.read_bytes()).sha256
+    index = {
+        "schema_version": 1,
+        "netuid": "sn467",
+        "registries": {"7": {"sha256": public_sha, "path": "registry.json"}},
+    }
+    index_path = public / "index.json"
+    index_path.write_text(json.dumps(index), encoding="utf-8")
+
+    monkeypatch.setenv("LEMMA_ACTIVE_REGISTRY_CACHE_DIR", str(cache))
+    monkeypatch.setenv("LEMMA_ACTIVE_REGISTRY_CACHE_INDEX_URL", index_path.as_uri())
+    monkeypatch.setenv("LEMMA_ACTIVE_K", "1")
+    monkeypatch.setattr(module, "current_active_tempo", lambda settings: 7)
+
+    module.main()
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == {"cache": "hydrated", "tempo": 7, "registry_sha256": public_sha}
+    assert load_task_registry(cache_path.read_bytes()).sha256 == public_sha
+
+
 def test_sync_active_registry_cache_reports_present_cache_without_public_index(
     monkeypatch, tmp_path: Path, capsys
 ) -> None:

@@ -78,10 +78,8 @@ def main() -> None:
     if not url or not isinstance(expected, str):
         print(json.dumps({"cache": "invalid_public_index_row", "tempo": tempo}))
         return
-    if cached is not None:
-        if cached_stale:
-            print(json.dumps({"cache": "stale_existing_cache", "tempo": tempo, "registry_sha256": cached.sha256}))
-        elif cached.sha256 == expected:
+    if cached is not None and not cached_stale:
+        if cached.sha256 == expected:
             print(json.dumps({"cache": "present", "tempo": tempo, "registry_sha256": cached.sha256}))
         else:
             print(
