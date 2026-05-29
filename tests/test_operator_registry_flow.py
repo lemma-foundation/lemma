@@ -106,11 +106,11 @@ class _SeriousTestMutationEngine:
         value = int(suffix) + 1 if suffix.isdigit() else 1
         if step == 0:
             return MutationResult(
-                "∀ n m : Nat, m = n",
-                {"rule": "requires_bridge", "relation": "=", "engine": MUTATION_ENGINE},
+                "∀ n m : Nat, (n, n) = (m, m)",
+                {"rule": "pair_congr", "relation": "=", "engine": MUTATION_ENGINE},
             )
         return MutationResult(
-            f"∀ m : Nat, ({value} : Nat) = m",
+            f"∀ m : Nat, (({value} : Nat), ({value} : Nat)) = (m, m)",
             {"binder": "n", "binder_type": "Nat", "value": str(value), "engine": MUTATION_ENGINE},
         )
 
@@ -345,7 +345,7 @@ def test_operator_registry_flow_smoke(monkeypatch: pytest.MonkeyPatch, tmp_path:
     assert benchmark_record["provenance"]["validator_hotkey"] == "validator-smoke"
 
 
-def test_rebuild_procedural_registry_trims_imports_before_serious_gate(
+def test_rebuild_procedural_registry_imports_source_module_for_oracle(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     runner = CliRunner()
@@ -388,8 +388,8 @@ def test_rebuild_procedural_registry_trims_imports_before_serious_gate(
     assert build.exit_code == 0, build.output
     registry = load_task_registry(registry_path.read_bytes())
     task = registry.tasks[0]
-    assert task.imports == ("Mathlib.Init",)
-    assert task.metadata["source_import_status"] == "source_theorem_unavailable"
+    assert task.imports == ("Mathlib.OperatorSmoke",)
+    assert task.metadata["source_import_status"] == "source_theorem_available"
     assert task.metadata["task_pool"] == "serious_paid"
 
 

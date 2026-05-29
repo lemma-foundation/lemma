@@ -116,7 +116,7 @@ _LOW_VALUE_MUTATION_FALLBACKS = frozenset(
 _LOW_VALUE_MUTATION_MODES = frozenset({"peer_premise"})
 _LOW_VALUE_MUTATION_RULES = frozenset({"conjoin_peer_conclusion", "false_disjunct"})
 _LOW_VALUE_MUTATION_TARGETS: frozenset[str] = frozenset()
-_PRODUCTIVE_OPERATOR_NAMES = ("witness-relation",)
+_PRODUCTIVE_OPERATOR_NAMES = ("pair-congr",)
 _PEER_OPERATOR_NAMES = frozenset({"conjoin", "strengthen"})
 _LEAN_GATE_BATCH_ATTEMPTS = 8
 _TOY_BASIC_SOURCE_PATHS = frozenset(
@@ -929,6 +929,9 @@ def _candidate_from_source(
         type_expr = mutation.type_expr
         input_hash = output_hash
 
+    if mutation_chain[0]["operator"] == "pair-congr":
+        imports = _source_module_imports(source)
+
     if all(step["operator"] == "specialize" for step in mutation_chain):
         raise ValueError("low-value procedural mutation chain: specialize_only")
 
@@ -1078,10 +1081,14 @@ def _supports_depth2_chain(type_expr: str) -> bool:
 
 
 def _productive_operators_for(type_expr: str) -> tuple[str, ...]:
-    from lemma.supply.mutation import _split_forall_prefix, _split_top_level_relation
+    from lemma.supply.mutation import _split_forall_prefix, _split_top_level_arrow, _split_top_level_relation
 
     _prefix, body = _split_forall_prefix(type_expr)
-    return _PRODUCTIVE_OPERATOR_NAMES if _split_top_level_relation(body) is not None else ()
+    implication = _split_top_level_arrow(body)
+    relation = _split_top_level_relation(implication[1] if implication is not None else body)
+    if relation is None or relation[1] != "=":
+        return ()
+    return _PRODUCTIVE_OPERATOR_NAMES
 
 
 def _supports_specialize(type_expr: str) -> bool:
@@ -1165,6 +1172,13 @@ def _challenge_imports_for_source(source: TaskCandidate, import_graph: ImportGra
     module = _source_module_from_path(source.source_ref.path)
     if import_graph is not None and module is not None and module in import_graph.edges:
         return import_graph.edges[module]
+    return source.imports
+
+
+def _source_module_imports(source: TaskCandidate) -> tuple[str, ...]:
+    module = _source_module_from_path(source.source_ref.path)
+    if module is not None and _valid_lean_import_module(module):
+        return (module,)
     return source.imports
 
 

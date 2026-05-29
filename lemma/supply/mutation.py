@@ -52,6 +52,8 @@ class StructuralMutationEngine:
         expr = type_expr.strip()
         if operator == "symm":
             return _preview_symm(expr)
+        if operator == "pair-congr":
+            return _preview_pair_congr(expr)
         if operator == "witness-relation":
             return _preview_witness_relation(expr)
         if operator == "generalize":
@@ -269,6 +271,33 @@ def _preview_witness_relation(expr: str) -> MutationResult:
     return MutationResult(
         f"{prefix}∃ h : {left} {operator} {right}, h = h",
         {"rule": "witness_relation", "relation": operator, "engine": MUTATION_ENGINE},
+    )
+
+
+def _preview_pair_congr(expr: str) -> MutationResult:
+    prefix, body = _split_forall_prefix(expr)
+    implication = _split_top_level_arrow(body)
+    if implication is not None:
+        premise, conclusion = implication
+        relation = _split_top_level_relation(conclusion)
+        if relation is None:
+            raise ValueError("no pairable top-level relation")
+        left, operator, right = relation
+        if operator != "=":
+            raise ValueError("no pairable top-level equality")
+        return MutationResult(
+            f"{prefix}{premise} → ({left}, {left}) = ({right}, {right})",
+            {"rule": "pair_congr", "relation": operator, "engine": MUTATION_ENGINE},
+        )
+    relation = _split_top_level_relation(body)
+    if relation is None:
+        raise ValueError("no pairable top-level relation")
+    left, operator, right = relation
+    if operator != "=":
+        raise ValueError("no pairable top-level equality")
+    return MutationResult(
+        f"{prefix}({left}, {left}) = ({right}, {right})",
+        {"rule": "pair_congr", "relation": operator, "engine": MUTATION_ENGINE},
     )
 
 
@@ -592,6 +621,16 @@ def mutate (expr peer : TSyntax `term) : Elab.Command.CommandElabM (TSyntax `ter
       ("binder", Json.str binderName),
       ("binder_type", Json.str "Prop")
     ])
+  else if operatorName == "pair-congr" then
+    match expr with
+    | `(term| $premise → $left = $right) =>
+        let output ← `(term| $premise → ($left, $left) = ($right, $right))
+        pure (output, jsonObj [("rule", Json.str "pair_congr"), ("relation", Json.str "=")])
+    | `(term| $left = $right) =>
+        let output ← `(term| ($left, $left) = ($right, $right))
+        pure (output, jsonObj [("rule", Json.str "pair_congr"), ("relation", Json.str "=")])
+    | _ =>
+        throwError "no pairable top-level equality"
   else if operatorName == "witness-relation" then
     match expr with
     | `(term| $premise → $left = $right) =>

@@ -85,7 +85,7 @@ def test_structural_mutation_engine_marks_current_bundle_engine() -> None:
     first = StructuralMutationEngine().apply(
         source,
         "true = false",
-        "witness-relation",
+        "pair-congr",
         step=0,
         param_seed="a" * 64,
         peer=source,
@@ -99,30 +99,30 @@ def test_structural_mutation_engine_marks_current_bundle_engine() -> None:
         peer=source,
     )
 
-    assert first.type_expr == "∃ h : true = false, h = h"
+    assert first.type_expr == "(true, true) = (false, false)"
     assert first.params["engine"] == MUTATION_ENGINE
-    assert second.type_expr == "∀ lemma_p1_bbbbbb : Prop, lemma_p1_bbbbbb → (∃ h : true = false, h = h)"
+    assert second.type_expr == "∀ lemma_p1_bbbbbb : Prop, lemma_p1_bbbbbb → ((true, true) = (false, false))"
     assert second.params["engine"] == MUTATION_ENGINE
 
     implication = StructuralMutationEngine().apply(
         source,
         "¬b = false → b = true",
-        "witness-relation",
+        "pair-congr",
         step=0,
         param_seed="c" * 64,
         peer=source,
     )
-    assert implication.type_expr == "¬b = false → ∃ h : b = true, h = h"
+    assert implication.type_expr == "¬b = false → (b, b) = (true, true)"
 
     bind_relation = StructuralMutationEngine().apply(
         source,
         "x >>= f = x.bind f",
-        "witness-relation",
+        "pair-congr",
         step=0,
         param_seed="d" * 64,
         peer=source,
     )
-    assert bind_relation.type_expr == "∃ h : x >>= f = x.bind f, h = h"
+    assert bind_relation.type_expr == "(x >>= f, x >>= f) = (x.bind f, x.bind f)"
 
     field_notation = StructuralMutationEngine().apply(
         source,
@@ -187,25 +187,22 @@ def _write_import_graph(path: Path) -> None:
 def _test_valid_mutation(source, *, step: int, engine: str = MUTATION_ENGINE) -> MutationResult:  # noqa: ANN001
     if step == 0:
         return MutationResult(
-            "∀ n m : Nat, m = n",
-            {"rule": "reverse_relation", "relation": "=", "engine": engine},
+            "∀ n m : Nat, (n, n) = (m, m)",
+            {"rule": "pair_congr", "relation": "=", "engine": engine},
         )
     suffix = source.theorem_name.rsplit("_", 1)[-1]
     value = int(suffix) + 1 if suffix.isdigit() else 1 + (
         int(hashlib.sha256(source.theorem_name.encode()).hexdigest()[:8], 16) % 1_000_000
     )
     return MutationResult(
-        f"∀ m : Nat, ({value} : Nat) = m",
+        f"∀ m : Nat, (({value} : Nat), ({value} : Nat)) = (m, m)",
         {"binder": "n", "binder_type": "Nat", "value": str(value), "engine": engine},
     )
 
 
 class _SeriousTestMutationEngine:
     def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001, ARG002
-        mutation = _test_valid_mutation(source, step=step)
-        if step == 0:
-            return MutationResult(mutation.type_expr, {**mutation.params, "rule": "requires_bridge"})
-        return mutation
+        return _test_valid_mutation(source, step=step)
 
 
 def test_materialize_workspace_writes_lean_heartbeat_budget(tmp_path: Path) -> None:
@@ -629,8 +626,8 @@ def test_candidate_from_source_uses_specialize_as_second_step() -> None:
             operators.append(operator)
             if step == 0:
                 return MutationResult(
-                    "∀ n m : Nat, m = n",
-                    {"rule": "reverse_relation", "engine": MUTATION_ENGINE},
+                    "∀ n m : Nat, (n, n) = (m, m)",
+                    {"rule": "pair_congr", "relation": "=", "engine": MUTATION_ENGINE},
                 )
             return MutationResult(
                 "∀ m : Nat, (1 : Nat) = m",
@@ -667,7 +664,7 @@ def test_candidate_from_source_uses_specialize_as_second_step() -> None:
         sequence=0,
     )
 
-    assert operators == ["witness-relation", "specialize"]
+    assert operators == ["pair-congr", "specialize"]
     assert [step["operator"] for step in candidate.metadata["mutation_chain"]] == operators
     assert candidate.type_expr == "∀ m : Nat, (1 : Nat) = m"
 
@@ -691,7 +688,7 @@ def test_candidate_from_source_skips_peer_lookup_for_non_peer_operators(monkeypa
         source_pool=(source,),
         generation_seed="epoch-a",
         epoch_fields={},
-        operator_chain=("witness-relation", "specialize"),
+        operator_chain=("pair-congr", "specialize"),
         mutation_engine=StructuralMutationEngine(),
         source_pool_hash_value="a" * 64,
         source_pool_receipt_value={
@@ -708,7 +705,7 @@ def test_candidate_from_source_skips_peer_lookup_for_non_peer_operators(monkeypa
         sequence=0,
     )
 
-    assert [step["operator"] for step in candidate.metadata["mutation_chain"]] == ["witness-relation", "specialize"]
+    assert [step["operator"] for step in candidate.metadata["mutation_chain"]] == ["pair-congr", "specialize"]
 
 
 def test_candidate_from_source_rejects_placeholder_mutation() -> None:
@@ -1229,7 +1226,7 @@ def test_depth2_generation_rejects_sources_with_unbound_short_identifiers_before
         )
 
 
-def test_depth2_generation_current_chain_reaches_serious_lean_gate_with_source_module_hidden() -> None:
+def test_depth2_generation_current_chain_reaches_serious_lean_gate_with_source_oracle_import() -> None:
     class RecordingGate:
         requires_serious_candidates = True
 
@@ -1304,9 +1301,11 @@ def test_depth2_generation_current_chain_reaches_serious_lean_gate_with_source_m
     assert gate.seen
     assert candidate.metadata["task_pool"] == "serious_paid"
     assert candidate.metadata["source_reuse_class"] == "source_derived_survived"
-    assert candidate.metadata["source_import_status"] == "source_theorem_unavailable"
-    assert [step["operator"] for step in candidate.metadata["mutation_chain"]] == ["witness-relation", "specialize"]
-    assert "∃ h :" in candidate.type_expr
+    assert candidate.imports == ("Mathlib.Source",)
+    assert candidate.metadata["source_import_status"] == "source_theorem_available"
+    assert [step["operator"] for step in candidate.metadata["mutation_chain"]] == ["pair-congr", "specialize"]
+    assert "∃ h :" not in candidate.type_expr
+    assert "(m, m)" in candidate.type_expr
 
 
 def test_depth2_generation_uses_verified_substrate_sources_as_unavailable() -> None:
@@ -1617,7 +1616,7 @@ def test_lean_gate_runner_embeds_source_oracle_baseline(
         gate_source = str(problem.extra["challenge_full"])
         assert "ancestorBaselineSource" not in gate_source
         assert "sourceOracleProofs" in gate_source
-        assert "source_wrapper" in gate_source
+        assert "source_wrapper" not in gate_source
         assert "source_exact" in gate_source
         assert "source_simpa" in gate_source
         assert "source_apply" in gate_source
@@ -2212,10 +2211,10 @@ def test_procedural_slot_weight_receipt_uses_dependency_metadata(tmp_path: Path)
     assert inputs["queue_depth"] == 2
     assert inputs["direct_dependency_count"] == 0
     assert inputs["dependency_depth"] == 2
-    assert inputs["import_breadth"] == 2
-    assert inputs["source_reuse_class"] == "direct_source_wrapper"
-    assert inputs["task_pool"] == "calibration"
-    assert inputs["depth_multiplier_micros"] == 1_000_000
+    assert inputs["import_breadth"] == 1
+    assert inputs["source_reuse_class"] == "source_derived_survived"
+    assert inputs["task_pool"] == "serious_paid"
+    assert inputs["depth_multiplier_micros"] == 1_732_051
 
 
 def test_slot_weight_uses_smoothed_depth_multiplier() -> None:
@@ -2283,6 +2282,36 @@ def test_source_wrapper_with_hidden_source_module_is_serious_weighted() -> None:
                 {
                     "operator": "witness-relation",
                     "params": {"rule": "witness_relation", "relation": "="},
+                },
+                {
+                    "operator": "specialize",
+                    "params": {"binder": "n", "binder_type": "Nat", "value": "3"},
+                },
+            ],
+        },
+    )
+
+    weight = slot_weight_receipt_for_candidate(task)
+
+    assert weight.inputs["source_reuse_class"] == "source_derived_survived"
+    assert weight.inputs["task_pool"] == "serious_paid"
+
+
+def test_pair_congr_source_module_is_serious_weighted() -> None:
+    task = fixture_candidate(
+        slug="weight_pair_congr_source",
+        source_stream="procedural",
+        source_name="snapshot",
+        theorem_name="Weight.pairCongr",
+        type_expr="∀ m : Nat, ((3 : Nat), (3 : Nat)) = (m, m)",
+        queue_depth=2,
+        metadata={
+            "source_import_status": "source_theorem_available",
+            "source_theorem_name": "Weight.source",
+            "mutation_chain": [
+                {
+                    "operator": "pair-congr",
+                    "params": {"rule": "pair_congr", "relation": "="},
                 },
                 {
                     "operator": "specialize",
@@ -2371,6 +2400,28 @@ def test_source_theorem_wrapper_exact_applies_remaining_witness_binders() -> Non
     )
 
     assert exact == "(fun m => ⟨((Source.thm (5 : Nat)) m), rfl⟩)"
+
+
+def test_source_theorem_wrapper_exact_rejects_pair_congr() -> None:
+    exact = source_theorem_wrapper_exact(
+        {
+            "source_import_status": "source_theorem_available",
+            "mutation_chain": [
+                {
+                    "operator": "pair-congr",
+                    "params": {"rule": "pair_congr", "relation": "="},
+                },
+                {
+                    "operator": "specialize",
+                    "params": {"binder": "n", "binder_type": "Nat", "value": "5"},
+                },
+            ],
+        },
+        "Source.thm",
+        type_expr="∀ m : Nat, ((5 : Nat), (5 : Nat)) = (m, m)",
+    )
+
+    assert exact is None
 
 
 def test_source_theorem_wrapper_exact_introduces_witness_premises() -> None:
@@ -2885,17 +2936,18 @@ def test_depth2_sources_require_productive_specialization() -> None:
         ).model_copy(update={"imports": ("Mathlib.Data.Nat.Basic",)})
 
     good = source("good", "∀ n m : Nat, n = m")
+    implication = source("implication", "∀ n m : Nat, n = n → n = m")
     one_binder = source("one_binder", "∀ n : Nat, n = n")
     instance_after_value = source("instance_after_value", "∀ n : Nat, ∀ [NeZero n], n = n")
     prop_first = source("prop_first", "∀ p : Prop, ∀ n : Nat, n = n")
     no_binder = source("no_binder", "true = false")
 
     eligible = _eligible_depth2_sources(
-        (good, one_binder, instance_after_value, prop_first, no_binder),
+        (good, implication, one_binder, instance_after_value, prop_first, no_binder),
         max_queue_depth=16,
     )
 
-    assert tuple(source.id for source in eligible) == (good.id,)
+    assert tuple(source.id for source in eligible) == (good.id, implication.id)
 
 
 def test_depth2_generation_uses_public_yield_history_for_source_order(tmp_path: Path) -> None:
@@ -2918,7 +2970,7 @@ def test_depth2_generation_uses_public_yield_history_for_source_order(tmp_path: 
                 json.dumps(
                     {
                         "theorem_name": "Yield.high",
-                        "type_expr": "∀ a b : Bool, a ≠ b ↔ b ≠ a",
+                        "type_expr": "∀ a b : Bool, a = b",
                         "imports": ["Mathlib.Data.Bool.Basic"],
                         "mathlib_rev": "abc123",
                         "source_path": "Mathlib/High.lean",
@@ -2936,7 +2988,7 @@ def test_depth2_generation_uses_public_yield_history_for_source_order(tmp_path: 
     history_path.write_text(
         json.dumps(
             {
-                "accepted_operator_chains": {"witness-relation,specialize": 2},
+                "accepted_operator_chains": {"pair-congr,specialize": 2},
                 "accepted_source_families": {"Mathlib/High.lean": 5},
             },
             sort_keys=True,

@@ -84,9 +84,9 @@ def _procedural_metadata(
         "mutation_depth": mutation_depth,
         "mutation_chain": [
             {
-                "operator": "witness-relation",
+                "operator": "pair-congr",
                 "params": {
-                    "rule": "witness_relation",
+                    "rule": "pair_congr",
                     "relation": "=",
                     "engine": MUTATION_ENGINE,
                 },
@@ -141,7 +141,7 @@ def _procedural_metadata(
         "source_oracle_checked": True,
         "source_oracle_solved": False,
         "source_oracle_solver": None,
-        "source_import_status": "source_theorem_unavailable",
+        "source_import_status": "source_theorem_available",
         **novelty_cache.metadata(),
         **triviality_budget.metadata(),
     }
@@ -177,7 +177,7 @@ def _production_task(*, mutation_depth: int = 2, generation_seed: str = "pytest-
         update={
             "source_stream": "procedural",
             "source_ref": SourceRef(kind="procedural", name="pytest-depth2", path="Mathlib/Source.lean"),
-            "imports": ("Mathlib.Init",),
+            "imports": ("Mathlib.Source",),
             "metadata": metadata,
         }
     )
