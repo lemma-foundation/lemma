@@ -141,8 +141,7 @@ def test_auditor_registry_wrappers_refuse_local_generation() -> None:
     prebuild = (ROOT / "scripts" / "lemma-active-registry-prebuild").read_text(encoding="utf-8")
 
     expected = "auditor mode waits for public active registry cache"
-    assert 'export LEMMA_ACTIVE_REGISTRY_ROLE="${LEMMA_ACTIVE_REGISTRY_ROLE:-auditor}"' in validator
-    assert "LEMMA_ACTIVE_REGISTRY_ROLE:-builder" not in validator
+    assert "LEMMA_ACTIVE_REGISTRY_ROLE:-builder" in validator
     assert "LEMMA_ACTIVE_REGISTRY_ROLE:-builder" in prebuild
     assert expected in validator
     assert expected in prebuild

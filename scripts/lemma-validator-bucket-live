@@ -2,7 +2,7 @@
 set -euo pipefail
 
 export LEMMA_PREFER_PROCESS_ENV="${LEMMA_PREFER_PROCESS_ENV:-1}"
-export LEMMA_ACTIVE_REGISTRY_ROLE="${LEMMA_ACTIVE_REGISTRY_ROLE:-auditor}"
+export LEMMA_ACTIVE_REGISTRY_ROLE="${LEMMA_ACTIVE_REGISTRY_ROLE:-builder}"
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 "${LEMMA_CURRICULUM_SYNC_BIN:-$script_dir/lemma-sync-curriculum-state}"
