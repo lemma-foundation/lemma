@@ -109,6 +109,39 @@ def _timestamp() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
+def _idle_validation_payload(
+    settings: LemmaSettings,
+    *,
+    reason: str,
+    spool_paths: tuple[Path, ...] = (),
+    bucket_rejections: list[str] | None = None,
+    bucket_tempo: int | None = None,
+    active_tempo: int | None = None,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "verified": 0,
+        "accepted_unique": 0,
+        "credits": {},
+        "scores": {},
+        "submission_files_consumed": len(spool_paths),
+        "bucket_reveals_consumed": 0,
+        "bucket_reveals_rejected": len(bucket_rejections or ()),
+        "reason": reason,
+        "weights": {},
+        "corpus_rows": 0,
+        "unearned_policy": settings.unearned_allocation_policy,
+        "unearned_share": 0.0,
+        "weights_set": False,
+        "chain_commitment_set": False,
+        "tempo_commitment_payload": "",
+    }
+    if bucket_tempo is not None:
+        payload["bucket_tempo"] = bucket_tempo
+    if active_tempo is not None:
+        payload["active_tempo"] = active_tempo
+    return payload
+
+
 def _active_registry_generation_metrics(registry) -> dict[str, object]:  # noqa: ANN001
     tasks = tuple(getattr(registry, "tasks", ()) or ())
     metadata = [getattr(task, "metadata", {}) or {} for task in tasks]
@@ -1868,10 +1901,38 @@ def validate_cmd(
                 raise click.ClickException(
                     "production --miner-buckets-json requires positive --bucket-commit-blocks-json entries"
                 )
-        active_tempo = current_active_tempo(settings)
+        chain_active_tempo = current_active_tempo(settings)
+        active_tempo = chain_active_tempo - 1 if settings.protocol_mode == "production" else chain_active_tempo
+        if settings.protocol_mode == "production" and active_tempo < 0:
+            click.echo(
+                json.dumps(
+                    _idle_validation_payload(
+                        settings,
+                        reason="bucket reveal tempo is not complete",
+                        spool_paths=spool_paths,
+                        bucket_rejections=bucket_rejections,
+                        bucket_tempo=chain_active_tempo,
+                        active_tempo=chain_active_tempo,
+                    ),
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
+            return
         validation_tempo = active_tempo
         registry = task_registry_for_validation(settings, tempo=active_tempo)
-        chain_commitments = read_all_commitments(settings)
+        chain_commitments_by_block = None
+        if settings.protocol_mode == "production":
+            chain_commitments_by_block = {
+                block: read_all_commitments(settings, block=block)
+                for block in sorted({commit_blocks[miner] for miner in miner_bucket_urls})
+            }
+            chain_commitments = {
+                miner: chain_commitments_by_block[commit_blocks[miner]].get(miner, "")
+                for miner in miner_bucket_urls
+            }
+        else:
+            chain_commitments = read_all_commitments(settings)
         reveals = poll_bucket_reveals(
             miner_bucket_urls=miner_bucket_urls,
             chain_commitments=chain_commitments,
@@ -1888,6 +1949,7 @@ def validate_cmd(
             active_tasks_for_validation(registry, settings, tempo=active_tempo),
             verify_drand=False,
             chain_commitments=chain_commitments,
+            chain_commitments_by_block=chain_commitments_by_block,
             strict=False,
             rejection_log=bucket_rejections.append,
         )
@@ -1916,25 +1978,14 @@ def validate_cmd(
             ):
                 click.echo(
                     json.dumps(
-                        {
-                            "verified": 0,
-                            "accepted_unique": 0,
-                            "credits": {},
-                            "scores": {},
-                            "submission_files_consumed": len(spool_paths),
-                            "bucket_reveals_consumed": 0,
-                            "bucket_reveals_rejected": len(bucket_rejections),
-                            "bucket_tempo": reveal_tempo,
-                            "active_tempo": chain_active_tempo,
-                            "reason": "bucket reveal tempo is not complete",
-                            "weights": {},
-                            "corpus_rows": 0,
-                            "unearned_policy": settings.unearned_allocation_policy,
-                            "unearned_share": 0.0,
-                            "weights_set": False,
-                            "chain_commitment_set": False,
-                            "tempo_commitment_payload": "",
-                        },
+                        _idle_validation_payload(
+                            settings,
+                            reason="bucket reveal tempo is not complete",
+                            spool_paths=spool_paths,
+                            bucket_rejections=bucket_rejections,
+                            bucket_tempo=reveal_tempo,
+                            active_tempo=chain_active_tempo,
+                        ),
                         indent=2,
                         sort_keys=True,
                     )
@@ -1969,25 +2020,14 @@ def validate_cmd(
         if settings.protocol_mode == "production" and reveal_tempo >= chain_active_tempo:
             click.echo(
                 json.dumps(
-                    {
-                        "verified": 0,
-                        "accepted_unique": 0,
-                        "credits": {},
-                        "scores": {},
-                        "submission_files_consumed": len(spool_paths),
-                        "bucket_reveals_consumed": 0,
-                        "bucket_reveals_rejected": len(bucket_rejections),
-                        "bucket_tempo": reveal_tempo,
-                        "active_tempo": chain_active_tempo,
-                        "reason": "bucket reveal tempo is not complete",
-                        "weights": {},
-                        "corpus_rows": 0,
-                        "unearned_policy": settings.unearned_allocation_policy,
-                        "unearned_share": 0.0,
-                        "weights_set": False,
-                        "chain_commitment_set": False,
-                        "tempo_commitment_payload": "",
-                    },
+                    _idle_validation_payload(
+                        settings,
+                        reason="bucket reveal tempo is not complete",
+                        spool_paths=spool_paths,
+                        bucket_rejections=bucket_rejections,
+                        bucket_tempo=reveal_tempo,
+                        active_tempo=chain_active_tempo,
+                    ),
                     indent=2,
                     sort_keys=True,
                 )
@@ -2033,25 +2073,14 @@ def validate_cmd(
         if settings.protocol_mode == "production" and active_tempo >= chain_active_tempo:
             click.echo(
                 json.dumps(
-                    {
-                        "verified": 0,
-                        "accepted_unique": 0,
-                        "credits": {},
-                        "scores": {},
-                        "submission_files_consumed": len(spool_paths),
-                        "bucket_reveals_consumed": 0,
-                        "bucket_reveals_rejected": len(bucket_rejections),
-                        "bucket_tempo": active_tempo,
-                        "active_tempo": chain_active_tempo,
-                        "reason": "bucket reveal tempo is not complete",
-                        "weights": {},
-                        "corpus_rows": 0,
-                        "unearned_policy": settings.unearned_allocation_policy,
-                        "unearned_share": 0.0,
-                        "weights_set": False,
-                        "chain_commitment_set": False,
-                        "tempo_commitment_payload": "",
-                    },
+                    _idle_validation_payload(
+                        settings,
+                        reason="bucket reveal tempo is not complete",
+                        spool_paths=spool_paths,
+                        bucket_rejections=bucket_rejections,
+                        bucket_tempo=active_tempo,
+                        active_tempo=chain_active_tempo,
+                    ),
                     indent=2,
                     sort_keys=True,
                 )

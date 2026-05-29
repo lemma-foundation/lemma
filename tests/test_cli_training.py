@@ -7,6 +7,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from bittensor_wallet import Keypair
@@ -1160,6 +1161,95 @@ def test_production_miner_bucket_polling_requires_positive_commit_blocks(tmp_pat
 
     assert result.exit_code != 0
     assert "positive --bucket-commit-blocks-json entries" in result.output
+
+
+def test_production_miner_bucket_polling_uses_completed_tempo_commit_blocks(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    miners = tmp_path / "miners.json"
+    commit_blocks = tmp_path / "commit-blocks.json"
+    miners.write_text(json.dumps({"hk-a": "https://bucket.example/miner"}), encoding="utf-8")
+    commit_blocks.write_text(json.dumps({"hk-a": 123}), encoding="utf-8")
+    task = make_task(
+        task_id="lemma.sample.true_intro",
+        title="Smoke-test True",
+        theorem_name="true_intro_sample",
+        type_expr="True",
+        source_stream="human_curated",
+        source_name="pytest",
+    )
+    registry = SimpleNamespace(tasks=(task,))
+    calls: dict[str, object] = {}
+
+    monkeypatch.setattr("lemma.validator.current_active_tempo", lambda settings: 8)
+    monkeypatch.setattr("lemma.validator.task_registry_for_validation", lambda settings, *, tempo: registry)
+    monkeypatch.setattr("lemma.validator.active_tasks_for_validation", lambda registry, settings, *, tempo: (task,))
+
+    def fake_read_all_commitments(settings, *, block=None):  # noqa: ANN001
+        calls.setdefault("commitment_blocks", []).append(block)
+        return {"hk-a": f"commit-at-{block}"}
+
+    def fake_poll_bucket_reveals(**kwargs):  # noqa: ANN001
+        calls["poll_tempo"] = kwargs["tempo"]
+        calls["poll_commitments"] = kwargs["chain_commitments"]
+        return ()
+
+    def fake_submissions_from_bucket_reveals(reveals, active_tasks, **kwargs):  # noqa: ANN001
+        calls["submission_commitments_by_block"] = kwargs["chain_commitments_by_block"]
+        return [], frozenset()
+
+    def fake_validate_once(settings, submissions, *, tempo, registry, **kwargs):  # noqa: ANN001
+        calls["validate_tempo"] = tempo
+        return SimpleNamespace(
+            verification_records=(),
+            score=SimpleNamespace(valid_unique_proofs=(), credits={}, scores={}, weights={}),
+            corpus_rows=(),
+            summary=SimpleNamespace(
+                unearned_policy=settings.unearned_allocation_policy,
+                unearned_share=0.0,
+                chain_commitment_set=False,
+                tempo_commitment_payload="",
+            ),
+            weights_set=False,
+            weight_submission=None,
+        )
+
+    monkeypatch.setattr("lemma.chain.commitments.read_all_commitments", fake_read_all_commitments)
+    monkeypatch.setattr("lemma.chain.miner_buckets.poll_bucket_reveals", fake_poll_bucket_reveals)
+    monkeypatch.setattr(
+        "lemma.chain.miner_buckets.submissions_from_bucket_reveals",
+        fake_submissions_from_bucket_reveals,
+    )
+    monkeypatch.setattr("lemma.validator.validate_once", fake_validate_once)
+
+    result = CliRunner().invoke(
+        main,
+        [
+            "validate",
+            "--once",
+            "--miner-buckets-json",
+            str(miners),
+            "--bucket-commit-blocks-json",
+            str(commit_blocks),
+            "--bucket-drand-round",
+            "77",
+            "--bucket-drand-signature",
+            "0xsig",
+            "--no-set-weights",
+        ],
+        env={
+            "LEMMA_PREFER_PROCESS_ENV": "1",
+            "LEMMA_PROTOCOL_MODE": "production",
+            "LEMMA_TASK_SUPPLY_MODE": "procedural",
+        },
+    )
+
+    assert result.exit_code == 0, result.output
+    assert calls["poll_tempo"] == 7
+    assert calls["validate_tempo"] == 7
+    assert calls["commitment_blocks"] == [123]
+    assert calls["poll_commitments"] == {"hk-a": "commit-at-123"}
+    assert calls["submission_commitments_by_block"] == {123: {"hk-a": "commit-at-123"}}
 
 
 def _write_preflight_registry(tmp_path, *, task_count: int = 2) -> tuple[str, str]:

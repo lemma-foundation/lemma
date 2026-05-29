@@ -166,15 +166,15 @@ def _flush_source_transforms(
 
 
 def _witness_relation_exact(exact: str, type_expr: str) -> str:
-    binders = _leading_forall_binder_names(type_expr)
-    if not binders:
+    args = _leading_source_args(type_expr)
+    if not args:
         return f"⟨{exact}, rfl⟩"
-    args = " ".join(binders)
-    return f"(fun {args} => ⟨({exact} {args}), rfl⟩)"
+    applied = " ".join(args)
+    return f"(fun {applied} => ⟨({exact} {applied}), rfl⟩)"
 
 
-def _leading_forall_binder_names(type_expr: str) -> tuple[str, ...]:
-    from lemma.supply.mutation import _split_forall
+def _leading_source_args(type_expr: str) -> tuple[str, ...]:
+    from lemma.supply.mutation import _split_forall, _split_top_level_arrow
 
     names: list[str] = []
     remaining = type_expr.strip()
@@ -182,7 +182,20 @@ def _leading_forall_binder_names(type_expr: str) -> tuple[str, ...]:
         name, _binder_type, body = binder
         names.append(name)
         remaining = body.strip()
+    while arrow := _split_top_level_arrow(remaining):
+        _premise, body = arrow
+        names.append(_fresh_arg_name(names))
+        remaining = body.strip()
     return tuple(names)
+
+
+def _fresh_arg_name(existing: Sequence[str]) -> str:
+    if "h" not in existing:
+        return "h"
+    index = 1
+    while f"h{index}" in existing:
+        index += 1
+    return f"h{index}"
 
 
 def source_pricing_metadata(source_stream: str, metadata: Mapping[str, object]) -> dict[str, object]:

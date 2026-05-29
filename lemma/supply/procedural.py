@@ -460,7 +460,7 @@ def _generate_depth2_candidates_sequential(
         cursor += 1
     _log_depth2_telemetry(telemetry, count=count, attempt_limit=attempt_limit)
     if len(out) < required_count:
-        raise ValueError(f"procedural gates accepted {len(out)} candidates, needed {required_count}")
+        raise ValueError(_generation_failure_message(len(out), required_count, telemetry))
     return _with_generation_count_receipt(
         tuple(out),
         target_count=count,
@@ -510,7 +510,7 @@ def _generate_depth2_candidates_parallel(
         cursor = batch_end
     _log_depth2_telemetry(telemetry, count=count, attempt_limit=attempt_limit)
     if len(out) < required_count:
-        raise ValueError(f"procedural gates accepted {len(out)} candidates, needed {required_count}")
+        raise ValueError(_generation_failure_message(len(out), required_count, telemetry))
     return _with_generation_count_receipt(
         tuple(out),
         target_count=count,
@@ -796,6 +796,14 @@ def _log_depth2_telemetry(telemetry: _Depth2Telemetry, *, count: int, attempt_li
             sort_keys=True,
         ),
     )
+
+
+def _generation_failure_message(accepted: int, required_count: int, telemetry: _Depth2Telemetry) -> str:
+    message = f"procedural gates accepted {accepted} candidates, needed {required_count}"
+    if telemetry.rejected:
+        rejected = ", ".join(f"{reason}={count}" for reason, count in _top_counter(telemetry.rejected, limit=5).items())
+        message = f"{message}; top rejections: {rejected}"
+    return message
 
 
 def _prelean_candidate_rejection(candidate: TaskCandidate, *, require_serious: bool = False) -> str:

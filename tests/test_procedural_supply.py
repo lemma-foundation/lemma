@@ -1083,7 +1083,7 @@ def test_depth2_generation_rejects_source_wrappers_before_lean() -> None:
         for index in range(100)
     )
 
-    with pytest.raises(ValueError, match="procedural gates accepted 0 candidates, needed 1"):
+    with pytest.raises(ValueError, match="procedural gates accepted 0 candidates, needed 1") as exc_info:
         generate_depth2_candidates(
             sources,
             generation_seed="epoch-a",
@@ -1094,6 +1094,7 @@ def test_depth2_generation_rejects_source_wrappers_before_lean() -> None:
             generation_workers=2,
             mutation_engine=DirectWrapperMutationEngine(),
         )
+    assert "prelean:task_pool:calibration" in str(exc_info.value)
 
 
 def test_depth2_generation_current_chain_reaches_serious_lean_gate_with_source_module_hidden() -> None:
@@ -2166,6 +2167,23 @@ def test_source_theorem_wrapper_exact_applies_remaining_witness_binders() -> Non
     )
 
     assert exact == "(fun m => ⟨((Source.thm (5 : Nat)) m), rfl⟩)"
+
+
+def test_source_theorem_wrapper_exact_introduces_witness_premises() -> None:
+    exact = source_theorem_wrapper_exact(
+        {
+            "mutation_chain": [
+                {
+                    "operator": "witness-relation",
+                    "params": {"rule": "witness_relation", "relation": "="},
+                }
+            ]
+        },
+        "Source.thm",
+        type_expr="P → ∃ h : a = b, h = h",
+    )
+
+    assert exact == "(fun h => ⟨(Source.thm h), rfl⟩)"
 
 
 def test_procedural_slot_weight_receipt_uses_public_import_graph(tmp_path: Path) -> None:
