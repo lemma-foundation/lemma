@@ -67,7 +67,7 @@ def test_sync_active_registry_cache_hydrates_public_tempo_cache(monkeypatch, tmp
     assert load_task_registry(hydrated.read_bytes()).sha256 == registry_sha
 
 
-def test_sync_active_registry_cache_keeps_existing_cache_when_public_hash_changes(
+def test_sync_active_registry_cache_replaces_existing_cache_when_public_hash_changes(
     monkeypatch, tmp_path: Path, capsys
 ) -> None:
     module = _load_sync_module()
@@ -124,13 +124,8 @@ def test_sync_active_registry_cache_keeps_existing_cache_when_public_hash_change
     module.main()
 
     payload = json.loads(capsys.readouterr().out)
-    assert payload == {
-        "cache": "existing_cache_sha_mismatch",
-        "tempo": 7,
-        "registry_sha256": cached_sha,
-        "public_registry_sha256": public_sha,
-    }
-    assert load_task_registry(cache_path.read_bytes()).sha256 == cached_sha
+    assert payload == {"cache": "hydrated", "tempo": 7, "registry_sha256": public_sha}
+    assert load_task_registry(cache_path.read_bytes()).sha256 == public_sha
 
 
 def test_sync_active_registry_cache_replaces_stale_existing_cache(

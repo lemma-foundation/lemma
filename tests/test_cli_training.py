@@ -284,6 +284,69 @@ def test_prebuild_active_procedural_registry_keeps_existing_stale_cache(tmp_path
     assert "lemma.procedural.cached_0" in persisted
 
 
+def test_prebuild_active_procedural_registry_rebuilds_stale_production_cache(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    cache_path = cache_dir / "tempo-31.registry.json"
+    stale_task = make_task(
+        task_id="lemma.procedural.cached",
+        title="Cached",
+        theorem_name="cached",
+        type_expr="True",
+        source_stream="procedural",
+        source_name="pytest",
+        metadata={
+            "operator_bundle_hash": procedural_operator_bundle_hash(),
+            "operator_bundle_version": OPERATOR_BUNDLE_VERSION,
+            "gate_version": GATE_VERSION,
+            "source_sampling_version": "old",
+        },
+    ).model_copy(update={"frontier_depth": 0})
+    fresh_task = make_task(
+        task_id="lemma.procedural.fresh",
+        title="Fresh",
+        theorem_name="fresh",
+        type_expr="True",
+        source_stream="procedural",
+        source_name="pytest",
+        metadata={
+            "operator_bundle_hash": procedural_operator_bundle_hash(),
+            "operator_bundle_version": OPERATOR_BUNDLE_VERSION,
+            "gate_version": GATE_VERSION,
+            "source_sampling_version": SOURCE_SAMPLING_VERSION,
+        },
+    ).model_copy(update={"frontier_depth": 0})
+    write_registry([stale_task], cache_path)
+
+    def fake_registry(settings, *, tempo):  # noqa: ANN001
+        assert tempo == 31
+        assert settings.active_registry_json is None
+        assert settings.active_registry_cache_dir is None
+        return type("Registry", (), {"tasks": (fresh_task,)})()
+
+    monkeypatch.setattr("lemma.validator.task_registry_for_validation", fake_registry)
+
+    result = CliRunner().invoke(
+        main,
+        ["tasks", "prebuild-active-procedural-registry", "--tempo", "31"],
+        env={
+            "LEMMA_PREFER_PROCESS_ENV": "1",
+            "LEMMA_PROTOCOL_MODE": "production",
+            "LEMMA_TASK_SUPPLY_MODE": "procedural",
+            "LEMMA_ACTIVE_REGISTRY_CACHE_DIR": str(cache_dir),
+            "LEMMA_ACTIVE_K": "1",
+        },
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["built"] is True
+    assert payload["stale_existing_registry"] is True
+    assert "lemma.procedural.fresh" in cache_path.read_text(encoding="utf-8")
+
+
 def test_prebuild_active_procedural_registry_auditor_mode_refuses_rebuild(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:

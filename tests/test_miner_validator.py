@@ -1120,6 +1120,34 @@ def test_curriculum_state_rejects_stale_active_registry_cache(tmp_path: Path) ->
     assert len(cached.tasks) == 2
 
 
+def test_production_implicit_active_registry_cache_rejects_stale_cache(tmp_path: Path) -> None:
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    cache_path = cache_dir / "tempo-6.registry.json"
+    write_registry(
+        [
+            _task("lemma.procedural.stale").model_copy(
+                update={
+                    "source_stream": "procedural",
+                    "frontier_depth": 0,
+                }
+            )
+        ],
+        cache_path,
+    )
+    settings = _settings(tmp_path).model_copy(
+        update={
+            "protocol_mode": "production",
+            "task_supply_mode": "procedural",
+            "active_task_count": 1,
+            "frontier_depth": 0,
+            "active_registry_cache_dir": cache_dir,
+        }
+    )
+
+    assert cached_active_registry_for_tempo(settings, tempo=6) is None
+
+
 def test_validate_once_retargets_curriculum_state_after_tempo(tmp_path: Path) -> None:
     state_path = tmp_path / "curriculum.jsonl"
     first = _task("lemma.test.first")

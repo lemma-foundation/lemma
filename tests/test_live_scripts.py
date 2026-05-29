@@ -46,7 +46,7 @@ def test_live_wrappers_hydrate_public_registry_cache_before_work() -> None:
     assert "LEMMA_ACTIVE_REGISTRY_CACHE_INDEX_URL" in sync
     assert "active_registry_cache_stale" in sync
     assert '"cache": "hydrated"' in sync
-    assert '"cache": "existing_cache_sha_mismatch"' in sync
+    assert '"cache": "existing_cache_sha_mismatch"' not in sync
 
 
 def test_bucket_miner_defaults_to_local_docker_verify() -> None:

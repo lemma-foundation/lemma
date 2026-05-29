@@ -1203,7 +1203,9 @@ def _warm_active_procedural_registry(*, tempo: int | None, force: bool) -> None:
         if not force:
             registry = existing_registry
             stale_existing_registry = active_registry_cache_stale(registry, effective_settings)
-            needs_rebuild = False
+            needs_rebuild = settings.protocol_mode == "production" and stale_existing_registry
+            if needs_rebuild:
+                registry = None
     if needs_rebuild and settings.active_registry_role == "auditor":
         raise click.ClickException(
             "active registry auditor mode requires a current public/cache registry; refusing local generation"

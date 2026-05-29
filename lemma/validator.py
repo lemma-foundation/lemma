@@ -218,7 +218,7 @@ def cached_active_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> 
     )
     if (
         settings.active_registry_json is None
-        and curriculum_state_replay
+        and (settings.protocol_mode == "production" or curriculum_state_replay)
         and active_registry_cache_stale(registry, settings)
     ):
         return None
