@@ -223,12 +223,14 @@ end Submission
     current = cache / key
     old_big = cache / "old_big"
     newer_small = cache / "newer_small"
-    for i, (path, size) in enumerate([(old_big, 70), (current, 20), (newer_small, 40)], start=1):
+    for i, (path, size) in enumerate([(old_big, 2000), (newer_small, 10)], start=1):
         (path / ".lake").mkdir(parents=True)
         (path / "payload.bin").write_bytes(b"x" * size)
         os.utime(path, (float(i), float(i)))
 
     def fake_host(self: LeanSandbox, work: Path) -> VerifyResult:  # noqa: ARG001
+        (work / ".lake" / "packages" / "mathlib").mkdir(parents=True)
+        (work / "payload.bin").write_bytes(b"x" * 20)
         return VerifyResult(passed=True, reason="ok")
 
     monkeypatch.setattr(LeanSandbox, "_verify_host", fake_host)
@@ -237,7 +239,7 @@ end Submission
         timeout_s=30,
         workspace_cache_dir=cache,
         workspace_cache_max_dirs=8,
-        workspace_cache_max_bytes=80,
+        workspace_cache_max_bytes=5000,
     )
     vr = sb.verify(p, sub)
 

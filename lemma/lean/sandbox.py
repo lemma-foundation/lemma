@@ -246,7 +246,7 @@ class LeanSandbox:
         )
         slot = self.workspace_cache_dir / cache_key
         with _template_slot_lock(cache_key):
-            self._prune_workspace_cache(protect_name=cache_key)
+            self._prune_workspace_cache(protect_name=cache_key, check_bytes=False)
             if slot.is_dir() and (slot / ".lake").is_dir():
                 logger.debug("lean workspace cache hit template={} mode=in_place", cache_key)
                 materialize_workspace(
@@ -270,7 +270,7 @@ class LeanSandbox:
                 vr = self._verify_docker(work) if self.use_docker else self._verify_host(work)
                 if self._workspace_cache_publishable(work, vr):
                     self._publish_workspace_cache(slot, work, cache_key)
-                    self._prune_workspace_cache(protect_name=cache_key)
+                    self._prune_workspace_cache(protect_name=cache_key, check_bytes=True)
                 return vr
             finally:
                 shutil.rmtree(work, ignore_errors=True)
@@ -298,7 +298,7 @@ class LeanSandbox:
             except OSError as e:
                 logger.warning("lean workspace cache publish (rename) failed: {}", e)
 
-    def _prune_workspace_cache(self, *, protect_name: str) -> None:
+    def _prune_workspace_cache(self, *, protect_name: str, check_bytes: bool) -> None:
         """Keep warm workspace slots bounded; stale temp dirs are safe to drop after a day."""
         if self.workspace_cache_dir is None or (
             self.workspace_cache_max_dirs <= 0 and self.workspace_cache_max_bytes <= 0
@@ -314,7 +314,7 @@ class LeanSandbox:
             logger.debug("lean workspace cache prune skipped: {}", e)
             return
 
-        track_bytes = self.workspace_cache_max_bytes > 0
+        track_bytes = check_bytes and self.workspace_cache_max_bytes > 0
         for p in entries:
             try:
                 st = p.stat()
@@ -332,7 +332,7 @@ class LeanSandbox:
             delete_count = max(0, len(warm_slots) - self.workspace_cache_max_dirs)
             to_delete.extend([p for _, name, p, _size in warm_sorted if name != protect_name][:delete_count])
 
-        if self.workspace_cache_max_bytes > 0:
+        if check_bytes and self.workspace_cache_max_bytes > 0:
             delete_names = {p.name for p in to_delete}
             total = sum(size for _mtime, _name, _path, size in warm_slots)
             for _mtime, name, p, size in warm_sorted:
