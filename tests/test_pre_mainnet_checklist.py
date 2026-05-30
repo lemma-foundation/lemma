@@ -1447,7 +1447,7 @@ def test_audit_reports_privacy_hygiene_failures(monkeypatch, tmp_path: Path) -> 
     )
 
     def _fake_check_repo(_path: Path) -> list[str]:
-        return ["operator/.env:AGENT_STATE"]
+        return ["operator/.env:agent-state"]
 
     monkeypatch.setattr(pre_mainnet_checklist.leak_check, "check_repo", _fake_check_repo)
     checks, _ = run_audit(settings)
