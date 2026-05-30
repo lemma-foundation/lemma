@@ -1,13 +1,31 @@
 """Docker sandbox golden path (opt-in)."""
 
 import os
+import socket
 
 import pytest
+
+
+def _docker_socket_accessible() -> bool:
+    docker_host = os.environ.get("DOCKER_HOST", "unix:///var/run/docker.sock")
+    socket_path = (
+        docker_host[7:] if docker_host.startswith("unix://") else "/var/run/docker.sock"
+    )
+    if not os.path.exists(socket_path):
+        return False
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+        try:
+            sock.connect(socket_path)
+            return True
+        except OSError:
+            return False
+
 
 pytestmark = pytest.mark.docker
 
 
 @pytest.mark.skipif(os.environ.get("RUN_DOCKER_LEAN") != "1", reason="set RUN_DOCKER_LEAN=1")
+@pytest.mark.skipif(not _docker_socket_accessible(), reason="docker socket unavailable or inaccessible from Python")
 def test_docker_two_plus_two() -> None:
     from lemma.lean.sandbox import LeanSandbox
     from lemma.problems.base import Problem
