@@ -83,6 +83,7 @@ def test_task_env_names_work(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
                 "LEMMA_PROVER_API_KEY=test-key",
                 "LEMMA_PROVER_MODEL=test-model",
                 "LEMMA_PROVER_TIMEOUT_S=11",
+                "LEMMA_CHAIN_COMMITMENT_CHECKPOINT_DIR=/tmp/chain-commitment-checkpoints",
                 "BT_WALLET_COLD=cold",
                 "BT_WALLET_HOT=hot",
                 "BT_NETUID=42",
@@ -104,6 +105,7 @@ def test_task_env_names_work(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     assert s.prover_api_key == "test-key"
     assert s.prover_model == "test-model"
     assert s.prover_timeout_s == 11
+    assert str(s.chain_commitment_checkpoint_dir) == "/tmp/chain-commitment-checkpoints"
     assert (s.wallet_cold, s.wallet_hot) == ("cold", "hot")
     assert s.netuid == 42
 

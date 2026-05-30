@@ -378,6 +378,50 @@ def _response_message(response: object) -> str:
     return text[:300]
 
 
+def _is_discarded_state_error(error: BaseException) -> bool:
+    if error.__class__.__name__ == "StateDiscardedError":
+        return True
+    normalized = str(error).lower()
+    return "statediscarded" in normalized or "state has been discarded" in normalized
+
+
+def _commitment_checkpoint_path(settings: LemmaSettings, block: int) -> Path:
+    checkpoint_root = settings.chain_commitment_checkpoint_dir
+    if checkpoint_root is None:
+        raise RuntimeError("commitment checkpoint cache is not configured")
+    return Path(checkpoint_root) / str(settings.netuid) / f"{block}.json"
+
+
+def _read_commitment_checkpoint(settings: LemmaSettings, block: int) -> dict[str, str] | None:
+    if settings.chain_commitment_checkpoint_dir is None:
+        return None
+    path = _commitment_checkpoint_path(settings, block)
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"invalid commitment checkpoint payload: {path}") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"invalid commitment checkpoint format: {path}")
+    try:
+        return {str(hotkey): str(value) for hotkey, value in payload.items()}
+    except Exception as exc:
+        raise RuntimeError(f"invalid commitment checkpoint payload: {path}") from exc
+
+
+def _write_commitment_checkpoint(settings: LemmaSettings, block: int, commitments: Mapping[str, str]) -> None:
+    if settings.chain_commitment_checkpoint_dir is None:
+        return
+    path = _commitment_checkpoint_path(settings, block)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps({str(hotkey): str(payload) for hotkey, payload in commitments.items()})
+        + "\n",
+        encoding="utf-8",
+    )
+
+
 def _receipt_value(response: object, field: str) -> object:
     receipt = getattr(response, "extrinsic_receipt", None)
     return getattr(receipt, field, None) if receipt else None
@@ -448,5 +492,20 @@ def read_all_commitments(settings: LemmaSettings, *, block: int | None = None) -
     import bittensor as bt
 
     subtensor = bt.Subtensor(network=settings.bt_network or None)
-    commitments: Mapping[str, str] = subtensor.get_all_commitments(settings.netuid, block=block)
-    return {str(hotkey): str(payload) for hotkey, payload in commitments.items()}
+    try:
+        commitments: Mapping[str, str] = subtensor.get_all_commitments(settings.netuid, block=block)
+    except Exception as exc:
+        if block is not None and _is_discarded_state_error(exc):
+            checkpoint = _read_commitment_checkpoint(settings, block)
+            if checkpoint is not None:
+                return checkpoint
+            raise RuntimeError(
+                "chain node cannot serve historical commitment state for the requested block. "
+                "Use an archive-capable chain RPC or configure LEMMA_CHAIN_COMMITMENT_CHECKPOINT_DIR "
+                "with preserved block snapshots."
+            ) from exc
+        raise
+    result = {str(hotkey): str(payload) for hotkey, payload in commitments.items()}
+    if block is not None:
+        _write_commitment_checkpoint(settings, block, result)
+    return result

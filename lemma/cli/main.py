@@ -1785,6 +1785,31 @@ def operator_diagnostics_cmd(ctx: click.Context, output_path: Path) -> None:
         ctx.exit(1)
 
 
+@operator_cmd.command("alerts")
+@click.option("--recent-runs", type=int, default=5, show_default=True)
+@click.option("--recent-failures", type=int, default=3, show_default=True)
+@click.pass_context
+def operator_alerts_cmd(ctx: click.Context, recent_runs: int, recent_failures: int) -> None:
+    """Write machine-safe operator health alerts from recent run artifacts.
+
+    Example:
+
+      lemma operator alerts --recent-runs 8 --recent-failures 3
+    """
+    from lemma.operator import build_operator_alerts
+
+    settings = LemmaSettings()
+    setup_logging(settings.log_level)
+    report = build_operator_alerts(
+        settings,
+        recent_runs=max(1, recent_runs),
+        recent_failures=max(1, recent_failures),
+    )
+    click.echo(json.dumps(report.model_dump(mode="json"), indent=2, sort_keys=True))
+    if report.critical_count or report.warning_count:
+        ctx.exit(1)
+
+
 @operator_cmd.command("registry-inspect")
 def operator_registry_inspect_cmd() -> None:
     """Inspect active and parked supply in the configured registry.

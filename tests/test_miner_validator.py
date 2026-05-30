@@ -1360,6 +1360,78 @@ def test_validator_keeps_scoring_when_optional_s3_publish_fails(
     ]
 
 
+def test_validator_keeps_scoring_when_optional_ipfs_publish_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from lemma.corpus import publish
+
+    def fail_publish(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("ipfs gateway unavailable")
+
+    monkeypatch.setattr(publish, "add_directory_to_ipfs", fail_publish)
+    settings = _settings(tmp_path).model_copy(
+        update={
+            "canonical_publish_ipfs_api_url": "http://ipfs.local:5001",
+            "canonical_publish_s3_uri": "",
+        }
+    )
+
+    result = validate_once(
+        settings,
+        [build_submission(_task(), solver_hotkey="hk", proof_script=_proof())],
+        registry=_registry(),
+        verify_submission=lambda task, submission: VerifyResult(passed=True, reason="ok"),  # noqa: ARG005
+        no_set_weights=True,
+    )
+
+    assert result.summary.accepted_unique_count == 1
+    assert result.summary.canonical_publish_count == 0
+    publish_rows = [
+        json.loads(line)
+        for line in (tmp_path / "operator" / "canonical-publish.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert publish_rows == [
+        {"kind": "ipfs_publish_error", "error_type": "RuntimeError", "error": "ipfs gateway unavailable"}
+    ]
+
+
+def test_validator_does_not_submit_commitment_after_ipfs_publish_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from lemma.corpus import publish
+
+    def fail_publish(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("ipfs gateway unavailable")
+
+    calls: list[str] = []
+
+    def fake_submit_commitment(_settings_arg: LemmaSettings, payload: str) -> ChainCommitmentSubmission:
+        calls.append(payload)
+        return ChainCommitmentSubmission(success=True, payload=payload)
+
+    monkeypatch.setattr(publish, "add_directory_to_ipfs", fail_publish)
+    settings = _settings(tmp_path).model_copy(
+        update={
+            "canonical_publish_ipfs_api_url": "http://ipfs.local:5001",
+            "canonical_publish_s3_uri": "",
+            "enable_set_commitment": True,
+        }
+    )
+
+    with pytest.raises(RuntimeError, match="canonical IPFS publish failed before chain commitment"):
+        validate_once(
+            settings,
+            [build_submission(_task(), solver_hotkey="hk", proof_script=_proof())],
+            registry=_registry(),
+            verify_submission=lambda task, submission: VerifyResult(passed=True, reason="ok"),  # noqa: ARG005
+            no_set_weights=True,
+            submit_commitment=fake_submit_commitment,
+        )
+
+    assert calls == []
+    assert not (tmp_path / "operator" / "commitment-submissions.jsonl").exists()
+
+
 def test_validator_does_not_submit_commitment_after_s3_publish_failure(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

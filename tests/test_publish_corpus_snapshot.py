@@ -7,6 +7,7 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
 from scripts.publish_corpus_snapshot import (
     commit_repo_changes,
     github_release_command,
@@ -253,3 +254,145 @@ def test_registry_cache_only_skips_snapshot_artifacts(
     assert (repo / "registries/sn467/index.json").exists()
     assert not (repo / "MANIFEST.sha256").exists()
     assert not (repo / "canonical/sn467/storage-index.json").exists()
+
+
+def test_publish_commits_only_after_canonical_publish_steps_succeed(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:  # noqa: ANN001
+    repo = tmp_path / "lemma-corpus"
+
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "x")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "y")
+
+    run_calls: list[tuple[str, ...]] = []
+    committed = []
+
+    def fake_run(
+        cmd: list[str], *, dry_run: bool, env: dict[str, str] | None = None, cwd: Path | None = None
+    ) -> None:  # noqa: ANN001
+        run_calls.append(tuple(cmd))
+        if cmd[0] == "aws":
+            raise SystemExit(99)
+
+    def fake_commit(*_args, **_kwargs) -> bool:
+        committed.append(True)
+        return True
+
+    def fake_sync(*_args, **_kwargs):
+        return {"corpus_files": 1, "canonical_files": 1, "registry_files": 1}
+
+    def fake_prepare(*_args, **_kwargs):
+        return {"corpus_rows": 1}
+
+    def fake_build_storage_index(*_args, **_kwargs):
+        return {"epochs": [], "path": str(repo / "canonical/sn467/storage-index.json")}
+
+    def fake_write_manifest(*_args, **_kwargs):
+        return repo / "MANIFEST.sha256"
+
+    def fake_aws_command(_value: str | None) -> list[str]:
+        return ["aws"]
+
+    def fake_hf_command(_value: str | None) -> list[str]:
+        return ["hf"]
+
+    monkeypatch.setattr("scripts.publish_corpus_snapshot.run", fake_run)
+    monkeypatch.setattr("scripts.publish_corpus_snapshot.commit_repo_changes", fake_commit)
+    monkeypatch.setattr("scripts.publish_corpus_snapshot.sync_public_inputs", fake_sync)
+    monkeypatch.setattr("scripts.publish_corpus_snapshot.prepare", fake_prepare)
+    monkeypatch.setattr("scripts.publish_corpus_snapshot.build_storage_index", fake_build_storage_index)
+    monkeypatch.setattr("scripts.publish_corpus_snapshot.write_manifest", fake_write_manifest)
+    monkeypatch.setattr("scripts.publish_corpus_snapshot.aws_command", fake_aws_command)
+    monkeypatch.setattr("scripts.publish_corpus_snapshot.hf_command", fake_hf_command)
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "publish_corpus_snapshot.py",
+            "--repo",
+            str(repo),
+            "--netuid",
+            "sn467",
+            "--commit-repo",
+            "--skip-github",
+            "--skip-huggingface",
+        ],
+    )
+
+    with pytest.raises(SystemExit):
+        main()
+
+    assert committed == []
+    assert any(command[0] == "aws" for command in run_calls)
+    output = capsys.readouterr().out
+    assert output
+
+
+def test_publish_commits_after_successful_publish_steps(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:  # noqa: ANN001
+    repo = tmp_path / "lemma-corpus"
+
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "x")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "y")
+
+    trace: list[str] = []
+
+    def fake_run(
+        cmd: list[str], *, dry_run: bool, env: dict[str, str] | None = None, cwd: Path | None = None
+    ) -> None:  # noqa: ANN001
+        trace.append("run:" + cmd[0])
+
+    def fake_commit(*_args, **_kwargs) -> bool:
+        trace.append("commit")
+        return True
+
+    def fake_sync(*_args, **_kwargs):
+        return {"corpus_files": 1, "canonical_files": 1, "registry_files": 1}
+
+    def fake_prepare(*_args, **_kwargs):
+        return {"corpus_rows": 1}
+
+    def fake_build_storage_index(*_args, **_kwargs):
+        return {"epochs": [], "path": str(repo / "canonical/sn467/storage-index.json")}
+
+    def fake_write_manifest(*_args, **_kwargs):
+        return repo / "MANIFEST.sha256"
+
+    def fake_aws_command(_value: str | None) -> list[str]:
+        return ["aws"]
+
+    def fake_hf_command(_value: str | None) -> list[str]:
+        return ["hf"]
+
+    monkeypatch.setattr("scripts.publish_corpus_snapshot.run", fake_run)
+    monkeypatch.setattr("scripts.publish_corpus_snapshot.commit_repo_changes", fake_commit)
+    monkeypatch.setattr("scripts.publish_corpus_snapshot.sync_public_inputs", fake_sync)
+    monkeypatch.setattr("scripts.publish_corpus_snapshot.prepare", fake_prepare)
+    monkeypatch.setattr("scripts.publish_corpus_snapshot.build_storage_index", fake_build_storage_index)
+    monkeypatch.setattr("scripts.publish_corpus_snapshot.write_manifest", fake_write_manifest)
+    monkeypatch.setattr("scripts.publish_corpus_snapshot.aws_command", fake_aws_command)
+    monkeypatch.setattr("scripts.publish_corpus_snapshot.hf_command", fake_hf_command)
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "publish_corpus_snapshot.py",
+            "--repo",
+            str(repo),
+            "--netuid",
+            "sn467",
+            "--commit-repo",
+            "--skip-github",
+            "--skip-huggingface",
+        ],
+    )
+
+    assert main() == 0
+
+    payload = json.loads(capsys.readouterr().out.splitlines()[-1])
+    assert payload["repo_committed"] is True
+    assert "run:aws" in trace
+    assert trace[-1] == "commit"

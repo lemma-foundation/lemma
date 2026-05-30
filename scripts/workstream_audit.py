@@ -70,8 +70,13 @@ def _pytest_command(profile: str) -> tuple[str, ...]:
         "-q",
     )
 
-
-def build_steps(profile: str, site_repo: Path = DEFAULT_SITE_REPO, *, skip_site: bool = False) -> list[Step]:
+def build_steps(
+    profile: str,
+    site_repo: Path = DEFAULT_SITE_REPO,
+    *,
+    skip_site: bool = False,
+    skip_pip_audit: bool = False,
+) -> list[Step]:
     steps = [
         Step("lemma git status", ("git", "status", "--short", "--branch")),
         Step("lemma diff whitespace", ("git", "diff", "--check")),
@@ -83,6 +88,10 @@ def build_steps(profile: str, site_repo: Path = DEFAULT_SITE_REPO, *, skip_site:
         steps.extend(
             [
                 Step("bandit", ("uv", "run", "bandit", "-q", "-r", "lemma", "scripts", "-ll")),
+            ]
+        )
+        if not skip_pip_audit:
+            steps.append(
                 Step(
                     "pip-audit",
                     (
@@ -94,9 +103,8 @@ def build_steps(profile: str, site_repo: Path = DEFAULT_SITE_REPO, *, skip_site:
                         "--ignore-vuln",
                         "PYSEC-2022-42969",
                     ),
-                ),
-            ]
-        )
+                )
+            )
 
     leak_command = ["uv", "run", "python", "scripts/leak_check.py", "--repo", "."]
     if not skip_site and site_repo.exists():
@@ -157,11 +165,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--profile", choices=("quick", "full", "mainnet"), default="quick")
     parser.add_argument("--site-repo", type=Path, default=DEFAULT_SITE_REPO)
     parser.add_argument("--skip-site", action="store_true")
+    parser.add_argument("--skip-pip-audit", action="store_true", help="Skip the pip-audit step in full/mainnet audits.")
     parser.add_argument("--keep-going", action="store_true", help="Run every step even after a failure.")
     args = parser.parse_args(argv)
 
     results: list[StepResult] = []
-    for step in build_steps(args.profile, args.site_repo, skip_site=args.skip_site):
+    for step in build_steps(
+        args.profile,
+        args.site_repo,
+        skip_site=args.skip_site,
+        skip_pip_audit=args.skip_pip_audit,
+    ):
         result = run_step(step)
         results.append(result)
         if not result.passed and not args.keep_going:

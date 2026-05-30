@@ -301,6 +301,10 @@ class LemmaSettings(BaseSettings):
     wallet_hot: str = Field(default="default", validation_alias="BT_WALLET_HOT")
     netuid: int = Field(default=0, ge=0, validation_alias="BT_NETUID")
     bt_network: str = Field(default="", validation_alias="BT_NETWORK")
+    chain_commitment_checkpoint_dir: Path | None = Field(
+        default=None,
+        validation_alias="LEMMA_CHAIN_COMMITMENT_CHECKPOINT_DIR",
+    )
     btcli_command: str = Field(default="btcli", validation_alias="LEMMA_BTCLI_COMMAND")
     enable_set_weights: bool = Field(default=False, validation_alias="LEMMA_ENABLE_SET_WEIGHTS")
     enable_set_commitment: bool = Field(default=False, validation_alias="LEMMA_ENABLE_SET_COMMITMENT")

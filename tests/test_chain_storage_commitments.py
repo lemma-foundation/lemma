@@ -201,3 +201,120 @@ def test_cli_readback_hotkey_skips_wallet_lookup(
     assert readback_hotkeys == [hotkey]
     assert result["readback_hotkey_address"] == hotkey
     assert result["readback_matches"] is True
+
+
+def test_cli_submit_fails_on_readback_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    path = _commitment(tmp_path, 7)
+    payload = storage_commitment_payload(path)
+    hotkey = "5DvFMbph3has15zmHLd6WsZAKNhYN45ctmydJEQTWxA2U2No"
+
+    import scripts.publish_chain_commitment as cli
+
+    def fake_submit(_settings: object, submitted_payload: str) -> object:
+        assert submitted_payload == payload
+        return type(
+            "Result",
+            (),
+            {
+                "success": True,
+                "message": "ok",
+                "extrinsic_function": "set_commitment",
+                "extrinsic_hash": "0xabc",
+                "block_hash": "0xdef",
+                "block_number": 10,
+                "extrinsic_fee_rao": 0,
+                "hotkey": hotkey,
+            },
+        )()
+
+    monkeypatch.setattr(cli, "submit_storage_commitment", fake_submit)
+    monkeypatch.setattr(cli, "wallet_hotkey_address", lambda _settings: hotkey)
+    monkeypatch.setattr(cli, "read_storage_commitment", lambda _settings, hotkey=None: f"old-{payload}")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "publish_chain_commitment.py",
+            "--repo",
+            str(tmp_path),
+            "--netuid",
+            "sn467",
+            "--bt-netuid",
+            "467",
+            "--wallet-cold",
+            "c",
+            "--wallet-hot",
+            "h",
+            "--submit",
+        ],
+    )
+
+    assert cli.main() == 1
+    result = json.loads(capsys.readouterr().out)
+    assert result["readback_matches"] is False
+
+
+def test_cli_submit_with_readback_match_succeeds(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    path = _commitment(tmp_path, 7)
+    payload = storage_commitment_payload(path)
+    hotkey = "5DvFMbph3has15zmHLd6WsZAKNhYN45ctmydJEQTWxA2U2No"
+
+    import scripts.publish_chain_commitment as cli
+
+    def fake_submit(_settings: object, submitted_payload: str) -> object:
+        assert submitted_payload == payload
+        return type(
+            "Result",
+            (),
+            {
+                "success": True,
+                "message": "ok",
+                "extrinsic_function": "set_commitment",
+                "extrinsic_hash": "0xabc",
+                "block_hash": "0xdef",
+                "block_number": 10,
+                "extrinsic_fee_rao": 0,
+                "hotkey": hotkey,
+            },
+        )()
+
+    reads = []
+
+    def fake_read(_settings: object, hotkey=None) -> str:
+        reads.append(hotkey)
+        return payload
+
+    monkeypatch.setattr(cli, "submit_storage_commitment", fake_submit)
+    monkeypatch.setattr(cli, "wallet_hotkey_address", lambda _settings: hotkey)
+    monkeypatch.setattr(cli, "read_storage_commitment", fake_read)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "publish_chain_commitment.py",
+            "--repo",
+            str(tmp_path),
+            "--netuid",
+            "sn467",
+            "--bt-netuid",
+            "467",
+            "--wallet-cold",
+            "c",
+            "--wallet-hot",
+            "h",
+            "--submit",
+        ],
+    )
+
+    assert cli.main() == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["readback_matches"] is True
+    assert reads == [hotkey]

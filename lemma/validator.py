@@ -755,27 +755,27 @@ def _publish_public_tempo_artifacts(
     accepted_directory = artifacts.get("directory")
     curriculum_directory = artifacts.get("curriculum_directory")
     if settings.canonical_publish_ipfs_api_url.strip():
-        if not isinstance(active_pool_directory, Path) or not isinstance(accepted_directory, Path):
-            raise RuntimeError("missing canonical directories for IPFS publish")
-        active_ipfs = add_directory_to_ipfs(
-            active_pool_directory,
-            api_url=settings.canonical_publish_ipfs_api_url,
-            verify=settings.canonical_publish_verify,
-            timeout_s=settings.canonical_publish_ipfs_timeout_s,
-        )
-        accepted_ipfs = add_directory_to_ipfs(
-            accepted_directory,
-            api_url=settings.canonical_publish_ipfs_api_url,
-            verify=settings.canonical_publish_verify,
-            timeout_s=settings.canonical_publish_ipfs_timeout_s,
-        )
-        _write_cid_bound_commitment(
-            artifacts,
-            active_pool_cid=active_ipfs.cid,
-            accepted_cid=accepted_ipfs.cid,
-        )
-        rows.extend(
-            [
+        try:
+            if not isinstance(active_pool_directory, Path) or not isinstance(accepted_directory, Path):
+                raise RuntimeError("missing canonical directories for IPFS publish")
+            active_ipfs = add_directory_to_ipfs(
+                active_pool_directory,
+                api_url=settings.canonical_publish_ipfs_api_url,
+                verify=settings.canonical_publish_verify,
+                timeout_s=settings.canonical_publish_ipfs_timeout_s,
+            )
+            accepted_ipfs = add_directory_to_ipfs(
+                accepted_directory,
+                api_url=settings.canonical_publish_ipfs_api_url,
+                verify=settings.canonical_publish_verify,
+                timeout_s=settings.canonical_publish_ipfs_timeout_s,
+            )
+            _write_cid_bound_commitment(
+                artifacts,
+                active_pool_cid=active_ipfs.cid,
+                accepted_cid=accepted_ipfs.cid,
+            )
+            ipfs_rows: list[dict[str, str]] = [
                 {
                     "kind": "ipfs_directory",
                     "local_path": str(Path(active_ipfs.path).relative_to(output_root)),
@@ -789,22 +789,37 @@ def _publish_public_tempo_artifacts(
                     "file_count": str(accepted_ipfs.file_count),
                 },
             ]
-        )
-        if isinstance(curriculum_directory, Path):
-            curriculum_ipfs = add_directory_to_ipfs(
-                curriculum_directory,
-                api_url=settings.canonical_publish_ipfs_api_url,
-                verify=settings.canonical_publish_verify,
-                timeout_s=settings.canonical_publish_ipfs_timeout_s,
+            if isinstance(curriculum_directory, Path):
+                curriculum_ipfs = add_directory_to_ipfs(
+                    curriculum_directory,
+                    api_url=settings.canonical_publish_ipfs_api_url,
+                    verify=settings.canonical_publish_verify,
+                    timeout_s=settings.canonical_publish_ipfs_timeout_s,
+                )
+                ipfs_rows.append(
+                    {
+                        "kind": "ipfs_directory",
+                        "local_path": str(Path(curriculum_ipfs.path).relative_to(output_root)),
+                        "cid": curriculum_ipfs.cid,
+                        "file_count": str(curriculum_ipfs.file_count),
+                    }
+                )
+            rows.extend(ipfs_rows)
+        except Exception as exc:
+            append_jsonl(
+                settings.operator_data_dir / "canonical-publish.jsonl",
+                [
+                    *rows,
+                    {
+                        "kind": "ipfs_publish_error",
+                        "error_type": type(exc).__name__,
+                        "error": str(exc),
+                    },
+                ],
             )
-            rows.append(
-                {
-                    "kind": "ipfs_directory",
-                    "local_path": str(Path(curriculum_ipfs.path).relative_to(output_root)),
-                    "cid": curriculum_ipfs.cid,
-                    "file_count": str(curriculum_ipfs.file_count),
-                }
-            )
+            if settings.enable_set_commitment:
+                raise RuntimeError(f"canonical IPFS publish failed before chain commitment: {exc}") from exc
+            return tuple(rows)
     if not settings.canonical_publish_s3_uri.strip():
         append_jsonl(settings.operator_data_dir / "canonical-publish.jsonl", rows)
         return tuple(rows)

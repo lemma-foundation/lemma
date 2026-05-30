@@ -17,7 +17,12 @@ from lemma.chain.miner_buckets import MinerBucketReveal, RevealedBucketBlob
 from lemma.cli.main import main
 from lemma.corpus import build_corpus_row, write_jsonl
 from lemma.lean.sandbox import VerifyResult
-from lemma.operator import OperatorDiagnosticsReport, OperatorPreflightReport, OperatorRegistryInspectReport
+from lemma.operator import (
+    OperatorAlertReport,
+    OperatorDiagnosticsReport,
+    OperatorPreflightReport,
+    OperatorRegistryInspectReport,
+)
 from lemma.submissions import build_submission, sign_submission
 from lemma.supply.controller import CurriculumTempoRecord, append_curriculum_record
 from lemma.supply.gates import GATE_VERSION
@@ -1392,6 +1397,203 @@ def test_operator_diagnostics_writes_public_safe_report(tmp_path) -> None:
     assert checks["curriculum_controller"].detail == "retarget disabled"
     assert str(tmp_path) not in payload_text
     assert "LEMMA_TASK_REGISTRY_URL" not in payload_text
+
+
+def test_operator_alerts_expose_zero_progress_and_failures(tmp_path) -> None:
+    registry_url, registry_sha256 = _write_preflight_registry(tmp_path)
+    operator_dir = tmp_path / "operator"
+    operator_dir.mkdir()
+    (operator_dir / "validator-runs.jsonl").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "run_at": "2025-01-01T00:00:00Z",
+                "registry_sha256": registry_sha256,
+                "active_K": 2,
+                "active_tempo": 11,
+                "active_seed_mode": "static",
+                "active_epoch_randomness_source": "manual",
+                "active_selection_seed_sha256": "0" * 64,
+                "active_epoch_randomness_sha256": "0" * 64,
+                "frontier_depth": 0,
+                "verified_count": 0,
+                "accepted_unique_count": 0,
+                "rewarded_count": 0,
+                "score_event_count": 0,
+                "corpus_row_count": 0,
+                "unearned_share": 0.0,
+                "unearned_policy": "burn",
+                "weights_set": False,
+                "chain_commitment_set": False,
+                "canonical_publish_uri": "",
+                "canonical_publish_count": 0,
+            },
+            separators=(",", ":"),
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    commitment_payloads = [
+        {"success": False, "active_tempo": 11},
+        {"success": False, "active_tempo": 11},
+    ]
+    (operator_dir / "commitment-submissions.jsonl").write_text(
+        "\n".join(json.dumps(row) for row in commitment_payloads) + "\n",
+        encoding="utf-8",
+    )
+    (operator_dir / "weight-submissions.jsonl").write_text(
+        "{\"success\": false, \"active_tempo\": 11}\n",
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        main,
+        ["operator", "alerts", "--recent-failures", "2"],
+        env={
+            "LEMMA_PREFER_PROCESS_ENV": "1",
+            "LEMMA_TASK_REGISTRY_URL": registry_url,
+            "LEMMA_TASK_REGISTRY_SHA256_EXPECTED": registry_sha256,
+            "LEMMA_ACTIVE_K": "2",
+            "LEMMA_FRONTIER_DEPTH": "0",
+            "LEMMA_ACTIVE_QUEUE_SEED": "pytest-operator-alerts",
+            "LEMMA_OPERATOR_DATA_DIR": str(operator_dir),
+            "LEMMA_CORPUS_OUTPUT_DIR": str(tmp_path / "corpus"),
+        },
+    )
+
+    assert result.exit_code == 1, result.output
+    payload = OperatorAlertReport.model_validate_json(result.output)
+    codes = {alert.code for alert in payload.alerts}
+    assert "zero_reveals" in codes
+    assert "zero_accepted" in codes
+    assert "commitment_publish_failures" in codes
+    assert "weight_publish_failures" in codes
+    assert payload.critical_count >= 1
+
+
+def test_operator_alerts_detects_publisher_staging_failures(tmp_path) -> None:
+    registry_url, registry_sha256 = _write_preflight_registry(tmp_path)
+    operator_dir = tmp_path / "operator"
+    operator_dir.mkdir()
+    (operator_dir / "validator-runs.jsonl").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "run_at": "2025-01-01T00:00:00Z",
+                "registry_sha256": registry_sha256,
+                "active_K": 2,
+                "active_tempo": 11,
+                "active_seed_mode": "static",
+                "active_epoch_randomness_source": "manual",
+                "active_selection_seed_sha256": "0" * 64,
+                "active_epoch_randomness_sha256": "0" * 64,
+                "frontier_depth": 0,
+                "verified_count": 2,
+                "accepted_unique_count": 1,
+                "rewarded_count": 1,
+                "score_event_count": 1,
+                "corpus_row_count": 1,
+                "unearned_share": 0.0,
+                "unearned_policy": "burn",
+                "weights_set": False,
+                "chain_commitment_set": False,
+                "canonical_publish_uri": "s3://lemma-corpus/live",
+                "canonical_publish_count": 0,
+            },
+            separators=(",", ":"),
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (operator_dir / "canonical-publish.jsonl").write_text(
+        "{\"kind\": \"s3_publish_error\", \"error_type\": \"RuntimeError\", \"error\": \"object store unavailable\"}\n",
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        main,
+        ["operator", "alerts"],
+        env={
+            "LEMMA_PREFER_PROCESS_ENV": "1",
+            "LEMMA_TASK_REGISTRY_URL": registry_url,
+            "LEMMA_TASK_REGISTRY_SHA256_EXPECTED": registry_sha256,
+            "LEMMA_ACTIVE_K": "2",
+            "LEMMA_FRONTIER_DEPTH": "0",
+            "LEMMA_ACTIVE_QUEUE_SEED": "pytest-operator-alerts",
+            "LEMMA_OPERATOR_DATA_DIR": str(operator_dir),
+            "LEMMA_CORPUS_OUTPUT_DIR": str(tmp_path / "corpus"),
+            "LEMMA_CANONICAL_PUBLISH_S3_URI": "s3://lemma-corpus/live",
+        },
+    )
+
+    assert result.exit_code == 1, result.output
+    payload = OperatorAlertReport.model_validate_json(result.output)
+    codes = {alert.code for alert in payload.alerts}
+    assert "publisher_staging_failure" in codes
+
+
+def test_operator_alerts_detects_ipfs_publish_failures(tmp_path) -> None:
+    registry_url, registry_sha256 = _write_preflight_registry(tmp_path)
+    operator_dir = tmp_path / "operator"
+    operator_dir.mkdir()
+    (operator_dir / "validator-runs.jsonl").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "run_at": "2025-01-01T00:00:00Z",
+                "registry_sha256": registry_sha256,
+                "active_K": 2,
+                "active_tempo": 11,
+                "active_seed_mode": "static",
+                "active_epoch_randomness_source": "manual",
+                "active_selection_seed_sha256": "0" * 64,
+                "active_epoch_randomness_sha256": "0" * 64,
+                "frontier_depth": 0,
+                "verified_count": 2,
+                "accepted_unique_count": 1,
+                "rewarded_count": 1,
+                "score_event_count": 1,
+                "corpus_row_count": 1,
+                "unearned_share": 0.0,
+                "unearned_policy": "burn",
+                "weights_set": False,
+                "chain_commitment_set": False,
+                "canonical_publish_uri": "",
+                "canonical_publish_count": 0,
+            },
+            separators=(",", ":"),
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (operator_dir / "canonical-publish.jsonl").write_text(
+        (
+            "{\"kind\": \"ipfs_publish_error\", \"error_type\": \"RuntimeError\", "
+            "\"error\": \"ipfs gateway unavailable\"}\n"
+        ),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        main,
+        ["operator", "alerts", "--recent-failures", "1"],
+        env={
+            "LEMMA_PREFER_PROCESS_ENV": "1",
+            "LEMMA_TASK_REGISTRY_URL": registry_url,
+            "LEMMA_TASK_REGISTRY_SHA256_EXPECTED": registry_sha256,
+            "LEMMA_ACTIVE_K": "2",
+            "LEMMA_FRONTIER_DEPTH": "0",
+            "LEMMA_ACTIVE_QUEUE_SEED": "pytest-operator-alerts",
+            "LEMMA_OPERATOR_DATA_DIR": str(operator_dir),
+            "LEMMA_CORPUS_OUTPUT_DIR": str(tmp_path / "corpus"),
+            "LEMMA_CANONICAL_PUBLISH_IPFS_API_URL": "http://ipfs.local:5001",
+        },
+    )
+
+    assert result.exit_code == 1, result.output
+    payload = OperatorAlertReport.model_validate_json(result.output)
+    codes = {alert.code for alert in payload.alerts}
+    assert "publisher_staging_failure" in codes
 
 
 def test_operator_registry_inspect_counts_active_waiting_and_parked(tmp_path) -> None:

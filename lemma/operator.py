@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from collections import Counter
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic.json_schema import GenerateJsonSchema
 
 from lemma.common.config import LemmaSettings
 
@@ -95,6 +98,57 @@ class OperatorArtifactSummary(BaseModel):
     corpus_row_count: int = Field(ge=0)
 
 
+class OperatorAlert(BaseModel):
+    """Machine-readable service-health alert for dashboards and operator scripts."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    code: str
+    level: Literal["critical", "warning", "info"]
+    message: str
+    active_tempo: int | None = Field(default=None, ge=0)
+
+    @classmethod
+    def model_json_schema(
+        cls,
+        by_alias: bool = True,
+        ref_template: str = "#/$defs/{model}",
+        schema_generator: type[GenerateJsonSchema] = GenerateJsonSchema,
+        mode: Literal["validation", "serialization"] = "validation",
+        *,
+        union_format: Literal["any_of", "primitive_type_array"] = "any_of",
+    ) -> dict[str, object]:
+        schema = super().model_json_schema(
+            by_alias=by_alias,
+            ref_template=ref_template,
+            schema_generator=schema_generator,
+            mode=mode,
+            union_format=union_format,
+        )
+        if "$defs" not in schema:
+            schema["$defs"] = {}
+        if "OperatorAlert" not in schema["$defs"]:
+            schema["$defs"]["OperatorAlert"] = {
+                "type": "object",
+                "properties": schema.get("properties", {}),
+                "required": schema.get("required", []),
+                "additionalProperties": schema.get("additionalProperties", False),
+            }
+        return schema
+
+
+class OperatorAlertReport(BaseModel):
+    """Operator alert pack."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal[1]
+    alert_count: int = Field(ge=0)
+    critical_count: int = Field(ge=0)
+    warning_count: int = Field(ge=0)
+    alerts: tuple[OperatorAlert, ...]
+
+
 class OperatorCurriculumSummary(BaseModel):
     """Public-safe curriculum controller state."""
 
@@ -135,6 +189,365 @@ class OperatorDiagnosticsReport(BaseModel):
     registry_inspect: OperatorRegistryInspectReport | None
     curriculum: OperatorCurriculumSummary
     artifacts: OperatorArtifactSummary
+
+
+def _read_jsonl_records(path: Path) -> tuple[dict[str, object], ...]:
+    if not path.exists():
+        return ()
+    out: list[dict[str, object]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict):
+            out.append(payload)
+    return tuple(out)
+
+
+def _read_jsonl_records_tail(path: Path, *, limit: int) -> tuple[dict[str, object], ...]:
+    records = _read_jsonl_records(path)
+    if limit <= 0:
+        return ()
+    return records[-limit:] if limit < len(records) else records
+
+
+def _safe_int(value: object, *, default: int = 0) -> int:
+    return value if isinstance(value, int) else default
+
+
+def _safe_float(value: object, *, default: float = 0.0) -> float:
+    return value if isinstance(value, float) else default
+
+
+def _to_utc_datetime(value: str) -> datetime | None:
+    try:
+        if value.endswith("Z"):
+            value = value[:-1] + "+00:00"
+        return datetime.fromisoformat(value).astimezone(UTC)
+    except ValueError:
+        return None
+
+
+def _is_stale_cache(registry: object, settings: LemmaSettings) -> bool:
+    from lemma.tasks import TaskRegistry
+    from lemma.validator import active_registry_cache_stale
+
+    if not isinstance(registry, TaskRegistry):
+        return True
+    return active_registry_cache_stale(registry, settings)
+
+
+def _load_cached_registry(settings: LemmaSettings, *, tempo: int) -> TaskRegistry | None:
+    from lemma.tasks import load_task_registry
+    from lemma.validator import active_registry_cache_path
+
+    path = active_registry_cache_path(settings, tempo=tempo)
+    if path is None or not path.is_file():
+        return None
+    return load_task_registry(path.read_bytes())
+
+
+def _consecutive_failures(records: tuple[dict[str, object], ...], *, field: str = "success") -> int:
+    streak = 0
+    for payload in reversed(records):
+        if bool(payload.get(field)) is True:
+            break
+        if bool(payload.get(field)) is False:
+            streak += 1
+            continue
+        break
+    return streak
+
+
+def _build_commitment_alerts(
+    settings: LemmaSettings,
+    now: datetime,
+    *,
+    recent_failures: int,
+    alert_runs: list[OperatorAlert],
+) -> None:
+    records = _read_jsonl_records_tail(
+        settings.operator_data_dir / "commitment-submissions.jsonl",
+        limit=max(1, recent_failures),
+    )
+    if not records:
+        return
+    streak = _consecutive_failures(records)
+    if streak > 0:
+        latest = records[-1]
+        tempo = (
+            _safe_int(latest.get("active_tempo"))
+            or _safe_int(latest.get("tempo"))
+            or None
+        )
+        code = "commitment_publish_failures"
+        level: Literal["critical", "warning", "info"] = (
+            "critical" if streak >= recent_failures else "warning"
+        )
+        message = f"{streak} consecutive commitment submission failures"
+        alert_runs.append(OperatorAlert(code=code, level=level, message=message, active_tempo=tempo))
+
+
+def _build_weight_alerts(
+    settings: LemmaSettings,
+    now: datetime,
+    *,
+    recent_failures: int,
+    alert_runs: list[OperatorAlert],
+) -> None:
+    records = _read_jsonl_records_tail(
+        settings.operator_data_dir / "weight-submissions.jsonl",
+        limit=max(1, recent_failures),
+    )
+    if not records:
+        return
+    streak = _consecutive_failures(records)
+    if streak > 0:
+        latest = records[-1]
+        tempo = (
+            _safe_int(latest.get("active_tempo"))
+            or _safe_int(latest.get("tempo"))
+            or None
+        )
+        code = "weight_publish_failures"
+        level: Literal["critical", "warning", "info"] = (
+            "critical" if streak >= recent_failures else "warning"
+        )
+        message = f"{streak} consecutive set-weights failures"
+        alert_runs.append(OperatorAlert(code=code, level=level, message=message, active_tempo=tempo))
+
+
+def _build_publish_alerts(
+    settings: LemmaSettings,
+    run_records: tuple[dict[str, object], ...],
+    *,
+    recent_failures: int,
+    alert_runs: list[OperatorAlert],
+) -> None:
+    path = settings.operator_data_dir / "canonical-publish.jsonl"
+    publish_records = _read_jsonl_records_tail(path, limit=max(1, recent_failures))
+    latest_tempo = _safe_int(run_records[-1].get("active_tempo"), default=-1) if run_records else None
+    latest_tempo = None if latest_tempo is None or latest_tempo < 0 else latest_tempo
+
+    publish_configured = bool(settings.canonical_publish_s3_uri.strip()) or bool(
+        settings.canonical_publish_ipfs_api_url.strip()
+    )
+    if publish_configured and run_records:
+        accepted = _safe_int(run_records[-1].get("accepted_unique_count"))
+        published = _safe_int(run_records[-1].get("canonical_publish_count"))
+        if accepted > 0 and published == 0:
+            alert_runs.append(
+                OperatorAlert(
+                    code="publisher_staging_failure",
+                    level="warning",
+                    message="latest run accepted proofs but produced no canonical publish rows",
+                    active_tempo=latest_tempo,
+                )
+            )
+    if not publish_records:
+        return
+
+    failures = 0
+    last_error = ""
+    for payload in reversed(publish_records):
+        kind = payload.get("kind")
+        if not isinstance(kind, str) or not kind.endswith("_publish_error"):
+            break
+        failures += 1
+        error = payload.get("error")
+        if not last_error and isinstance(error, str):
+            last_error = error
+
+    if failures > 0:
+        message = f"{failures} consecutive canonical publish staging failures"
+        if last_error:
+            message += f": {last_error[:120]}"
+        alert_runs.append(
+            OperatorAlert(
+                code="publisher_staging_failure",
+                level=(
+                    "critical" if failures >= recent_failures else "warning"
+                ),
+                message=message,
+                active_tempo=latest_tempo,
+            )
+        )
+
+
+def _build_run_alerts(
+    records: tuple[dict[str, object], ...],
+    now: datetime,
+    *,
+    alert_runs: list[OperatorAlert],
+) -> None:
+    if not records:
+        alert_runs.append(
+            OperatorAlert(
+                code="no_recent_runs",
+                level="critical",
+                message="no validator-runs.jsonl records found",
+            )
+        )
+        return
+
+    latest = records[-1]
+    active_tempo_value: int = _safe_int(latest.get("active_tempo"), default=-1)
+    active_tempo: int | None = None if active_tempo_value < 0 else active_tempo_value
+    verified = _safe_int(latest.get("verified_count"))
+    accepted = _safe_int(latest.get("accepted_unique_count"))
+    run_at = latest.get("run_at")
+    if run_at is None or not isinstance(run_at, str) or _to_utc_datetime(run_at) is None:
+        alert_runs.append(
+            OperatorAlert(
+                code="invalid_last_run_timestamp",
+                level="warning",
+                message="latest validator run is missing a parseable run_at timestamp",
+                active_tempo=active_tempo,
+            )
+        )
+    else:
+        parsed = _to_utc_datetime(run_at)
+        if parsed is not None and now - parsed > timedelta(hours=1):
+            alert_runs.append(
+                OperatorAlert(
+                    code="stale_last_run",
+                    level="warning",
+                    message="latest validator run is older than one hour",
+                    active_tempo=active_tempo,
+                )
+            )
+
+    if verified == 0:
+        alert_runs.append(
+            OperatorAlert(
+                code="zero_reveals",
+                level="warning",
+                message="latest validator run consumed zero verification records",
+                active_tempo=active_tempo,
+            )
+        )
+    if accepted == 0:
+        alert_runs.append(
+            OperatorAlert(
+                code="zero_accepted",
+                level="warning",
+                message="latest validator run accepted zero unique proofs",
+                active_tempo=active_tempo,
+            )
+        )
+
+    if len(records) >= 3:
+        streak_accepted = 0
+        streak_verified = 0
+        for payload in reversed(records[-3:]):
+            if _safe_int(payload.get("accepted_unique_count")) > 0:
+                break
+            streak_accepted += 1
+        for payload in reversed(records[-3:]):
+            if _safe_int(payload.get("verified_count")) > 0:
+                break
+            streak_verified += 1
+        if streak_accepted >= 3:
+            alert_runs.append(
+                OperatorAlert(
+                    code="service_restart_loop",
+                    level="critical",
+                    message="three consecutive runs had zero accepted unique proofs",
+                    active_tempo=active_tempo,
+                )
+            )
+        if streak_verified >= 3:
+            alert_runs.append(
+                OperatorAlert(
+                    code="service_restart_loop",
+                    level="critical",
+                    message="three consecutive runs had zero consumed verification records",
+                    active_tempo=active_tempo,
+                )
+            )
+
+
+def build_operator_alerts(
+    settings: LemmaSettings,
+    *,
+    now: datetime | None = None,
+    recent_runs: int = 5,
+    recent_failures: int = 3,
+) -> OperatorAlertReport:
+    """Build operator alert summary from recent local logs."""
+    now = now or datetime.now(UTC)
+    alerts: list[OperatorAlert] = []
+    run_records = _read_jsonl_records_tail(settings.operator_data_dir / "validator-runs.jsonl", limit=recent_runs)
+    _build_run_alerts(run_records, now, alert_runs=alerts)
+    _build_commitment_alerts(
+        settings,
+        now,
+        recent_failures=max(1, recent_failures),
+        alert_runs=alerts,
+    )
+    _build_weight_alerts(
+        settings,
+        now,
+        recent_failures=max(1, recent_failures),
+        alert_runs=alerts,
+    )
+    _build_publish_alerts(
+        settings,
+        run_records,
+        recent_failures=max(1, recent_failures),
+        alert_runs=alerts,
+    )
+
+    latest_run_tempo = None
+    if run_records:
+        latest_tempo = run_records[-1].get("active_tempo")
+        latest_run_tempo = latest_tempo if isinstance(latest_tempo, int) and latest_tempo >= 0 else None
+    if latest_run_tempo is not None:
+        try:
+            registry = _load_cached_registry(settings, tempo=latest_run_tempo)
+            if registry is None:
+                if settings.active_registry_role == "auditor":
+                    alerts.append(
+                        OperatorAlert(
+                            code="cache_divergence",
+                            level="critical",
+                            message=f"active-registry cache missing for tempo {latest_run_tempo}",
+                            active_tempo=latest_run_tempo,
+                        )
+                    )
+            elif _is_stale_cache(registry, settings):
+                alerts.append(
+                    OperatorAlert(
+                        code="cache_divergence",
+                        level="warning",
+                        message=f"active-registry cache appears stale for tempo {latest_run_tempo}",
+                        active_tempo=latest_run_tempo,
+                    )
+                )
+        except Exception as exc:  # pragma: no cover - robust fallback
+            alerts.append(
+                OperatorAlert(
+                    code="cache_divergence",
+                    level="warning",
+                    message=f"active-registry cache check failed: {exc}",
+                    active_tempo=latest_run_tempo,
+                )
+            )
+
+    critical_count = sum(1 for alert in alerts if alert.level == "critical")
+    warning_count = sum(1 for alert in alerts if alert.level == "warning")
+    return OperatorAlertReport(
+        schema_version=1,
+        alert_count=len(alerts),
+        critical_count=critical_count,
+        warning_count=warning_count,
+        alerts=tuple(alerts),
+    )
+
 
 
 def _check(name: PreflightCheckName, ok: bool, detail: str) -> OperatorPreflightCheck:

@@ -10,7 +10,71 @@ Run the full local gate before any live host work:
 uv run python scripts/workstream_audit.py --profile mainnet --skip-site
 ```
 
+If this shell cannot resolve `pypi.org`, the checklist now auto-adds `--skip-pip-audit`:
+
+```bash
+uv run python scripts/workstream_audit.py --profile mainnet --skip-site --skip-pip-audit
+```
+
 The `mainnet` profile runs formatting, typing, security scans, dependency audit, privacy leak check, the full non-Docker test suite, and the Docker Lean golden test with `RUN_DOCKER_LEAN=1`.
+
+For a machine-checkable readiness audit that complements manual service checks:
+
+```bash
+uv run python scripts/pre_mainnet_checklist.py
+uv run python scripts/pre_mainnet_checklist.py --json
+```
+
+### Checklist coverage
+
+The local readiness script currently covers:
+
+- 2) validator role semantics (`LEMMA_ACTIVE_REGISTRY_ROLE` validation and service-level role scan)
+- 5) active-registry cache behavior
+- 6) commitment publish-path hardening and publish-gate coupling
+- 8) builder tempo-work volume indicators (`bucket_reveals_consumed`, `verified_count`, `accepted_unique_count`, `corpus_row_count`)
+- 9) chain-weight evidence (`weights_set`, `weight-submissions.jsonl` receipt `success`, `uids`, `weights`, and `extrinsic_hash`; warn on non-empty oscillation checks per tempo)
+- 10) storage commitment evidence (`chain_commitment_set`, validator-run `tempo_commitment_payload`, `commitment-submissions.jsonl` receipt `success`, `payload`, `extrinsic_hash`, and readback parity fields)
+- 11) checkpoint parity requirement (`LEMMA_CHAIN_COMMITMENT_CHECKPOINT_DIR`) and missing-prod guardrails
+- 12) production auth/proof gates
+- 14) privacy leak gate execution (`scripts/leak_check.py`)
+- 15) burn-in guardrails (time-range continuity and zero-progress windows)
+- 6b) commitment publication gate: `chain_commitment_set` requires canonical-publish record presence; fail when chain commitment succeeds without publish records
+- 6c) canonical publish staging: verify recent `canonical-publish.jsonl` has no publish errors
+- 7) tempo pipeline integrity evidence: `mainnet_readiness_evidence` now adds a digest check for the latest tempo directory against run-row digests when local canonical output is available
+- 5b) hardening bundle file presence for cache/publish runtime paths (`scripts/lemma-sync-active-registry-cache`, `lemma/cli/main.py`, `scripts/publish_corpus_snapshot.py`)
+- 2, 6, 7, 8, 9, 10, 11, 12, 13, and 16 include local checks but should still be reviewed against live tempo evidence from production hosts.
+- 5 and the 14/15 continuity windows remain partly runbook-driven host rollout tasks.
+- 1, 3, and 4 now include executable evidence steps in `scripts/mainnet_readiness_evidence.py` (rollout parity and validator service/data-directory checks) but are still host-level and should be confirmed on each runtime host.
+
+### Manual evidence mapping for runbook-only items
+
+For the remaining manual items, run the evidence collector once per evidence-gate cadence:
+
+```bash
+uv run python scripts/mainnet_readiness_evidence.py --help
+uv run python scripts/mainnet_readiness_evidence.py --output launch-readiness.json --execute
+```
+
+That script snapshots evidence for:
+- 1: deploy parity
+- 2: role semantics and default behavior
+- 3: second-validator role introduction
+- 4: clean second-validator state
+- 5: hardening bundle and cache-builder parity artifacts
+- 6: publish-gate failure mode validation
+- 7: publish/replay cadence
+- 8: tempo work production signals
+- 9: weight submission proof-of-write evidence
+- 10: commitment submission proof-of-write evidence
+- 11: commitment checkpoint parity/readback resilience
+- 12: observability alerting and stale-state signals
+- 13: runbook artifact trail
+- 14: privacy leak scan gate status
+- 15: burn-in evidence and zero-progress checks
+- 16: final-package review
+
+If execution is not allowed on the host, run with `--output` only first to capture the exact commands and then run them manually in the target environment.
 
 The local production-like smoke is covered by `tests/test_operator_registry_flow.py`. It proves:
 
@@ -28,9 +92,28 @@ Use SN467 as the live proving ground for the production protocol. Testnet change
 export BT_NETWORK=test
 export BT_NETUID=467
 export LEMMA_PROTOCOL_MODE=production
+export LEMMA_CHAIN_COMMITMENT_CHECKPOINT_DIR="/var/lib/lemma-chain-commitments"
 ```
 
 Run the same artifact set locally first, then copy it into a clean validator/miner directory on the testnet hosts. The first live pass must use `--no-set-weights`. The controlled chain-write pass must set `LEMMA_ENABLE_SET_WEIGHTS=1` and use `--set-weights`. The mainnet cutover should only change `BT_NETWORK` and `BT_NETUID`.
+
+For the second-validator parity requirement, both validators should share a checkpoint
+root that survives restart and follows the same active tempo replay order. The
+operator should verify each node can read back historical commitments after restart:
+
+```bash
+export LEMMA_HISTORY_BLOCK="<some recently completed block>"
+uv run python - <<'PY'
+import os
+from lemma.chain.commitments import read_all_commitments
+from lemma.common.config import LemmaSettings
+
+settings = LemmaSettings()
+block = int(os.environ["LEMMA_HISTORY_BLOCK"])
+commitments = read_all_commitments(settings, block=block)
+print(f"historical commitments at block {block}: {len(commitments)} miners")
+PY
+```
 
 Accept the gate only when `weight-submissions.jsonl` has resolved UIDs, `success=true`, an extrinsic hash, and the validator never reports `weights_set=true` without a confirmed successful response.
 
@@ -138,6 +221,7 @@ Public-safe live checks should be runnable from the configured operator environm
 ```bash
 uv run lemma operator registry-inspect
 uv run lemma operator diagnostics --output operator-diagnostics.json
+uv run lemma operator alerts --recent-runs 8 --recent-failures 3
 
 uv run python - <<'PY'
 import os
@@ -206,7 +290,8 @@ For both burn-ins:
 - Lean verification runs with networking disabled;
 - paid rewards require strong proof identity;
 - every accepted public corpus row replays from clean artifacts;
-- diagnostics expose registry hash, active `K`, frontier depth, verifier health, disk/cache pressure, accepted unique count, corpus rows, weight receipts, set-weight latency, and storage-root readback without private operator state.
+- diagnostics expose registry hash, active `K`, frontier depth, verifier health, disk/cache pressure, accepted unique count, corpus rows, weight receipts, set-weight latency, and storage-root readback without private operator state;
+- alerts detect zero-reveal/zero-accepted windows, cache divergence, repeated publisher/chain-write failures, and stale operator state.
 - miner and validator automation treats timers as wakeups only; active tempo must come from `block // subnet_tempo`, and a miner should publish at most one bucket reveal per chain tempo.
 
 ## Mainnet Cutover

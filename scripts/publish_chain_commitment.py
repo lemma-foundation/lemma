@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,6 +33,27 @@ def _settings(args: argparse.Namespace) -> LemmaSettings:
     if args.wallet_hot:
         overrides["wallet_hot"] = args.wallet_hot
     return LemmaSettings(**overrides)
+
+
+def _readback_or_fail(
+    settings: LemmaSettings,
+    payload: str,
+    hotkey: str | None,
+    *,
+    require_match: bool = True,
+    retries: int = 1,
+    delay_seconds: float = 0.5,
+) -> tuple[str, bool]:
+    readback = ""
+    matches = False
+    for attempt in range(1, max(1, retries) + 1):
+        readback = read_storage_commitment(settings, hotkey=hotkey)
+        matches = readback == payload
+        if matches:
+            break
+        if attempt < retries:
+            time.sleep(delay_seconds)
+    return readback, matches if require_match else True
 
 
 def main() -> int:
@@ -87,6 +109,21 @@ def main() -> int:
         if not submission.success:
             print(json.dumps(result, indent=2, sort_keys=True))
             return 1
+        readback, matches = _readback_or_fail(
+            settings,
+            payload,
+            hotkey=readback_hotkey,
+            require_match=True,
+            retries=2,
+            delay_seconds=1.0,
+        )
+        result["readback_matches"] = matches
+        result["readback_payload"] = readback
+        if not matches:
+            print(json.dumps(result, indent=2, sort_keys=True))
+            return 1
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return 0
 
     if args.readback or args.submit:
         readback = read_storage_commitment(settings, hotkey=readback_hotkey)

@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 from lemma.operator import (
+    OperatorAlert,
+    OperatorAlertReport,
     OperatorArtifactSummary,
     OperatorCurriculumSummary,
     OperatorDiagnosticsReport,
@@ -164,6 +166,27 @@ def test_operator_diagnostics_report_contract() -> None:
         "curriculum",
         "artifacts",
     } <= required
+    assert schema["additionalProperties"] is False
+
+
+def test_operator_alert_contract() -> None:
+    schema = OperatorAlert.model_json_schema()
+    required = set(schema["required"])
+    required_defs = schema["$defs"]["OperatorAlert"]
+
+    assert {"code", "level", "message"} <= required
+    assert required_defs["additionalProperties"] is False
+
+
+def test_operator_alert_report_contract() -> None:
+    schema = OperatorAlertReport.model_json_schema()
+    required = set(schema["required"])
+
+    alert_schema = schema["$defs"]["OperatorAlert"]
+
+    assert {"schema_version", "alert_count", "critical_count", "warning_count", "alerts"} <= required
+    assert {"code", "level", "message"} <= set(alert_schema["required"])
+    assert alert_schema["additionalProperties"] is False
     assert schema["additionalProperties"] is False
 
 

@@ -45,6 +45,13 @@ def test_mainnet_audit_adds_docker_golden_gate(tmp_path: Path) -> None:
     assert docker.env == (("RUN_DOCKER_LEAN", "1"),)
 
 
+def test_full_audit_skips_pip_audit_when_flagged(tmp_path: Path) -> None:
+    steps = build_steps("full", tmp_path / "missing-site", skip_pip_audit=True)
+    commands = _commands(steps)
+
+    assert not any(command[:3] == ("uv", "run", "pip-audit") for command in commands)
+
+
 def test_skip_site_omits_site_steps_and_site_leak_scan(tmp_path: Path) -> None:
     site = tmp_path / "lemmasub.net"
     site.mkdir()

@@ -145,6 +145,14 @@ uv run lemma operator diagnostics --output operator-diagnostics-before.json
 
 The diagnostics file contains the preflight report, registry summary, artifact counts, registry hash, and current active task ids. It does not include environment variables, credentials, wallet names, hostnames, IPs, or local filesystem paths. The before-run file proves the validator was configured against the intended pinned source pool and active window.
 
+Before opening submissions each tempo, capture health alerts over recent artifacts:
+
+```bash
+uv run lemma operator alerts --recent-runs 8 --recent-failures 3
+```
+
+The alert command surfaces zero-reveal/zero-accepted windows, cache divergence, and chain-publish/chain-write risk patterns in a machine-safe JSON report.
+
 ## 3. Validate Submissions
 
 Run the validator against task-bound miner submissions. Production uses bucket reveals:

@@ -390,7 +390,6 @@ def commit_repo_changes(
 
 
 def run(cmd: list[str], *, dry_run: bool, env: dict[str, str] | None = None, cwd: Path | None = None) -> None:
-    print("$ " + shlex.join(cmd))
     if dry_run:
         return
     subprocess.run(cmd, check=True, env=env, cwd=cwd)  # noqa: S603
@@ -401,6 +400,11 @@ def require_env(names: tuple[str, ...]) -> None:
     if missing:
         joined = ", ".join(missing)
         raise SystemExit(f"missing required environment variable(s): {joined}")
+
+
+def execute(cmd: list[str], *, dry_run: bool, env: dict[str, str] | None = None, cwd: Path | None = None) -> None:
+    print("$ " + shlex.join(cmd))
+    run(cmd, dry_run=dry_run, env=env, cwd=cwd)
 
 
 def main() -> int:
@@ -446,7 +450,7 @@ def main() -> int:
 
     repo = args.repo.expanduser().resolve()
     if args.pull:
-        run(["git", "-C", str(repo), "pull", "--ff-only"], dry_run=args.dry_run)
+        execute(["git", "-C", str(repo), "pull", "--ff-only"], dry_run=args.dry_run)
 
     if args.registry_cache_only:
         if args.sync_registry_cache_dir is None:
@@ -475,7 +479,6 @@ def main() -> int:
                     "repo_pushed": bool(committed_repo and args.push_repo),
                     "synced": synced,
                 },
-                indent=2,
                 sort_keys=True,
             )
         )
@@ -492,15 +495,6 @@ def main() -> int:
     storage_index = build_storage_index(repo, args.netuid, resolver=args.resolver)
     manifest_path = write_manifest(repo, args.netuid)
     storage_index_path = Path(storage_index["path"])
-    env = os.environ.copy()
-    env.setdefault("AWS_DEFAULT_REGION", args.region)
-    committed_repo = commit_repo_changes(
-        repo,
-        netuid=args.netuid,
-        snapshot=args.snapshot,
-        push=args.push_repo,
-        dry_run=args.dry_run,
-    ) if args.commit_repo or args.push_repo else False
 
     if not args.dry_run and not args.skip_hippius:
         require_env(("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"))
@@ -513,6 +507,9 @@ def main() -> int:
                 "missing Hugging Face repo id; set HF_REPO_ID, pass --hf-repo-id, or pass --skip-huggingface"
             )
 
+    env = os.environ.copy()
+    env.setdefault("AWS_DEFAULT_REGION", args.region)
+
     if not args.skip_hippius:
         for command in hippius_commands(
             aws=aws_command(args.aws_command),
@@ -523,10 +520,10 @@ def main() -> int:
             snapshot=args.snapshot,
             manifest_path=manifest_path,
         ):
-            run(command, dry_run=args.dry_run, env=env)
+            execute(command, dry_run=args.dry_run, env=env)
 
     if not args.skip_github:
-        run(
+        execute(
             github_release_command(
                 github_repo=args.github_repo,
                 manifest_path=manifest_path,
@@ -539,10 +536,6 @@ def main() -> int:
         )
 
     if not args.skip_huggingface:
-        if not args.hf_repo_id:
-            raise SystemExit(
-                "missing Hugging Face repo id; set HF_REPO_ID, pass --hf-repo-id, or pass --skip-huggingface"
-            )
         for command in huggingface_commands(
             hf=hf_command(args.hf_command),
             hf_repo_id=args.hf_repo_id,
@@ -552,7 +545,15 @@ def main() -> int:
             manifest_path=manifest_path,
             storage_index_path=storage_index_path,
         ):
-            run(command, dry_run=args.dry_run, env=env)
+            execute(command, dry_run=args.dry_run, env=env)
+
+    committed_repo = commit_repo_changes(
+        repo,
+        netuid=args.netuid,
+        snapshot=args.snapshot,
+        push=args.push_repo,
+        dry_run=args.dry_run,
+    ) if args.commit_repo or args.push_repo else False
 
     print(
         json.dumps(
@@ -569,7 +570,6 @@ def main() -> int:
                 "storage_index": str(storage_index_path),
                 "synced": synced,
             },
-            indent=2,
             sort_keys=True,
         )
     )
