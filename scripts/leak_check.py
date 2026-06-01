@@ -45,7 +45,7 @@ def _patterns() -> list[tuple[str, re.Pattern[str]]]:
         ("agent-state", re.compile("AGENT" + r"[_ ]STATE|Agent State|" + "agent" + r"_state")),
         ("local-user-path", re.compile(re.escape("/" + "Users/"))),
         ("root-ssh", re.compile(r"root" + re.escape("@"))),
-        ("ip-address", re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")),
+        ("ip-address", re.compile(r"(?<![A-Za-z0-9_.])(?:\d{1,3}\.){3}\d{1,3}(?![A-Za-z0-9_.])")),
         ("private-key", re.compile(r"BEGIN [A-Z ]*PRIVATE KEY")),
         ("wallet-mnemonic", re.compile(r"\bmnemonic\b", re.IGNORECASE)),
         ("openai-key", re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b")),

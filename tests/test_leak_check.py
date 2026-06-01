@@ -43,6 +43,12 @@ def test_leak_check_allows_placeholder_credential_names() -> None:
     assert "credential-assignment" not in _labels(text)
 
 
+def test_leak_check_allows_lean_projection_chains() -> None:
+    address = ".".join(("192", "0", "2", "1"))
+    assert "ip-address" in _labels(f"validator mirror {address}")
+    assert "ip-address" not in _labels("Primrec fun a => pr a.1 a.2.1 a.2.2.2.1")
+
+
 def test_leak_check_blocks_private_operator_paths() -> None:
     blocked = {
         ".env": "env-path",
