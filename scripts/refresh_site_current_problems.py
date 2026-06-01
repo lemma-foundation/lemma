@@ -14,7 +14,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from lemma.common.config import LemmaSettings  # noqa: E402
-from lemma.current_problems import build_current_problems_snapshot, write_current_problems_snapshot  # noqa: E402
+from lemma.current_problems import (  # noqa: E402
+    build_current_problems_snapshot,
+    build_empty_current_problems_snapshot,
+    write_current_problems_snapshot,
+)
+from lemma.tasks import load_task_registry  # noqa: E402
+from lemma.validator import active_registry_cache_path, current_active_tempo  # noqa: E402
 
 LEAK_PATTERN = re.compile(
     "AGENT" + r"[_ ]STATE|Agent " + "State|\\." + "env|" + "/" + "Users/|root" + "@|"
@@ -85,13 +91,72 @@ def main() -> int:
     parser.add_argument("--push", action="store_true", help="Push the site repo after committing")
     parser.add_argument("--message", default="Update current problems snapshot")
     parser.add_argument("--tempo", type=int, default=None, help="Override the active-window tempo")
+    parser.add_argument(
+        "--current-cache-dir",
+        type=Path,
+        default=None,
+        help="Use only the registry cache file for the current active tempo",
+    )
+    parser.add_argument(
+        "--empty-when-current-cache-missing",
+        action="store_true",
+        help="Write an empty current-tempo snapshot if --current-cache-dir has no current cache yet",
+    )
+    parser.add_argument(
+        "--keep-output-when-current-cache-missing",
+        action="store_true",
+        help="Leave an existing output snapshot unchanged if --current-cache-dir has no current cache yet",
+    )
+    parser.add_argument(
+        "--skip-randomness-hashes",
+        action="store_true",
+        help="Do not resolve optional epoch-randomness hashes while refreshing",
+    )
     args = parser.parse_args()
 
     site_repo = args.site_repo.resolve()
     output = args.output if args.output.is_absolute() else site_repo / args.output
     if args.commit or args.push:
         _sync_site_repo(site_repo)
-    snapshot = build_current_problems_snapshot(LemmaSettings(), tempo=args.tempo)
+    settings = LemmaSettings()
+    tempo = args.tempo
+    if args.current_cache_dir is not None:
+        tempo = current_active_tempo(settings) if tempo is None else tempo
+        cache_settings = settings.model_copy(update={"active_registry_cache_dir": args.current_cache_dir})
+        registry_json = active_registry_cache_path(cache_settings, tempo=tempo)
+        if registry_json is not None and not registry_json.is_file():
+            if args.keep_output_when_current_cache_missing and output.is_file():
+                print(
+                    json.dumps(
+                        {
+                            "committed": False,
+                            "kept": True,
+                            "output": str(output),
+                            "pushed": False,
+                            "reason": "current cache missing",
+                            "task_count": None,
+                        },
+                        sort_keys=True,
+                    )
+                )
+                return 0
+            if not args.empty_when_current_cache_missing:
+                raise FileNotFoundError(registry_json)
+            snapshot = build_empty_current_problems_snapshot(settings, tempo=tempo)
+        else:
+            snapshot = build_current_problems_snapshot(
+                settings,
+                registry=load_task_registry(registry_json.read_bytes()) if registry_json is not None else None,
+                registry_is_active=True,
+                tempo=tempo,
+                include_randomness_hashes=not args.skip_randomness_hashes,
+            )
+    else:
+        snapshot = build_current_problems_snapshot(
+            settings,
+            tempo=tempo,
+            include_randomness_hashes=not args.skip_randomness_hashes,
+        )
     write_current_problems_snapshot(output, snapshot)
 
     committed = False

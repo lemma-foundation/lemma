@@ -11,7 +11,7 @@ from lemma.common.config import LemmaSettings
 from lemma.current_problem_server import CurrentProblemService
 from lemma.current_problems import build_current_problems_snapshot, write_current_problems_snapshot
 from lemma.supply.controller import CurriculumTempoRecord, append_curriculum_record
-from lemma.task_supply import make_task
+from lemma.task_supply import make_task, write_registry
 from lemma.tasks import TaskRegistry
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -304,6 +304,71 @@ def test_refresh_site_current_problems_script_writes_site_json(tmp_path: Path) -
     payload = json.loads((site_repo / "data" / "current-problems.json").read_text(encoding="utf-8"))
     assert summary["task_count"] == payload["task_count"]
     assert payload["schema_version"] == 1
+
+
+def test_refresh_site_current_problems_uses_current_cache(tmp_path: Path) -> None:
+    site_repo = tmp_path / "lemmasub.net"
+    cache_dir = tmp_path / "registries"
+    site_repo.mkdir()
+    cache_dir.mkdir()
+    write_registry(_registry().tasks, cache_dir / "tempo-7.registry.json")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/refresh_site_current_problems.py",
+            "--site-repo",
+            str(site_repo),
+            "--tempo",
+            "7",
+            "--current-cache-dir",
+            str(cache_dir),
+            "--skip-randomness-hashes",
+        ],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    summary = json.loads(result.stdout)
+    payload = json.loads((site_repo / "data" / "current-problems.json").read_text(encoding="utf-8"))
+    assert summary["task_count"] == 3
+    assert payload["tempo"] == 7
+    assert payload["task_count"] == 3
+    assert payload["registry_task_count"] == 3
+
+
+def test_refresh_site_current_problems_keeps_existing_output_when_cache_missing(tmp_path: Path) -> None:
+    site_repo = tmp_path / "lemmasub.net"
+    cache_dir = tmp_path / "registries"
+    output = site_repo / "data" / "current-problems.json"
+    cache_dir.mkdir()
+    output.parent.mkdir(parents=True)
+    output.write_text('{"task_count": 2}\n', encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/refresh_site_current_problems.py",
+            "--site-repo",
+            str(site_repo),
+            "--tempo",
+            "7",
+            "--current-cache-dir",
+            str(cache_dir),
+            "--keep-output-when-current-cache-missing",
+        ],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    summary = json.loads(result.stdout)
+    assert summary["kept"] is True
+    assert summary["reason"] == "current cache missing"
+    assert output.read_text(encoding="utf-8") == '{"task_count": 2}\n'
 
 
 def test_export_current_problems_uses_empty_current_snapshot_when_cache_missing(tmp_path: Path) -> None:

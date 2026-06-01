@@ -844,10 +844,12 @@ def ingredients_verify_task_cmd(
     help="Ingredient repository root.",
 )
 @click.option(
-    "--lemma-corpus-snapshot-sha256",
-    required=True,
+    "--proof-atlas-snapshot-sha256",
+    "proof_atlas_snapshot_sha256",
+    default=None,
     help="Pinned public Proof Atlas snapshot SHA256.",
 )
+@click.option("--lemma-corpus-snapshot-sha256", "legacy_proof_atlas_snapshot_sha256", default=None, hidden=True)
 @click.option(
     "--output",
     "output_path",
@@ -862,7 +864,8 @@ def ingredients_verify_task_cmd(
 )
 def ingredients_write_manifest_cmd(
     root_path: Path,
-    lemma_corpus_snapshot_sha256: str,
+    proof_atlas_snapshot_sha256: str | None,
+    legacy_proof_atlas_snapshot_sha256: str | None,
     output_path: Path | None,
     mathlib_commit: str | None,
 ) -> None:
@@ -876,6 +879,10 @@ def ingredients_write_manifest_cmd(
         ingredient_recipe_artifact_hashes,
         ingredient_repository_report_hashes,
     )
+
+    lemma_corpus_snapshot_sha256 = proof_atlas_snapshot_sha256 or legacy_proof_atlas_snapshot_sha256
+    if lemma_corpus_snapshot_sha256 is None:
+        raise click.UsageError("Missing option '--proof-atlas-snapshot-sha256'.")
 
     output_path = output_path or root_path / "manifest.json"
     try:

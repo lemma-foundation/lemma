@@ -536,7 +536,7 @@ def test_ingredients_write_manifest_writes_verified_manifest(tmp_path) -> None: 
             "write-manifest",
             "--root",
             str(root),
-            "--lemma-corpus-snapshot-sha256",
+            "--proof-atlas-snapshot-sha256",
             "f" * 64,
         ],
     )

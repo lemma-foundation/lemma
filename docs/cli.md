@@ -26,7 +26,7 @@ The proof-graph artifact commands are hidden from root help because they are low
 ```bash
 uv run lemma ingredients extract-mathlib --mathlib-root /path/to/mathlib --output proof-graph
 uv run lemma ingredients build-compatibility --root proof-graph
-uv run lemma ingredients write-manifest --root proof-graph --lemma-corpus-snapshot-sha256 <sha256>
+uv run lemma ingredients write-manifest --root proof-graph --proof-atlas-snapshot-sha256 <sha256>
 uv run lemma ingredients inspect --manifest proof-graph/manifest.json
 uv run lemma ingredients inspect --manifest proof-graph/manifest.json --root proof-graph
 uv run lemma ingredients select-receipt --manifest proof-graph/manifest.json --root proof-graph --netuid 467 --tempo 42 --epoch-seed <seed> --difficulty-state-jsonl difficulty-state.jsonl
