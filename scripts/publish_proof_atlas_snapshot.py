@@ -401,13 +401,15 @@ def huggingface_commands(
 ) -> list[list[str]]:
     prefix = f"snapshots/{snapshot}"
     message = f"Publish {netuid} Proof Atlas snapshot {snapshot}"
+    export_path = repo / "exports" / netuid / "lemma-proofs.jsonl"
+    benchmark_index_path = repo / "exports" / netuid / "benchmark-index.json"
     return [
         [
             *hf,
             "upload",
             hf_repo_id,
-            str(repo / "canonical" / netuid),
-            f"{prefix}/canonical/{netuid}",
+            str(export_path),
+            f"{prefix}/exports/{netuid}/lemma-proofs.jsonl",
             "--repo-type",
             "dataset",
             "--commit-message",
@@ -417,8 +419,8 @@ def huggingface_commands(
             *hf,
             "upload",
             hf_repo_id,
-            str(repo / "exports" / netuid),
-            f"{prefix}/exports/{netuid}",
+            str(benchmark_index_path),
+            f"{prefix}/exports/{netuid}/benchmark-index.json",
             "--repo-type",
             "dataset",
             "--commit-message",

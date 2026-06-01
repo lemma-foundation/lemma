@@ -173,8 +173,10 @@ def test_huggingface_commands_upload_append_only_snapshot_paths(tmp_path: Path) 
 
     flattened = [part for command in commands for part in command]
     assert "lemma-foundation/lean" in flattened
-    assert "snapshots/2026-05-20T02-32-08Z/canonical/sn467" in flattened
-    assert "snapshots/2026-05-20T02-32-08Z/exports/sn467" in flattened
+    assert str(repo / "canonical" / "sn467") not in flattened
+    assert str(repo / "exports" / "sn467") not in flattened
+    assert "snapshots/2026-05-20T02-32-08Z/exports/sn467/lemma-proofs.jsonl" in flattened
+    assert "snapshots/2026-05-20T02-32-08Z/exports/sn467/benchmark-index.json" in flattened
     assert "snapshots/2026-05-20T02-32-08Z/MANIFEST.sha256" in flattened
     assert "snapshots/2026-05-20T02-32-08Z/storage-index.json" in flattened
     assert "--repo-type" in flattened

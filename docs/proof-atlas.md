@@ -65,7 +65,7 @@ For a no-upload preview:
 uv run python scripts/publish_proof_atlas_snapshot.py --repo ~/lemma-proof-atlas --netuid sn467 --dry-run
 ```
 
-The publisher regenerates `proofs/<netuid>/index.json`, exports, `canonical/<netuid>/storage-index.json`, and `MANIFEST.sha256`; uploads a timestamped Hippius snapshot; creates an immutable GitHub release mirror; and can sync a Hugging Face dataset mirror. It defaults to:
+The publisher regenerates `proofs/<netuid>/index.json`, exports, `canonical/<netuid>/storage-index.json`, and `MANIFEST.sha256`; uploads a timestamped Hippius snapshot; creates an immutable GitHub release mirror; and can sync a compact Hugging Face dataset mirror containing the export JSONL, benchmark index, storage index, and manifest. It defaults to:
 
 - Hippius bucket: `lemma-proof-atlas-sn467`
 - GitHub repo: `lemma-foundation/lemma-proof-atlas`
