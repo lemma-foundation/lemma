@@ -398,7 +398,10 @@ def test_registry_cache_only_skips_snapshot_artifacts(
     }
     assert output["repo_committed"] is False
     assert (repo / f"tasks/sn467/registries/{registry_sha}.json").exists()
-    assert (repo / "tasks/sn467/registries/index.json").exists()
+    index = repo / "tasks/sn467/registries/index.json"
+    current_index = repo / "tasks/sn467/registries/current-index.json"
+    assert index.exists()
+    assert current_index.read_bytes() == index.read_bytes()
     assert not (repo / "MANIFEST.sha256").exists()
     assert not (repo / "canonical/sn467/storage-index.json").exists()
 

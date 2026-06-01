@@ -272,6 +272,7 @@ def sync_public_inputs(
             json.dumps(registry_index, sort_keys=True, separators=(",", ":")) + "\n",
             encoding="utf-8",
         )
+        (target / "current-index.json").write_text(index_path.read_text(encoding="utf-8"), encoding="utf-8")
     if graph_root_dirs:
         target = repo / "graph" / netuid / "roots"
         index_path = target / "index.json"
