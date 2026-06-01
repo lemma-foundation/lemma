@@ -2,7 +2,7 @@
 
 Lemma rewards verified work through normal Bittensor miner and validator emissions.
 
-Each epoch has `K` paid theorem slots. A miner earns one credit for the rank-0 unique accepted Lean proof for a slot. On the bucket/commitment path, rank-0 means earliest miner Merkle-root commit block; equal commit blocks are tie-broken by Lean proof identity. Payment is weighted by task level and the accepted proof's verifier-recorded Lean kernel dependencies. Unsolved slots remain unearned by default.
+Each epoch has `K` paid theorem slots. A miner earns one credit for the rank-0 unique accepted Lean proof for a slot. On the bucket/commitment path, rank-0 means earliest miner Merkle-root commit block, then extrinsic index, event index, and commitment hash as the final fallback. Hotkeys are not used for ordering. Payment is weighted by task level and the accepted proof's verifier-recorded Lean kernel dependencies. Unsolved slots remain unearned by default.
 
 The reward is attached to verified work, not prose, claimed effort, or model identity.
 
@@ -35,11 +35,13 @@ The previous-weight fallback rule is removed from scoring.
 - A proof is task-bound by `task_id`, `task_version`, and `target_sha256`.
 - A proof is unique by Lean `proof_term_hash` for paid production rewards. Lean structural fingerprints remain replay diagnostics; weak script fallbacks are non-production only.
 - In production mode, full reward requires `proof_identity_strength: strong`.
-- Each task pays at most one miner per validator epoch; committed reveals rank by commit block before local receipt time.
+- Each task pays at most one miner per validator epoch; committed reveals rank by commit block, extrinsic index, event index, and commitment hash before local receipt time.
 - Slot weights are deterministic registry values, not subjective validator scores.
 - `queue_depth` is a weak priority signal, not a calibrated difficulty ratio.
 - Source-derived tasks enter the serious paid pool only after cheap source-reuse and source-oracle checks fail. If the source theorem remains importable and gives a direct wrapper/source-oracle proof, the task is calibration/bootstrap work, not frontier work.
-- Valid alternates become corpus rows with `rewarded: false`.
+- Valid alternates become accepted proof rows with `rewarded: false`.
 - Duplicate proof identities do not create extra rows or credit.
+
+In experimental ingredient mode, production submissions are checked in canonical commitment order, repeated revealed proof payloads are skipped before Lean, invalid early distinct proofs do not block later valid proofs, and scoring still pays at most one miner per active task.
 
 No subjective scoring is used. Held-out benchmark tasks are not paid tasks. `frontier_depth` and `K` are retargeted from public curriculum state: solve-rate history moves the frontier depth, while validator capacity and the public cost budget cap `K`. Production miners and validators must replay the same published state before deriving the next active window, and retarget rows activate only after one full tempo of public replay lag.

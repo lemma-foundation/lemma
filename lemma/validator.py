@@ -39,6 +39,7 @@ SubmitWeights = Callable[[LemmaSettings, dict[str, float]], ChainWeightSubmissio
 SubmitCommitment = Callable[[LemmaSettings, str], ChainCommitmentSubmission]
 ChainAuthenticatedKey = tuple[str, str, str]
 AcceptedEntry = tuple[LemmaTask, LemmaSubmission, VerifyResult, VerificationRecord]
+_INGREDIENT_REGISTRY_TOP_LEVEL_KEYS = frozenset({"schema_version", "tasks", "signed_by", "signature", "created_at"})
 
 
 class ValidatorRunSummary(BaseModel):
@@ -178,20 +179,21 @@ def active_epoch_randomness_sha256(
 def task_registry_for_validation(settings: LemmaSettings, *, tempo: int) -> TaskRegistry:
     """Load the active task registry for the configured supply mode."""
     settings = curriculum_controlled_settings(settings, tempo=tempo)
-    if settings.protocol_mode == "production" and settings.task_supply_mode != "procedural":
-        raise RuntimeError("production mode requires LEMMA_TASK_SUPPLY_MODE=procedural")
+    if settings.protocol_mode == "production" and settings.task_supply_mode not in {"procedural", "ingredient"}:
+        raise RuntimeError("production mode requires LEMMA_TASK_SUPPLY_MODE=procedural or ingredient")
     if settings.task_supply_mode == "registry":
         return fetch_task_registry(
             settings,
             verify_signature=settings.verify_registry_signatures,
         )
+    if settings.task_supply_mode == "ingredient":
+        cached = cached_active_registry_for_tempo(settings, tempo=tempo)
+        if cached is not None:
+            return cached
+        raise RuntimeError("ingredient supply requires a current active-registry cache")
     cached = cached_active_registry_for_tempo(settings, tempo=tempo)
     if cached is not None:
         return cached
-    if settings.active_registry_role == "auditor":
-        raise RuntimeError(
-            "active registry auditor mode requires a current active-registry cache; refusing local generation"
-        )
     return _procedural_registry_for_tempo(settings, tempo=tempo)
 
 
@@ -200,23 +202,52 @@ def active_registry_cache_path(settings: LemmaSettings, *, tempo: int) -> Path |
         return settings.active_registry_json
     if settings.active_registry_cache_dir is None:
         return None
+    if settings.active_registry_cache_dir.is_symlink() or (
+        settings.active_registry_cache_dir.exists() and not settings.active_registry_cache_dir.is_dir()
+    ):
+        raise RuntimeError(f"active registry cache directory invalid: {settings.active_registry_cache_dir}")
     return settings.active_registry_cache_dir / f"tempo-{tempo}.registry.json"
+
+
+def _read_active_registry_cache_bytes(settings: LemmaSettings, path: Path) -> bytes | None:
+    label = "active registry file" if settings.active_registry_json is not None else "active registry cache"
+    if path.is_symlink() or (path.exists() and not path.is_file()):
+        raise RuntimeError(f"{label} path invalid: {path}")
+    if not path.is_file():
+        if settings.active_registry_json is not None:
+            raise RuntimeError(f"active registry file does not exist: {path}")
+        return None
+    try:
+        return path.read_bytes()
+    except OSError as e:
+        raise RuntimeError(f"{label} unreadable: {path}") from e
 
 
 def cached_active_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> TaskRegistry | None:
     path = active_registry_cache_path(settings, tempo=tempo)
     if path is None:
         return None
-    if not path.is_file():
-        if settings.active_registry_json is not None:
-            raise RuntimeError(f"active registry file does not exist: {path}")
+    raw = _read_active_registry_cache_bytes(settings, path)
+    if raw is None:
         return None
-    registry = load_task_registry(path.read_bytes())
+    ingredient_production = settings.protocol_mode == "production" and settings.task_supply_mode == "ingredient"
+    if ingredient_production and _ingredient_registry_unknown_top_level_keys(raw):
+        if settings.active_registry_json is not None:
+            raise RuntimeError("active registry file violates production ingredient invariant")
+        return None
+    registry = load_task_registry(raw)
     curriculum_state_replay = (
         settings.curriculum_retarget_enabled
         and settings.curriculum_state_jsonl is not None
         and settings.curriculum_state_jsonl.exists()
     )
+    if (
+        ingredient_production
+        and active_registry_cache_stale(registry, settings)
+    ):
+        if settings.active_registry_json is not None:
+            raise RuntimeError("active registry file violates production ingredient invariant")
+        return None
     if (
         settings.active_registry_json is None
         and (settings.protocol_mode == "production" or curriculum_state_replay)
@@ -226,7 +257,24 @@ def cached_active_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> 
     return registry
 
 
+def _ingredient_registry_unknown_top_level_keys(raw: bytes) -> tuple[str, ...]:
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return ()
+    if not isinstance(payload, dict):
+        return ()
+    return tuple(sorted(set(payload) - _INGREDIENT_REGISTRY_TOP_LEVEL_KEYS))
+
+
 def active_registry_cache_stale(registry: TaskRegistry, settings: LemmaSettings) -> bool:
+    if settings.task_supply_mode == "ingredient" and settings.protocol_mode == "production":
+        try:
+            enforce_production_invariants(settings, registry)
+        except RuntimeError:
+            return True
+        return False
+
     expected_count = max(settings.active_task_count, settings.procedural_candidate_count or 0)
     target_counts = [
         int(task.metadata["procedural_generation_target_count"])
@@ -464,6 +512,63 @@ def _enforce_epoch_generated_paid_tasks(
         raise RuntimeError(f"production paid tasks must use active epoch randomness: {detail}")
 
 
+def _enforce_epoch_selected_ingredient_tasks(
+    tasks: Sequence[LemmaTask],
+    settings: LemmaSettings,
+    *,
+    tempo: int,
+    epoch_randomness: str,
+) -> None:
+    from lemma.supply.ingredients import (
+        ingredient_challenge_seed_sha256,
+        ingredient_challenge_slot_seed_sha256,
+        text_sha256,
+    )
+
+    epoch_seed = active_epoch_seed(settings, tempo=tempo, epoch_randomness=epoch_randomness)
+    mismatches: list[str] = []
+    for task in tasks:
+        if not task_reward_eligibility(task).eligible:
+            continue
+        metadata = task.metadata
+        if metadata.get("tempo") != tempo:
+            mismatches.append(f"{task.id}:tempo")
+            continue
+        if metadata.get("epoch_seed_sha256") != text_sha256(epoch_seed):
+            mismatches.append(f"{task.id}:epoch_seed_sha256")
+            continue
+        active_k = metadata.get("active_K")
+        if not isinstance(active_k, int) or isinstance(active_k, bool):
+            mismatches.append(f"{task.id}:active_K")
+            continue
+        queue_position = task.queue_position
+        if queue_position is None:
+            mismatches.append(f"{task.id}:queue_position")
+            continue
+        try:
+            challenge_seed = ingredient_challenge_seed_sha256(
+                netuid=settings.netuid,
+                tempo=tempo,
+                epoch_seed=epoch_seed,
+                ingredient_manifest_sha256=str(metadata.get("ingredient_manifest_sha256") or ""),
+                recipe_bundle_sha256=str(metadata.get("recipe_bundle_sha256") or ""),
+                difficulty_state_sha256=str(metadata.get("difficulty_state_sha256") or ""),
+            )
+            expected_selection_seed = ingredient_challenge_slot_seed_sha256(
+                challenge_seed_sha256=challenge_seed,
+                queue_position=queue_position,
+                active_K=active_k,
+            )
+        except ValueError:
+            mismatches.append(f"{task.id}:selection_seed_sha256")
+            continue
+        if metadata.get("selection_seed_sha256") != expected_selection_seed:
+            mismatches.append(f"{task.id}:selection_seed_sha256")
+    if mismatches:
+        detail = ", ".join(mismatches[:5])
+        raise RuntimeError(f"production ingredient tasks must use active epoch randomness: {detail}")
+
+
 def _weight_receipt(
     *,
     submitted_at: str,
@@ -547,21 +652,36 @@ def active_tasks_for_validation(
     settings = curriculum_controlled_settings(settings, tempo=active_tempo)
     candidates = tuple(task for task in registry.tasks if task.queue_depth <= settings.frontier_depth)
     active_k = min(settings.active_task_count, len(candidates))
-    if active_k == 0:
-        return ()
     epoch_randomness = (
         resolve_active_epoch_randomness(settings, tempo=active_tempo)
         if settings.active_seed_mode == "epoch_randomness"
         else None
     )
     if settings.protocol_mode == "production":
+        if settings.task_supply_mode not in {"procedural", "ingredient"}:
+            raise RuntimeError("production mode requires LEMMA_TASK_SUPPLY_MODE=procedural or ingredient")
         if epoch_randomness is None:
             raise RuntimeError("production mode requires LEMMA_ACTIVE_SEED_MODE=epoch_randomness")
-        _enforce_epoch_generated_paid_tasks(
-            registry.tasks,
-            active_epoch_seed(settings, tempo=active_tempo, epoch_randomness=epoch_randomness),
-            epoch_randomness,
-        )
+        if settings.task_supply_mode == "procedural":
+            _enforce_epoch_generated_paid_tasks(
+                registry.tasks,
+                active_epoch_seed(settings, tempo=active_tempo, epoch_randomness=epoch_randomness),
+                epoch_randomness,
+            )
+        if settings.task_supply_mode == "ingredient":
+            if len(registry.tasks) != settings.active_task_count or active_k != settings.active_task_count:
+                raise RuntimeError("production ingredient mode active task count mismatch")
+            _enforce_epoch_selected_ingredient_tasks(
+                registry.tasks,
+                settings,
+                tempo=active_tempo,
+                epoch_randomness=epoch_randomness,
+            )
+            cached_registry = task_registry_for_validation(settings, tempo=active_tempo)
+            if registry != cached_registry:
+                raise RuntimeError("production ingredient registry must match current active-registry cache")
+    if active_k == 0:
+        return ()
     pool = initial_active_pool(
         candidates,
         active_K=active_k,
@@ -932,9 +1052,58 @@ def _task_with_verified_slot_weight(task: LemmaTask, result: VerifyResult) -> Le
 
 def _record_rank_key(record: VerificationRecord) -> tuple[object, ...]:
     if record.commit_block is not None:
-        tie_break = record.proof_identity or record.proof_term_hash or record.proof_sha256
-        return (0, record.commit_block, tie_break, record.solver_hotkey, record.received_at)
+        return (
+            0,
+            record.commit_block,
+            _optional_position(record.commit_extrinsic_index),
+            _optional_position(record.commit_event_index),
+            _commitment_hash(record.commit_extrinsic_hash),
+            record.received_at,
+        )
     return (1, record.received_at)
+
+
+def _commitment_hash(value: str | None) -> str:
+    return hashlib.sha256((value or "").strip().encode()).hexdigest()
+
+
+def _optional_position(value: int | None) -> int:
+    return value if value is not None else 2**63 - 1
+
+
+def _rank_live_submissions_by_commit(settings: LemmaSettings) -> bool:
+    return settings.protocol_mode == "production" and settings.task_supply_mode == "ingredient"
+
+
+def _stop_after_first_live_winner(_settings: LemmaSettings) -> bool:
+    return False
+
+
+def _submission_rank_key(item: tuple[int, LemmaSubmission]) -> tuple[object, ...]:
+    index, submission = item
+    if submission.commit_block is not None and submission.commit_block > 0:
+        return (
+            0,
+            submission.commit_block,
+            _optional_position(submission.commit_extrinsic_index),
+            _optional_position(submission.commit_event_index),
+            _commitment_hash(submission.commit_extrinsic_hash),
+            index,
+        )
+    return (1, index)
+
+
+def _validation_order(settings: LemmaSettings, submissions: Iterable[LemmaSubmission]) -> tuple[LemmaSubmission, ...]:
+    indexed = tuple(enumerate(submissions))
+    if _rank_live_submissions_by_commit(settings):
+        return tuple(submission for _, submission in sorted(indexed, key=_submission_rank_key))
+    return tuple(submission for _, submission in indexed)
+
+
+def _record_is_live_winner(record: VerificationRecord, *, require_strong_identity: bool) -> bool:
+    if not record.passed or not record.reward_eligible:
+        return False
+    return not require_strong_identity or record.proof_identity_strength == "strong"
 
 
 def _retarget_curriculum_after_validation(settings: LemmaSettings, *, tempo: int, solved_slots: int):
@@ -1019,7 +1188,7 @@ def validate_once(
     submit_commitment: SubmitCommitment | None = None,
     chain_authenticated_keys: frozenset[ChainAuthenticatedKey] = frozenset(),
 ) -> ValidatorRunResult:
-    """Verify submissions, score unique proofs, and write local corpus artifacts."""
+    """Verify submissions, score unique proofs, and write local accepted-proof artifacts."""
     active_tempo = current_active_tempo(settings) if tempo is None else tempo
     settings = curriculum_controlled_settings(settings, tempo=active_tempo)
     registry = registry or task_registry_for_validation(settings, tempo=active_tempo)
@@ -1038,7 +1207,10 @@ def validate_once(
     accepted: dict[tuple[str, str, str], AcceptedEntry] = {}
     receipts: list[dict[str, object]] = []
 
-    for submission in submissions:
+    rank_live_submissions = _rank_live_submissions_by_commit(settings)
+    stop_after_first_winner = _stop_after_first_live_winner(settings)
+    seen_live_payloads: set[tuple[str, str]] = set()
+    for submission in _validation_order(settings, submissions):
         received_at = _now()
         task = tasks.get(submission.task_id)
         if task is None:
@@ -1084,6 +1256,30 @@ def validate_once(
             )
             continue
 
+        payload_key = (task.id, submission.proof_sha256)
+        if rank_live_submissions and payload_key in seen_live_payloads:
+            receipts.append(
+                {
+                    "received_at": received_at,
+                    "task_id": task.id,
+                    "task_version": task.task_version,
+                    "target_sha256": task.target_sha256,
+                    "solver_hotkey": submission.solver_hotkey,
+                    "proof_sha256": submission.proof_sha256,
+                    "commit_block": submission.commit_block,
+                    "commit_extrinsic_index": submission.commit_extrinsic_index,
+                    "commit_event_index": submission.commit_event_index,
+                    "commit_extrinsic_hash": submission.commit_extrinsic_hash,
+                    "drand_round": submission.drand_round,
+                    "chain_authenticated": chain_authenticated,
+                    "accepted": False,
+                    "reason": "duplicate_proof_payload",
+                }
+            )
+            continue
+        if rank_live_submissions:
+            seen_live_payloads.add(payload_key)
+
         result = verify(task, submission)
         identity = proof_identity(
             proof_sha256=submission.proof_sha256,
@@ -1108,6 +1304,9 @@ def validate_once(
             reward_eligible=eligibility.eligible,
             reward_ineligibility_reason=eligibility.reason,
             commit_block=submission.commit_block,
+            commit_extrinsic_index=submission.commit_extrinsic_index,
+            commit_event_index=submission.commit_event_index,
+            commit_extrinsic_hash=submission.commit_extrinsic_hash,
             drand_round=submission.drand_round,
             received_at=received_at,
         )
@@ -1121,6 +1320,9 @@ def validate_once(
                 "solver_hotkey": submission.solver_hotkey,
                 "proof_sha256": submission.proof_sha256,
                 "commit_block": submission.commit_block,
+                "commit_extrinsic_index": submission.commit_extrinsic_index,
+                "commit_event_index": submission.commit_event_index,
+                "commit_extrinsic_hash": submission.commit_extrinsic_hash,
                 "drand_round": submission.drand_round,
                 "chain_authenticated": chain_authenticated,
                 "passed": result.passed,
@@ -1133,6 +1335,11 @@ def validate_once(
             existing = accepted.get(key)
             if existing is None or _record_rank_key(record) < _record_rank_key(existing[3]):
                 accepted[key] = entry
+            if stop_after_first_winner and _record_is_live_winner(
+                record,
+                require_strong_identity=require_strong_identity,
+            ):
+                break
 
     append_jsonl(settings.operator_data_dir / "verification-records.jsonl", receipts)
 

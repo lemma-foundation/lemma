@@ -33,7 +33,7 @@ Accepted rows contain the data needed to rerun and inspect a result:
 - source and license metadata;
 - contributor / miner attribution;
 - verification result;
-- corpus graph links.
+- proof graph links.
 
 The subnet owner publishes canonical snapshots from accepted rows. Validators can publish similar mirrors if they configure storage, but publishing is not required for validation.
 
@@ -64,15 +64,15 @@ The validator path fetches active tasks, checks task-bound submissions with Lean
 
 ## Try The Loop Locally
 
-Use [examples/operator-smoke](examples/operator-smoke/README.md) to build a pinned registry, package one proof submission, run a validator pass, and export corpus artifacts.
+Use [examples/operator-smoke](examples/operator-smoke/README.md) to build a pinned registry, package one proof submission, run a validator pass, and export Proof Atlas artifacts.
 
 For production-shaped supply, validators rebuild active tasks from public inputs before configuring the active pool. The detailed path lives in [Operator Registry Flow](docs/operator-registry-flow.md).
 
-## Corpus Export
+## Proof Atlas
 
-The public smoke corpus lives at [lemma-foundation/lemma-corpus](https://github.com/lemma-foundation/lemma-corpus).
+The public proof data lives at [lemma-foundation/lemma-proof-atlas](https://github.com/lemma-foundation/lemma-proof-atlas).
 
-Release and export tooling is documented in [Corpus](docs/corpus.md).
+Release and export tooling is documented in [Proof Atlas](docs/proof-atlas.md).
 
 ## Scoring
 
@@ -84,7 +84,7 @@ weight = miner_score
 ```
 
 The unearned share is not redistributed to current solvers. It is burned by default and can only be routed to future proof-production rails by an explicit policy.
-In production, weak script identity and structural print fingerprints can be stored as corpus metadata but cannot earn paid reward; rewarded rows need a strong Lean-derived proof-term hash.
+In production, weak script identity and structural print fingerprints can be stored as accepted-proof metadata but cannot earn paid reward; rewarded rows need a strong Lean-derived proof-term hash.
 
 ## Docs
 
@@ -110,7 +110,7 @@ Protocol:
 - [Protocol invariants](docs/PROTOCOL_INVARIANTS.md)
 - [Architecture](docs/architecture.md)
 - [Scoring](docs/scoring.md)
-- [Corpus](docs/corpus.md)
+- [Proof Atlas](docs/proof-atlas.md)
 - [Proof identity](docs/proof-identity.md)
 - [Useful verified row](docs/useful-verified-row.md)
 - [License policy](docs/license-policy.md)
@@ -134,4 +134,4 @@ uv run python scripts/leak_check.py
 
 ## License
 
-Code is Apache-2.0. Corpus rows default to CC-BY 4.0 unless source metadata says otherwise.
+Code is Apache-2.0. Accepted proof rows default to CC-BY 4.0 unless source metadata says otherwise.

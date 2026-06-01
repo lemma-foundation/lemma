@@ -114,7 +114,7 @@ def _check_hardening_bundle_files(checks: list[AuditCheck]) -> None:
     required_paths = [
         ("scripts/lemma-sync-active-registry-cache", repo_root / "scripts/lemma-sync-active-registry-cache", True),
         ("lemma/cli/main.py", repo_root / "lemma/cli/main.py", False),
-        ("scripts/publish_corpus_snapshot.py", repo_root / "scripts/publish_corpus_snapshot.py", False),
+        ("scripts/publish_proof_atlas_snapshot.py", repo_root / "scripts/publish_proof_atlas_snapshot.py", False),
     ]
     missing = []
     not_executable: list[str] = []
@@ -617,42 +617,20 @@ def _add_burn_in_checks(
 def run_audit(settings: LemmaSettings) -> tuple[list[AuditCheck], int]:
     checks: list[AuditCheck] = []
 
-    # 2) role semantics: builder is default, auditor is explicit only.
-    explicit_role = os.environ.get("LEMMA_ACTIVE_REGISTRY_ROLE")
-    if explicit_role is None:
-        explicit_role = "<unset>"
-    role = settings.active_registry_role
-    if explicit_role == "<unset>" and role == "builder":
+    # 2) validator protocol path: all validators derive or hydrate the same active set.
+    if os.environ.get("LEMMA_ACTIVE_REGISTRY_ROLE"):
         _add(
             checks,
-            "active registry role",
-            "pass",
-            "active registry role defaulted to builder",
+            "single validator path",
+            "fail",
+            "LEMMA_ACTIVE_REGISTRY_ROLE is no longer supported; validators run one protocol path",
         )
-    elif role == "auditor":
-        cache_dir = settings.active_registry_cache_dir
-        cache_json = settings.active_registry_json
-        index_url = os.environ.get("LEMMA_ACTIVE_REGISTRY_CACHE_INDEX_URL", "").strip()
-        if cache_json is None and cache_dir is None and not index_url:
-            _add(
-                checks,
-                "active registry role",
-                "fail",
-                "auditor role requires public cache source (cache dir/json/index URL)",
-            )
-        else:
-            _add(
-                checks,
-                "active registry role",
-                "warn",
-                "auditor role is explicitly enabled; confirm public cache source is correct",
-            )
     else:
         _add(
             checks,
-            "active registry role",
+            "single validator path",
             "pass",
-            f"active registry role explicitly set to {role}",
+            "validators derive or hydrate active registries without specialized roles",
         )
 
     # 6/11) commitment write/readback parity requirements.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerate public lemma-corpus indexes and row-count docs."""
+"""Regenerate Proof Atlas indexes and row-count docs."""
 
 from __future__ import annotations
 
@@ -23,24 +23,24 @@ def _replace(path: Path, replacements: tuple[tuple[str, str], ...]) -> None:
 
 
 def prepare(repo: Path, netuid: str) -> dict[str, object]:
-    corpus_dir = repo / "corpus" / netuid
-    if not corpus_dir.is_dir():
-        raise SystemExit(f"missing corpus directory: {corpus_dir}")
-    files = sorted(corpus_dir.glob("epoch-*.jsonl"))
+    proof_dir = repo / "proofs" / netuid / "accepted"
+    if not proof_dir.is_dir():
+        raise SystemExit(f"missing accepted proof directory: {proof_dir}")
+    files = sorted(proof_dir.glob("epoch-*.jsonl"))
     if not files:
-        raise SystemExit(f"no epoch JSONL files under {corpus_dir}")
+        raise SystemExit(f"no epoch JSONL files under {proof_dir}")
 
     row_count = sum(validate_jsonl(path) for path in files)
-    index_path = repo / "indexes" / netuid / "corpus-index.json"
+    index_path = repo / "proofs" / netuid / "index.json"
     export_path = repo / "exports" / netuid / "lemma-proofs.jsonl"
     benchmark_index_path = repo / "exports" / netuid / "benchmark-index.json"
 
-    write_corpus_index(corpus_dir, index_path)
-    benchmark_index = write_benchmark_export(corpus_dir, export_path, index_path=benchmark_index_path)
+    write_corpus_index(proof_dir, index_path)
+    benchmark_index = write_benchmark_export(proof_dir, export_path, index_path=benchmark_index_path)
 
-    _replace(repo / "README.md", ((r"- corpus rows: `\d+`", f"- corpus rows: `{row_count}`"),))
+    _replace(repo / "README.md", ((r"- accepted proof rows: `\d+`", f"- accepted proof rows: `{row_count}`"),))
     _replace(
-        repo / "DATASET_CARD.md",
+        repo / "ATLAS_CARD.md",
         (
             (
                 r"The checked-in artifact set contains .* accepted Lean proof rows,",
@@ -54,7 +54,7 @@ def prepare(repo: Path, netuid: str) -> dict[str, object]:
     )
     return {
         "benchmark_rows": benchmark_index["row_count"],
-        "corpus_rows": row_count,
+        "proof_rows": row_count,
         "export_sha256": benchmark_index["export"]["sha256"],
         "files": len(files),
         "netuid": netuid,
@@ -63,8 +63,8 @@ def prepare(repo: Path, netuid: str) -> dict[str, object]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--repo", type=Path, required=True, help="lemma-corpus checkout to prepare")
-    parser.add_argument("--netuid", default="sn467", help="corpus namespace, for example sn467")
+    parser.add_argument("--repo", type=Path, required=True, help="Proof Atlas checkout to prepare")
+    parser.add_argument("--netuid", default="sn467", help="Proof Atlas namespace, for example sn467")
     args = parser.parse_args()
 
     summary = prepare(args.repo.resolve(), args.netuid)

@@ -49,13 +49,9 @@ class LemmaSettings(BaseSettings):
         default="tasks/registry.json",
         validation_alias="LEMMA_TASK_REGISTRY_URL",
     )
-    task_supply_mode: Literal["registry", "procedural"] = Field(
+    task_supply_mode: Literal["registry", "procedural", "ingredient"] = Field(
         default="registry",
         validation_alias="LEMMA_TASK_SUPPLY_MODE",
-    )
-    active_registry_role: Literal["builder", "auditor"] = Field(
-        default="builder",
-        validation_alias="LEMMA_ACTIVE_REGISTRY_ROLE",
     )
     task_registry_sha256_expected: str | None = Field(
         default=None,
@@ -201,6 +197,26 @@ class LemmaSettings(BaseSettings):
         default=16,
         ge=0,
         validation_alias="LEMMA_PROCEDURAL_LEAN_COMPILE_ERROR_SPLIT_LIMIT",
+    )
+    ingredient_manifest_json: Path | None = Field(
+        default=None,
+        validation_alias="LEMMA_INGREDIENT_MANIFEST_JSON",
+    )
+    ingredient_manifest_sha256_expected: str | None = Field(
+        default=None,
+        validation_alias="LEMMA_INGREDIENT_MANIFEST_SHA256",
+    )
+    ingredient_repo_commit: str = Field(
+        default="",
+        validation_alias="LEMMA_INGREDIENT_REPO_COMMIT",
+    )
+    ingredient_recipe_bundle_sha256_expected: str | None = Field(
+        default=None,
+        validation_alias="LEMMA_INGREDIENT_RECIPE_BUNDLE_SHA256",
+    )
+    ingredient_difficulty_state_jsonl: Path | None = Field(
+        default=None,
+        validation_alias="LEMMA_INGREDIENT_DIFFICULTY_STATE_JSONL",
     )
     verify_registry_signatures: bool = Field(
         default=False,

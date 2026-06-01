@@ -39,4 +39,4 @@ First valid committed reveal wins each theorem slot. Re-submitting another miner
 
 ## Privacy
 
-Corpus rows never include local paths, hostnames, IPs, secrets, wallet files, verifier logs, or local agent state.
+Accepted proof rows never include local paths, hostnames, IPs, credentials, wallet files, verifier logs, or local agent state.

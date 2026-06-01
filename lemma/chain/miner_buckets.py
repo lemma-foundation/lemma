@@ -103,6 +103,8 @@ class MinerBucketReveal(BaseModel):
     drand_round: int = Field(ge=0)
     drand_signature: str | None = None
     commit_block: int = Field(ge=0)
+    commit_extrinsic_index: int | None = Field(default=None, ge=0)
+    commit_event_index: int | None = Field(default=None, ge=0)
     commit_extrinsic_hash: str = Field(min_length=1)
     merkle_root: str
     bucket_url: str = ""
@@ -422,6 +424,8 @@ def _submissions_from_bucket_reveal(
             timelock_ciphertext=blob.ciphertext,
             drand_round=reveal.drand_round,
             commit_block=reveal.commit_block,
+            commit_extrinsic_index=reveal.commit_extrinsic_index,
+            commit_event_index=reveal.commit_event_index,
             commit_extrinsic_hash=reveal.commit_extrinsic_hash,
             metadata={
                 "bucket_key": miner_bucket_key(reveal.tempo, blob.slot_index),

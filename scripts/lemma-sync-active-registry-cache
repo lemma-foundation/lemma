@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Hydrate the active registry cache from a public corpus registry mirror."""
+"""Hydrate the active registry cache from a public Proof Atlas registry mirror."""
 
 from __future__ import annotations
 
@@ -60,9 +60,6 @@ def main() -> None:
 
     index_url = os.environ.get("LEMMA_ACTIVE_REGISTRY_CACHE_INDEX_URL", "").strip()
     if not index_url:
-        if settings.active_registry_role == "auditor":
-            print(json.dumps({"cache": "missing_public_index_url", "tempo": tempo}))
-            return
         if cached is not None and not cached_stale:
             cache_path.chmod(0o644)
             print(json.dumps({"cache": "present", "tempo": tempo, "registry_sha256": cached.sha256}))

@@ -37,7 +37,7 @@ class VerifierAdapter(ABC):
         submission: dict[str, Any] | Any,
         result: VerificationResult,
     ) -> dict[str, Any]:
-        """Return the accepted artifact shape for corpus rows."""
+        """Return the accepted artifact shape for Proof Atlas rows."""
 
     @abstractmethod
     def task_schema(self) -> dict[str, Any]:

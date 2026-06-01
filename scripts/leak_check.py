@@ -63,7 +63,8 @@ def _patterns() -> list[tuple[str, re.Pattern[str]]]:
             (
                 "credential-assignment",
                 re.compile(
-                    rf"\b(?:{credential_names})\b\s*[:=]\s*['\"]?[A-Za-z0-9][A-Za-z0-9_./+=:-]{{23,}}",
+                    rf"(?:^|[\"'{{,])\s*(?:{credential_names})\b\s*[:=]\s*"
+                    r"['\"]?[A-Za-z0-9][A-Za-z0-9_./+=:-]{23,}",
                     re.IGNORECASE,
                 ),
             ),

@@ -29,10 +29,10 @@ uv run python scripts/pre_mainnet_checklist.py --json
 
 The local readiness script currently covers:
 
-- 2) validator role semantics (`LEMMA_ACTIVE_REGISTRY_ROLE` validation and service-level role scan)
+- 2) single validator path checks, including stale `LEMMA_ACTIVE_REGISTRY_ROLE` rejection
 - 5) active-registry cache behavior
 - 6) commitment publish-path hardening and publish-gate coupling
-- 8) builder tempo-work volume indicators (`bucket_reveals_consumed`, `verified_count`, `accepted_unique_count`, `corpus_row_count`)
+- 8) validator tempo-work volume indicators (`bucket_reveals_consumed`, `verified_count`, `accepted_unique_count`, `corpus_row_count`)
 - 9) chain-weight evidence (`weights_set`, `weight-submissions.jsonl` receipt `success`, `uids`, `weights`, and `extrinsic_hash`; warn on non-empty oscillation checks per tempo)
 - 10) storage commitment evidence (`chain_commitment_set`, validator-run `tempo_commitment_payload`, `commitment-submissions.jsonl` receipt `success`, `payload`, `extrinsic_hash`, and readback parity fields)
 - 11) checkpoint parity requirement (`LEMMA_CHAIN_COMMITMENT_CHECKPOINT_DIR`) and missing-prod guardrails
@@ -42,7 +42,7 @@ The local readiness script currently covers:
 - 6b) commitment publication gate: `chain_commitment_set` requires canonical-publish record presence; fail when chain commitment succeeds without publish records
 - 6c) canonical publish staging: verify recent `canonical-publish.jsonl` has no publish errors
 - 7) tempo pipeline integrity evidence: `mainnet_readiness_evidence` now adds a digest check for the latest tempo directory against run-row digests when local canonical output is available
-- 5b) hardening bundle file presence for cache/publish runtime paths (`scripts/lemma-sync-active-registry-cache`, `lemma/cli/main.py`, `scripts/publish_corpus_snapshot.py`)
+- 5b) hardening bundle file presence for cache/publish runtime paths (`scripts/lemma-sync-active-registry-cache`, `lemma/cli/main.py`, `scripts/publish_proof_atlas_snapshot.py`)
 - 2, 6, 7, 8, 9, 10, 11, 12, 13, and 16 include local checks but should still be reviewed against live tempo evidence from production hosts.
 - 5 and the 14/15 continuity windows remain partly runbook-driven host rollout tasks.
 - 1, 3, and 4 now include executable evidence steps in `scripts/mainnet_readiness_evidence.py` (rollout parity and validator service/data-directory checks) but are still host-level and should be confirmed on each runtime host.
@@ -130,7 +130,7 @@ For each live tempo, keep protocol evidence separate from operator strategy:
 - the validator pass reports `bucket_reveals_consumed > 0`, `verified_count > 0`, `accepted_unique_count > 0`, `corpus_row_count > 0`, and a non-empty tempo commitment payload;
 - `verification-records.jsonl`, `score-events.jsonl`, and the canonical tempo directory contain the accepted task id, proof hash, solver hotkey, validator hotkey, and dependency metadata;
 - the reveal inbox is empty or archived after a successful pass;
-- the corpus publisher, storage commitment, and post-publish checker succeed on the next publish cycle;
+- the Proof Atlas publisher, storage commitment, and post-publish checker succeed on the next publish cycle;
 - no live check depends on local notes, private paths, hostnames, IPs, wallet files, logs, or env files being published.
 
 Miner implementation is intentionally open-ended. The protocol does not require a particular proof-search loop, model provider, agent framework, or scheduler. A Codex-orchestrated miner, a custom Lean search engine, a model API wrapper, a manual prover, or a direct non-Python client are all operator strategies as long as they produce valid task-bound proofs and publish authenticated bucket commitments.
@@ -262,15 +262,15 @@ keys = (
 print({key: latest.get(key) for key in keys})
 PY
 
-uv run python scripts/publish_corpus_snapshot.py \
-  --repo "$LEMMA_CORPUS_REPO" \
+uv run python scripts/publish_proof_atlas_snapshot.py \
+  --repo "$LEMMA_PROOF_ATLAS_REPO" \
   --netuid "sn${BT_NETUID}" \
-  --sync-corpus-dir "$LEMMA_CORPUS_OUTPUT_DIR" \
+  --sync-proof-dir "$LEMMA_CORPUS_OUTPUT_DIR" \
   --sync-canonical-dir "$LEMMA_CANONICAL_OUTPUT_DIR/sn${BT_NETUID}" \
   --sync-registry-cache-dir "$LEMMA_ACTIVE_REGISTRY_CACHE_DIR" \
   --dry-run
 uv run python scripts/publish_chain_commitment.py \
-  --repo "$LEMMA_CORPUS_REPO" \
+  --repo "$LEMMA_PROOF_ATLAS_REPO" \
   --netuid "sn${BT_NETUID}" \
   --bt-netuid "$BT_NETUID" \
   --readback \
@@ -289,8 +289,8 @@ For both burn-ins:
 - miner bucket reveals fail closed unless their `(slot_index, ciphertext_sha256)` Merkle root matches the miner's on-chain committed root and drand decryption matches the revealed proof;
 - Lean verification runs with networking disabled;
 - paid rewards require strong proof identity;
-- every accepted public corpus row replays from clean artifacts;
-- diagnostics expose registry hash, active `K`, frontier depth, verifier health, disk/cache pressure, accepted unique count, corpus rows, weight receipts, set-weight latency, and storage-root readback without private operator state;
+- every accepted public proof row replays from clean artifacts;
+- diagnostics expose registry hash, active `K`, frontier depth, verifier health, disk/cache pressure, accepted unique count, accepted proof rows, weight receipts, set-weight latency, and storage-root readback without private operator state;
 - alerts detect zero-reveal/zero-accepted windows, cache divergence, repeated publisher/chain-write failures, and stale operator state.
 - miner and validator automation treats timers as wakeups only; active tempo must come from `block // subnet_tempo`, and a miner should publish at most one bucket reveal per chain tempo.
 
@@ -342,6 +342,6 @@ LEAN_SANDBOX_NETWORK=none \
 uv run lemma operator preflight
 ```
 
-Run one corpus-only production smoke with `--no-set-weights`, then one controlled live weight submission and confirmed readback. Publish the corpus snapshot, verify mirrors, submit the storage-root commitment, read it back, and refresh the public site.
+Run one proof-export-only production smoke with `--no-set-weights`, then one controlled live weight submission and confirmed readback. Publish the Proof Atlas snapshot, verify mirrors, submit the storage-root commitment, read it back, and refresh the public site.
 
 Do not commit or publish local notes, env files, wallets, logs, caches, hostnames, IPs, machine paths, or operator context.

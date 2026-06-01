@@ -68,6 +68,46 @@ def test_registry_loads_from_bytes() -> None:
     assert registry.signature_status == "unsigned"
 
 
+@pytest.mark.parametrize("payload", ([], "registry", 1, None))
+def test_registry_rejects_non_object_json(payload: object) -> None:
+    raw = json.dumps(payload).encode()
+
+    with pytest.raises(TaskError, match="task registry must be a JSON object"):
+        load_task_registry(raw)
+
+
+@pytest.mark.parametrize("schema_version", (True, 1.0, "1"))
+def test_registry_rejects_loose_schema_version(schema_version: object) -> None:
+    raw = json.dumps({"schema_version": schema_version, "tasks": [_task_payload()]}).encode()
+
+    with pytest.raises(TaskError, match="task registry schema_version must be 1"):
+        load_task_registry(raw)
+
+
+@pytest.mark.parametrize("schema_version", (True, 1.0, "1"))
+def test_task_rejects_loose_schema_version(schema_version: object) -> None:
+    payload = _task_payload()
+    payload["schema_version"] = schema_version
+    raw = json.dumps({"schema_version": 1, "tasks": [payload]}).encode()
+
+    with pytest.raises(TaskError, match="task schema_version must be 1"):
+        load_task_registry(raw)
+
+
+@pytest.mark.parametrize(
+    "field",
+    ("task_version", "queue_position", "queue_depth", "frontier_depth", "active_epoch", "expires_epoch"),
+)
+@pytest.mark.parametrize("value", (True, 1.0, "1"))
+def test_task_rejects_loose_public_int_fields(field: str, value: object) -> None:
+    payload = _task_payload()
+    payload[field] = value
+    raw = json.dumps({"schema_version": 1, "tasks": [payload]}).encode()
+
+    with pytest.raises(TaskError, match=f"task {field} must be exact integer"):
+        load_task_registry(raw)
+
+
 def test_registry_signature_metadata_is_not_trusted_without_verifier() -> None:
     raw = json.dumps(
         {
@@ -155,6 +195,17 @@ def test_registry_fetches_from_http(monkeypatch: pytest.MonkeyPatch) -> None:
     registry = fetch_task_registry(settings)
 
     assert registry.tasks[0].id == "lemma.test.true"
+
+
+def test_registry_rejects_symlink_file_url(tmp_path) -> None:  # noqa: ANN001
+    registry_path = tmp_path / "registry.json"
+    registry_path.write_text(json.dumps({"schema_version": 1, "tasks": [_task_payload()]}) + "\n", encoding="utf-8")
+    symlink_path = tmp_path / "registry-link.json"
+    symlink_path.symlink_to(registry_path)
+    settings = LemmaSettings(_env_file=None, task_registry_url=symlink_path.as_uri())
+
+    with pytest.raises(TaskError, match="task registry path invalid"):
+        fetch_task_registry(settings)
 
 
 def test_task_requires_source_metadata() -> None:

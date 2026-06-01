@@ -37,7 +37,7 @@ def test_final_docs_structure_exists() -> None:
     assert docs == {
         "what-is-lemma.md",
         "how-it-works.md",
-        "corpus.md",
+        "proof-atlas.md",
         "miner.md",
         "validator.md",
         "tasks.md",
@@ -170,7 +170,7 @@ def test_public_surfaces_do_not_reintroduce_legacy_protocol_language() -> None:
         assert fragment not in lowered
 
     assert "git clone https://github.com/lemma-foundation/lemma.git" in text
-    assert "https://github.com/lemma-foundation/lemma-corpus" in text
+    assert "https://github.com/lemma-foundation/lemma-proof-atlas" in text
     assert "weight = miner_score" in lowered
     assert "validator-runs.jsonl" in text
 
@@ -208,6 +208,22 @@ def test_operator_registry_flow_covers_registry_validation_and_export() -> None:
         assert fragment in text
 
     assert "Payment uses deterministic active slot weights" in text
+
+
+def test_protocol_invariants_doc_keeps_ingredient_path_experimental() -> None:
+    text = Path("docs/PROTOCOL_INVARIANTS.md").read_text(encoding="utf-8")
+
+    required = [
+        "experimental fixture-gated supply contract",
+        "ingredient subnet redesign",
+        "It is not the launch/operator path.",
+        "LEMMA_TASK_SUPPLY_MODE=ingredient",
+        "matches effective `LEMMA_ACTIVE_K`",
+        "current active-registry cache",
+        "reward-eligible `source_stream=ingredient` tasks",
+    ]
+    for fragment in required:
+        assert fragment in text
 
 
 def test_mainnet_readiness_doc_covers_launch_gates() -> None:

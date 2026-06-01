@@ -1,4 +1,4 @@
-"""Canonical storage artifacts for accepted corpus epochs."""
+"""Canonical storage artifacts for accepted Proof Atlas epochs."""
 
 from __future__ import annotations
 
@@ -20,6 +20,14 @@ from lemma.supply.controller import CurriculumTempoRecord
 from lemma.tasks import LemmaTask
 
 EPOCH_RE = re.compile(r"epoch-(\d+)\.jsonl$")
+
+
+def accepted_proof_dir(repo: Path, netuid: str) -> Path:
+    return repo / "proofs" / netuid / "accepted"
+
+
+def accepted_proof_path(netuid: str, filename: str) -> str:
+    return f"proofs/{netuid}/accepted/{filename}"
 
 
 def canonical_json_bytes(value: object) -> bytes:
@@ -407,7 +415,7 @@ def _remove_legacy_epoch_storage(epoch_file: Path, output_root: Path, *, netuid:
     if not manifest_path.is_file():
         return
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if manifest.get("source_epoch_file") != f"corpus/{netuid}/{epoch_file.name}":
+    if manifest.get("source_epoch_file") != accepted_proof_path(netuid, epoch_file.name):
         return
     commitment_path = output_root / netuid / "commitments" / f"tempo-{legacy_tempo:06d}.json"
     if commitment_path.is_file():
@@ -445,7 +453,7 @@ def build_epoch_storage(epoch_file: Path, output_root: Path, *, netuid: str, res
         raise TypeError("storage builder returned invalid paths")
     manifest_path = directory / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    manifest["source_epoch_file"] = f"corpus/{netuid}/{epoch_file.name}"
+    manifest["source_epoch_file"] = accepted_proof_path(netuid, epoch_file.name)
     manifest_path.write_bytes(canonical_json_bytes(manifest))
     tempo_directory_sha256 = directory_digest(directory)
     commitment = json.loads(commitment_path.read_text(encoding="utf-8"))
@@ -466,10 +474,10 @@ def build_epoch_storage(epoch_file: Path, output_root: Path, *, netuid: str, res
 
 
 def build_storage_index(repo: Path, netuid: str, *, resolver: str = "hippius-s3-arion") -> dict[str, object]:
-    corpus_dir = repo / "corpus" / netuid
+    corpus_dir = accepted_proof_dir(repo, netuid)
     output_root = repo / "canonical"
     if not corpus_dir.is_dir():
-        raise SystemExit(f"missing corpus directory: {corpus_dir}")
+        raise SystemExit(f"missing accepted proof directory: {corpus_dir}")
 
     rows_by_tempo: dict[int, list[dict[str, Any]]] = {}
     files_by_tempo: dict[int, list[Path]] = {}
@@ -483,7 +491,7 @@ def build_storage_index(repo: Path, netuid: str, *, resolver: str = "hippius-s3-
             location = f"{path.name}:{line_number}"
             key = (tempo, row_id)
             if previous := seen_row_ids.get(key):
-                raise ValueError(f"duplicate corpus row_id {row_id} for tempo {tempo}: {previous} and {location}")
+                raise ValueError(f"duplicate proof row_id {row_id} for tempo {tempo}: {previous} and {location}")
             seen_row_ids[key] = location
         rows_by_tempo.setdefault(tempo, []).extend(rows)
         files_by_tempo.setdefault(tempo, []).append(path)

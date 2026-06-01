@@ -77,15 +77,15 @@ def test_mainnet_readiness_evidence_collects_observability_restart_checks(tmp_pa
     assert any("journalctl -u lemma-validator-bucket.service" in command for command in item12)
 
 
-def test_mainnet_readiness_evidence_collects_role_semantics_commands(tmp_path: Path) -> None:
-    output = tmp_path / "role-semantics-evidence.json"
+def test_mainnet_readiness_evidence_collects_single_validator_path_commands(tmp_path: Path) -> None:
+    output = tmp_path / "single-validator-path-evidence.json"
     repo_root = Path(__file__).resolve().parents[1]
     run_audit(repo_root=repo_root, output=output, execute=False)
     payload = json.loads(output.read_text(encoding="utf-8"))
 
     item2 = _commands_by_item(payload, item="2")
 
-    assert any("LEMMA_ACTIVE_REGISTRY_ROLE" in command for command in item2)
+    assert any("single_validator_path=pass" in command for command in item2)
     assert any("result=pass" in command for command in item2)
 
 
@@ -152,16 +152,16 @@ def test_mainnet_readiness_evidence_command_matrix_covers_all_items(tmp_path: Pa
 
     expected_markers = {
         "1": ["git -C . rev-parse HEAD", "lemma-publisher", "LEMMA_GIT_SHA"],
-        "2": ["LEMMA_ACTIVE_REGISTRY_ROLE", "result=pass"],
-        "3": ["validator_service_count=", "LEMMA_ACTIVE_REGISTRY_ROLE"],
+        "2": ["single_validator_path=pass", "result=pass"],
+        "3": ["validator_service_count=", "LEMMA_ACTIVE_REGISTRY_CACHE_DIR"],
         "4": ["LEMMA_OPERATOR_DATA_DIR"],
-        "5": ["scripts/lemma-sync-active-registry-cache", "scripts/publish_corpus_snapshot.py"],
+        "5": ["scripts/lemma-sync-active-registry-cache", "scripts/publish_proof_atlas_snapshot.py"],
         "6": [
             "test_validator_does_not_submit_commitment_after_ipfs_publish_failure",
             "test_validator_does_not_submit_commitment_after_s3_publish_failure",
         ],
         "7": [
-            "publish_corpus_snapshot.py --repo",
+            "publish_proof_atlas_snapshot.py --repo",
             "publish_chain_commitment.py --repo",
             "directory_digest",
         ],

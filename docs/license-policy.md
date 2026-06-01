@@ -14,4 +14,4 @@ These states are blocked from paid activation:
 - `restricted`
 - `rejected`
 
-Unknown provenance is not a harmless default. It can be reviewed or stored privately, but it should not enter the paid public corpus. Corpus exports can filter by license state, including `--license commercial-safe`.
+Unknown provenance is not a harmless default. It can be reviewed or stored privately, but it should not enter paid public proof data. Proof Atlas exports can filter by license state, including `--license commercial-safe`.

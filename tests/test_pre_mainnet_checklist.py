@@ -73,7 +73,7 @@ def test_audit_warns_when_hardening_bundle_file_is_missing(monkeypatch, tmp_path
     assert "lemma/cli/main.py" in detail
 
 
-def test_audit_active_registry_role_passes_when_builder_is_default(monkeypatch, tmp_path: Path) -> None:
+def test_audit_single_validator_path_passes_without_stale_role_env(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.delenv("LEMMA_ACTIVE_REGISTRY_ROLE", raising=False)
     settings = _settings(tmp_path)
     (tmp_path / "operator").mkdir()
@@ -81,10 +81,10 @@ def test_audit_active_registry_role_passes_when_builder_is_default(monkeypatch, 
     checks, _ = run_audit(settings)
     status = _status_by_name(checks)
 
-    assert status["active registry role"] == "pass"
+    assert status["single validator path"] == "pass"
 
 
-def test_audit_active_registry_role_requires_public_cache_source_for_auditor(
+def test_audit_single_validator_path_rejects_stale_role_env(
     monkeypatch, tmp_path: Path
 ) -> None:
     monkeypatch.setenv("LEMMA_ACTIVE_REGISTRY_ROLE", "auditor")
@@ -93,9 +93,9 @@ def test_audit_active_registry_role_requires_public_cache_source_for_auditor(
     checks, _ = run_audit(settings)
     status = _status_by_name(checks)
 
-    assert status["active registry role"] == "fail"
-    assert "auditor role requires public cache source" in next(
-        check.detail for check in checks if check.name == "active registry role"
+    assert status["single validator path"] == "fail"
+    assert "LEMMA_ACTIVE_REGISTRY_ROLE is no longer supported" in next(
+        check.detail for check in checks if check.name == "single validator path"
     )
 
 

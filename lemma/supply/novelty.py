@@ -16,34 +16,61 @@ _HEX64 = re.compile(r"^[0-9a-f]{64}$")
 @dataclass(frozen=True)
 class NoveltyCache:
     statement_hashes: frozenset[str]
+    novelty_family_hashes: frozenset[str] = frozenset()
 
     def contains(self, statement_hash: str) -> bool:
         return statement_hash.lower().removeprefix("sha256:") in self.statement_hashes
+
+    def contains_family(self, novelty_family_hash: str) -> bool:
+        return novelty_family_hash.lower().removeprefix("sha256:") in self.novelty_family_hashes
 
     def metadata(self) -> dict[str, object]:
         return {
             "novelty_cache_version": NOVELTY_CACHE_VERSION,
             "novelty_cache_entries": len(self.statement_hashes),
+            "novelty_family_cache_entries": len(self.novelty_family_hashes),
             "novelty_cache_sha256": self.sha256,
         }
 
     @property
     def sha256(self) -> str:
-        return _hash_json({"version": NOVELTY_CACHE_VERSION, "statement_hashes": sorted(self.statement_hashes)})
+        return _hash_json(
+            {
+                "version": NOVELTY_CACHE_VERSION,
+                "novelty_family_hashes": sorted(self.novelty_family_hashes),
+                "statement_hashes": sorted(self.statement_hashes),
+            }
+        )
 
 
-def novelty_cache_from_hashes(statement_hashes: tuple[str, ...]) -> NoveltyCache:
+def novelty_cache_from_hashes(
+    statement_hashes: tuple[str, ...],
+    *,
+    novelty_family_hashes: tuple[str, ...] = (),
+) -> NoveltyCache:
     normalized = tuple(value for item in statement_hashes if (value := _normalize_hash(item)) is not None)
-    return NoveltyCache(frozenset(normalized))
+    normalized_families = tuple(
+        value for item in novelty_family_hashes if (value := _normalize_hash(item)) is not None
+    )
+    return NoveltyCache(frozenset(normalized), frozenset(normalized_families))
 
 
 def empty_novelty_cache() -> NoveltyCache:
     return NoveltyCache(frozenset())
 
 
-def read_novelty_cache(path: Path) -> NoveltyCache:
+def read_novelty_cache(path: Path, *, strict_statement_hash_rows: bool = False) -> NoveltyCache:
     hashes: set[str] = set()
-    for no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+    family_hashes: set[str] = set()
+    if path.is_symlink() or not path.is_file():
+        raise ValueError(f"{path}: novelty cache path invalid")
+    raw = path.read_bytes()
+    try:
+        lines = raw.decode("utf-8").splitlines()
+    except UnicodeDecodeError as e:
+        raise ValueError(f"{path}: invalid novelty cache UTF-8") from e
+    rows: list[dict[str, str]] = []
+    for no, line in enumerate(lines, start=1):
         if not line.strip():
             continue
         try:
@@ -52,11 +79,51 @@ def read_novelty_cache(path: Path) -> NoveltyCache:
             raise ValueError(f"{path}:{no}: invalid novelty cache row: {e}") from e
         if not isinstance(row, dict):
             raise ValueError(f"{path}:{no}: novelty cache row must be an object")
+        if strict_statement_hash_rows:
+            if set(row) not in ({"statement_hash"}, {"novelty_family_hash"}):
+                raise ValueError(f"{path}:{no}: novelty cache row schema invalid")
+            key = "statement_hash" if "statement_hash" in row else "novelty_family_hash"
+            if not isinstance(row.get(key), str):
+                raise ValueError(f"{path}:{no}: novelty cache row schema invalid")
+            if not _HEX64.fullmatch(row[key]):
+                raise ValueError(f"{path}:{no}: novelty cache {key} invalid")
+            canonical_row = {key: row[key]}
+            if line.encode("utf-8") != _canonical_json(canonical_row):
+                raise ValueError(f"{path}:{no}: novelty cache row noncanonical")
+            rows.append(canonical_row)
+            if key == "novelty_family_hash":
+                if row[key] in family_hashes:
+                    raise ValueError(f"{path}:{no}: novelty cache novelty_family_hash duplicated")
+                family_hashes.add(row[key])
+                continue
         digest = _row_statement_hash(row)
         if digest is None:
-            raise ValueError(f"{path}:{no}: novelty cache row lacks statement hash or type_expr")
+            family_digest = _row_family_hash(row)
+            if family_digest is None:
+                raise ValueError(
+                    f"{path}:{no}: novelty cache row lacks statement hash, type_expr, or novelty family hash"
+                )
+            if family_digest in family_hashes:
+                raise ValueError(f"{path}:{no}: novelty cache novelty_family_hash duplicated")
+            family_hashes.add(family_digest)
+            continue
+        if strict_statement_hash_rows and digest in hashes:
+            raise ValueError(f"{path}:{no}: novelty cache statement_hash duplicated")
         hashes.add(digest)
-    return NoveltyCache(frozenset(sorted(hashes)))
+    if strict_statement_hash_rows:
+        canonical = b"".join(
+            _canonical_json(row) + b"\n"
+            for row in sorted(
+                rows,
+                key=lambda item: (
+                    "novelty_family_hash" in item,
+                    item.get("statement_hash", item.get("novelty_family_hash", "")),
+                ),
+            )
+        )
+        if raw != canonical:
+            raise ValueError(f"{path}: novelty cache JSONL noncanonical")
+    return NoveltyCache(frozenset(sorted(hashes)), frozenset(sorted(family_hashes)))
 
 
 def statement_hash(type_expr: str) -> str:
@@ -77,6 +144,10 @@ def _row_statement_hash(row: dict[str, Any]) -> str | None:
     return None
 
 
+def _row_family_hash(row: dict[str, Any]) -> str | None:
+    return _normalize_hash(row.get("novelty_family_hash"))
+
+
 def _normalize_hash(value: object) -> str | None:
     if not isinstance(value, str):
         return None
@@ -89,5 +160,8 @@ def _normalize_statement(type_expr: str) -> str:
 
 
 def _hash_json(payload: object) -> str:
-    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
-    return hashlib.sha256(canonical).hexdigest()
+    return hashlib.sha256(_canonical_json(payload)).hexdigest()
+
+
+def _canonical_json(payload: object) -> bytes:
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()

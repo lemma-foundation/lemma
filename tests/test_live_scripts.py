@@ -123,7 +123,7 @@ def test_active_registry_prebuild_wrapper_serializes_builds() -> None:
     assert "active registry prebuild already running" in prebuild
 
 
-def test_active_registry_prebuild_builder_falls_back_to_local_generation() -> None:
+def test_active_registry_prebuild_falls_back_to_local_generation() -> None:
     prebuild = (ROOT / "scripts" / "lemma-active-registry-prebuild").read_text(encoding="utf-8")
 
     assert "force_requested=0" in prebuild
@@ -136,15 +136,14 @@ def test_active_registry_prebuild_builder_falls_back_to_local_generation() -> No
     assert 'exec "$uv_bin" run lemma tasks warm-active-procedural-registry "$@"' in prebuild
 
 
-def test_auditor_registry_wrappers_refuse_local_generation() -> None:
+def test_active_registry_wrappers_do_not_branch_on_validator_roles() -> None:
     validator = (ROOT / "scripts" / "lemma-validator-bucket-live").read_text(encoding="utf-8")
     prebuild = (ROOT / "scripts" / "lemma-active-registry-prebuild").read_text(encoding="utf-8")
 
-    expected = "auditor mode waits for public active registry cache"
-    assert "LEMMA_ACTIVE_REGISTRY_ROLE:-builder" in validator
-    assert "LEMMA_ACTIVE_REGISTRY_ROLE:-builder" in prebuild
-    assert expected in validator
-    assert expected in prebuild
+    assert "LEMMA_ACTIVE_REGISTRY_ROLE" not in validator
+    assert "LEMMA_ACTIVE_REGISTRY_ROLE" not in prebuild
+    assert "auditor mode waits" not in validator
+    assert "auditor mode waits" not in prebuild
 
 
 def test_active_registry_prebuild_wrapper_calls_hidden_cli() -> None:

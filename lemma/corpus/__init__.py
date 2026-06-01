@@ -1,4 +1,4 @@
-"""JSONL corpus rows and replay for accepted Lean proofs."""
+"""JSONL accepted proof rows and replay for Lean proofs."""
 
 from __future__ import annotations
 
@@ -86,7 +86,7 @@ class CorpusRow(BaseModel):
         if self.schema_version != 1:
             raise ValueError("corpus row schema_version must be 1")
         if not self.verification.passed:
-            raise ValueError("failed proofs are not corpus rows")
+            raise ValueError("failed proofs are not accepted proof rows")
         if not self.proof_identity:
             self.proof_identity = self.proof_term_hash or self.proof_sha256
         if self.graph is None:

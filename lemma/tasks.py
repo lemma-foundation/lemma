@@ -10,7 +10,7 @@ from typing import Any, Final, Literal, Protocol
 from urllib.parse import unquote, urlparse
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
 from lemma.common.config import LemmaSettings
 from lemma.problems.base import Problem
@@ -30,6 +30,7 @@ SourceStream = Literal[
     "hard_target_variant",
     "trivial_curriculum",
     "generated",
+    "ingredient",
     "proof_repair",
     "theorem_variant",
     "premise_limited",
@@ -135,6 +136,30 @@ class LemmaTask(BaseModel):
     active_epoch: int | None = None
     expires_epoch: int | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("schema_version", mode="before")
+    @classmethod
+    def _validate_schema_version(cls, value: Any) -> Any:
+        if type(value) is not int or value != 1:
+            raise ValueError("task schema_version must be 1")
+        return value
+
+    @field_validator(
+        "task_version",
+        "queue_position",
+        "queue_depth",
+        "frontier_depth",
+        "active_epoch",
+        "expires_epoch",
+        mode="before",
+    )
+    @classmethod
+    def _validate_exact_int_fields(cls, value: Any, info: ValidationInfo) -> Any:
+        if value is None:
+            return value
+        if type(value) is not int:
+            raise ValueError(f"task {info.field_name} must be exact integer")
+        return value
 
     @model_validator(mode="after")
     def _validate_target_hash(self) -> LemmaTask:
@@ -262,6 +287,8 @@ def _read_registry_bytes(source: str, timeout_s: float) -> bytes:
         path = Path(unquote(parsed.path))
     else:
         path = Path(src).expanduser()
+    if path.is_symlink() or not path.is_file():
+        raise TaskError(f"task registry path invalid: {path}")
     try:
         return path.read_bytes()
     except OSError as e:
@@ -305,6 +332,7 @@ def load_task_registry(
     expected_sha256: str | None = None,
     *,
     signature_verifier: RegistrySignatureVerifier | None = None,
+    strict_top_level: bool = False,
 ) -> TaskRegistry:
     digest = hashlib.sha256(raw).hexdigest()
     expected = _normalize_sha256(expected_sha256)
@@ -314,7 +342,19 @@ def load_task_registry(
         payload = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as e:
         raise TaskError(f"task registry is not valid UTF-8 JSON: {e}") from e
-    if int(payload.get("schema_version", 0)) != 1:
+    if not isinstance(payload, dict):
+        raise TaskError("task registry must be a JSON object")
+    if strict_top_level:
+        allowed = {"schema_version", "tasks", "signed_by", "signature", "created_at"}
+        unknown = sorted(set(payload) - allowed)
+        if unknown:
+            raise TaskError(f"task registry unknown top-level field: {unknown[0]}")
+        if payload.get("created_at") is not None:
+            raise TaskError("task registry created_at is not allowed")
+        if signature_verifier is None and ("signed_by" in payload or "signature" in payload):
+            raise TaskError("task registry signature metadata is not allowed")
+    schema_version = payload.get("schema_version")
+    if type(schema_version) is not int or schema_version != 1:
         raise TaskError("task registry schema_version must be 1")
     rows = payload.get("tasks")
     if not isinstance(rows, list):

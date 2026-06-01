@@ -1,15 +1,15 @@
 # Production
 
-Production Lemma is the Lean proof competition loop:
+Production Lemma's launch path is the Lean proof competition loop:
 
 1. rebuild the active task pool from public procedural inputs;
 2. read miner bucket reveals after commitment/reveal;
 3. verify each proof with the pinned Lean environment;
 4. score rank-0 unique proofs by miner commit block;
 5. compute miner weights from deterministic active slot weights and burn unearned share by default;
-6. write accepted proof records and, when snapshot publishing is configured, publish the configured corpus/index artifacts.
+6. write accepted proof records and, when snapshot publishing is configured, publish the configured Proof Atlas artifacts.
 
-Production mode is stricter than local smoke mode. SN467 testnet burn-in must run this same production mode with `BT_NETWORK=test` and `BT_NETUID=467`; mainnet cutover should only change the chain target. Production mode fails closed unless procedural supply is rebuilt from a pinned public source pool, an explicit prior-substrate mirror, and chain/drand epoch randomness, live miner submissions are hotkey-authenticated, commit/reveal fields are present, Lean verifier networking is disabled, and paid rewards require strong Lean-derived proof identity.
+Production mode is stricter than local smoke mode. SN467 testnet burn-in must run this same production mode with `BT_NETWORK=test` and `BT_NETUID=467`; mainnet cutover should only change the chain target. The launch path fails closed unless procedural supply is rebuilt from a pinned public source pool, an explicit prior-substrate mirror, and chain/drand epoch randomness, or ingredient supply is rebuilt from a pinned public ingredient manifest/root, public difficulty state, public novelty cache, and chain/drand epoch randomness. Live miner submissions are hotkey-authenticated, commit/reveal fields are present, Lean verifier networking is disabled, and paid rewards require strong Lean-derived proof identity.
 The launch gate sequence is tracked in [Mainnet Readiness](mainnet-readiness.md).
 
 ## Operator Rules
@@ -17,7 +17,7 @@ The launch gate sequence is tracked in [Mainnet Readiness](mainnet-readiness.md)
 - Do not route subnet owner emissions through a contract.
 - Do not use escrow-style reward custody for Lemma rewards.
 - Do not score prose, model branding, or claimed effort.
-- Keep task, submission, verifier, scoring, and corpus artifacts replayable.
+- Keep task, submission, verifier, scoring, and Proof Atlas artifacts replayable.
 - Delay public proof release until the scoring window closes.
 - Keep `.env`, wallets, local state, logs, caches, and machine paths out of commits.
 
@@ -38,12 +38,12 @@ Generic validators only need the protocol path:
 1. rebuild or load the active registry from public pinned inputs;
 2. consume live bucket reveals;
 3. verify submitted proofs with the pinned Lean environment;
-4. write local verification, score, run, corpus, and canonical tempo artifacts;
+4. write local verification, score, run, accepted-proof, and canonical tempo artifacts;
 5. set weights from accepted Lean proofs.
 
 Snapshot publishing is a separate deployment setup. The subnet owner uses the
 repo's Hippius, GitHub release, and Hugging Face tooling for the canonical
-public corpus service. Validators can run the same publishing tools for their
+public Proof Atlas service. Validators can run the same publishing tools for their
 own mirrors if they configure storage and credentials, but that is optional;
 validation itself only requires the protocol path above.
 
@@ -57,7 +57,7 @@ Before calling SN467 production-ready, prove:
 - at least one second validator or clean rebuild that reproduces active-registry
   and Lean-verification behavior from public inputs;
 - a short runbook for active tempo, registry cache, miner marker, reveal queue,
-  validator result, corpus artifacts, and chain readback.
+  validator result, Proof Atlas artifacts, and chain readback.
 
 ## Commands
 
@@ -175,26 +175,27 @@ Procedural speed checklist:
 - [x] Reject alpha-equivalent generated duplicates before paying the Lean gate cost.
 - [x] Measure whether batch sizes above 50 improve the live worker without lowering yield.
 
-`LEMMA_ACTIVE_REGISTRY_JSON` pins one exact active registry file and fails closed if the file is missing. `LEMMA_ACTIVE_REGISTRY_CACHE_DIR` loads `tempo-<tempo>.registry.json` only when it is current for the effective production settings, and otherwise lets builder validators rebuild from the pinned public inputs. The warm command writes only the current tempo cache after that tempo's randomness is available, then skips it when already present and current. Use `--force` to refresh an existing current cache. Future paid task sets must not be generated privately before their tempo randomness exists. The lower-level rebuild command ignores active-cache settings so it can write a manually chosen output file.
-Public current-problems refreshes should keep the previous snapshot when the current tempo cache is missing; do not overwrite the dashboard with an empty task set while the builder is still warming the new cache.
-If `LEMMA_ACTIVE_REGISTRY_CACHE_INDEX_URL` points at a public corpus `registries/<netuid>/index.json`, miners, validators, and cache warmers hydrate the tempo cache from that public mirror before falling back to local generation. The downloaded registry is still treated only as a cache: it must match the published SHA256 and the effective public curriculum state before it is written locally. A fresh public registry replaces a different local cache for the same tempo so operators converge on the published active set. In production, run one designated builder validator to generate and publish the current registry. The live validator bucket wrapper defaults to builder mode; set `LEMMA_ACTIVE_REGISTRY_ROLE=auditor` only for auditor validators that should hydrate the public cache, verify it, and idle/fail closed if the current cache is unavailable instead of spending Lean compute. Keep extra builders only when intentionally cross-checking generation capacity.
+`LEMMA_ACTIVE_REGISTRY_JSON` pins one exact active registry file and fails closed if the file is missing. `LEMMA_ACTIVE_REGISTRY_CACHE_DIR` loads `tempo-<tempo>.registry.json` only when it is current for the effective production settings, and otherwise validators rebuild from the pinned public inputs. The warm command writes only the current tempo cache after that tempo's randomness is available, then skips it when already present and current. Use `--force` to refresh an existing current cache. Future paid task sets must not be generated privately before their tempo randomness exists. The lower-level rebuild command ignores active-cache settings so it can write a manually chosen output file.
+The experimental ingredient contract also uses `LEMMA_ACTIVE_REGISTRY_CACHE_DIR`. Ingredient mode uses the effective public `LEMMA_ACTIVE_K`, which may be retargeted by the same public curriculum machinery as procedural supply. Build one replayable slot artifact with `tasks build-ingredient-task --queue-position <i> --active-k <K>`, then build and verify every slot bundle before running `tasks assemble-ingredient-active-registry --bundle ... --output active-registries/tempo-<tempo>.registry.json` to write the complete ordered K-task registry. Direct `--active-registry-output` is only valid when K is one because a single slot artifact is otherwise not a complete active registry. Production assembly requires the public difficulty-state JSONL, epoch seed, novelty cache, and the same Lean statement, soundness-template, bounded-triviality, and novelty gate profile as bundle verification. Validators still require the cached ingredient task count to match effective `LEMMA_ACTIVE_K`. Active-registry files and cache entries must be regular files, and cache directories must be concrete directories. A cache is current only if the full production ingredient invariant accepts it. It requires reward-eligible ingredient tasks inside and stamped for the active frontier for the current tempo, regular-file manifest and difficulty-state settings, a full-schema ingredient manifest, matching manifest/repo/recipe/difficulty pins, queue positions covering the active K slots, distinct slot selection seeds, and generation receipt hashes that recompute from cached task metadata and theorem statements.
+Public current-problems refreshes should keep the previous snapshot when the current tempo cache is missing; do not overwrite the dashboard with an empty task set while validators are still warming the new cache.
+If `LEMMA_ACTIVE_REGISTRY_CACHE_INDEX_URL` points at a public Proof Atlas `tasks/<netuid>/registries/index.json`, miners, validators, and cache warmers hydrate the tempo cache from that public mirror before falling back to local generation. The downloaded registry is still treated only as a cache: it must match the published SHA256 and the effective public curriculum state before it is written locally. A fresh public registry replaces a different local cache for the same tempo so operators converge on the published active set. In production, validators run one protocol path: derive or hydrate the current active set, verify miner proofs, score winners, and set weights.
 
-`LEMMA_CURRICULUM_RETARGET=1` retargets `K` and frontier depth. Solve-rate history moves frontier depth. Validator capacity and the optional curriculum cost budget cap `K`, so harder frontiers can automatically run fewer tasks. Active task ordering interleaves high and low available levels and balances source families, so broader source pools introduce variety without manual topic rotation. Slot weights use a capped `sqrt(queue_depth + 1)` depth prior. Queue depth is a weak priority signal, not a calibrated difficulty ratio: source-derived tasks are stamped with `source_reuse_class`, source-oracle metadata, import-hygiene metadata, and `task_pool`; direct source wrappers and source-oracle solves are calibration/bootstrap work rather than serious paid frontier work. Each validator pass writes the next retarget row into the canonical public curriculum artifacts. Later active sets use the latest eligible public row where `record.tempo < active_tempo - 1`, giving the row one full tempo of public replay lag before it can affect active selection. In production, `LEMMA_CURRICULUM_STATE_PUBLIC=1` is required and `LEMMA_CURRICULUM_STATE_JSONL` must point at a replay cache synced from the public corpus artifacts, outside `LEMMA_CANONICAL_OUTPUT_DIR`/`LEMMA_OPERATOR_DATA_DIR/canonical`; a private local row or a replay path inside canonical publish output can make miners and validators drift.
+`LEMMA_CURRICULUM_RETARGET=1` retargets `K` and frontier depth. Solve-rate history moves frontier depth. Validator capacity and the optional curriculum cost budget cap `K`, so harder frontiers can automatically run fewer tasks. Active task ordering interleaves high and low available levels and balances source families, so broader source pools introduce variety without manual topic rotation. Slot weights use a capped `sqrt(queue_depth + 1)` depth prior. Queue depth is a weak priority signal, not a calibrated difficulty ratio: source-derived tasks are stamped with `source_reuse_class`, source-oracle metadata, import-hygiene metadata, and `task_pool`; direct source wrappers and source-oracle solves are calibration/bootstrap work rather than serious paid frontier work. Each validator pass writes the next retarget row into the canonical public curriculum artifacts. Later active sets use the latest eligible public row where `record.tempo < active_tempo - 1`, giving the row one full tempo of public replay lag before it can affect active selection. In production, `LEMMA_CURRICULUM_STATE_PUBLIC=1` is required and `LEMMA_CURRICULUM_STATE_JSONL` must point at a replay cache synced from the public Proof Atlas artifacts, outside `LEMMA_CANONICAL_OUTPUT_DIR`/`LEMMA_OPERATOR_DATA_DIR/canonical`; a private local row or a replay path inside canonical publish output can make miners and validators drift.
 
-Corpus deltas are written under `LEMMA_CORPUS_OUTPUT_DIR`. Canonical active-pool and accepted-entry directories are written under `LEMMA_CANONICAL_OUTPUT_DIR` when set, otherwise under `LEMMA_OPERATOR_DATA_DIR/canonical`. Local receipts are written under `LEMMA_OPERATOR_DATA_DIR`. If `LEMMA_SUBMISSION_SPOOL_DIR` is set, validators consume pending `.json` or `.jsonl` submission files from that directory and move them to `processed/` after a successful pass. These paths should remain ignored unless an operator intentionally publishes sanitized artifacts.
+Accepted proof rows are written under `LEMMA_CORPUS_OUTPUT_DIR`, a legacy internal setting name. Canonical active-pool and accepted-entry directories are written under `LEMMA_CANONICAL_OUTPUT_DIR` when set, otherwise under `LEMMA_OPERATOR_DATA_DIR/canonical`. Local receipts are written under `LEMMA_OPERATOR_DATA_DIR`. If `LEMMA_SUBMISSION_SPOOL_DIR` is set, validators consume pending `.json` or `.jsonl` submission files from that directory and move them to `processed/` after a successful pass. These paths should remain ignored unless an operator intentionally publishes sanitized artifacts.
 The file spool remains a local/operator-smoke path. The production adapters are `--bucket-reveals-dir` for a live reveal inbox and `--bucket-reveals-jsonl` for a fixture file. Each reveal row carries miner hotkey, tempo, drand round, drand signature, positive commit block, committed Merkle root, and revealed bucket blobs. One validation pass scores one completed tempo: directory intake picks the newest top-level completed reveal tempo, archives processed files under `processed/`, and moves older reveal files to `stale/`. Binary ciphertexts should be encoded as `base64:<payload>` or `0x<hex>`. The validator recomputes the Merkle root over decoded ciphertext bytes, confirms the miner's on-chain bucket commitment in production, decrypts bucket ciphertexts in production, requires the decrypted proof to match the reveal, and ranks winners by commit block. A live miner can publish ciphertexts with `uv run lemma miner bucket publish --submission submission.json --tempo <tempo> --drand-round <round> --miner-hotkey <hotkey> --output-dir validator-data/miner-bucket --s3-uri s3://<bucket>/<miner-prefix> --verify-upload --submit-commitment`. A live validator can then pass `--miner-buckets-json miner-buckets.json --bucket-commit-blocks-json commit-blocks.json --bucket-drand-round <round> --bucket-drand-signature <signature>` to poll public bucket objects for the most recent completed tempo, read each miner commitment at its declared commit block, and convert those objects into the same reveal path.
 Set `LEMMA_CANONICAL_PUBLISH_IPFS_API_URL=http://<ipfs-node>:5001` to have the validator upload the active-pool, accepted-entry, and curriculum directories to IPFS, read each file back by CID, and write a CID-bound tempo commitment for the active/accepted pair. Set `LEMMA_CANONICAL_PUBLISH_S3_URI=s3://<bucket>/<canonical-prefix>` to also mirror the active-pool directory, accepted-entry directory, curriculum directory, and tempo commitment file to Hippius S3 before it writes the chain commitment. `LEMMA_CANONICAL_PUBLISH_ENDPOINT_URL` defaults to `https://s3.hippius.com`, and `LEMMA_CANONICAL_PUBLISH_VERIFY=1` reads uploaded IPFS/S3 objects back and compares bytes.
-Live weight writes require both `LEMMA_ENABLE_SET_WEIGHTS=1` and `--set-weights`; the live bucket wrapper stays on `--no-set-weights` unless `LEMMA_VALIDATOR_SET_WEIGHTS=1` is also set. Live tempo artifact commitments require both `LEMMA_ENABLE_SET_COMMITMENT=1` and `--set-commitment`. Keep production smoke and corpus-only passes on `--no-set-weights` without `--set-commitment`. On commit-reveal subnets, the chain writer waits until the final 10 blocks of the tempo before submitting weights. Each attempted live write appends a public-safe receipt with the resolved UID vector or tempo commitment payload, client result, and extrinsic hash when available.
+Live weight writes require both `LEMMA_ENABLE_SET_WEIGHTS=1` and `--set-weights`; the live bucket wrapper stays on `--no-set-weights` unless `LEMMA_VALIDATOR_SET_WEIGHTS=1` is also set. Live tempo artifact commitments require both `LEMMA_ENABLE_SET_COMMITMENT=1` and `--set-commitment`. Keep production smoke and proof-export-only passes on `--no-set-weights` without `--set-commitment`. On commit-reveal subnets, the chain writer waits until the final 10 blocks of the tempo before submitting weights. Each attempted live write appends a public-safe receipt with the resolved UID vector or tempo commitment payload, client result, and extrinsic hash when available.
 
 For the full registry-to-validator-to-export sequence, see [Operator Registry Flow](operator-registry-flow.md).
 
-Publish the current public corpus snapshot after a closed SN467 production-mode pass:
+Publish the current public Proof Atlas snapshot after a closed SN467 production-mode pass:
 
 ```bash
-uv run python scripts/publish_corpus_snapshot.py --repo ~/lemma-corpus --netuid sn467 --push-repo
+uv run python scripts/publish_proof_atlas_snapshot.py --repo ~/lemma-proof-atlas --netuid sn467 --push-repo
 ```
 
-For a live validator, pass `--sync-corpus-dir`, `--sync-canonical-dir`, and `--sync-registry-cache-dir` so the public checkout receives the validator's latest corpus rows, canonical tempo artifacts, and active registry caches before upload. This regenerates the public index/export, writes `MANIFEST.sha256`, uploads a timestamped Hippius snapshot, creates the GitHub immutable release mirror, and syncs an append-only Hugging Face dataset snapshot. Hippius, GitHub, and Hugging Face credentials must stay in the deployment environment, never in repo files.
+For a live validator, pass `--sync-proof-dir`, `--sync-canonical-dir`, and `--sync-registry-cache-dir` so the public checkout receives the validator's latest accepted proof rows, canonical tempo artifacts, and active registry caches before upload. For generated graph roots and task bundles, also pass `--sync-graph-root-dir <graph-root>` and `--sync-task-bundle-dir <challenge-bundle>` so any validator can fetch the manifest/root from `graph/<netuid>/roots/` and the task, receipts, registry, and artifact manifest from `tasks/<netuid>/bundles/`. This regenerates the public index/export, writes `MANIFEST.sha256`, uploads a timestamped Hippius snapshot, creates the GitHub immutable release mirror, and syncs an append-only Hugging Face dataset snapshot. Hippius, GitHub, and Hugging Face credentials must stay in the deployment environment, never in repo files.
 
 Refresh the public website's active-problem dashboard from the validator host:
 
@@ -215,7 +216,7 @@ The server exposes `GET /current-problems.json` and `GET /healthz`, sends CORS h
 After checking the published snapshot, anchor the latest storage root on Bittensor:
 
 ```bash
-uv run python scripts/publish_chain_commitment.py --repo ~/lemma-corpus --netuid sn467 --bt-netuid 467 --submit
+uv run python scripts/publish_chain_commitment.py --repo ~/lemma-proof-atlas --netuid sn467 --bt-netuid 467 --submit
 ```
 
 Run it without `--submit` first to print the payload without writing chain state.

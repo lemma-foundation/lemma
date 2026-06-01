@@ -8,7 +8,7 @@ from typing import Any
 
 def dataset_card(metadata: dict[str, Any]) -> str:
     domain = str(metadata.get("domain_id") or "lean")
-    title = str(metadata.get("title") or f"Lemma {domain.title()} Corpus")
+    title = str(metadata.get("title") or f"Lemma {domain.title()} Proof Data")
     return "\n".join(
         [
             f"# {title}",

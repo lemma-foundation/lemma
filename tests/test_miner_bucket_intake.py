@@ -216,11 +216,15 @@ def test_bucket_reveal_validates_merkle_root_before_validator_scoring(tmp_path: 
     task = _task()
     registry = TaskRegistry(schema_version=1, tasks=(task,), sha256="0" * 64)
     active_tasks = active_tasks_for_validation(registry, _settings(tmp_path), tempo=7)
-    reveal = _reveal(miner="hk-a", commit_block=10, ciphertext="cipher-a", proof=_proof("  trivial"))
+    reveal = _reveal(miner="hk-a", commit_block=10, ciphertext="cipher-a", proof=_proof("  trivial")).model_copy(
+        update={"commit_extrinsic_index": 4, "commit_event_index": 2}
+    )
 
     submissions, authenticated = submissions_from_bucket_reveals((reveal,), active_tasks)
 
     assert len(submissions) == 1
+    assert submissions[0].commit_extrinsic_index == 4
+    assert submissions[0].commit_event_index == 2
     assert submissions[0].metadata["bucket_key"] == "tempo_7/slot_0.bin"
     assert (submissions[0].task_id, "hk-a", submissions[0].proof_sha256) in authenticated
 

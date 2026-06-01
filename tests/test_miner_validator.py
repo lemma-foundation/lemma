@@ -1335,7 +1335,7 @@ def test_validator_keeps_scoring_when_optional_s3_publish_fails(
     monkeypatch.setattr(publish, "publish_paths_to_s3", fail_publish)
     settings = _settings(tmp_path).model_copy(
         update={
-            "canonical_publish_s3_uri": "s3://lemma-corpus/live",
+            "canonical_publish_s3_uri": "s3://lemma-proof-atlas/live",
             "canonical_publish_endpoint_url": "https://s3.example",
             "canonical_publish_aws_command": "aws",
         }
@@ -1449,7 +1449,7 @@ def test_validator_does_not_submit_commitment_after_s3_publish_failure(
     monkeypatch.setattr(publish, "publish_paths_to_s3", fail_publish)
     settings = _settings(tmp_path).model_copy(
         update={
-            "canonical_publish_s3_uri": "s3://lemma-corpus/live",
+            "canonical_publish_s3_uri": "s3://lemma-proof-atlas/live",
             "canonical_publish_endpoint_url": "https://s3.example",
             "canonical_publish_aws_command": "aws",
             "enable_set_commitment": True,

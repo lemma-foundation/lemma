@@ -29,12 +29,12 @@ def _proof() -> str:
     )
 
 
-def test_prepare_corpus_publish_regenerates_exports_and_docs(tmp_path: Path) -> None:
-    repo = tmp_path / "lemma-corpus"
-    corpus_dir = repo / "corpus" / "sn467"
-    corpus_dir.mkdir(parents=True)
-    (repo / "README.md").write_text("- corpus rows: `0`\n", encoding="utf-8")
-    (repo / "DATASET_CARD.md").write_text(
+def test_prepare_proof_atlas_publish_regenerates_exports_and_docs(tmp_path: Path) -> None:
+    repo = tmp_path / "lemma-proof-atlas"
+    proof_dir = repo / "proofs" / "sn467" / "accepted"
+    proof_dir.mkdir(parents=True)
+    (repo / "README.md").write_text("- accepted proof rows: `0`\n", encoding="utf-8")
+    (repo / "ATLAS_CARD.md").write_text(
         "The checked-in artifact set contains 0 accepted Lean proof rows,\n"
         "The validator accepted all 0 proofs with the pinned Lean verifier.\n",
         encoding="utf-8",
@@ -56,12 +56,12 @@ def test_prepare_corpus_publish_regenerates_exports_and_docs(tmp_path: Path) -> 
         validator_hotkey="validator-test",
         rewarded=True,
     )
-    write_jsonl([row], corpus_dir / "epoch-000001.jsonl")
+    write_jsonl([row], proof_dir / "epoch-000001.jsonl")
 
     result = subprocess.run(
         [
             sys.executable,
-            "scripts/prepare_corpus_publish.py",
+            "scripts/prepare_proof_atlas_publish.py",
             "--repo",
             str(repo),
             "--netuid",
@@ -74,10 +74,10 @@ def test_prepare_corpus_publish_regenerates_exports_and_docs(tmp_path: Path) -> 
     )
 
     summary = json.loads(result.stdout)
-    corpus_index = json.loads((repo / "indexes" / "sn467" / "corpus-index.json").read_text(encoding="utf-8"))
+    proof_index = json.loads((repo / "proofs" / "sn467" / "index.json").read_text(encoding="utf-8"))
     benchmark_index = json.loads((repo / "exports" / "sn467" / "benchmark-index.json").read_text(encoding="utf-8"))
-    assert summary["corpus_rows"] == 1
-    assert corpus_index["row_count"] == 1
+    assert summary["proof_rows"] == 1
+    assert proof_index["row_count"] == 1
     assert benchmark_index["row_count"] == 1
-    assert "- corpus rows: `1`" in (repo / "README.md").read_text(encoding="utf-8")
-    assert "contains 1 accepted Lean proof rows" in (repo / "DATASET_CARD.md").read_text(encoding="utf-8")
+    assert "- accepted proof rows: `1`" in (repo / "README.md").read_text(encoding="utf-8")
+    assert "contains 1 accepted Lean proof rows" in (repo / "ATLAS_CARD.md").read_text(encoding="utf-8")

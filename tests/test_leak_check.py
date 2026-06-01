@@ -36,6 +36,7 @@ def test_leak_check_allows_placeholder_credential_names() -> None:
             'LEMMA_PROVER_API_KEY=""',
             "to" + 'ken = "short"',
             "sec" + 'ret = "<set-me>"',
+            "forbidden to" + "ken: recipe_rules:list_length_v1:sorry",
         ]
     )
 

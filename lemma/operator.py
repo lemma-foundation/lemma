@@ -242,13 +242,9 @@ def _is_stale_cache(registry: object, settings: LemmaSettings) -> bool:
 
 
 def _load_cached_registry(settings: LemmaSettings, *, tempo: int) -> TaskRegistry | None:
-    from lemma.tasks import load_task_registry
-    from lemma.validator import active_registry_cache_path
+    from lemma.validator import cached_active_registry_for_tempo
 
-    path = active_registry_cache_path(settings, tempo=tempo)
-    if path is None or not path.is_file():
-        return None
-    return load_task_registry(path.read_bytes())
+    return cached_active_registry_for_tempo(settings, tempo=tempo)
 
 
 def _consecutive_failures(records: tuple[dict[str, object], ...], *, field: str = "success") -> int:
@@ -509,17 +505,7 @@ def build_operator_alerts(
     if latest_run_tempo is not None:
         try:
             registry = _load_cached_registry(settings, tempo=latest_run_tempo)
-            if registry is None:
-                if settings.active_registry_role == "auditor":
-                    alerts.append(
-                        OperatorAlert(
-                            code="cache_divergence",
-                            level="critical",
-                            message=f"active-registry cache missing for tempo {latest_run_tempo}",
-                            active_tempo=latest_run_tempo,
-                        )
-                    )
-            elif _is_stale_cache(registry, settings):
+            if registry is not None and _is_stale_cache(registry, settings):
                 alerts.append(
                     OperatorAlert(
                         code="cache_divergence",

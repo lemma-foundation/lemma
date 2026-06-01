@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Publish a corpus storage root through Bittensor set_commitment."""
+"""Publish a Proof Atlas storage root through Bittensor set_commitment."""
 
 from __future__ import annotations
 
@@ -58,8 +58,8 @@ def _readback_or_fail(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--repo", type=Path, required=True, help="lemma-corpus checkout")
-    parser.add_argument("--netuid", default="sn467", help="corpus namespace, for example sn467")
+    parser.add_argument("--repo", type=Path, required=True, help="Proof Atlas checkout")
+    parser.add_argument("--netuid", default="sn467", help="Proof Atlas namespace, for example sn467")
     parser.add_argument("--tempo", type=int, help="tempo/epoch number to publish; default is latest")
     parser.add_argument("--bt-netuid", type=int, help="Bittensor subnet id; defaults to BT_NETUID")
     parser.add_argument("--bt-network", help="Bittensor network; defaults to BT_NETWORK")

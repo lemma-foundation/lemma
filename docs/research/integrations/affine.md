@@ -5,7 +5,7 @@ Affine rewards model dominance. Lemma produces verified Lean proof corpora that 
 The relationship is data-consumer oriented:
 
 - Lemma miners produce accepted proofs.
-- Lemma validators publish public corpus rows.
+- Lemma validators publish public accepted proof rows.
 - Affine-style miners can train reasoning models on those rows.
 - Improved models can perform better in model competitions and can also mine future Lemma tasks.
 

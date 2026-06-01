@@ -30,7 +30,7 @@ def _write_epoch(path: Path, rows: list[dict[str, object]]) -> None:
 
 
 def test_build_storage_index_writes_per_epoch_commitment_artifacts(tmp_path: Path) -> None:
-    repo = tmp_path / "lemma-corpus"
+    repo = tmp_path / "lemma-proof-atlas"
     rows = [
         {
             "row_id": "a" * 64,
@@ -49,7 +49,7 @@ def test_build_storage_index_writes_per_epoch_commitment_artifacts(tmp_path: Pat
             "validator_hotkey": "validator",
         },
     ]
-    _write_epoch(repo / "corpus" / "sn467" / "epoch-000042.jsonl", rows)
+    _write_epoch(repo / "proofs" / "sn467" / "accepted" / "epoch-000042.jsonl", rows)
 
     index = build_storage_index(repo, "sn467", resolver="hippius-s3-arion")
 
@@ -77,7 +77,7 @@ def test_build_storage_index_writes_per_epoch_commitment_artifacts(tmp_path: Pat
 
 
 def test_build_storage_index_uses_row_tempo_when_present(tmp_path: Path) -> None:
-    repo = tmp_path / "lemma-corpus"
+    repo = tmp_path / "lemma-proof-atlas"
     rows = [
         {
             "row_id": "a" * 64,
@@ -89,7 +89,7 @@ def test_build_storage_index_uses_row_tempo_when_present(tmp_path: Path) -> None
             "validator_hotkey": "validator",
         }
     ]
-    epoch_file = repo / "corpus" / "sn467" / "epoch-000045.jsonl"
+    epoch_file = repo / "proofs" / "sn467" / "accepted" / "epoch-000045.jsonl"
     _write_epoch(epoch_file, rows)
     stale_dir = repo / "canonical" / "sn467" / "tempos" / "tempo-000045"
     stale_dir.mkdir(parents=True)
@@ -98,7 +98,7 @@ def test_build_storage_index_uses_row_tempo_when_present(tmp_path: Path) -> None
             {
                 "accepted_merkle_root": "0" * 64,
                 "entry_count": 1,
-                "source_epoch_file": "corpus/sn467/epoch-000045.jsonl",
+                "source_epoch_file": "proofs/sn467/accepted/epoch-000045.jsonl",
                 "tempo": 45,
             }
         )
@@ -125,7 +125,7 @@ def test_build_storage_index_uses_row_tempo_when_present(tmp_path: Path) -> None
 
 
 def test_build_storage_index_preserves_existing_live_tempo_artifacts(tmp_path: Path) -> None:
-    repo = tmp_path / "lemma-corpus"
+    repo = tmp_path / "lemma-proof-atlas"
     row = {
         "row_id": "a" * 64,
         "task_id": "task.a",
@@ -135,7 +135,7 @@ def test_build_storage_index_preserves_existing_live_tempo_artifacts(tmp_path: P
         "tempo": 19954,
         "validator_hotkey": "validator",
     }
-    _write_epoch(repo / "corpus" / "sn467" / "epoch-000045.jsonl", [row])
+    _write_epoch(repo / "proofs" / "sn467" / "accepted" / "epoch-000045.jsonl", [row])
     task = make_task(
         task_id="lemma.test.active",
         title="Active true",
@@ -169,7 +169,7 @@ def test_build_storage_index_preserves_existing_live_tempo_artifacts(tmp_path: P
 
 
 def test_build_storage_index_rebuilds_expanded_live_tempo_artifacts(tmp_path: Path) -> None:
-    repo = tmp_path / "lemma-corpus"
+    repo = tmp_path / "lemma-proof-atlas"
     first = {
         "row_id": "a" * 64,
         "task_id": "task.a",
@@ -188,8 +188,8 @@ def test_build_storage_index_rebuilds_expanded_live_tempo_artifacts(tmp_path: Pa
         "tempo": 19954,
         "validator_hotkey": "validator",
     }
-    _write_epoch(repo / "corpus" / "sn467" / "epoch-000045.jsonl", [first])
-    _write_epoch(repo / "corpus" / "sn467" / "epoch-000046.jsonl", [second])
+    _write_epoch(repo / "proofs" / "sn467" / "accepted" / "epoch-000045.jsonl", [first])
+    _write_epoch(repo / "proofs" / "sn467" / "accepted" / "epoch-000046.jsonl", [second])
     task = make_task(
         task_id="lemma.test.active",
         title="Active true",
@@ -218,7 +218,7 @@ def test_build_storage_index_rebuilds_expanded_live_tempo_artifacts(tmp_path: Pa
 
 
 def test_build_storage_index_rejects_duplicate_row_ids(tmp_path: Path) -> None:
-    repo = tmp_path / "lemma-corpus"
+    repo = tmp_path / "lemma-proof-atlas"
     row = {
         "row_id": "a" * 64,
         "task_id": "task.a",
@@ -228,10 +228,10 @@ def test_build_storage_index_rejects_duplicate_row_ids(tmp_path: Path) -> None:
         "tempo": 19954,
         "validator_hotkey": "validator",
     }
-    _write_epoch(repo / "corpus" / "sn467" / "epoch-000045.jsonl", [row])
-    _write_epoch(repo / "corpus" / "sn467" / "epoch-000046.jsonl", [{**row, "tempo": 19954}])
+    _write_epoch(repo / "proofs" / "sn467" / "accepted" / "epoch-000045.jsonl", [row])
+    _write_epoch(repo / "proofs" / "sn467" / "accepted" / "epoch-000046.jsonl", [{**row, "tempo": 19954}])
 
-    with pytest.raises(ValueError, match="duplicate corpus row_id"):
+    with pytest.raises(ValueError, match="duplicate proof row_id"):
         build_storage_index(repo, "sn467", resolver="hippius-s3-arion")
 
 
@@ -273,7 +273,7 @@ def test_active_pool_and_accepted_storage_share_tempo_commitment(tmp_path: Path)
 
 
 def test_curriculum_state_storage_is_public_replayable_and_indexed(tmp_path: Path) -> None:
-    repo = tmp_path / "lemma-corpus"
+    repo = tmp_path / "lemma-proof-atlas"
     output_root = repo / "canonical"
     record = CurriculumTempoRecord(
         tempo=12,
@@ -301,7 +301,7 @@ def test_curriculum_state_storage_is_public_replayable_and_indexed(tmp_path: Pat
     )
 
     result = build_curriculum_state_storage((record,), output_root, netuid="sn467", resolver="hippius-s3-arion")
-    (repo / "corpus" / "sn467").mkdir(parents=True)
+    (repo / "proofs" / "sn467" / "accepted").mkdir(parents=True)
     index = build_storage_index(repo, "sn467", resolver="hippius-s3-arion")
 
     curriculum_dir = output_root / "sn467" / "curriculum"
@@ -404,7 +404,7 @@ def test_publish_paths_to_s3_uploads_and_verifies_relative_artifacts(tmp_path: P
     result = publish.publish_paths_to_s3(
         (first.parent, second.parent),
         root=root,
-        s3_uri="s3://lemma-corpus/canonical",
+        s3_uri="s3://lemma-proof-atlas/canonical",
         endpoint_url="https://s3.hippius.com",
         aws=["aws"],
         verify=True,
@@ -415,8 +415,8 @@ def test_publish_paths_to_s3_uploads_and_verifies_relative_artifacts(tmp_path: P
         "sn467/tempos/tempo-000009/manifest.json",
     ]
     assert set(remote) == {
-        "s3://lemma-corpus/canonical/sn467/active-pools/tempo-000009/manifest.json",
-        "s3://lemma-corpus/canonical/sn467/tempos/tempo-000009/manifest.json",
+        "s3://lemma-proof-atlas/canonical/sn467/active-pools/tempo-000009/manifest.json",
+        "s3://lemma-proof-atlas/canonical/sn467/tempos/tempo-000009/manifest.json",
     }
 
 

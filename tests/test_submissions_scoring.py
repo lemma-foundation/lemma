@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+
 import pytest
 from lemma.scoring import ScoreEvent, VerificationRecord, VerificationResult, score_epoch
 from lemma.submissions import build_submission, proof_sha256, validate_submission_for_task
@@ -158,7 +160,7 @@ def test_scoring_keeps_valid_alternates_unrewarded() -> None:
     ]
 
 
-def test_scoring_ranks_committed_reveals_by_chain_block_then_proof_identity() -> None:
+def test_scoring_ranks_committed_reveals_by_chain_block_then_commitment_hash() -> None:
     records = [
         VerificationRecord(
             task_id="task-1",
@@ -167,6 +169,7 @@ def test_scoring_ranks_committed_reveals_by_chain_block_then_proof_identity() ->
             proof_sha256="late",
             proof_identity="z",
             commit_block=20,
+            commit_extrinsic_hash="late",
             received_at="2026-01-01T00:00:01Z",
         ),
         VerificationRecord(
@@ -176,6 +179,7 @@ def test_scoring_ranks_committed_reveals_by_chain_block_then_proof_identity() ->
             proof_sha256="early",
             proof_identity="y",
             commit_block=10,
+            commit_extrinsic_hash="early",
             received_at="2026-01-01T00:00:02Z",
         ),
         VerificationRecord(
@@ -185,6 +189,7 @@ def test_scoring_ranks_committed_reveals_by_chain_block_then_proof_identity() ->
             proof_sha256="tie-b",
             proof_identity="b",
             commit_block=7,
+            commit_extrinsic_hash="1",
             received_at="2026-01-01T00:00:01Z",
         ),
         VerificationRecord(
@@ -194,6 +199,7 @@ def test_scoring_ranks_committed_reveals_by_chain_block_then_proof_identity() ->
             proof_sha256="tie-a",
             proof_identity="a",
             commit_block=7,
+            commit_extrinsic_hash="0",
             received_at="2026-01-01T00:00:02Z",
         ),
     ]
@@ -202,6 +208,73 @@ def test_scoring_ranks_committed_reveals_by_chain_block_then_proof_identity() ->
 
     assert result.winners == {"task-1": "hk-early", "task-2": "hk-tie-a"}
     assert [event.solver_hotkey for event in result.score_events if event.rewarded] == ["hk-early", "hk-tie-a"]
+
+
+def test_scoring_does_not_use_hotkey_as_commit_tiebreaker() -> None:
+    records = [
+        VerificationRecord(
+            task_id="task-1",
+            solver_hotkey="hk-a",
+            passed=True,
+            proof_sha256="same-proof",
+            proof_identity="same-proof",
+            commit_block=7,
+            commit_extrinsic_hash="1",
+            received_at="2026-01-01T00:00:01Z",
+        ),
+        VerificationRecord(
+            task_id="task-1",
+            solver_hotkey="hk-z",
+            passed=True,
+            proof_sha256="same-proof",
+            proof_identity="same-proof",
+            commit_block=7,
+            commit_extrinsic_hash="0",
+            received_at="2026-01-01T00:00:02Z",
+        ),
+    ]
+
+    assert hashlib.sha256(b"0").hexdigest() < hashlib.sha256(b"1").hexdigest()
+
+    result = score_epoch(records, active_task_count=1)
+
+    assert result.winners == {"task-1": "hk-z"}
+    assert result.scores == {"hk-z": 1.0}
+
+
+def test_scoring_uses_chain_position_before_commitment_hash() -> None:
+    records = [
+        VerificationRecord(
+            task_id="task-1",
+            solver_hotkey="hk-hash-first",
+            passed=True,
+            proof_sha256="hash-first",
+            proof_identity="hash-first",
+            commit_block=7,
+            commit_extrinsic_index=2,
+            commit_event_index=0,
+            commit_extrinsic_hash="0",
+            received_at="2026-01-01T00:00:01Z",
+        ),
+        VerificationRecord(
+            task_id="task-1",
+            solver_hotkey="hk-position-first",
+            passed=True,
+            proof_sha256="position-first",
+            proof_identity="position-first",
+            commit_block=7,
+            commit_extrinsic_index=1,
+            commit_event_index=9,
+            commit_extrinsic_hash="1",
+            received_at="2026-01-01T00:00:02Z",
+        ),
+    ]
+
+    assert hashlib.sha256(b"0").hexdigest() < hashlib.sha256(b"1").hexdigest()
+
+    result = score_epoch(records, active_task_count=1)
+
+    assert result.winners == {"task-1": "hk-position-first"}
 
 
 def test_scoring_zero_credit_epoch_has_no_weights() -> None:

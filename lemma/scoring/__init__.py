@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections import Counter, defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -35,6 +36,9 @@ class VerificationResult(BaseModel):
     reward_eligible: bool = True
     reward_ineligibility_reason: str = ""
     commit_block: int | None = Field(default=None, ge=0)
+    commit_extrinsic_index: int | None = Field(default=None, ge=0)
+    commit_event_index: int | None = Field(default=None, ge=0)
+    commit_extrinsic_hash: str | None = None
     drand_round: int | None = Field(default=None, ge=0)
     received_at: str = ""
     verifier_version: str = "lemma-lean-v1"
@@ -74,6 +78,9 @@ class ScoreEvent(BaseModel):
     score: float
     active_K: int = Field(ge=0)
     commit_block: int | None = Field(default=None, ge=0)
+    commit_extrinsic_index: int | None = Field(default=None, ge=0)
+    commit_event_index: int | None = Field(default=None, ge=0)
+    commit_extrinsic_hash: str | None = None
     drand_round: int | None = Field(default=None, ge=0)
     received_at: str = ""
 
@@ -112,8 +119,9 @@ def score_epoch(
 
     With no slot weights, each active slot is worth ``1 / K``. When slot
     weights are supplied, each slot is worth its normalized share of the active
-    weight sum. Committed reveals rank by chain commit block before local
-    receipt time. Either way, unsolved-slot value is tracked separately.
+    weight sum. Committed reveals rank by chain commit block, extrinsic index,
+    event index, then commitment hash before local receipt time. Either way,
+    unsolved-slot value is tracked separately.
     """
     if active_task_count is not None and active_task_count < 0:
         raise ValueError("active_task_count must be non-negative")
@@ -170,6 +178,9 @@ def score_epoch(
                     score=_task_share(task_id, task_count, slot_shares) if rewarded else 0.0,
                     active_K=task_count,
                     commit_block=record.commit_block,
+                    commit_extrinsic_index=record.commit_extrinsic_index,
+                    commit_event_index=record.commit_event_index,
+                    commit_extrinsic_hash=record.commit_extrinsic_hash,
                     drand_round=record.drand_round,
                     received_at=record.received_at,
                 )
@@ -232,6 +243,21 @@ def _task_share(task_id: str, task_count: int, slot_shares: dict[str, float] | N
 def _record_rank_key(item: tuple[int, VerificationRecord]) -> tuple[object, ...]:
     index, record = item
     if record.commit_block is not None:
-        tie_break = record.proof_identity or record.proof_term_hash or record.proof_sha256
-        return (0, record.commit_block, tie_break, record.solver_hotkey, record.received_at, index)
+        return (
+            0,
+            record.commit_block,
+            _optional_position(record.commit_extrinsic_index),
+            _optional_position(record.commit_event_index),
+            _commitment_hash(record.commit_extrinsic_hash),
+            record.received_at,
+            index,
+        )
     return (1, record.received_at, index)
+
+
+def _commitment_hash(value: str | None) -> str:
+    return hashlib.sha256((value or "").strip().encode()).hexdigest()
+
+
+def _optional_position(value: int | None) -> int:
+    return value if value is not None else 2**63 - 1

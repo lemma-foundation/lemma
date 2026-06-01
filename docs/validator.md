@@ -2,7 +2,7 @@
 
 Validators verify and publish accepted solutions.
 
-Validators run the pinned Lean checker, score rank-0 accepted proofs, and write replayable corpus rows.
+Validators run the pinned Lean checker, score rank-0 accepted proofs, and write replayable accepted proof rows.
 
 ## Basic Flow
 
@@ -47,7 +47,7 @@ For a live website feed, run `uv run python scripts/serve_current_problems.py --
 9. Score rank-0 unique proof per active task by commit block and deterministic active slot weight.
 10. Track `unearned_share = 1 - sum(miner_weights)`.
 11. Burn unearned share by default; do not redistribute it to current solvers.
-12. Write corpus rows for valid unique proofs after the scoring window closes.
+12. Write accepted proof rows for valid unique proofs after the scoring window closes.
 
 ## Internal Worker
 

@@ -80,7 +80,7 @@ LEMMA_OPERATOR_DATA_DIR=validator-data
 ```
 
 `LEMMA_ACTIVE_K` is validator throughput. `LEMMA_FRONTIER_DEPTH` and generated queue depth control difficulty. Payment uses deterministic active slot weights, not subjective validator scores.
-When `LEMMA_ACTIVE_REGISTRY_CACHE_DIR` is set, miners and validators load `tempo-<tempo>.registry.json` for the active tempo only if it is current for the effective production settings. `LEMMA_ACTIVE_REGISTRY_JSON` pins one exact registry file and fails closed if that file is missing. The recommended production shape is one designated builder validator plus auditor validators. Builder validators use the same deterministic generation path as the local warm command and rebuild stale current-tempo caches. The live validator bucket wrapper defaults to builder mode; set `LEMMA_ACTIVE_REGISTRY_ROLE=auditor` only for an auditor validator that should hydrate the public cache, verify it against the published hash and effective curriculum state, and refuse local generation if the current cache is not available. Run extra builders only when intentionally cross-checking generation capacity.
+When `LEMMA_ACTIVE_REGISTRY_CACHE_DIR` is set, miners and validators load `tempo-<tempo>.registry.json` for the active tempo only if it is current for the effective production settings. `LEMMA_ACTIVE_REGISTRY_JSON` pins one exact registry file and fails closed if that file is missing. Every validator follows the same path: hydrate a current public cache when available, otherwise rebuild the active set from pinned public inputs and epoch randomness. Cache files are acceleration and distribution artifacts, not a separate validator role.
 
 For live curriculum retargeting, the state log updates throughput and difficulty after each completed tempo:
 
@@ -94,7 +94,7 @@ LEMMA_CURRICULUM_BASE_TASK_COST_S=180
 LEMMA_CURRICULUM_DEPTH_COST_MULTIPLIER=2
 ```
 
-The retarget loop records one row per tempo. Later tempos load the latest prior row: solve rate moves `frontier_depth`, and `K` is capped by validator capacity plus the configured cost budget. A frontier increase never grows `K` in the same retarget step; if the estimated cost at the new frontier is too high, the cost cap lowers `K` immediately. Production mode accepts retargeting only when `LEMMA_CURRICULUM_STATE_PUBLIC=1`; operators should set `LEMMA_CURRICULUM_STATE_JSONL` to a state file synced from the canonical public corpus artifacts, not a private scratch log.
+The retarget loop records one row per tempo. Later tempos load the latest prior row: solve rate moves `frontier_depth`, and `K` is capped by validator capacity plus the configured cost budget. A frontier increase never grows `K` in the same retarget step; if the estimated cost at the new frontier is too high, the cost cap lowers `K` immediately. Production mode accepts retargeting only when `LEMMA_CURRICULUM_STATE_PUBLIC=1`; operators should set `LEMMA_CURRICULUM_STATE_JSONL` to a state file synced from the canonical public Proof Atlas artifacts, not a private scratch log.
 
 Plain difficulty rules:
 
@@ -191,17 +191,16 @@ After the validator pass, capture diagnostics again:
 uv run lemma operator diagnostics --output operator-diagnostics-after.json
 ```
 
-The after-run file carries the same public-safe readiness fields plus artifact counts for validator runs, verification receipts, score events, corpus JSONL files, and corpus rows written by the run.
+The after-run file carries the same public-safe readiness fields plus artifact counts for validator runs, verification receipts, score events, accepted-proof JSONL files, and accepted proof rows written by the run.
 
-## 4. Check And Publish Corpus Artifacts
+## 4. Check And Publish Proof Atlas Artifacts
 
-Validate and index the corpus rows before sharing them:
+Validate and index accepted proof rows before sharing them:
 
 ```bash
-uv run lemma corpus validate corpus/epoch-1.jsonl
-uv run lemma corpus export --input corpus --output corpus/corpus-index.json
+uv run lemma corpus validate proofs/sn467/accepted/epoch-1.jsonl
 uv run lemma corpus benchmark-export \
-  --input corpus \
+  --input proofs/sn467/accepted \
   --output exports/lemma-proofs.jsonl \
   --index exports/index.json
 ```

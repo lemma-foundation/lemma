@@ -270,30 +270,32 @@ def test_sync_active_registry_cache_repairs_present_public_cache_permissions(
     assert cache_path.stat().st_mode & 0o777 == 0o644
 
 
-def test_sync_active_registry_cache_reports_missing_index_for_auditors(monkeypatch, tmp_path: Path, capsys) -> None:
+def test_sync_active_registry_cache_is_silent_without_public_index_or_local_cache(
+    monkeypatch,
+    tmp_path: Path,
+    capsys,
+) -> None:
     module = _load_sync_module()
 
     monkeypatch.setenv("LEMMA_ACTIVE_REGISTRY_CACHE_DIR", str(tmp_path / "cache"))
     monkeypatch.delenv("LEMMA_ACTIVE_REGISTRY_CACHE_INDEX_URL", raising=False)
-    monkeypatch.setenv("LEMMA_ACTIVE_REGISTRY_ROLE", "auditor")
     monkeypatch.setattr(module, "current_active_tempo", lambda settings: 7)
 
     module.main()
 
-    payload = json.loads(capsys.readouterr().out)
-    assert payload == {"cache": "missing_public_index_url", "tempo": 7}
+    assert capsys.readouterr().out == ""
 
 
-def test_sync_active_registry_cache_rejects_local_cache_without_public_index_for_auditors(
+def test_sync_active_registry_cache_accepts_current_local_cache_without_public_index(
     monkeypatch, tmp_path: Path, capsys
 ) -> None:
     module = _load_sync_module()
     cache = tmp_path / "cache"
     cache.mkdir()
     task = make_task(
-        task_id="lemma.procedural.local-auditor-cache",
-        title="Local auditor cache",
-        theorem_name="local_auditor_cache",
+        task_id="lemma.procedural.local-cache",
+        title="Local cache",
+        theorem_name="local_cache",
         type_expr="True",
         source_stream="procedural",
         source_name="pytest",
@@ -305,18 +307,19 @@ def test_sync_active_registry_cache_rejects_local_cache_without_public_index_for
             "source_sampling_version": SOURCE_SAMPLING_VERSION,
         },
     )
-    write_registry([task], cache / "tempo-7.registry.json")
+    cache_path = cache / "tempo-7.registry.json"
+    write_registry([task], cache_path)
+    registry_sha = load_task_registry(cache_path.read_bytes()).sha256
 
     monkeypatch.setenv("LEMMA_ACTIVE_REGISTRY_CACHE_DIR", str(cache))
     monkeypatch.delenv("LEMMA_ACTIVE_REGISTRY_CACHE_INDEX_URL", raising=False)
-    monkeypatch.setenv("LEMMA_ACTIVE_REGISTRY_ROLE", "auditor")
     monkeypatch.setenv("LEMMA_ACTIVE_K", "1")
     monkeypatch.setattr(module, "current_active_tempo", lambda settings: 7)
 
     module.main()
 
     payload = json.loads(capsys.readouterr().out)
-    assert payload == {"cache": "missing_public_index_url", "tempo": 7}
+    assert payload == {"cache": "present", "tempo": 7, "registry_sha256": registry_sha}
 
 
 def test_sync_active_registry_cache_cache_busts_http_fetches(monkeypatch) -> None:

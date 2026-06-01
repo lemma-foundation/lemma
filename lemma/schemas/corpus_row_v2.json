@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Lemma Corpus Row v2",
+  "title": "Lemma Accepted Proof Row v2",
   "type": "object",
   "additionalProperties": false,
   "required": [

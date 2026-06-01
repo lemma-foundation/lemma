@@ -192,7 +192,7 @@ def corpus_sources_from_dir(
     before_tempo: int | None = None,
     citation_window_tempos: int = 2000,
 ) -> tuple[TaskCandidate, ...]:
-    """Load prior accepted corpus rows as mutation sources."""
+    """Load prior accepted proof rows as mutation sources."""
     from lemma.corpus import CorpusRow
 
     if not corpus_dir.is_dir():

@@ -1,4 +1,4 @@
-"""Publish canonical corpus artifacts to S3-compatible storage."""
+"""Publish canonical Proof Atlas artifacts to S3-compatible storage."""
 
 from __future__ import annotations
 

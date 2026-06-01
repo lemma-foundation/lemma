@@ -6,7 +6,7 @@ Lean theorem proving is the active Lemma path.
 
 - deterministic verifier;
 - mature Mathlib ecosystem;
-- clean theorem/proof corpus rows;
+- clean accepted theorem/proof rows;
 - useful records for theorem provers, proof search, and mathematical retrieval.
 
 ## Runtime
@@ -18,7 +18,7 @@ Lean theorem proving is the active Lemma path.
 
 Validators run the pinned Lean environment through Docker, a configured Lean worker, or explicitly allowed host Lean for local debugging.
 
-## Corpus Artifact
+## Proof Atlas Artifact
 
 ```json
 {

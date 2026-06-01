@@ -39,6 +39,8 @@ def canonical_submission_payload(data: dict[str, Any]) -> str:
         "timelock_ciphertext_sha256": _ciphertext_sha256(data.get("timelock_ciphertext")),
         "drand_round": data.get("drand_round"),
         "commit_block": data.get("commit_block"),
+        "commit_extrinsic_index": data.get("commit_extrinsic_index"),
+        "commit_event_index": data.get("commit_event_index"),
         "commit_extrinsic_hash": data.get("commit_extrinsic_hash"),
     }
     return json.dumps(fields, sort_keys=True, separators=(",", ":"))
@@ -81,6 +83,8 @@ class LemmaSubmission(BaseModel):
     timelock_ciphertext: str | None = None
     drand_round: int | None = Field(default=None, ge=0)
     commit_block: int | None = Field(default=None, ge=0)
+    commit_extrinsic_index: int | None = Field(default=None, ge=0)
+    commit_event_index: int | None = Field(default=None, ge=0)
     commit_extrinsic_hash: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
     signature: str | None = None

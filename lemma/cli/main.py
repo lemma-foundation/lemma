@@ -12,6 +12,7 @@ from typing import cast
 import click
 
 from lemma import __version__
+from lemma.cli.ingredients import register_ingredient_commands
 from lemma.cli.style import colors_enabled, rich_help_text, stylize
 from lemma.common.config import LemmaSettings
 from lemma.common.logging import setup_logging
@@ -646,6 +647,9 @@ def tasks_cmd() -> None:
     """List, pull, and show Lean theorem tasks."""
 
 
+register_ingredient_commands(main, tasks_cmd)
+
+
 @tasks_cmd.command("list")
 def tasks_list_cmd() -> None:
     """List active proof tasks.
@@ -1239,10 +1243,6 @@ def _warm_active_procedural_registry(*, tempo: int | None, force: bool) -> None:
             needs_rebuild = settings.protocol_mode == "production" and stale_existing_registry
             if needs_rebuild:
                 registry = None
-    if needs_rebuild and settings.active_registry_role == "auditor":
-        raise click.ClickException(
-            "active registry auditor mode requires a current public/cache registry; refusing local generation"
-        )
     if needs_rebuild:
         rebuild_settings = effective_settings.model_copy(
             update={"active_registry_json": None, "active_registry_cache_dir": None}
@@ -1555,7 +1555,7 @@ def submit_cmd(task_id: str, submission_path: Path, solver_hotkey: str, output_p
 
 @main.group("corpus", cls=LemmaGroup, hidden=True)
 def corpus_cmd() -> None:
-    """Validate, replay, and export Lemma Corpus JSONL files."""
+    """Validate, replay, and export accepted proof JSONL files."""
 
 
 @corpus_cmd.command("validate")
@@ -1574,7 +1574,7 @@ def corpus_validate_cmd(corpus_jsonl: Path) -> None:
         count = validate_jsonl(corpus_jsonl)
     except ValueError as e:
         raise click.ClickException(str(e)) from e
-    click.echo(stylize(f"VALID: {count} corpus rows", fg="green", bold=True))
+    click.echo(stylize(f"VALID: {count} accepted proof rows", fg="green", bold=True))
 
 
 @corpus_cmd.command("replay")

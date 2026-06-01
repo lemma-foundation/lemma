@@ -68,4 +68,4 @@ The provider is not scored. Lemma only checks the final Lean proof. Set `LEMMA_P
 
 ## Reward Rule
 
-The first eligible accepted proof for an active task earns credit. On the bucket/commitment path, "first" is the earliest valid Merkle-root commit block, with proof identity as the deterministic tie-break. Duplicate proofs, failed proofs, changed targets, prose explanations, and unauthenticated live submissions do not earn credit. Unsolved slots do not increase the payout for solved slots.
+The first eligible accepted proof for an active task earns credit. On the bucket/commitment path, "first" is ordered by valid Merkle-root commit block, extrinsic index, event index, and commitment hash as the final fallback. Hotkeys are not used for winner ordering. Duplicate proofs, failed proofs, changed targets, prose explanations, and unauthenticated live submissions do not earn credit. Unsolved slots do not increase the payout for solved slots.

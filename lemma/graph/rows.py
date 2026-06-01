@@ -1,4 +1,4 @@
-"""Graph-shaped metadata for replayable corpus rows."""
+"""Graph-shaped metadata for replayable accepted proof rows."""
 
 from __future__ import annotations
 

@@ -3302,18 +3302,6 @@ def test_procedural_supply_mode_uses_tempo_active_registry_cache_dir(tmp_path: P
     assert [task.id for task in registry.tasks] == ["lemma.cached.tempo"]
 
 
-def test_active_registry_auditor_mode_refuses_local_generation(tmp_path: Path) -> None:
-    settings = LemmaSettings(
-        _env_file=None,
-        task_supply_mode="procedural",
-        active_registry_role="auditor",
-        active_registry_cache_dir=tmp_path / "registries",
-    )
-
-    with pytest.raises(RuntimeError, match="auditor mode requires a current active-registry cache"):
-        task_registry_for_validation(settings, tempo=7)
-
-
 def test_procedural_source_pool_includes_prior_accepted_corpus(
     monkeypatch, tmp_path: Path
 ) -> None:

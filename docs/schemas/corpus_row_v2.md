@@ -1,4 +1,4 @@
-# Corpus Row Schema v2
+# Accepted Proof Row Schema v2
 
 `lemma/schemas/corpus_row_v2.json` is the canonical accepted artifact row.
 

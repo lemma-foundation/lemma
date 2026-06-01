@@ -29,6 +29,7 @@ from lemma.supply.gates import GATE_VERSION
 from lemma.supply.operator_bundle import OPERATOR_BUNDLE_VERSION, procedural_operator_bundle_hash
 from lemma.supply.source_pool import SOURCE_SAMPLING_VERSION
 from lemma.task_supply import make_task, write_registry
+from lemma.tasks import load_task_registry
 
 
 def _true_intro_proof() -> str:
@@ -358,13 +359,31 @@ def test_prebuild_active_procedural_registry_rebuilds_stale_production_cache(
     assert "lemma.procedural.fresh" in cache_path.read_text(encoding="utf-8")
 
 
-def test_prebuild_active_procedural_registry_auditor_mode_refuses_rebuild(
+def test_prebuild_active_procedural_registry_ignores_stale_role_env(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
-    def fail_registry(settings, *, tempo):  # noqa: ANN001
-        raise AssertionError("auditor mode should not generate")
+    fresh_task = make_task(
+        task_id="lemma.procedural.single-validator",
+        title="Single validator",
+        theorem_name="single_validator",
+        type_expr="True",
+        source_stream="procedural",
+        source_name="pytest",
+        metadata={
+            "operator_bundle_hash": procedural_operator_bundle_hash(),
+            "operator_bundle_version": OPERATOR_BUNDLE_VERSION,
+            "gate_version": GATE_VERSION,
+            "source_sampling_version": SOURCE_SAMPLING_VERSION,
+        },
+    ).model_copy(update={"frontier_depth": 0})
 
-    monkeypatch.setattr("lemma.validator.task_registry_for_validation", fail_registry)
+    def fake_registry(settings, *, tempo):  # noqa: ANN001
+        assert tempo == 30
+        assert settings.active_registry_json is None
+        assert settings.active_registry_cache_dir is None
+        return type("Registry", (), {"tasks": (fresh_task,)})()
+
+    monkeypatch.setattr("lemma.validator.task_registry_for_validation", fake_registry)
 
     result = CliRunner().invoke(
         main,
@@ -378,8 +397,9 @@ def test_prebuild_active_procedural_registry_auditor_mode_refuses_rebuild(
         },
     )
 
-    assert result.exit_code != 0
-    assert "auditor mode requires a current public/cache registry" in result.output
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["built"] is True
 
 
 def test_prebuild_active_procedural_registry_keeps_stale_frontier_cache(
@@ -698,7 +718,17 @@ def test_root_help_exposes_only_barebones_public_commands() -> None:
     assert result.exit_code == 0
     positions = [result.output.index(name) for name in ["setup", "status", "mine", "validate"]]
     assert positions == sorted(positions)
-    for hidden in ["operator", "tasks", "task", "verify", "submit", "corpus", "export-corpus", "worker"]:
+    for hidden in [
+        "operator",
+        "tasks",
+        "task",
+        "verify",
+        "submit",
+        "corpus",
+        "export-corpus",
+        "worker",
+        "ingredients",
+    ]:
         assert f"  {hidden}" not in result.output
     assert "Reference client for Lemma's proof protocol." in result.output
     assert "Examples:" in result.output
@@ -1471,6 +1501,59 @@ def test_operator_alerts_expose_zero_progress_and_failures(tmp_path) -> None:
     assert payload.critical_count >= 1
 
 
+def test_operator_alerts_rejects_symlink_active_registry_cache(tmp_path) -> None:
+    registry_url, registry_sha256 = _write_preflight_registry(tmp_path)
+    operator_dir = tmp_path / "operator"
+    cache_dir = tmp_path / "cache"
+    operator_dir.mkdir()
+    cache_dir.mkdir()
+    (operator_dir / "validator-runs.jsonl").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "run_at": "2025-01-01T00:00:00Z",
+                "registry_sha256": registry_sha256,
+                "active_K": 2,
+                "active_tempo": 11,
+                "frontier_depth": 0,
+                "verified_count": 1,
+                "accepted_unique_count": 1,
+                "rewarded_count": 1,
+                "score_event_count": 1,
+                "corpus_row_count": 1,
+                "weights_set": True,
+                "chain_commitment_set": True,
+            },
+            separators=(",", ":"),
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (cache_dir / "tempo-11.registry.json").symlink_to(Path(registry_url))
+
+    result = CliRunner().invoke(
+        main,
+        ["operator", "alerts"],
+        env={
+            "LEMMA_PREFER_PROCESS_ENV": "1",
+            "LEMMA_TASK_REGISTRY_URL": registry_url,
+            "LEMMA_TASK_REGISTRY_SHA256_EXPECTED": registry_sha256,
+            "LEMMA_ACTIVE_REGISTRY_CACHE_DIR": str(cache_dir),
+            "LEMMA_ACTIVE_K": "2",
+            "LEMMA_FRONTIER_DEPTH": "0",
+            "LEMMA_OPERATOR_DATA_DIR": str(operator_dir),
+            "LEMMA_CORPUS_OUTPUT_DIR": str(tmp_path / "corpus"),
+        },
+    )
+
+    assert result.exit_code == 1, result.output
+    payload = OperatorAlertReport.model_validate_json(result.output)
+    assert any(
+        alert.code == "cache_divergence" and "active registry cache path invalid" in alert.message
+        for alert in payload.alerts
+    )
+
+
 def test_operator_alerts_detects_publisher_staging_failures(tmp_path) -> None:
     registry_url, registry_sha256 = _write_preflight_registry(tmp_path)
     operator_dir = tmp_path / "operator"
@@ -1497,7 +1580,7 @@ def test_operator_alerts_detects_publisher_staging_failures(tmp_path) -> None:
                 "unearned_policy": "burn",
                 "weights_set": False,
                 "chain_commitment_set": False,
-                "canonical_publish_uri": "s3://lemma-corpus/live",
+                "canonical_publish_uri": "s3://lemma-proof-atlas/live",
                 "canonical_publish_count": 0,
             },
             separators=(",", ":"),
@@ -1522,7 +1605,7 @@ def test_operator_alerts_detects_publisher_staging_failures(tmp_path) -> None:
             "LEMMA_ACTIVE_QUEUE_SEED": "pytest-operator-alerts",
             "LEMMA_OPERATOR_DATA_DIR": str(operator_dir),
             "LEMMA_CORPUS_OUTPUT_DIR": str(tmp_path / "corpus"),
-            "LEMMA_CANONICAL_PUBLISH_S3_URI": "s3://lemma-corpus/live",
+            "LEMMA_CANONICAL_PUBLISH_S3_URI": "s3://lemma-proof-atlas/live",
         },
     )
 
@@ -1730,7 +1813,6 @@ def test_tasks_build_mathlib_snapshot_writes_pinned_registry(tmp_path) -> None:
     payload = json.loads(result.output)
     assert payload["registry_sha256"]
     assert payload["tasks"] == 1
-    from lemma.tasks import load_task_registry
 
     loaded = load_task_registry(output.read_bytes(), payload["registry_sha256"])
     assert loaded.sha256 == payload["registry_sha256"]

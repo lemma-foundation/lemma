@@ -20,8 +20,12 @@ from lemma.supply.mathlib_snapshot import MathlibSnapshotRow
 _DECL_RE = re.compile(
     r"^(?:protected\s+)?(?:theorem|lemma)\s+([A-Za-z_][A-Za-z0-9_']*(?:\.[A-Za-z_][A-Za-z0-9_']*)?)(?=\s|:|\(|\{|\[)(.*)$"
 )
+_DEFINITION_RE = re.compile(
+    r"^(?:protected\s+)?(?:def|abbrev)\s+([A-Za-z_][A-Za-z0-9_']*(?:\.[A-Za-z_][A-Za-z0-9_']*)?)(?=\s|:|\(|\{|\[)(.*)$"
+)
 _BOUNDARY_RE = re.compile(r"^(?:protected\s+)?(?:theorem|lemma|def|abbrev|instance)\b")
 _LEAN_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_']*(?:\.[A-Za-z_][A-Za-z0-9_']*)*")
+_PUBLIC_LABEL_RE = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
 _ATTR_RE = re.compile(r"^(?:@\[[^\]]+\]\s*)+")
 _UNIVERSE_APP_RE = re.compile(r"\.\{[^{}]*\}")
 _SORT_LEVEL_RE = re.compile(r"\b(Type|Sort)\s+(?:\([^()]*\)|[A-Za-z_][A-Za-z0-9_]*(?:\s*\+\s*\d+)?)")
@@ -51,6 +55,21 @@ class _Line:
     namespace: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class MathlibDefinitionRow:
+    definition_name: str
+    type_signature: str
+    imports: tuple[str, ...]
+    mathlib_rev: str
+    source_path: str
+    source_line: int
+    source_license: str
+    queue_depth: int
+    topic: str | None
+    subtopic: str | None
+    difficulty_score: int
+
+
 def extract_snapshot_rows(config: ExtractConfig) -> tuple[MathlibSnapshotRow, ...]:
     root = config.mathlib_root.resolve()
     rev = config.mathlib_rev or mathlib_revision(root)
@@ -62,12 +81,51 @@ def extract_snapshot_rows(config: ExtractConfig) -> tuple[MathlibSnapshotRow, ..
         rows,
         key=lambda row: (row.queue_depth, row.topic or "", row.source_path, row.source_line or 0, row.theorem_name),
     )
+    rows = _unique_theorem_rows(rows)
     rows = _apply_depth_limits(rows, config.depth0_limit, config.depth1_limit, config.depth2_limit)
     if config.limit is not None:
         rows = rows[: config.limit]
     if config.elaborate_types:
         rows = _elaborate_types(rows, config.lake_root or _default_lake_root(root))
     return tuple(rows)
+
+
+def extract_definition_rows(config: ExtractConfig) -> tuple[MathlibDefinitionRow, ...]:
+    root = config.mathlib_root.resolve()
+    rev = config.mathlib_rev or mathlib_revision(root)
+    rows: list[MathlibDefinitionRow] = []
+    for path in _source_files(root, config.includes):
+        rows.extend(_definition_rows_from_file(root, path, rev, config.source_license))
+    rows = sorted(
+        rows,
+        key=lambda row: (row.queue_depth, row.topic or "", row.source_path, row.source_line, row.definition_name),
+    )
+    rows = _unique_definition_rows(rows)
+    if config.limit is not None:
+        rows = rows[: config.limit]
+    return tuple(rows)
+
+
+def _unique_theorem_rows(rows: list[MathlibSnapshotRow]) -> list[MathlibSnapshotRow]:
+    seen: set[str] = set()
+    unique = []
+    for row in rows:
+        if row.theorem_name in seen:
+            continue
+        seen.add(row.theorem_name)
+        unique.append(row)
+    return unique
+
+
+def _unique_definition_rows(rows: list[MathlibDefinitionRow]) -> list[MathlibDefinitionRow]:
+    seen: set[str] = set()
+    unique = []
+    for row in rows:
+        if row.definition_name in seen:
+            continue
+        seen.add(row.definition_name)
+        unique.append(row)
+    return unique
 
 
 def write_snapshot_jsonl(rows: Iterable[MathlibSnapshotRow], path: Path) -> None:
@@ -117,7 +175,7 @@ def _rows_from_file(root: Path, path: Path, rev: str, source_license: str) -> li
         if parsed is None:
             continue
         name, type_expr, proof = parsed
-        theorem_name = name if "." in name else ".".join((*line.namespace, name))
+        theorem_name = _qualified_decl_name(name, line.namespace)
         if theorem_name.startswith("_root_.") or not _LEAN_NAME_RE.fullmatch(theorem_name):
             continue
         difficulty_score = _difficulty_score(type_expr, block, topic)
@@ -140,21 +198,58 @@ def _rows_from_file(root: Path, path: Path, rev: str, source_license: str) -> li
     return rows
 
 
+def _definition_rows_from_file(root: Path, path: Path, rev: str, source_license: str) -> list[MathlibDefinitionRow]:
+    rel = path.relative_to(root).as_posix()
+    topic, subtopic = _topic_from_path(rel)
+    module = rel.removesuffix(".lean").replace("/", ".")
+    lines = _code_lines(path.read_text(encoding="utf-8"))
+    boundaries = [i for i, line in enumerate(lines) if _boundary_match(line.code)]
+    rows: list[MathlibDefinitionRow] = []
+    for offset, start in enumerate(boundaries):
+        line = lines[start]
+        if _definition_match(line.code) is None:
+            continue
+        end = boundaries[offset + 1] if offset + 1 < len(boundaries) else len(lines)
+        block = "\n".join(item.code for item in lines[start:end])
+        parsed = _parse_definition_decl(line, block)
+        if parsed is None:
+            continue
+        name, type_signature = parsed
+        definition_name = _qualified_decl_name(name, line.namespace)
+        if definition_name.startswith("_root_.") or not _LEAN_NAME_RE.fullmatch(definition_name):
+            continue
+        difficulty_score = _difficulty_score(type_signature, block, topic)
+        rows.append(
+            MathlibDefinitionRow(
+                definition_name=definition_name,
+                type_signature=type_signature,
+                imports=(module,),
+                mathlib_rev=rev,
+                source_path=rel,
+                source_line=line.no,
+                source_license=source_license,
+                queue_depth=_queue_depth(difficulty_score),
+                topic=topic,
+                subtopic=subtopic,
+                difficulty_score=difficulty_score,
+            )
+        )
+    return rows
+
+
 def _code_lines(text: str) -> list[_Line]:
     lines: list[_Line] = []
     namespace: list[str] = []
-    in_block_comment = False
+    block_comment_depth = 0
     for no, raw in enumerate(text.replace("\r\n", "\n").replace("\r", "\n").split("\n"), start=1):
-        code, in_block_comment = _strip_comments(raw, in_block_comment)
+        code, block_comment_depth = _strip_comments(raw, block_comment_depth)
         stripped = code.strip()
         if not stripped:
             continue
         stripped = _ATTR_RE.sub("", stripped).strip()
         lines.append(_Line(no=no, code=stripped, namespace=tuple(namespace)))
         if stripped.startswith("namespace "):
-            namespace.extend(
-                part for part in stripped.removeprefix("namespace ").split() if _LEAN_NAME_RE.fullmatch(part)
-            )
+            namespace.extend(stripped.removeprefix("namespace ").split())
         elif stripped.startswith("end "):
             name = stripped.removeprefix("end ").split()[0]
             if namespace and namespace[-1] == name:
@@ -162,32 +257,48 @@ def _code_lines(text: str) -> list[_Line]:
     return lines
 
 
-def _strip_comments(line: str, in_block_comment: bool) -> tuple[str, bool]:
+def _strip_comments(line: str, block_comment_depth: int) -> tuple[str, int]:
     out = ""
     i = 0
     while i < len(line):
-        if in_block_comment:
-            end = line.find("-/", i)
-            if end == -1:
-                return out, True
-            i = end + 2
-            in_block_comment = False
+        if block_comment_depth:
+            if line.startswith("/-", i):
+                block_comment_depth += 1
+                i += 2
+                continue
+            if line.startswith("-/", i):
+                block_comment_depth -= 1
+                i += 2
+                continue
+            i += 1
             continue
         if line.startswith("/-", i):
-            in_block_comment = True
+            block_comment_depth += 1
             i += 2
             continue
         if line.startswith("--", i):
             break
         out += line[i]
         i += 1
-    return out, in_block_comment
+    return out, block_comment_depth
 
 
 def _decl_match(code: str) -> re.Match[str] | None:
     if code.startswith("private "):
         return None
     return _DECL_RE.match(_ATTR_RE.sub("", code).strip())
+
+
+def _definition_match(code: str) -> re.Match[str] | None:
+    if code.startswith("private "):
+        return None
+    return _DEFINITION_RE.match(_ATTR_RE.sub("", code).strip())
+
+
+def _qualified_decl_name(name: str, namespace: tuple[str, ...]) -> str:
+    if name.startswith("_root_.") or not namespace:
+        return name
+    return ".".join((*namespace, name))
 
 
 def _boundary_match(code: str) -> re.Match[str] | None:
@@ -219,6 +330,30 @@ def _parse_decl(line: _Line, block: str) -> tuple[str, str, str] | None:
         return None
     type_expr = f"∀ {binders}, {target}" if binders else target
     return name, type_expr, proof
+
+
+def _parse_definition_decl(line: _Line, block: str) -> tuple[str, str] | None:
+    match = _definition_match(line.code)
+    if match is None:
+        return None
+    body_at = _find_def_eq(block)
+    if body_at is None:
+        return None
+    header = " ".join(block[:body_at].split())
+    match = _DEFINITION_RE.match(_ATTR_RE.sub("", header).strip())
+    if match is None:
+        return None
+    name = match.group(1)
+    rest = match.group(2).strip()
+    colon = _find_top_level_colon(rest)
+    if colon is None:
+        return None
+    binders = rest[:colon].strip()
+    target = rest[colon + 1 :].strip()
+    if not target or " where " in target:
+        return None
+    type_signature = f"∀ {binders}, {target}" if binders else target
+    return name, type_signature
 
 
 def _default_lake_root(mathlib_root: Path) -> Path:
@@ -383,7 +518,9 @@ def _topic_from_path(rel: str) -> tuple[str, str | None]:
     parts = rel.removesuffix(".lean").split("/")
     if len(parts) < 2 or parts[0] != "Mathlib":
         return "Unknown", None
-    return parts[1], parts[2] if len(parts) > 2 else None
+    topic = parts[1] if _PUBLIC_LABEL_RE.fullmatch(parts[1]) else "Unknown"
+    subtopic = parts[2] if len(parts) > 2 and _PUBLIC_LABEL_RE.fullmatch(parts[2]) else None
+    return topic, subtopic
 
 
 def _difficulty_score(type_expr: str, block: str, topic: str) -> int:
