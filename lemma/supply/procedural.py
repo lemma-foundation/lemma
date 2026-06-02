@@ -116,7 +116,7 @@ _LOW_VALUE_MUTATION_FALLBACKS = frozenset(
 _LOW_VALUE_MUTATION_MODES = frozenset({"peer_premise"})
 _LOW_VALUE_MUTATION_RULES = frozenset({"conjoin_peer_conclusion", "false_disjunct"})
 _LOW_VALUE_MUTATION_TARGETS: frozenset[str] = frozenset()
-_PRODUCTIVE_OPERATOR_NAMES = ("pair-congr",)
+_PRODUCTIVE_OPERATOR_NAMES = ("symm",)
 _PEER_OPERATOR_NAMES = frozenset({"conjoin", "strengthen"})
 _LEAN_GATE_BATCH_ATTEMPTS = 8
 _TOY_BASIC_SOURCE_PATHS = frozenset(
@@ -1083,7 +1083,7 @@ def _productive_operators_for(type_expr: str) -> tuple[str, ...]:
     _prefix, body = _split_forall_prefix(type_expr)
     implication = _split_top_level_arrow(body)
     relation = _split_top_level_relation(implication[1] if implication is not None else body)
-    if relation is None or relation[1] != "=":
+    if relation is None or relation[1] not in {"=", "↔"}:
         return ()
     return _PRODUCTIVE_OPERATOR_NAMES
 

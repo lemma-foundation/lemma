@@ -222,9 +222,9 @@ def test_procedural_registry_requires_depth_two_metadata() -> None:
         "mutation_depth": 2,
         "mutation_chain": [
             {
-                "operator": "pair-congr",
+                "operator": "symm",
                 "params": {
-                    "rule": "pair_congr",
+                    "rule": "reverse_relation",
                     "relation": "=",
                     "engine": MUTATION_ENGINE,
                 },

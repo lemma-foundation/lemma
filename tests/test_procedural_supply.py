@@ -85,7 +85,7 @@ def test_structural_mutation_engine_marks_current_bundle_engine() -> None:
     first = StructuralMutationEngine().apply(
         source,
         "true = false",
-        "pair-congr",
+        "symm",
         step=0,
         param_seed="a" * 64,
         peer=source,
@@ -99,30 +99,30 @@ def test_structural_mutation_engine_marks_current_bundle_engine() -> None:
         peer=source,
     )
 
-    assert first.type_expr == "(true, true) = (false, false)"
+    assert first.type_expr == "false = true"
     assert first.params["engine"] == MUTATION_ENGINE
-    assert second.type_expr == "∀ lemma_p1_bbbbbb : Prop, lemma_p1_bbbbbb → ((true, true) = (false, false))"
+    assert second.type_expr == "∀ lemma_p1_bbbbbb : Prop, lemma_p1_bbbbbb → (false = true)"
     assert second.params["engine"] == MUTATION_ENGINE
 
     implication = StructuralMutationEngine().apply(
         source,
         "¬b = false → b = true",
-        "pair-congr",
+        "symm",
         step=0,
         param_seed="c" * 64,
         peer=source,
     )
-    assert implication.type_expr == "¬b = false → (b, b) = (true, true)"
+    assert implication.type_expr == "¬b = false → true = b"
 
     bind_relation = StructuralMutationEngine().apply(
         source,
         "x >>= f = x.bind f",
-        "pair-congr",
+        "symm",
         step=0,
         param_seed="d" * 64,
         peer=source,
     )
-    assert bind_relation.type_expr == "(x >>= f, x >>= f) = (x.bind f, x.bind f)"
+    assert bind_relation.type_expr == "x.bind f = x >>= f"
 
     field_notation = StructuralMutationEngine().apply(
         source,
@@ -626,11 +626,11 @@ def test_candidate_from_source_uses_specialize_as_second_step() -> None:
             operators.append(operator)
             if step == 0:
                 return MutationResult(
-                    "∀ n m : Nat, (n, n) = (m, m)",
-                    {"rule": "pair_congr", "relation": "=", "engine": MUTATION_ENGINE},
+                    "∀ n m : Nat, m = n",
+                    {"rule": "reverse_relation", "relation": "=", "engine": MUTATION_ENGINE},
                 )
             return MutationResult(
-                "∀ m : Nat, 1 = m",
+                "∀ m : Nat, m = 1",
                 {"binder": "n", "binder_type": "Nat", "value": "1", "engine": MUTATION_ENGINE},
             )
 
@@ -664,9 +664,9 @@ def test_candidate_from_source_uses_specialize_as_second_step() -> None:
         sequence=0,
     )
 
-    assert operators == ["pair-congr", "specialize"]
+    assert operators == ["symm", "specialize"]
     assert [step["operator"] for step in candidate.metadata["mutation_chain"]] == operators
-    assert candidate.type_expr == "∀ m : Nat, 1 = m"
+    assert candidate.type_expr == "∀ m : Nat, m = 1"
 
 
 def test_candidate_from_source_uses_source_namespace_in_statement_and_stub() -> None:
@@ -674,11 +674,11 @@ def test_candidate_from_source_uses_source_namespace_in_statement_and_stub() -> 
         def apply(self, source, type_expr, operator, *, step, param_seed, peer):  # noqa: ANN001, ARG002
             if step == 0:
                 return MutationResult(
-                    "∀ x : Real, tan x = sin x",
-                    {"rule": "pair_congr", "relation": "=", "engine": MUTATION_ENGINE},
+                    "∀ x : Real, sin x = tan x",
+                    {"rule": "reverse_relation", "relation": "=", "engine": MUTATION_ENGINE},
                 )
             return MutationResult(
-                "tan 1 = sin 1",
+                "sin 1 = tan 1",
                 {"binder": "x", "binder_type": "Real", "value": "1", "engine": MUTATION_ENGINE},
             )
 
@@ -701,7 +701,7 @@ def test_candidate_from_source_uses_source_namespace_in_statement_and_stub() -> 
         source_pool=(source,),
         generation_seed="epoch-a",
         epoch_fields={},
-        operator_chain=("pair-congr", "specialize"),
+        operator_chain=("symm", "specialize"),
         mutation_engine=NamespaceMutationEngine(),
         source_pool_hash_value="a" * 64,
         source_pool_receipt_value={
@@ -742,7 +742,7 @@ def test_candidate_from_source_skips_peer_lookup_for_non_peer_operators(monkeypa
         source_pool=(source,),
         generation_seed="epoch-a",
         epoch_fields={},
-        operator_chain=("pair-congr", "specialize"),
+        operator_chain=("symm", "specialize"),
         mutation_engine=StructuralMutationEngine(),
         source_pool_hash_value="a" * 64,
         source_pool_receipt_value={
@@ -759,7 +759,7 @@ def test_candidate_from_source_skips_peer_lookup_for_non_peer_operators(monkeypa
         sequence=0,
     )
 
-    assert [step["operator"] for step in candidate.metadata["mutation_chain"]] == ["pair-congr", "specialize"]
+    assert [step["operator"] for step in candidate.metadata["mutation_chain"]] == ["symm", "specialize"]
 
 
 def test_candidate_from_source_rejects_placeholder_mutation() -> None:
@@ -1357,9 +1357,9 @@ def test_depth2_generation_current_chain_reaches_serious_lean_gate_with_source_m
     assert candidate.metadata["source_reuse_class"] == "source_derived_survived"
     assert candidate.imports == ("Mathlib.Data.Nat.Basic",)
     assert candidate.metadata["source_import_status"] == "source_theorem_unavailable"
-    assert [step["operator"] for step in candidate.metadata["mutation_chain"]] == ["pair-congr", "specialize"]
+    assert [step["operator"] for step in candidate.metadata["mutation_chain"]] == ["symm", "specialize"]
     assert "∃ h :" not in candidate.type_expr
-    assert "(m, m)" in candidate.type_expr
+    assert "m = " in candidate.type_expr
 
 
 def test_depth2_generation_uses_verified_substrate_sources_as_unavailable() -> None:
@@ -3107,7 +3107,7 @@ def test_depth2_generation_uses_public_yield_history_for_source_order(tmp_path: 
     history_path.write_text(
         json.dumps(
             {
-                "accepted_operator_chains": {"pair-congr,specialize": 2},
+                "accepted_operator_chains": {"symm,specialize": 2},
                 "accepted_source_families": {"Mathlib/High.lean": 5},
             },
             sort_keys=True,

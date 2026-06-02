@@ -106,11 +106,11 @@ class _SeriousTestMutationEngine:
         value = int(suffix) + 1 if suffix.isdigit() else 1
         if step == 0:
             return MutationResult(
-                "∀ n m : Nat, (n, n) = (m, m)",
-                {"rule": "pair_congr", "relation": "=", "engine": MUTATION_ENGINE},
+                "∀ n m : Nat, m = n",
+                {"rule": "reverse_relation", "relation": "=", "engine": MUTATION_ENGINE},
             )
         return MutationResult(
-            f"∀ m : Nat, ({value}, {value}) = (m, m)",
+            f"∀ m : Nat, m = {value}",
             {"binder": "n", "binder_type": "Nat", "value": str(value), "engine": MUTATION_ENGINE},
         )
 

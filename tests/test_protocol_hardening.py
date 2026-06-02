@@ -106,9 +106,9 @@ def _procedural_metadata(
         "mutation_depth": mutation_depth,
         "mutation_chain": [
             {
-                "operator": "pair-congr",
+                "operator": "symm",
                 "params": {
-                    "rule": "pair_congr",
+                    "rule": "reverse_relation",
                     "relation": "=",
                     "engine": MUTATION_ENGINE,
                 },
