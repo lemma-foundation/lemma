@@ -25,7 +25,13 @@ from lemma.supply.import_graph import (
     read_import_graph,
 )
 from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
-from lemma.supply.mutation import LeanAstMutationEngine, MutationResult, PreviewMutationEngine, StructuralMutationEngine
+from lemma.supply.mutation import (
+    LeanAstMutationEngine,
+    MutationResult,
+    PreviewMutationEngine,
+    StructuralMutationEngine,
+    _open_namespace_lines,
+)
 from lemma.supply.novelty import novelty_cache_from_hashes, read_novelty_cache, statement_hash
 from lemma.supply.operator_bundle import (
     MUTATION_ENGINE,
@@ -721,6 +727,11 @@ def test_candidate_from_source_uses_source_namespace_in_statement_and_stub() -> 
     assert candidate.statement.startswith("open Real\n\ntheorem ")
     assert "\ntheorem " in candidate.submission_stub
     assert "open Real\n\nnamespace Submission" in candidate.submission_stub
+
+
+def test_open_namespace_lines_skips_mathlib_module_prefixes() -> None:
+    assert _open_namespace_lines("Mathlib.Tactic.Zify.intCast_lt") == ""
+    assert _open_namespace_lines("Nat.add_comm") == "open Nat"
 
 
 def test_candidate_from_source_skips_peer_lookup_for_non_peer_operators(monkeypatch: pytest.MonkeyPatch) -> None:

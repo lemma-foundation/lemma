@@ -736,6 +736,8 @@ def _open_namespace_lines(*theorem_names: str) -> str:
     namespaces: list[str] = []
     for theorem_name in theorem_names:
         parts = [part for part in theorem_name.split(".")[:-1] if _LEAN_IDENT.fullmatch(part)]
+        if parts and parts[0] == "Mathlib":
+            continue
         for end in range(1, len(parts) + 1):
             namespace = ".".join(parts[:end])
             if namespace not in namespaces:
