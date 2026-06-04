@@ -17,6 +17,22 @@ Fixed fixtures are allowed for local smoke and calibration only. They are not pr
 
 The launch path does not include local problem generators or task-bank bridges. Registries are task ledgers, not problem generators.
 
+One supported ingestion path is a pinned SorryDB row plus a local checkout of that row's repository commit:
+
+```bash
+uv run lemma tasks import-sorrydb \
+  --sorry-json sorrydb-row.json \
+  --source-root ./upstream-checkout \
+  --theorem-name Namespace.target \
+  --type-expr "forall n : Nat, n + 0 = n" \
+  --source-license Apache-2.0 \
+  --mathlib-rev <mathlib-or-project-pin> \
+  --reproduction-command "lake build" \
+  --output tasks/real-source.registry.json
+```
+
+The importer creates patch tasks. Operators still need to pin and publish the resulting registry SHA before validators score against it.
+
 ## Task Rows
 
 Every active task must have:

@@ -205,7 +205,7 @@ def _private_metadata_key(key: str) -> bool:
     lower = key.lower()
     if any(part in lower for part in ("path", "file", "dir", "log", "workspace", "secret", "token", "host", "ssh")):
         return True
-    return any(part in {"key", "ip"} for part in re.split(r"[^a-z0-9]+", lower))
+    return any(part in {"key", "ip", "root"} for part in re.split(r"[^a-z0-9]+", lower))
 
 
 def build_corpus_row(

@@ -667,6 +667,73 @@ def tasks_sign_registry_cmd(
     )
 
 
+@tasks_cmd.command("import-sorrydb", hidden=True)
+@click.option(
+    "--sorry-json",
+    "sorry_json_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    required=True,
+    help="One SorryDB row JSON object.",
+)
+@click.option(
+    "--source-root",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    required=True,
+    help="Local checkout of the row's pinned repository commit.",
+)
+@click.option("--task-id", default=None)
+@click.option("--theorem-name", required=True)
+@click.option("--type-expr", required=True)
+@click.option("--source-license", required=True)
+@click.option("--mathlib-rev", required=True)
+@click.option("--lean-toolchain", default=None)
+@click.option("--reproduction-command", default="lake build", show_default=True)
+@click.option("--output", "output_path", type=click.Path(dir_okay=False, path_type=Path), required=True)
+def tasks_import_sorrydb_cmd(
+    sorry_json_path: Path,
+    source_root: Path,
+    task_id: str | None,
+    theorem_name: str,
+    type_expr: str,
+    source_license: str,
+    mathlib_rev: str,
+    lean_toolchain: str | None,
+    reproduction_command: str,
+    output_path: Path,
+) -> None:
+    """Create a one-task patch registry from a pinned SorryDB row."""
+    from lemma.source_sorries import build_patch_task_from_sorrydb_record
+    from lemma.task_supply import write_registry
+
+    payload = json.loads(sorry_json_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict) or not isinstance(payload.get("repo"), dict):
+        raise click.ClickException("sorry-json must be one SorryDB row object")
+    task = build_patch_task_from_sorrydb_record(
+        payload,
+        source_root=source_root,
+        theorem_name=theorem_name,
+        type_expr=type_expr,
+        source_license=source_license,
+        mathlib_rev=mathlib_rev,
+        task_id=task_id,
+        lean_toolchain=lean_toolchain,
+        reproduction_command=reproduction_command,
+    )
+    write_registry([task], output_path)
+    click.echo(
+        json.dumps(
+            {
+                "output": str(output_path),
+                "registry_sha256": hashlib.sha256(output_path.read_bytes()).hexdigest(),
+                "task_id": task.id,
+                "target_sha256": task.target_sha256,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+
+
 @tasks_cmd.command("show")
 @click.argument("task_id")
 def tasks_show_cmd(task_id: str) -> None:

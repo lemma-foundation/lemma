@@ -6,6 +6,22 @@ This is the end-to-end path for running Lemma from a pinned real-task registry, 
 
 Build or obtain a registry of real Lean missing-proof tasks. Each row must include public source metadata, license metadata, target hash, Lean toolchain, Mathlib revision, and submission stub.
 
+For one pinned SorryDB row plus a local checkout of that row's repository commit:
+
+```bash
+uv run lemma tasks import-sorrydb \
+  --sorry-json sorrydb-row.json \
+  --source-root ./upstream-checkout \
+  --theorem-name Namespace.target \
+  --type-expr "forall n : Nat, n + 0 = n" \
+  --source-license Apache-2.0 \
+  --mathlib-rev <mathlib-or-project-pin> \
+  --reproduction-command "lake build" \
+  --output tasks/real-source.registry.json
+```
+
+The importer records public source metadata and hashes from the checkout. It does not store the local checkout path in the task row.
+
 ```bash
 uv run lemma tasks sign-registry \
   --input tasks/registry.json \
