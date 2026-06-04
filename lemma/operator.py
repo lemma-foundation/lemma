@@ -32,9 +32,7 @@ PreflightCheckName = Literal[
     "strong_proof_identity",
     "epoch_randomness",
     "curriculum_controller",
-    "source_snapshot",
-    "import_graph",
-    "procedural_supply",
+    "real_task_supply",
 ]
 
 
@@ -619,47 +617,6 @@ def _summarize_curriculum(
     )
 
 
-def _source_snapshot_check(settings: LemmaSettings, *, frontier_depth: int) -> OperatorPreflightCheck:
-    if settings.procedural_source_jsonl is None:
-        return _check("source_snapshot", False, "missing LEMMA_PROCEDURAL_SOURCE_JSONL")
-    try:
-        from lemma.supply.mathlib_snapshot import rows_from_jsonl, snapshot_quality_summary
-
-        summary = snapshot_quality_summary(rows_from_jsonl(settings.procedural_source_jsonl))
-    except (OSError, ValueError) as e:
-        return _check("source_snapshot", False, f"invalid source snapshot: {e.__class__.__name__}")
-    rows = _summary_int(summary.get("rows"))
-    max_depth = _summary_int(summary.get("max_queue_depth"))
-    frontier_rows = _summary_int(summary.get("frontier_rows"))
-    depth_counts = _summary_counts(summary.get("queue_depth_counts"))
-    band_counts = _summary_counts(summary.get("difficulty_band_counts"))
-    coverage = summary["metadata_coverage"]
-    dependency_coverage = _summary_int(coverage.get("dependency_depth")) if isinstance(coverage, dict) else 0
-    return _check(
-        "source_snapshot",
-        rows > 0 and max_depth >= frontier_depth,
-        (
-            f"rows={rows} max_depth={max_depth} frontier_rows={frontier_rows} "
-            f"depths={_format_counts(depth_counts)} bands={_format_counts(band_counts)} "
-            f"dependency_coverage={dependency_coverage}/{rows}"
-        ),
-    )
-
-
-def _summary_int(value: object) -> int:
-    return value if isinstance(value, int) and not isinstance(value, bool) else 0
-
-
-def _summary_counts(value: object) -> dict[str, int]:
-    if not isinstance(value, dict):
-        return {}
-    return {str(key): item for key, item in value.items() if isinstance(item, int) and not isinstance(item, bool)}
-
-
-def _format_counts(counts: dict[str, int]) -> str:
-    return ",".join(f"{key}:{counts[key]}" for key in sorted(counts)) or "none"
-
-
 def _inspect_registry(
     registry: TaskRegistry,
     settings: LemmaSettings,
@@ -709,34 +666,17 @@ def _build_operator_state(
     except (RuntimeError, TaskError, OSError) as e:
         checks.append(_check("registry_load", False, str(e)))
 
-    production_or_procedural = settings.protocol_mode == "production" or settings.task_supply_mode == "procedural"
-    expected_pin = (
-        (settings.procedural_source_sha256_expected or "").strip()
-        if production_or_procedural
-        else (settings.task_registry_sha256_expected or "").strip()
-    )
+    expected_pin = (settings.task_registry_sha256_expected or "").strip()
     checks.append(
         _check(
             "registry_hash_pin",
             bool(expected_pin),
-            (
-                "procedural source SHA256 pin is set"
-                if production_or_procedural and expected_pin
-                else "LEMMA_TASK_REGISTRY_SHA256_EXPECTED is set"
-                if expected_pin
-                else "missing procedural source SHA256 pin"
-                if production_or_procedural
-                else "missing registry SHA256 pin"
-            ),
+            "LEMMA_TASK_REGISTRY_SHA256_EXPECTED is set" if expected_pin else "missing registry SHA256 pin",
         )
     )
-    if production_or_procedural:
-        checks.append(_source_snapshot_check(settings, frontier_depth=active_window_settings.frontier_depth))
 
     if registry is not None:
         signature_ok = registry.signature_status == "verified" if settings.protocol_mode == "production" else True
-        if settings.task_supply_mode == "procedural":
-            signature_ok = True
         checks.append(_check("registry_signature", signature_ok, registry.signature_status))
         try:
             active_tasks = active_tasks_for_validation(registry, active_window_settings, tempo=active_tempo)
@@ -805,16 +745,9 @@ def _build_operator_state(
 
     if settings.protocol_mode == "production":
         from lemma.protocol_invariants import production_supply_rejections
-        from lemma.supply.import_graph import read_import_graph
 
-        import_graph = (
-            read_import_graph(settings.procedural_import_graph_jsonl)
-            if settings.procedural_import_graph_jsonl
-            else None
-        )
-
-        rejections = production_supply_rejections(registry, import_graph=import_graph) if registry is not None else ()
-        procedural_ok = settings.task_supply_mode == "procedural" and not rejections
+        rejections = production_supply_rejections(registry) if registry is not None else ()
+        real_task_supply_ok = registry is not None and not rejections
         checks.extend(
             [
                 _check(
@@ -849,19 +782,12 @@ def _build_operator_state(
                     "production active selection must use chain/drand epoch randomness",
                 ),
                 _check(
-                    "import_graph",
-                    import_graph is not None and import_graph.entry_count > 0,
-                    "LEMMA_PROCEDURAL_IMPORT_GRAPH_JSONL must point to a public import graph",
-                ),
-                _check(
-                    "procedural_supply",
-                    procedural_ok,
+                    "real_task_supply",
+                    real_task_supply_ok,
                     (
-                        "paid supply is procedural depth-2"
-                        if procedural_ok
-                        else "LEMMA_TASK_SUPPLY_MODE must be procedural"
-                        if settings.task_supply_mode != "procedural"
-                        else "paid supply rejected: " + ", ".join(rejections[:5])
+                        "paid supply uses registry-backed real tasks"
+                        if real_task_supply_ok
+                        else "paid supply rejected: " + ", ".join(f"{task}:{reason}" for task, reason in rejections[:5])
                     ),
                 ),
             ]

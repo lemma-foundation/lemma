@@ -20,21 +20,10 @@ LEAN_VERIFIER_ID: Final = "lake-build"
 LEAN_VERIFIER_VERSION: Final = "lemma-lean-v1"
 
 SourceStream = Literal[
-    "procedural",
-    "lemma_substrate",
-    "mathlib_snapshot",
-    "mathlib_perturbation",
-    "state_graph",
-    "auto_formalized",
-    "conjecture_generated",
-    "hard_target_variant",
-    "trivial_curriculum",
-    "generated",
-    "ingredient",
-    "proof_repair",
-    "theorem_variant",
-    "premise_limited",
-    "benchmark_practice",
+    "fixed_fixture",
+    "formal_conjectures",
+    "sorrydb",
+    "lean_project",
     "human_curated",
 ]
 
@@ -49,8 +38,8 @@ RegistrySignatureStatus = Literal["unsigned", "metadata_only", "verified"]
 class RegistrySignatureVerifier(Protocol):
     """Optional registry-signature verifier.
 
-    Registry signatures are an optional cache-distribution check. Production
-    validators rebuild procedural supply from pinned public inputs.
+    Registry signatures are an optional cache-distribution check for published
+    task registries.
     """
 
     def verify_registry(self, *, raw: bytes, signed_by: str, signature: str) -> bool:
@@ -115,7 +104,7 @@ class LemmaTask(BaseModel):
     verifier_id: str = LEAN_VERIFIER_ID
     verifier_version: str = LEAN_VERIFIER_VERSION
     title: str = ""
-    source_stream: SourceStream = "generated"
+    source_stream: SourceStream = "human_curated"
     source_ref: SourceRef
     source_license: str
     imports: tuple[str, ...] = ("Mathlib",)
@@ -382,7 +371,7 @@ def load_task_registry(
 
 
 def task_registry_from_tasks(tasks: tuple[LemmaTask, ...]) -> TaskRegistry:
-    """Build an in-memory registry from deterministically generated task rows."""
+    """Build an in-memory registry from task rows."""
     payload: dict[str, object] = {
         "schema_version": 1,
         "tasks": [task.model_dump(mode="json", exclude_none=True) for task in tasks],

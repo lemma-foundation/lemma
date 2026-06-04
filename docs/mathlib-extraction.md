@@ -1,16 +1,16 @@
 # Mathlib Extraction Contract
 
-Mathlib extraction is an off-chain supply step. Validators consume pinned task artifacts; they do not crawl Mathlib, run auto-formalization, or trust extracted proofs during scoring.
+Mathlib extraction is an off-chain source-preparation step. Validators consume pinned task registries; they do not crawl Mathlib, run source extraction, or trust extracted proofs during scoring.
 
-The intended path is:
+The launch path is:
 
 ```text
-pinned Mathlib checkout -> proof-erased snapshot JSONL -> pinned task registry -> validator -> corpus export
+public Lean source row -> proof-erased task row -> pinned registry -> validator -> accepted proof export
 ```
 
-## Snapshot Rows
+## Source Rows
 
-Each JSONL row describes one theorem statement from a pinned Mathlib checkout:
+A source row describes a public theorem target with proof material erased:
 
 ```json
 {"theorem_name":"Nat.zero_add","type_expr":"∀ n : Nat, 0 + n = n","imports":["Mathlib.Data.Nat.Basic"],"mathlib_rev":"<mathlib-commit>","source_path":"Mathlib/Data/Nat/Basic.lean","source_line":12,"source_license":"Apache-2.0","proof_sha256":"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff","queue_depth":0}
@@ -18,37 +18,26 @@ Each JSONL row describes one theorem statement from a pinned Mathlib checkout:
 
 Required fields:
 
-- `theorem_name`: ASCII dotted Lean identifier used for the generated task theorem.
+- `theorem_name`: ASCII dotted Lean identifier used for the task theorem.
 - `type_expr`: Lean theorem type.
-- `mathlib_rev`: pinned Mathlib revision string. Production snapshots should use the exact commit.
-- `source_path`: repo-relative `.lean` path inside the Mathlib checkout.
+- `mathlib_rev`: pinned Mathlib revision string.
+- `source_path`: repo-relative `.lean` path inside the public checkout.
 - `source_license`: source license for the row.
 
 Optional fields:
 
 - `imports`: Lean modules needed by the target. Defaults to `["Mathlib"]`.
 - `source_line`: 1-based line in the source file.
-- `proof_sha256`: 64-hex hash of the erased source proof, kept only as provenance metadata.
-- `queue_depth`: non-negative difficulty/frontier bucket. Defaults to `0`.
-- `topic` / `subtopic`: deterministic topic labels from the Mathlib source path.
+- `proof_sha256`: 64-hex hash of erased source proof material, kept only as provenance metadata.
+- `queue_depth`: nonnegative difficulty/frontier bucket. Defaults to `0`.
+- `topic` / `subtopic`: deterministic topic labels from the source path.
 - `difficulty_score`: deterministic classifier score used to assign `queue_depth`.
-- `citation_weight`: pinned dependency in-degree or capped sampling weight for procedural source selection.
-- `direct_dependency_count`, `dependency_depth`, `transitive_dependency_hash`: source-pool hints for local analysis and pre-proof slot estimates. Rewarded production slot weights are recomputed from the accepted proof's verifier-recorded Lean kernel dependencies.
+- `direct_dependency_count`, `dependency_depth`, `transitive_dependency_hash`: source hints for local analysis. Rewarded production slot weights are recomputed from the accepted proof's verifier-recorded Lean kernel dependencies.
 - `baseline_solved`: whether an operator baseline tactic stack solved the task before paid activation.
-
-Build the public import graph from the same pinned checkout:
-
-```bash
-uv run lemma tasks extract-import-graph \
-  --mathlib-root /path/to/mathlib \
-  --output public-import-graph.jsonl
-```
-
-The public importer currently accepts only ASCII dotted theorem and import names. That keeps task ids, generated Lean files, and corpus replay stable while the production extractor is still a separate audited tool.
 
 ## Proof Erasure
 
-The snapshot row must not carry a proof script into the validator path. The importer turns each row into a `sorry` target and a submission stub:
+The source row must not carry a proof script into the validator path. The registry row exposes the missing proof as a `sorry` target and a submission stub:
 
 ```lean
 theorem Nat.zero_add : ∀ n : Nat, 0 + n = n := by
@@ -57,55 +46,14 @@ theorem Nat.zero_add : ∀ n : Nat, 0 + n = n := by
 
 `proof_sha256` is provenance, not proof identity. Rewarded submissions are identified from the miner artifact checked by the validator.
 
-## Extraction
+## Registry Boundary
 
-Extract snapshot rows from a pinned Mathlib checkout:
+Production validators read a pinned registry and validate task-bound submissions against the active deterministic K-slot window. They reject rows outside the active window, mismatched task versions, mismatched target hashes, duplicate winning proofs, and policy failures.
 
-```bash
-uv run lemma tasks extract-mathlib-snapshot \
-  --mathlib-root /path/to/mathlib \
-  --lake-root /path/to/lake-project \
-  --elaborate-types \
-  --import-graph public-import-graph.jsonl \
-  --include 'Mathlib/Data/Nat/*.lean' \
-  --depth0-limit 10 \
-  --depth1-limit 20 \
-  --depth2-limit 20 \
-  --output snapshot.jsonl
-```
-
-The extractor reads theorem and lemma declarations, erases proofs to hashes, derives topic labels from source paths, and assigns `queue_depth` from statement shape, import topic, proof-block span, and optional public import-graph signals. Simple launch rows still land at depth `0`, but higher deterministic scores now continue into medium, hard, and frontier buckets instead of being collapsed into a shallow launch-only scale.
-
-Use `--import-graph` for production snapshots. It fills `citation_weight`, `direct_dependency_count`, `dependency_depth`, and `transitive_dependency_hash` from the same pinned Mathlib checkout, and those signals feed both source sampling and queue depth. `--depth2-limit` limits all rows with `queue_depth >= 2`; use it as a broad deep-row cap when building small smoke snapshots. Use `--elaborate-types` for live batches so Lean `#check` output supplies self-contained theorem types instead of relying on source text that may reference file-local variables. It is an off-chain operator tool. Validators still consume only pinned snapshot and registry artifacts.
-
-Inspect the finished snapshot before pinning it:
-
-```bash
-uv run lemma tasks inspect-mathlib-snapshot --input snapshot.jsonl
-```
-
-The quality report prints row count, queue-depth counts, difficulty-band counts, frontier row count, max depth/signal values, and metadata coverage. A production snapshot should have real rows beyond the shallow launch depths and full import-graph coverage.
-
-## Registry Build
-
-Build a deterministic registry from a snapshot:
-
-```bash
-uv run lemma tasks build-mathlib-snapshot \
-  --input snapshot.jsonl \
-  --output tasks/mathlib-snapshot.registry.json
-```
-
-The builder validates each row, orders tasks with deterministic level/family balance, writes deterministic `queue_position` values, and prints `registry_sha256`. This is useful for local smoke tests and cache artifacts.
-
-Externally produced `signed_by` and `signature` metadata can be attached during registry build, but signatures do not make a registry production-authoritative. Production validators use procedural supply mode with a pinned source-pool hash.
-
-## Validator Boundary
-
-In dev registry mode, the validator reads the pinned registry and validates task-bound submissions against the active deterministic K-slot window. In production mode, it rebuilds procedural tasks from the pinned source pool plus epoch randomness first. It rejects rows outside the active window, mismatched task versions, mismatched target hashes, duplicate winning proofs, and policy failures.
+Externally produced `signed_by` and `signature` metadata can be attached to a registry, but signatures do not replace the SHA pin. Production operators should set `LEMMA_TASK_REGISTRY_SHA256_EXPECTED`, and set `LEMMA_VERIFY_REGISTRY_SIGNATURES=1` when they expect signed registry distribution.
 
 Solved active slots earn their deterministic active slot share. Unsolved-slot value is not redistributed to current solvers; the production default routes it to burn.
 
 ## Fixtures
 
-The tiny fixture in [examples/operator-smoke](../examples/operator-smoke/README.md) follows this contract and is safe for local smoke tests. It is not a production Mathlib snapshot.
+The dev seed in `tasks/registry.json` and the tiny fixture in [examples/operator-smoke](../examples/operator-smoke/README.md) are safe for local smoke tests. They are not production Mathlib source snapshots.

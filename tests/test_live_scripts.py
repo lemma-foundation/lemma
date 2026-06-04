@@ -123,17 +123,14 @@ def test_active_registry_prebuild_wrapper_serializes_builds() -> None:
     assert "active registry prebuild already running" in prebuild
 
 
-def test_active_registry_prebuild_falls_back_to_local_generation() -> None:
+def test_active_registry_prebuild_uses_public_cache_only() -> None:
     prebuild = (ROOT / "scripts" / "lemma-active-registry-prebuild").read_text(encoding="utf-8")
 
-    assert "force_requested=0" in prebuild
-    assert '--force"' in prebuild
     assert "cache_sync_output=" in prebuild
     assert '\'"cache": "present"\'' in prebuild
     assert '\'"cache": "hydrated"\'' in prebuild
-    assert '"$force_requested" != "1"' in prebuild
-    assert "public active registry cache not published yet" not in prebuild
-    assert 'exec "$uv_bin" run lemma tasks warm-active-procedural-registry "$@"' in prebuild
+    assert "active registry cache not published yet" in prebuild
+    assert "warm-active-procedural-registry" not in prebuild
 
 
 def test_active_registry_wrappers_do_not_branch_on_validator_roles() -> None:
@@ -146,8 +143,8 @@ def test_active_registry_wrappers_do_not_branch_on_validator_roles() -> None:
     assert "auditor mode waits" not in prebuild
 
 
-def test_active_registry_prebuild_wrapper_calls_hidden_cli() -> None:
+def test_active_registry_prebuild_wrapper_uses_app_workdir() -> None:
     prebuild = (ROOT / "scripts" / "lemma-active-registry-prebuild").read_text(encoding="utf-8")
 
     assert 'workdir="${LEMMA_APP_DIR:-/opt/lemma-sn467/app}"' in prebuild
-    assert 'exec "$uv_bin" run lemma tasks warm-active-procedural-registry "$@"' in prebuild
+    assert 'cd "$workdir"' in prebuild

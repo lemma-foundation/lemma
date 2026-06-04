@@ -23,9 +23,7 @@ def activation_status_for(task: LemmaTask) -> ActivationStatus:
     raw = str(task.metadata.get("activation_status") or task.activation_status).strip().lower()
     if raw in {"paid", "curriculum", "benchmark", "quarantine", "rejected"}:
         return raw  # type: ignore[return-value]
-    if task.source_stream == "benchmark_practice":
-        return "benchmark"
-    if task.source_stream == "trivial_curriculum" or task.triviality_status == "trivial_curriculum":
+    if task.triviality_status == "trivial_curriculum":
         return "curriculum"
     return "quarantine"
 

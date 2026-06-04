@@ -45,7 +45,7 @@ def test_prepare_proof_atlas_publish_regenerates_exports_and_docs(tmp_path: Path
         title="Smoke true",
         theorem_name="smoke_true",
         type_expr="True",
-        source_stream="generated",
+        source_stream="human_curated",
         source_name="pytest",
     )
     submission = build_submission(task, solver_hotkey="miner-test", proof_script=_proof())

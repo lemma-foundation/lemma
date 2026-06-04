@@ -277,10 +277,25 @@ def test_current_problem_snapshot_enforces_production_boundary() -> None:
         require_submission_signatures=True,
         require_commit_reveal=True,
         require_strong_proof_identity=True,
+        lean_sandbox_network="none",
+    )
+    fixture_registry = TaskRegistry(
+        schema_version=1,
+        tasks=(
+            make_task(
+                task_id="lemma.test.fixture",
+                title="Fixture",
+                theorem_name="fixture",
+                type_expr="True",
+                source_stream="fixed_fixture",
+                source_name="pytest",
+            ),
+        ),
+        sha256="a" * 64,
     )
 
-    with pytest.raises(RuntimeError, match="LEMMA_TASK_SUPPLY_MODE=procedural"):
-        build_current_problems_snapshot(settings, registry=_registry(), tempo=0)
+    with pytest.raises(RuntimeError, match="real missing-proof tasks"):
+        build_current_problems_snapshot(settings, registry=fixture_registry, tempo=0)
 
 
 def test_refresh_site_current_problems_script_writes_site_json(tmp_path: Path) -> None:

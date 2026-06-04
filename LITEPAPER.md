@@ -143,10 +143,11 @@ Paid tasks must be exact verifier targets with source and license metadata.
 Validators should be able to rebuild the same active pool from the same public
 inputs.
 
-The production-shaped supply path uses deterministic procedural rows generated
-from a pinned source pool, prior accepted records, and chain/drand epoch
-randomness. The goal is to keep active tasks reproducible while preventing a
-static playlist of known tasks.
+The production-shaped supply path uses SHA-pinned registries of real missing
+Lean proof tasks with public source and license metadata. Active windows are
+derived from the pinned registry, frontier settings, public curriculum state,
+and chain/drand epoch randomness. The goal is to keep active tasks reproducible
+without trusting private operator files.
 
 `frontier_depth` is the difficulty proxy. `active_K` is the paid-throughput
 target. A low or zero solve rate should halt frontier advancement instead of

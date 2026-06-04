@@ -1,4 +1,4 @@
-"""Typed task-candidate surfaces for off-chain supply generators."""
+"""Typed task-candidate surfaces for registry ingestion."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from lemma.tasks import LemmaTask, SourceRef, SourceStream
 
 
 class TaskCandidate(BaseModel):
-    """A generated Lean task before paid activation."""
+    """A Lean task row before registry activation metadata is assigned."""
 
     model_config = ConfigDict(extra="forbid")
 

@@ -1,4 +1,4 @@
-"""Source and license provenance helpers for generated task candidates."""
+"""Source and license provenance helpers for task candidates."""
 
 from __future__ import annotations
 

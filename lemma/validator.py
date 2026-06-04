@@ -24,13 +24,10 @@ from lemma.scoring import ScoreResult, UnearnedPolicy, VerificationRecord, score
 from lemma.store import append_jsonl
 from lemma.submissions import LemmaSubmission, validate_submission_for_task
 from lemma.supply.controller import CurriculumTempoRecord
-from lemma.supply.gates import GATE_VERSION
-from lemma.supply.operator_bundle import OPERATOR_BUNDLE_VERSION, procedural_operator_bundle_hash
 from lemma.supply.queue import initial_active_pool
-from lemma.supply.slot_weight import slot_weight_receipt_for_kernel_dependencies, slot_weight_receipt_for_task
-from lemma.supply.source_pool import SOURCE_SAMPLING_VERSION
+from lemma.supply.slot_weight import slot_weight_receipt_for_kernel_dependencies
 from lemma.task_activation import task_reward_eligibility, task_slot_weight
-from lemma.tasks import LemmaTask, TaskRegistry, fetch_task_registry, load_task_registry, task_registry_from_tasks
+from lemma.tasks import LemmaTask, TaskRegistry, fetch_task_registry, load_task_registry
 from lemma.verifiers.lean import verify_result_from_adapter_result
 from lemma.verifiers.registry import get_verifier
 
@@ -39,7 +36,6 @@ SubmitWeights = Callable[[LemmaSettings, dict[str, float]], ChainWeightSubmissio
 SubmitCommitment = Callable[[LemmaSettings, str], ChainCommitmentSubmission]
 ChainAuthenticatedKey = tuple[str, str, str]
 AcceptedEntry = tuple[LemmaTask, LemmaSubmission, VerifyResult, VerificationRecord]
-_INGREDIENT_REGISTRY_TOP_LEVEL_KEYS = frozenset({"schema_version", "tasks", "signed_by", "signature", "created_at"})
 
 
 class ValidatorRunSummary(BaseModel):
@@ -125,7 +121,7 @@ def resolve_active_epoch_randomness(settings: LemmaSettings, *, tempo: int) -> s
 
 
 def active_epoch_seed(settings: LemmaSettings, *, tempo: int, epoch_randomness: str | None = None) -> str:
-    """Return the seed that paid procedural tasks must be generated from."""
+    """Return the public epoch seed used for active task selection."""
     if settings.protocol_mode == "production" and settings.active_seed_mode != "epoch_randomness":
         raise RuntimeError("production mode requires LEMMA_ACTIVE_SEED_MODE=epoch_randomness")
     if settings.active_seed_mode == "static":
@@ -179,22 +175,13 @@ def active_epoch_randomness_sha256(
 def task_registry_for_validation(settings: LemmaSettings, *, tempo: int) -> TaskRegistry:
     """Load the active task registry for the configured supply mode."""
     settings = curriculum_controlled_settings(settings, tempo=tempo)
-    if settings.protocol_mode == "production" and settings.task_supply_mode not in {"procedural", "ingredient"}:
-        raise RuntimeError("production mode requires LEMMA_TASK_SUPPLY_MODE=procedural or ingredient")
-    if settings.task_supply_mode == "registry":
-        return fetch_task_registry(
-            settings,
-            verify_signature=settings.verify_registry_signatures,
-        )
-    if settings.task_supply_mode == "ingredient":
-        cached = cached_active_registry_for_tempo(settings, tempo=tempo)
-        if cached is not None:
-            return cached
-        raise RuntimeError("ingredient supply requires a current active-registry cache")
     cached = cached_active_registry_for_tempo(settings, tempo=tempo)
     if cached is not None:
         return cached
-    return _procedural_registry_for_tempo(settings, tempo=tempo)
+    return fetch_task_registry(
+        settings,
+        verify_signature=settings.verify_registry_signatures,
+    )
 
 
 def active_registry_cache_path(settings: LemmaSettings, *, tempo: int) -> Path | None:
@@ -230,24 +217,12 @@ def cached_active_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> 
     raw = _read_active_registry_cache_bytes(settings, path)
     if raw is None:
         return None
-    ingredient_production = settings.protocol_mode == "production" and settings.task_supply_mode == "ingredient"
-    if ingredient_production and _ingredient_registry_unknown_top_level_keys(raw):
-        if settings.active_registry_json is not None:
-            raise RuntimeError("active registry file violates production ingredient invariant")
-        return None
     registry = load_task_registry(raw)
     curriculum_state_replay = (
         settings.curriculum_retarget_enabled
         and settings.curriculum_state_jsonl is not None
         and settings.curriculum_state_jsonl.exists()
     )
-    if (
-        ingredient_production
-        and active_registry_cache_stale(registry, settings)
-    ):
-        if settings.active_registry_json is not None:
-            raise RuntimeError("active registry file violates production ingredient invariant")
-        return None
     if (
         settings.active_registry_json is None
         and (settings.protocol_mode == "production" or curriculum_state_replay)
@@ -257,93 +232,12 @@ def cached_active_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> 
     return registry
 
 
-def _ingredient_registry_unknown_top_level_keys(raw: bytes) -> tuple[str, ...]:
-    try:
-        payload = json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        return ()
-    if not isinstance(payload, dict):
-        return ()
-    return tuple(sorted(set(payload) - _INGREDIENT_REGISTRY_TOP_LEVEL_KEYS))
-
-
 def active_registry_cache_stale(registry: TaskRegistry, settings: LemmaSettings) -> bool:
-    if settings.task_supply_mode == "ingredient" and settings.protocol_mode == "production":
-        try:
-            enforce_production_invariants(settings, registry)
-        except RuntimeError:
-            return True
-        return False
-
-    expected_count = max(settings.active_task_count, settings.procedural_candidate_count or 0)
-    target_counts = [
-        int(task.metadata["procedural_generation_target_count"])
-        for task in registry.tasks
-        if isinstance(task.metadata.get("procedural_generation_target_count"), int)
-    ]
-    if len(registry.tasks) != expected_count:
-        if len(registry.tasks) > expected_count or len(target_counts) != len(registry.tasks):
-            return True
-        if len(registry.tasks) < _partial_generation_min_count(expected_count):
-            return True
-        if set(target_counts) != {expected_count}:
-            return True
+    if len(registry.tasks) != settings.active_task_count:
+        return True
     if any(task.frontier_depth != settings.frontier_depth for task in registry.tasks):
         return True
-    expected_source = (settings.procedural_source_sha256_expected or "").strip().lower().removeprefix("sha256:")
-    if expected_source and {str(task.metadata.get("source_pool_hash") or "") for task in registry.tasks} != {
-        expected_source
-    }:
-        return True
-    procedural_tasks = [
-        task
-        for task in registry.tasks
-        if task.source_stream == "procedural" or task.metadata.get("supply_mode") == "procedural"
-    ]
-    if procedural_tasks:
-        expected_operator = (
-            (settings.procedural_operator_bundle_sha256_expected or "").strip().lower().removeprefix("sha256:")
-            or procedural_operator_bundle_hash()
-        )
-        if {str(task.metadata.get("operator_bundle_hash") or "") for task in procedural_tasks} != {expected_operator}:
-            return True
-        operator_versions = {
-            str(task.metadata.get("operator_bundle_version") or "") for task in procedural_tasks
-        }
-        if operator_versions != {OPERATOR_BUNDLE_VERSION}:
-            return True
-    history_hashes = {
-        str(task.metadata.get("yield_history_sha256") or "")
-        for task in registry.tasks
-        if "yield_history_sha256" in task.metadata
-    }
-    if settings.procedural_yield_history_jsonl is not None:
-        from lemma.supply.procedural import read_yield_history
-
-        history = read_yield_history(settings.procedural_yield_history_jsonl)
-        expected_history = (
-            settings.procedural_yield_history_sha256_expected.strip().lower().removeprefix("sha256:")
-            or history.sha256
-        )
-        if history_hashes != {expected_history}:
-            return True
-    elif history_hashes:
-        return True
-    gate_versions = {
-        str(task.metadata.get("gate_version") or "") for task in procedural_tasks
-    }
-    if gate_versions and gate_versions != {GATE_VERSION}:
-        return True
-    sampling_versions = {
-        str(task.metadata.get("source_sampling_version") or "") for task in procedural_tasks
-    }
-    if sampling_versions and sampling_versions != {SOURCE_SAMPLING_VERSION}:
-        return True
     return False
-
-
-def _partial_generation_min_count(expected_count: int) -> int:
-    return max(1, (expected_count + 1) // 2)
 
 
 def curriculum_controlled_settings(settings: LemmaSettings, *, tempo: int) -> LemmaSettings:
@@ -379,194 +273,6 @@ def curriculum_controlled_settings(settings: LemmaSettings, *, tempo: int) -> Le
             "frontier_depth": latest.frontier_depth,
         }
     )
-
-
-def _procedural_registry_for_tempo(settings: LemmaSettings, *, tempo: int) -> TaskRegistry:
-    from lemma.supply.gates import LeanProceduralGateRunner
-    from lemma.supply.import_graph import empty_import_graph, read_import_graph
-    from lemma.supply.mathlib_snapshot import candidates_from_jsonl as mathlib_candidates_from_jsonl
-    from lemma.supply.mutation import StructuralMutationEngine
-    from lemma.supply.novelty import empty_novelty_cache, read_novelty_cache
-    from lemma.supply.procedural import (
-        build_procedural_registry_tasks,
-        corpus_sources_from_dir,
-        generate_depth2_candidates,
-        source_pool_hash,
-    )
-    from lemma.supply.triviality_budget import triviality_budget_receipt_for_settings
-
-    if settings.procedural_source_jsonl is None:
-        raise RuntimeError("procedural supply requires LEMMA_PROCEDURAL_SOURCE_JSONL")
-    if settings.protocol_mode == "production" and settings.procedural_novelty_cache_jsonl is None:
-        raise RuntimeError("production procedural supply requires LEMMA_PROCEDURAL_NOVELTY_CACHE_JSONL")
-    if settings.protocol_mode == "production" and settings.procedural_import_graph_jsonl is None:
-        raise RuntimeError("production procedural supply requires LEMMA_PROCEDURAL_IMPORT_GRAPH_JSONL")
-    if settings.protocol_mode == "production":
-        if settings.procedural_prior_corpus_dir is None:
-            raise RuntimeError("production procedural supply requires LEMMA_PROCEDURAL_PRIOR_CORPUS_DIR")
-        if not settings.procedural_prior_corpus_dir.is_dir():
-            raise RuntimeError("LEMMA_PROCEDURAL_PRIOR_CORPUS_DIR must be a public substrate directory")
-    source_limit = settings.procedural_source_limit or None
-    sources = mathlib_candidates_from_jsonl(settings.procedural_source_jsonl, limit=source_limit)
-    if settings.procedural_prior_corpus_dir is not None:
-        sources = sources + corpus_sources_from_dir(
-            settings.procedural_prior_corpus_dir,
-            before_tempo=tempo,
-            citation_window_tempos=settings.procedural_citation_window_tempos,
-        )
-    actual_source_hash = source_pool_hash(sources)
-    expected_source_hash = (settings.procedural_source_sha256_expected or "").strip().lower().removeprefix("sha256:")
-    if expected_source_hash and actual_source_hash != expected_source_hash:
-        raise RuntimeError(
-            f"procedural source pool sha256 mismatch: got {actual_source_hash}, expected {expected_source_hash}"
-        )
-    epoch_randomness = (
-        resolve_active_epoch_randomness(settings, tempo=tempo)
-        if settings.active_seed_mode == "epoch_randomness"
-        else settings.active_queue_seed
-    )
-    generation_seed = active_epoch_seed(settings, tempo=tempo, epoch_randomness=epoch_randomness)
-    count = max(settings.active_task_count, settings.procedural_candidate_count or 0)
-    triviality_budget = triviality_budget_receipt_for_settings(settings, tempo=tempo)
-    novelty_cache = (
-        read_novelty_cache(settings.procedural_novelty_cache_jsonl)
-        if settings.procedural_novelty_cache_jsonl is not None
-        else empty_novelty_cache()
-    )
-    import_graph = (
-        read_import_graph(settings.procedural_import_graph_jsonl)
-        if settings.procedural_import_graph_jsonl is not None
-        else empty_import_graph()
-    )
-    yield_history = None
-    if settings.procedural_yield_history_jsonl is not None:
-        from lemma.supply.procedural import read_yield_history
-
-        yield_history = read_yield_history(settings.procedural_yield_history_jsonl)
-        expected_yield_history = (
-            settings.procedural_yield_history_sha256_expected.strip().lower().removeprefix("sha256:")
-        )
-        if expected_yield_history and yield_history.sha256 != expected_yield_history:
-            raise RuntimeError(
-                f"procedural yield history sha256 mismatch: got {yield_history.sha256}, "
-                f"expected {expected_yield_history}"
-            )
-    candidates = generate_depth2_candidates(
-        sources,
-        generation_seed=generation_seed,
-        epoch_randomness=epoch_randomness,
-        count=count,
-        tempo=tempo,
-        allow_partial=settings.protocol_mode == "production",
-        min_count=_partial_generation_min_count(count),
-        max_queue_depth=settings.frontier_depth,
-        citation_alpha=settings.procedural_citation_alpha,
-        citation_weight_cap=settings.procedural_citation_weight_cap,
-        citation_window_tempos=settings.procedural_citation_window_tempos,
-        yield_history=yield_history,
-        import_graph=import_graph,
-        mutation_engine=StructuralMutationEngine() if settings.protocol_mode == "production" else None,
-        gate_runner=(
-            LeanProceduralGateRunner(
-                settings,
-                triviality_budget_receipt=triviality_budget,
-                novelty_cache=novelty_cache,
-                import_graph=import_graph,
-            )
-            if settings.protocol_mode == "production"
-            else None
-        ),
-        generation_workers=(
-            None if settings.procedural_generation_workers <= 0 else settings.procedural_generation_workers
-        ),
-    )
-    build = build_procedural_registry_tasks(candidates, seed=generation_seed, frontier_depth=settings.frontier_depth)
-    if build.rejected:
-        detail = ", ".join(f"{item.id}:{item.reason}" for item in build.rejected[:5])
-        raise RuntimeError(f"procedural supply rejected generated candidates: {detail}")
-    return task_registry_from_tasks(build.tasks)
-
-
-def _enforce_epoch_generated_paid_tasks(
-    tasks: Sequence[LemmaTask], expected_seed: str, epoch_randomness: str
-) -> None:
-    try:
-        epoch_fields = json.loads(epoch_randomness)
-    except json.JSONDecodeError:
-        epoch_fields = {}
-    expected_anchor_block = epoch_fields.get("anchor_block") if isinstance(epoch_fields, dict) else None
-    expected_drand_round = epoch_fields.get("drand_round") if isinstance(epoch_fields, dict) else None
-    mismatches: list[str] = []
-    for task in tasks:
-        if not task_reward_eligibility(task).eligible:
-            continue
-        metadata = task.metadata
-        if metadata.get("generation_seed") != expected_seed:
-            mismatches.append(f"{task.id}:generation_seed")
-        if isinstance(expected_anchor_block, int) and metadata.get("anchor_block") != expected_anchor_block:
-            mismatches.append(f"{task.id}:anchor_block")
-        if isinstance(expected_drand_round, int) and metadata.get("drand_round") != expected_drand_round:
-            mismatches.append(f"{task.id}:drand_round")
-    if mismatches:
-        detail = ", ".join(mismatches[:5])
-        raise RuntimeError(f"production paid tasks must use active epoch randomness: {detail}")
-
-
-def _enforce_epoch_selected_ingredient_tasks(
-    tasks: Sequence[LemmaTask],
-    settings: LemmaSettings,
-    *,
-    tempo: int,
-    epoch_randomness: str,
-) -> None:
-    from lemma.supply.ingredients import (
-        ingredient_challenge_seed_sha256,
-        ingredient_challenge_slot_seed_sha256,
-        text_sha256,
-    )
-
-    epoch_seed = active_epoch_seed(settings, tempo=tempo, epoch_randomness=epoch_randomness)
-    mismatches: list[str] = []
-    for task in tasks:
-        if not task_reward_eligibility(task).eligible:
-            continue
-        metadata = task.metadata
-        if metadata.get("tempo") != tempo:
-            mismatches.append(f"{task.id}:tempo")
-            continue
-        if metadata.get("epoch_seed_sha256") != text_sha256(epoch_seed):
-            mismatches.append(f"{task.id}:epoch_seed_sha256")
-            continue
-        active_k = metadata.get("active_K")
-        if not isinstance(active_k, int) or isinstance(active_k, bool):
-            mismatches.append(f"{task.id}:active_K")
-            continue
-        queue_position = task.queue_position
-        if queue_position is None:
-            mismatches.append(f"{task.id}:queue_position")
-            continue
-        try:
-            challenge_seed = ingredient_challenge_seed_sha256(
-                netuid=settings.netuid,
-                tempo=tempo,
-                epoch_seed=epoch_seed,
-                ingredient_manifest_sha256=str(metadata.get("ingredient_manifest_sha256") or ""),
-                recipe_bundle_sha256=str(metadata.get("recipe_bundle_sha256") or ""),
-                difficulty_state_sha256=str(metadata.get("difficulty_state_sha256") or ""),
-            )
-            expected_selection_seed = ingredient_challenge_slot_seed_sha256(
-                challenge_seed_sha256=challenge_seed,
-                queue_position=queue_position,
-                active_K=active_k,
-            )
-        except ValueError:
-            mismatches.append(f"{task.id}:selection_seed_sha256")
-            continue
-        if metadata.get("selection_seed_sha256") != expected_selection_seed:
-            mismatches.append(f"{task.id}:selection_seed_sha256")
-    if mismatches:
-        detail = ", ".join(mismatches[:5])
-        raise RuntimeError(f"production ingredient tasks must use active epoch randomness: {detail}")
 
 
 def _weight_receipt(
@@ -658,28 +364,11 @@ def active_tasks_for_validation(
         else None
     )
     if settings.protocol_mode == "production":
-        if settings.task_supply_mode not in {"procedural", "ingredient"}:
-            raise RuntimeError("production mode requires LEMMA_TASK_SUPPLY_MODE=procedural or ingredient")
+        if settings.task_supply_mode != "registry":
+            raise RuntimeError("production mode requires LEMMA_TASK_SUPPLY_MODE=registry")
         if epoch_randomness is None:
             raise RuntimeError("production mode requires LEMMA_ACTIVE_SEED_MODE=epoch_randomness")
-        if settings.task_supply_mode == "procedural":
-            _enforce_epoch_generated_paid_tasks(
-                registry.tasks,
-                active_epoch_seed(settings, tempo=active_tempo, epoch_randomness=epoch_randomness),
-                epoch_randomness,
-            )
-        if settings.task_supply_mode == "ingredient":
-            if len(registry.tasks) != settings.active_task_count or active_k != settings.active_task_count:
-                raise RuntimeError("production ingredient mode active task count mismatch")
-            _enforce_epoch_selected_ingredient_tasks(
-                registry.tasks,
-                settings,
-                tempo=active_tempo,
-                epoch_randomness=epoch_randomness,
-            )
-            cached_registry = task_registry_for_validation(settings, tempo=active_tempo)
-            if registry != cached_registry:
-                raise RuntimeError("production ingredient registry must match current active-registry cache")
+        enforce_production_invariants(settings, registry)
     if active_k == 0:
         return ()
     pool = initial_active_pool(
@@ -1001,12 +690,7 @@ def _require_cid_publish_for_production_commitment(settings: LemmaSettings) -> N
 
 
 def _active_slot_weights(settings: LemmaSettings, active_tasks: Sequence[LemmaTask]) -> dict[str, float]:
-    if settings.protocol_mode != "production" or settings.procedural_import_graph_jsonl is None:
-        return {task.id: task_slot_weight(task) for task in active_tasks}
-    from lemma.supply.import_graph import read_import_graph
-
-    import_graph = read_import_graph(settings.procedural_import_graph_jsonl)
-    return {task.id: slot_weight_receipt_for_task(task, import_graph=import_graph).weight for task in active_tasks}
+    return {task.id: task_slot_weight(task) for task in active_tasks}
 
 
 def _verified_slot_weights(
@@ -1072,7 +756,7 @@ def _optional_position(value: int | None) -> int:
 
 
 def _rank_live_submissions_by_commit(settings: LemmaSettings) -> bool:
-    return settings.protocol_mode == "production" and settings.task_supply_mode == "ingredient"
+    return settings.protocol_mode == "production"
 
 
 def _stop_after_first_live_winner(_settings: LemmaSettings) -> bool:

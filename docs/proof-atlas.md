@@ -1,13 +1,13 @@
 # Lemma Proof Atlas
 
-The Lemma Proof Atlas is the public data repository for the subnet.
+The Lemma Proof Atlas is the public data repository for accepted proof work and replay artifacts.
 
-It combines two layers that used to be described separately:
+It contains:
 
 - accepted proofs: Lean theorem tasks solved by miners and verified by validators;
-- generated graph data: facts, definitions, dependency records, recipes, policies, and reports used to build future tasks.
-
-Public copy should call this `Data` or `Proof Atlas`. Avoid presenting `corpus` or `ingredients` as product concepts. In code, `CorpusRow` and ingredient manifests may still appear as internal schema names, but the public artifact is one atlas.
+- task registries: SHA-pinned active-task registry snapshots;
+- exports: compact downstream JSONL views;
+- canonical storage artifacts: active-pool, accepted-proof, curriculum, and commitment digests.
 
 ## Repository Layout
 
@@ -16,24 +16,13 @@ The public repo is `lemma-foundation/lemma-proof-atlas`.
 ```text
 proofs/<netuid>/accepted/        accepted proof JSONL rows by epoch
 proofs/<netuid>/index.json       accepted proof row index
-tasks/<netuid>/registries/       pinned active-task registries by hash
-tasks/<netuid>/bundles/          replayable generated task artifact bundles
-graph/mathlib/                   extracted Mathlib facts, definitions, and compatibility graph
-graph/<netuid>/roots/            content-addressed generated graph roots
-generation/                      task recipes, policies, reports, and soundness templates
+tasks/<netuid>/registries/       pinned task registries by hash
 exports/<netuid>/                compact downstream JSONL exports
 canonical/<netuid>/              active-pool, accepted-proof, curriculum, and commitment artifacts
 MANIFEST.sha256                  hash checklist for public snapshot files
 ```
 
-The boundary is simple:
-
-```text
-proofs/ = what miners proved and validators accepted
-graph/ + generation/ = reproducible task-generation view of public proof data
-```
-
-Accepted proof rows are canonical network output. Graph and generation files are derived public artifacts. They should be reproducible from Mathlib pins, accepted Lemma proof rows, recipes, and policies.
+Accepted proof rows are canonical network output. Failed submissions, local verifier logs, and operator state are not Proof Atlas data.
 
 ## Publishing
 
@@ -52,12 +41,10 @@ uv run python scripts/publish_proof_atlas_snapshot.py \
   --sync-proof-dir "$LEMMA_CORPUS_OUTPUT_DIR" \
   --sync-canonical-dir "$LEMMA_CANONICAL_OUTPUT_DIR/sn${BT_NETUID}" \
   --sync-registry-cache-dir "$LEMMA_ACTIVE_REGISTRY_CACHE_DIR" \
-  --sync-graph-root-dir "$LEMMA_INGREDIENT_ROOT_DIR" \
-  --sync-task-bundle-dir "$LEMMA_INGREDIENT_TASK_BUNDLE_DIR" \
   --push-repo
 ```
 
-`LEMMA_CORPUS_OUTPUT_DIR` is still the current internal validator setting for accepted proof JSONL output. Treat the name as legacy internal plumbing; it writes the `proofs/<netuid>/accepted/` layer in the Proof Atlas.
+`LEMMA_CORPUS_OUTPUT_DIR` is the current internal validator setting for accepted proof JSONL output. Treat the name as legacy internal plumbing; it writes the `proofs/<netuid>/accepted/` layer in the Proof Atlas.
 
 For a no-upload preview:
 
@@ -65,11 +52,7 @@ For a no-upload preview:
 uv run python scripts/publish_proof_atlas_snapshot.py --repo ~/lemma-proof-atlas --netuid sn467 --dry-run
 ```
 
-The publisher regenerates `proofs/<netuid>/index.json`, exports, `canonical/<netuid>/storage-index.json`, and `MANIFEST.sha256`; uploads a timestamped Hippius snapshot; creates an immutable GitHub release mirror; and can sync a compact Hugging Face dataset mirror containing the export JSONL, benchmark index, storage index, and manifest. It defaults to:
-
-- Hippius bucket: `lemma-proof-atlas-sn467`
-- GitHub repo: `lemma-foundation/lemma-proof-atlas`
-- resolver label: `hippius-s3-arion`
+The publisher regenerates `proofs/<netuid>/index.json`, exports, `canonical/<netuid>/storage-index.json`, and `MANIFEST.sha256`; uploads a timestamped Hippius snapshot; creates an immutable GitHub release mirror; and can sync a compact Hugging Face dataset mirror containing the export JSONL, benchmark index, storage index, and manifest.
 
 Credentials must stay in deployment environment variables, never in repo files.
 
@@ -84,25 +67,7 @@ canonical/sn467/tempos/tempo-000001/
 canonical/sn467/commitments/tempo-000001.json
 ```
 
-`manifest.json` records per-entry SHA256 hashes and the accepted-proof Merkle root. `commitments/tempo-*.json` records the compact payload committed on chain. When IPFS publishing is configured, that payload binds the active-pool CID, accepted-proof CID, their directory hashes, and the accepted Merkle root.
-
-To anchor a published storage root on Bittensor, first dry-run the latest commitment:
-
-```bash
-uv run python scripts/publish_chain_commitment.py --repo ~/lemma-proof-atlas --netuid sn467 --bt-netuid 467
-```
-
-Submit only after checking the payload:
-
-```bash
-uv run python scripts/publish_chain_commitment.py --repo ~/lemma-proof-atlas --netuid sn467 --bt-netuid 467 --submit
-```
-
-A mirror-only publisher can verify readback without local wallet files:
-
-```bash
-uv run python scripts/publish_chain_commitment.py --repo ~/lemma-proof-atlas --netuid sn467 --bt-netuid 467 --readback --hotkey <validator-hotkey-address>
-```
+`manifest.json` records per-entry SHA256 hashes and the accepted-proof Merkle root. `commitments/tempo-*.json` records the compact payload committed on chain.
 
 ## Accepted Proof Rows
 
@@ -126,20 +91,6 @@ Minimal meaning:
 The full row also carries task identity, Lean imports, toolchain and Mathlib pins, proof hashes, solver and validator hotkeys, difficulty metadata, dependency metadata, graph nodes, and quality checks.
 
 Failed proofs are not accepted proof rows. Valid alternate proofs can be stored with `rewarded: false`.
-
-## Graph And Generation Data
-
-The graph layer is the reusable structure extracted from Mathlib and accepted Lemma proofs:
-
-- facts and definitions;
-- compatibility edges;
-- dependency records;
-- source theorem and source lemma rows;
-- quality reports;
-- recipe selectors and policy files;
-- soundness templates used by generated tasks.
-
-This is what earlier implementation notes called `ingredients`. Keep that term for schema internals only. Public docs should call it the proof graph or generation graph.
 
 ## Replay And Exports
 

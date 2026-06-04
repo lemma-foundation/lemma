@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from lemma.task_supply import deterministic_queue, eligible_tasks, generated_tasks, make_task
+from lemma.task_supply import deterministic_queue, eligible_tasks, fixed_fixture_tasks, make_task
 
 
-def test_generated_tasks_have_source_license_and_hashes() -> None:
-    tasks = generated_tasks(2)
+def test_fixed_fixture_tasks_have_source_license_and_hashes() -> None:
+    tasks = fixed_fixture_tasks(2)
 
     assert len(tasks) == 2
+    assert all(task.source_stream == "fixed_fixture" for task in tasks)
+    assert all(not task.id.startswith("lemma.generated.") for task in tasks)
     assert all(task.source_license for task in tasks)
     assert all(len(task.target_sha256) == 64 for task in tasks)
     assert all(task.queue_depth >= 0 for task in tasks)

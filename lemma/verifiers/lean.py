@@ -133,7 +133,7 @@ def _legacy_task_from_v2(task: dict[str, Any]) -> LemmaTask:
         id=str(task["task_id"]),
         task_version=int(metadata.get("task_version") or 1),
         title=str(metadata.get("title") or task["task_id"]),
-        source_stream=str(task.get("source") or "generated"),  # type: ignore[arg-type]
+        source_stream=str(task.get("source") or "human_curated"),  # type: ignore[arg-type]
         source_ref=SourceRef.model_validate(source_ref_data),
         source_license=str(metadata.get("source_license") or "CC-BY-4.0"),
         imports=tuple(prompt.get("imports") or ("Mathlib",)),

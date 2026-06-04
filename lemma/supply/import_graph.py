@@ -1,4 +1,4 @@
-"""Public import graph used by procedural slot-weight receipts."""
+"""Public import graph used by slot-weight receipts."""
 
 from __future__ import annotations
 

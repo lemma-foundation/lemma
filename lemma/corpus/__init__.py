@@ -176,16 +176,21 @@ def _public_metadata_value(value: Any) -> Any | None:
 
 
 def _public_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
-    blocked_keys = ("path", "file", "dir", "log", "workspace", "secret", "token", "key", "host", "ip", "ssh")
     out: dict[str, Any] = {}
     for key, value in metadata.items():
-        lower = key.lower()
-        if any(part in lower for part in blocked_keys):
+        if _private_metadata_key(key):
             continue
         public_value = _public_metadata_value(value)
         if public_value is not None:
             out[key] = public_value
     return out
+
+
+def _private_metadata_key(key: str) -> bool:
+    lower = key.lower()
+    if any(part in lower for part in ("path", "file", "dir", "log", "workspace", "secret", "token", "host", "ssh")):
+        return True
+    return any(part in {"key", "ip"} for part in re.split(r"[^a-z0-9]+", lower))
 
 
 def build_corpus_row(

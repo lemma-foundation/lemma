@@ -15,24 +15,12 @@ import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from lemma.corpus.storage import build_storage_index  # noqa: E402
-from lemma.supply.ingredients import (  # noqa: E402
-    INGREDIENT_MANIFEST_COMPONENT_PATHS,
-    INGREDIENT_RECIPE_ARTIFACT_PATHS,
-    INGREDIENT_REPOSITORY_REPORT_PATHS,
-    IngredientManifest,
-    IngredientTaskArtifactManifest,
-    ingredient_manifest_bytes,
-    ingredient_manifest_component_hashes,
-    ingredient_manifest_component_schema_counts,
-    ingredient_recipe_artifact_hashes,
-    ingredient_repository_report_hashes,
-    ingredient_root_mathlib_commit,
-)
 from lemma.tasks import load_task_registry  # noqa: E402
 from scripts.prepare_proof_atlas_publish import prepare  # noqa: E402
 
@@ -47,7 +35,6 @@ LEAK_PATTERN = re.compile(
     re.IGNORECASE,
 )
 EPOCH_FILE_RE = re.compile(r"epoch-\d{6}\.jsonl$")
-NETUID_RE = re.compile(r"(?:sn)?(\d+)")
 
 
 def snapshot_id(now: datetime | None = None) -> str:
@@ -64,10 +51,6 @@ def public_dirs(repo: Path, netuid: str) -> tuple[tuple[str, Path], ...]:
     return (
         (f"proofs/{netuid}", repo / "proofs" / netuid),
         (f"tasks/{netuid}/registries", repo / "tasks" / netuid / "registries"),
-        (f"tasks/{netuid}/bundles", repo / "tasks" / netuid / "bundles"),
-        (f"graph/{netuid}/roots", repo / "graph" / netuid / "roots"),
-        ("graph/mathlib", repo / "graph" / "mathlib"),
-        ("generation", repo / "generation"),
         (f"exports/{netuid}", repo / "exports" / netuid),
         (f"canonical/{netuid}", repo / "canonical" / netuid),
     )
@@ -102,117 +85,6 @@ def _copy_tree_contents(source: Path, target: Path) -> int:
     return copied
 
 
-def _netuid_number(netuid: str) -> int | None:
-    match = NETUID_RE.fullmatch(netuid)
-    return int(match.group(1)) if match else None
-
-
-def _regular_file(path: Path, label: str) -> None:
-    if path.is_symlink() or not path.is_file():
-        raise SystemExit(f"{label} path invalid: {path}")
-
-
-def _copy_task_bundle(source: Path, target: Path, netuid: str) -> tuple[int, dict[str, object]]:
-    if source.is_symlink() or not source.is_dir():
-        raise SystemExit(f"task bundle directory invalid: {source}")
-    manifest_path = source / "artifact-manifest.json"
-    _regular_file(manifest_path, "task artifact manifest")
-    raw_manifest = manifest_path.read_bytes()
-    manifest = IngredientTaskArtifactManifest.model_validate_json(raw_manifest)
-    expected_netuid = _netuid_number(netuid)
-    if expected_netuid is not None and manifest.netuid != expected_netuid:
-        raise SystemExit("task bundle netuid mismatch")
-
-    artifact_manifest_sha256 = hashlib.sha256(raw_manifest).hexdigest()
-    bundle_target = target / artifact_manifest_sha256
-    bundle_target.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(manifest_path, bundle_target / "artifact-manifest.json")
-    copied = 1
-    for ref in manifest.artifacts.model_dump(mode="json").values():
-        path = source / ref["path"]
-        _regular_file(path, "task bundle artifact")
-        raw = path.read_bytes()
-        if hashlib.sha256(raw).hexdigest() != ref["sha256"]:
-            raise SystemExit(f"task bundle artifact sha256 mismatch: {ref['path']}")
-        shutil.copy2(path, bundle_target / ref["path"])
-        copied += 1
-
-    row = {
-        "active_registry_sha256": manifest.artifacts.active_registry.sha256,
-        "active_task_id": manifest.active_task_id,
-        "artifact_manifest_sha256": artifact_manifest_sha256,
-        "bundle_path": f"{artifact_manifest_sha256}/",
-        "challenge_seed_sha256": manifest.challenge_seed_sha256,
-        "difficulty_lane": manifest.difficulty_lane,
-        "generation_receipt_sha256": manifest.generation_receipt_sha256,
-        "ingredient_manifest_sha256": manifest.ingredient_manifest_sha256,
-        "path": f"{artifact_manifest_sha256}/artifact-manifest.json",
-        "selected_recipe_id": manifest.selected_recipe_id,
-        "tempo": manifest.tempo,
-    }
-    return copied, row
-
-
-def _copy_public_relative_file(source: Path, target: Path, relative_path: str) -> int:
-    path = source / relative_path
-    _regular_file(path, "graph root artifact")
-    destination = target / relative_path
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(path, destination)
-    return 1
-
-
-def _copy_graph_root(source: Path, target: Path) -> tuple[int, dict[str, object]]:
-    if source.is_symlink() or not source.is_dir():
-        raise SystemExit(f"graph root directory invalid: {source}")
-    manifest_path = source / "manifest.json"
-    _regular_file(manifest_path, "graph manifest")
-    raw_manifest = manifest_path.read_bytes()
-    manifest = IngredientManifest.model_validate_json(raw_manifest)
-    if raw_manifest != ingredient_manifest_bytes(manifest):
-        raise SystemExit("graph manifest noncanonical")
-    if ingredient_root_mathlib_commit(source) != manifest.mathlib_commit:
-        raise SystemExit("graph root mathlib commit mismatch")
-    component_hashes = ingredient_manifest_component_hashes(source)
-    for field, expected in manifest.model_dump(mode="json").items():
-        if field.endswith("_sha256") and field in component_hashes and component_hashes[field] != expected:
-            raise SystemExit(f"graph manifest component sha256 mismatch: {field}")
-    counts = ingredient_manifest_component_schema_counts(source, mathlib_commit=manifest.mathlib_commit)
-    ingredient_repository_report_hashes(
-        source,
-        component_schema_counts=counts,
-        mathlib_commit=manifest.mathlib_commit,
-    )
-    ingredient_recipe_artifact_hashes(source)
-
-    ingredient_manifest_sha256 = hashlib.sha256(raw_manifest).hexdigest()
-    root_target = target / ingredient_manifest_sha256
-    root_target.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(manifest_path, root_target / "manifest.json")
-    copied = 1
-    copied += _copy_public_relative_file(source, root_target, "mathlib_commit.txt")
-    for relative_path in INGREDIENT_MANIFEST_COMPONENT_PATHS.values():
-        copied += _copy_public_relative_file(source, root_target, relative_path)
-    for relative_path in INGREDIENT_REPOSITORY_REPORT_PATHS.values():
-        copied += _copy_public_relative_file(source, root_target, relative_path)
-    for relative_path in INGREDIENT_RECIPE_ARTIFACT_PATHS.values():
-        copied += _copy_public_relative_file(source, root_target, relative_path)
-    template_dir = source / "recipes" / "soundness_templates"
-    for path in sorted(template_dir.glob("*.lean")):
-        _regular_file(path, "graph soundness template")
-        relative_path = path.relative_to(source).as_posix()
-        copied += _copy_public_relative_file(source, root_target, relative_path)
-
-    row = {
-        "ingredient_manifest_sha256": ingredient_manifest_sha256,
-        "lemma_corpus_snapshot_sha256": manifest.lemma_corpus_snapshot_sha256,
-        "mathlib_commit": manifest.mathlib_commit,
-        "path": f"{ingredient_manifest_sha256}/manifest.json",
-        "recipe_bundle_sha256": manifest.recipe_bundle_sha256,
-    }
-    return copied, row
-
-
 def sync_public_inputs(
     repo: Path,
     netuid: str,
@@ -220,8 +92,6 @@ def sync_public_inputs(
     proof_dir: Path | None = None,
     canonical_dir: Path | None = None,
     registry_cache_dir: Path | None = None,
-    graph_root_dirs: tuple[Path, ...] = (),
-    task_bundle_dirs: tuple[Path, ...] = (),
 ) -> dict[str, int]:
     for _name, directory in public_dirs(repo, netuid):
         directory.mkdir(parents=True, exist_ok=True)
@@ -229,8 +99,6 @@ def sync_public_inputs(
         "proof_files": 0,
         "canonical_files": 0,
         "registry_files": 0,
-        "graph_root_files": 0,
-        "task_bundle_files": 0,
     }
     if proof_dir is not None:
         target = repo / "proofs" / netuid / "accepted"
@@ -273,58 +141,6 @@ def sync_public_inputs(
             encoding="utf-8",
         )
         (target / "current-index.json").write_text(index_path.read_text(encoding="utf-8"), encoding="utf-8")
-    if graph_root_dirs:
-        target = repo / "graph" / netuid / "roots"
-        index_path = target / "index.json"
-        graph_roots: dict[str, object] = {}
-        if index_path.is_file():
-            existing_index = json.loads(index_path.read_text(encoding="utf-8"))
-            existing_roots = existing_index.get("graph_roots") if isinstance(existing_index, dict) else None
-            if isinstance(existing_roots, dict):
-                graph_roots.update(existing_roots)
-        for graph_root in graph_root_dirs:
-            copied, row = _copy_graph_root(graph_root, target)
-            ingredient_manifest_sha256 = str(row["ingredient_manifest_sha256"])
-            graph_roots.setdefault(ingredient_manifest_sha256, row)
-            counts["graph_root_files"] += copied
-        index_path.write_text(
-            json.dumps(
-                {"schema_version": 1, "netuid": netuid, "graph_roots": graph_roots},
-                sort_keys=True,
-                separators=(",", ":"),
-            )
-            + "\n",
-            encoding="utf-8",
-        )
-    if task_bundle_dirs:
-        target = repo / "tasks" / netuid / "bundles"
-        index_path = target / "index.json"
-        bundles: dict[str, object] = {}
-        if index_path.is_file():
-            existing_index = json.loads(index_path.read_text(encoding="utf-8"))
-            existing_bundles = existing_index.get("task_bundles") if isinstance(existing_index, dict) else None
-            if isinstance(existing_bundles, dict):
-                bundles.update(existing_bundles)
-        for bundle_dir in task_bundle_dirs:
-            copied, row = _copy_task_bundle(bundle_dir, target, netuid)
-            tempo = str(row["tempo"])
-            existing = bundles.get(tempo)
-            if (
-                isinstance(existing, dict)
-                and existing.get("artifact_manifest_sha256") != row["artifact_manifest_sha256"]
-            ):
-                continue
-            bundles[tempo] = row
-            counts["task_bundle_files"] += copied
-        index_path.write_text(
-            json.dumps(
-                {"schema_version": 1, "netuid": netuid, "task_bundles": bundles},
-                sort_keys=True,
-                separators=(",", ":"),
-            )
-            + "\n",
-            encoding="utf-8",
-        )
     return counts
 
 
@@ -465,10 +281,6 @@ def release_notes(*, bucket: str, netuid: str, snapshot: str) -> str:
             "",
             f"- `proofs/{netuid}/`",
             f"- `tasks/{netuid}/registries/`",
-            f"- `tasks/{netuid}/bundles/`",
-            f"- `graph/{netuid}/roots/`",
-            "- `graph/mathlib/`",
-            "- `generation/`",
             f"- `exports/{netuid}/`",
             f"- `canonical/{netuid}/`",
             "- `MANIFEST.sha256`",
@@ -514,9 +326,6 @@ def public_repo_paths(netuid: str) -> tuple[str, ...]:
         "MANIFEST.sha256",
         f"proofs/{netuid}",
         f"tasks/{netuid}",
-        f"graph/{netuid}",
-        "graph/mathlib",
-        "generation",
         f"exports/{netuid}",
         f"canonical/{netuid}",
     )
@@ -600,6 +409,16 @@ def require_env(names: tuple[str, ...]) -> None:
         raise SystemExit(f"missing required environment variable(s): {joined}")
 
 
+def storage_index_path_and_epoch_count(storage_index: dict[str, Any]) -> tuple[Path, int]:
+    path = storage_index.get("path")
+    epochs = storage_index.get("epochs")
+    if not isinstance(path, str | Path):
+        raise SystemExit("storage index path invalid")
+    if not isinstance(epochs, list):
+        raise SystemExit("storage index epochs invalid")
+    return Path(path), len(epochs)
+
+
 def execute(cmd: list[str], *, dry_run: bool, env: dict[str, str] | None = None, cwd: Path | None = None) -> None:
     print("$ " + shlex.join(cmd))
     run(cmd, dry_run=dry_run, env=env, cwd=cwd)
@@ -628,20 +447,6 @@ def main() -> int:
         "--sync-registry-cache-dir",
         type=Path,
         help="copy tempo registry cache files into the atlas by registry hash",
-    )
-    parser.add_argument(
-        "--sync-task-bundle-dir",
-        type=Path,
-        action="append",
-        default=[],
-        help="copy a built task bundle into the atlas",
-    )
-    parser.add_argument(
-        "--sync-graph-root-dir",
-        type=Path,
-        action="append",
-        default=[],
-        help="copy a public generated graph root into the atlas",
     )
     parser.add_argument(
         "--registry-cache-only",
@@ -702,13 +507,11 @@ def main() -> int:
         proof_dir=args.sync_proof_dir.resolve() if args.sync_proof_dir else None,
         canonical_dir=args.sync_canonical_dir.resolve() if args.sync_canonical_dir else None,
         registry_cache_dir=args.sync_registry_cache_dir.resolve() if args.sync_registry_cache_dir else None,
-        graph_root_dirs=tuple(path.resolve() for path in args.sync_graph_root_dir),
-        task_bundle_dirs=tuple(path.resolve() for path in args.sync_task_bundle_dir),
     )
     summary = prepare(repo, args.netuid)
     storage_index = build_storage_index(repo, args.netuid, resolver=args.resolver)
     manifest_path = write_manifest(repo, args.netuid)
-    storage_index_path = Path(storage_index["path"])
+    storage_index_path, storage_epoch_count = storage_index_path_and_epoch_count(storage_index)
 
     if not args.dry_run and not args.skip_hippius:
         require_env(("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"))
@@ -780,7 +583,7 @@ def main() -> int:
                 "repo_committed": committed_repo,
                 "repo_pushed": bool(args.push_repo and committed_repo),
                 "snapshot": args.snapshot,
-                "storage_epochs": len(storage_index["epochs"]),
+                "storage_epochs": storage_epoch_count,
                 "storage_index": str(storage_index_path),
                 "synced": synced,
             },

@@ -1,4 +1,4 @@
-"""Deterministic paid-slot weight receipts for procedural tasks."""
+"""Deterministic paid-slot weight receipts for Lean tasks."""
 
 from __future__ import annotations
 

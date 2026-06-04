@@ -1,4 +1,4 @@
-"""Source-derived task quality classification."""
+"""Source-reuse task quality classification."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from enum import StrEnum
 SOURCE_PRICING_VERSION = 1
 
 _LEAN_DECL_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_']*(?:\.[A-Za-z_][A-Za-z0-9_']*)*")
-_SOURCE_DERIVED_STREAMS = frozenset({"procedural", "mathlib_snapshot", "lemma_substrate"})
+_SOURCE_DERIVED_STREAMS = frozenset({"formal_conjectures", "sorrydb", "lean_project"})
 
 
 class SourceReuseClass(StrEnum):
@@ -189,8 +189,6 @@ def _witness_relation_exact(exact: str, type_expr: str) -> str:
 
 
 def _leading_source_args(type_expr: str) -> tuple[str, ...]:
-    from lemma.supply.mutation import _split_forall, _split_top_level_arrow
-
     names: list[str] = []
     remaining = type_expr.strip()
     while binder := _split_forall(remaining):
@@ -202,6 +200,47 @@ def _leading_source_args(type_expr: str) -> tuple[str, ...]:
         names.append(_fresh_arg_name(names))
         remaining = body.strip()
     return tuple(names)
+
+
+def _split_forall(type_expr: str) -> tuple[str, str, str] | None:
+    stripped = type_expr.strip()
+    if not stripped.startswith("∀ "):
+        return None
+    rest = stripped[2:].strip()
+    if not rest.startswith("("):
+        return None
+    depth = 0
+    close = -1
+    for index, char in enumerate(rest):
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth == 0:
+                close = index
+                break
+    if close < 0:
+        return None
+    binder = rest[1:close].strip()
+    body = rest[close + 1 :].strip()
+    if body.startswith(","):
+        body = body[1:].strip()
+    if " : " not in binder:
+        return None
+    name, binder_type = binder.split(" : ", 1)
+    return name.strip(), binder_type.strip(), body
+
+
+def _split_top_level_arrow(type_expr: str) -> tuple[str, str] | None:
+    depth = 0
+    for index, char in enumerate(type_expr):
+        if char in "([{":
+            depth += 1
+        elif char in ")]}":
+            depth = max(0, depth - 1)
+        elif char == "→" and depth == 0:
+            return type_expr[:index].strip(), type_expr[index + 1 :].strip()
+    return None
 
 
 def _fresh_arg_name(existing: Sequence[str]) -> str:

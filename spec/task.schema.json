@@ -31,20 +31,11 @@
     "source_stream": {
       "type": "string",
       "enum": [
-        "procedural",
-        "generated",
-        "proof_repair",
-        "theorem_variant",
-        "premise_limited",
-        "benchmark_practice",
-        "human_curated",
-        "mathlib_snapshot",
-        "mathlib_perturbation",
-        "state_graph",
-        "auto_formalized",
-        "conjecture_generated",
-        "hard_target_variant",
-        "trivial_curriculum"
+        "fixed_fixture",
+        "formal_conjectures",
+        "sorrydb",
+        "lean_project",
+        "human_curated"
       ]
     },
     "source_ref": {

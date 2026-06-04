@@ -2,7 +2,32 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
+
+PUBLIC_DOC_NAMES = {
+    "what-is-lemma.md",
+    "how-it-works.md",
+    "proof-atlas.md",
+    "miner.md",
+    "validator.md",
+    "tasks.md",
+    "mathlib-extraction.md",
+    "operator-registry-flow.md",
+    "mainnet-readiness.md",
+    "scoring.md",
+    "security-and-gaming.md",
+    "architecture.md",
+    "cli.md",
+    "PROTOCOL_INVARIANTS.md",
+    "dependency-graph.md",
+    "license-policy.md",
+    "proof-identity.md",
+    "useful-verified-row.md",
+    "production.md",
+    "testing.md",
+    "faq.md",
+}
 
 
 def _public_text() -> str:
@@ -12,7 +37,7 @@ def _public_text() -> str:
         Path(".env.example"),
         Path("lemma/cli/main.py"),
         Path("examples/operator-smoke/README.md"),
-        *sorted(Path("docs").glob("*.md")),
+        *(Path("docs") / name for name in sorted(PUBLIC_DOC_NAMES)),
     ]
     return "\n".join(path.read_text(encoding="utf-8") for path in paths)
 
@@ -32,31 +57,10 @@ def test_env_example_has_no_bounty_or_escrow_keys() -> None:
 
 
 def test_final_docs_structure_exists() -> None:
-    docs = {path.name for path in Path("docs").glob("*.md")}
+    tracked_docs = subprocess.check_output(["git", "ls-files", "docs/*.md"], text=True).splitlines()
+    docs = {Path(path).name for path in tracked_docs if Path(path).parent == Path("docs")}
 
-    assert docs == {
-        "what-is-lemma.md",
-        "how-it-works.md",
-        "proof-atlas.md",
-        "miner.md",
-        "validator.md",
-        "tasks.md",
-        "mathlib-extraction.md",
-        "operator-registry-flow.md",
-        "mainnet-readiness.md",
-        "scoring.md",
-        "security-and-gaming.md",
-        "architecture.md",
-        "cli.md",
-        "PROTOCOL_INVARIANTS.md",
-        "dependency-graph.md",
-        "license-policy.md",
-        "proof-identity.md",
-        "useful-verified-row.md",
-        "production.md",
-        "testing.md",
-        "faq.md",
-    }
+    assert docs == PUBLIC_DOC_NAMES
 
 
 def test_public_docs_keep_corpus_and_economics_invariant() -> None:
@@ -187,12 +191,13 @@ def test_operator_registry_flow_covers_registry_validation_and_export() -> None:
     text = Path("docs/operator-registry-flow.md").read_text(encoding="utf-8")
 
     required = [
-        "uv run lemma tasks build-mathlib-snapshot",
-        "LEMMA_TASK_SUPPLY_MODE=procedural",
-        "LEMMA_PROCEDURAL_SOURCE_SHA256_EXPECTED=<source-pool-sha256>",
-        "LEMMA_PROCEDURAL_NOVELTY_CACHE_JSONL=public-entry-cache.jsonl",
-        "LEMMA_PROCEDURAL_IMPORT_GRAPH_JSONL=public-import-graph.jsonl",
+        "uv run lemma tasks sign-registry",
+        "LEMMA_TASK_SUPPLY_MODE=registry",
+        "LEMMA_TASK_REGISTRY_SHA256_EXPECTED=<registry-sha256>",
+        "LEMMA_VERIFY_REGISTRY_SIGNATURES=1",
         "LEMMA_ACTIVE_K=10",
+        "LEMMA_ACTIVE_SEED_MODE=epoch_randomness",
+        "LEMMA_ACTIVE_EPOCH_RANDOMNESS_SOURCE=chain_drand",
         "uv run lemma validate",
         "operator-diagnostics-before.json",
         "operator-diagnostics-after.json",
@@ -210,20 +215,22 @@ def test_operator_registry_flow_covers_registry_validation_and_export() -> None:
     assert "Payment uses deterministic active slot weights" in text
 
 
-def test_protocol_invariants_doc_keeps_ingredient_path_experimental() -> None:
+def test_protocol_invariants_doc_keeps_registry_path_authoritative() -> None:
     text = Path("docs/PROTOCOL_INVARIANTS.md").read_text(encoding="utf-8")
 
     required = [
-        "experimental fixture-gated supply contract",
-        "ingredient subnet redesign",
-        "It is not the launch/operator path.",
-        "LEMMA_TASK_SUPPLY_MODE=ingredient",
-        "matches effective `LEMMA_ACTIVE_K`",
-        "current active-registry cache",
-        "reward-eligible `source_stream=ingredient` tasks",
+        "Production supply is registry-backed real Lean work",
+        "LEMMA_TASK_SUPPLY_MODE=registry",
+        "LEMMA_TASK_REGISTRY_SHA256_EXPECTED",
+        "formal_conjectures",
+        "sorrydb",
+        "lean_project",
+        "strong Lean-derived proof identity",
     ]
     for fragment in required:
         assert fragment in text
+
+    assert "LEMMA_TASK_SUPPLY_MODE=ingredient" not in text
 
 
 def test_mainnet_readiness_doc_covers_launch_gates() -> None:
@@ -237,8 +244,9 @@ def test_mainnet_readiness_doc_covers_launch_gates() -> None:
         "weight-submissions.jsonl",
         "success=true",
         "LEMMA_PROTOCOL_MODE=production",
+        "LEMMA_TASK_SUPPLY_MODE=registry",
+        "LEMMA_TASK_REGISTRY_SHA256_EXPECTED=<registry-sha256>",
         "LEMMA_REQUIRE_STRONG_PROOF_IDENTITY=1",
-        "LEMMA_PROCEDURAL_IMPORT_GRAPH_JSONL=public-import-graph.jsonl",
         "LEAN_SANDBOX_NETWORK=none",
         "Do not commit or publish local notes",
     ]

@@ -1,12 +1,12 @@
 # Operator Smoke Example
 
-This example runs the public registry-to-validator-to-corpus loop with a tiny proof-erased Mathlib-style snapshot that follows the [Mathlib extraction contract](../../docs/mathlib-extraction.md).
+This example runs the public registry-to-validator-to-accepted-proof loop with the fixed dev task in `tasks/registry.json`.
 
-The fixture has 10 active Nat reflexivity tasks at `queue_depth=0` and one deeper parked task at `queue_depth=2`. One accepted proof earns its verifier-recorded slot weight, and the remaining share routes to the default burn rail.
+The fixture has one active `True` task. One accepted proof earns its verifier-recorded slot weight, and the remaining share routes to the default burn rail when more paid slots are configured.
 
 ## Fast Contract Smoke
 
-Run the fixture-backed test without Docker:
+Run the registry-backed operator test without Docker:
 
 ```bash
 uv run pytest tests/test_operator_registry_flow.py -q
@@ -18,25 +18,19 @@ Create a local scratch directory:
 
 ```bash
 export WORK=.lemma-operator-smoke
-mkdir -p "$WORK/tasks" "$WORK/corpus" "$WORK/operator" "$WORK/exports"
+mkdir -p "$WORK/corpus" "$WORK/operator"
 ```
 
-Build a deterministic registry and capture its SHA256:
+Configure the dev registry and capture its SHA256:
 
 ```bash
-uv run lemma tasks build-mathlib-snapshot \
-  --input examples/operator-smoke/snapshot.jsonl \
-  --output "$WORK/tasks/mathlib-snapshot.registry.json" \
-  --seed operator-smoke \
-  --frontier-depth 0 \
-  | tee "$WORK/build.json"
-
 export LEMMA_PREFER_PROCESS_ENV=1
-export LEMMA_TASK_REGISTRY_URL="$WORK/tasks/mathlib-snapshot.registry.json"
+export LEMMA_TASK_REGISTRY_URL=tasks/registry.json
 export LEMMA_TASK_REGISTRY_SHA256_EXPECTED="$(
-  uv run python -c 'import json, pathlib, sys; print(json.loads((pathlib.Path(sys.argv[1]) / "build.json").read_text())["registry_sha256"])' "$WORK"
+  uv run python -c 'import hashlib, pathlib; print(hashlib.sha256(pathlib.Path("tasks/registry.json").read_bytes()).hexdigest())'
 )"
-export LEMMA_ACTIVE_K=10
+export LEMMA_TASK_SUPPLY_MODE=registry
+export LEMMA_ACTIVE_K=1
 export LEMMA_FRONTIER_DEPTH=0
 export LEMMA_ACTIVE_QUEUE_SEED=operator-smoke
 export LEMMA_CORPUS_OUTPUT_DIR="$WORK/corpus"
@@ -55,7 +49,7 @@ Build one task-bound submission:
 
 ```bash
 uv run lemma submit \
-  lemma.mathlib_snapshot.operator_smoke_bool_0 \
+  lemma.sample.true_intro \
   --submission examples/operator-smoke/Submission.lean \
   --solver-hotkey miner-active \
   --output "$WORK/submission.json"
@@ -86,29 +80,6 @@ Expected output fragments:
   "scores": {
     "miner-active": "<slot weight>"
   },
-  "weights": {
-    "burn_uid:0": "<unearned share>",
-    "miner-active": "<slot weight>"
-  },
   "weights_set": false
 }
 ```
-
-Validate and export the corpus:
-
-```bash
-uv run lemma corpus validate "$WORK/corpus/epoch-000001.jsonl"
-uv run lemma corpus export --input "$WORK/corpus" --output "$WORK/exports/corpus-index.json"
-uv run lemma corpus benchmark-export \
-  --input "$WORK/corpus" \
-  --output "$WORK/exports/lemma-proofs.jsonl" \
-  --index "$WORK/exports/benchmark-index.json"
-```
-
-To prepare a public `lemma-corpus` checkout after copying a sanitized epoch file into it:
-
-```bash
-uv run python scripts/prepare_corpus_publish.py --repo /path/to/lemma-corpus --netuid sn467
-```
-
-The manual validator pass uses the configured Lean verifier. The pytest smoke uses a verifier test double and checks the protocol plumbing without Docker.

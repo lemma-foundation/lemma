@@ -42,6 +42,4 @@ The previous-weight fallback rule is removed from scoring.
 - Valid alternates become accepted proof rows with `rewarded: false`.
 - Duplicate proof identities do not create extra rows or credit.
 
-In experimental ingredient mode, production submissions are checked in canonical commitment order, repeated revealed proof payloads are skipped before Lean, invalid early distinct proofs do not block later valid proofs, and scoring still pays at most one miner per active task.
-
 No subjective scoring is used. Held-out benchmark tasks are not paid tasks. `frontier_depth` and `K` are retargeted from public curriculum state: solve-rate history moves the frontier depth, while validator capacity and the public cost budget cap `K`. Production miners and validators must replay the same published state before deriving the next active window, and retarget rows activate only after one full tempo of public replay lag.
