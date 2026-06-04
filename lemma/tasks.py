@@ -26,6 +26,9 @@ SourceStream = Literal[
     "lean_project",
     "human_curated",
 ]
+TaskFormat = Literal["isolated_proof", "patch", "helper_lemma"]
+TaskClass = Literal["canary", "source_sorry", "formal_conjecture", "helper_lemma"]
+SourceValue = Literal["calibration", "low", "medium", "high"]
 
 
 class TaskError(RuntimeError):
@@ -87,13 +90,22 @@ def _normalize_sha256(value: str | None) -> str | None:
     return raw or None
 
 
+def _is_sha256(value: str) -> bool:
+    return len(value) == 64 and all(ch in "0123456789abcdef" for ch in value)
+
+
 def problem_target_sha256(problem: Problem) -> str:
     """Hash the verifier-owned target source exactly as Lean sees it."""
     return hashlib.sha256(problem.challenge_source().encode("utf-8")).hexdigest()
 
 
+def target_type_sha256(type_expr: str) -> str:
+    """Hash the target declaration type exactly as published."""
+    return hashlib.sha256(type_expr.encode("utf-8")).hexdigest()
+
+
 class LemmaTask(BaseModel):
-    """One exact Lean theorem task miners can prove."""
+    """One exact Lean proof task miners can solve."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -104,10 +116,15 @@ class LemmaTask(BaseModel):
     verifier_id: str = LEAN_VERIFIER_ID
     verifier_version: str = LEAN_VERIFIER_VERSION
     title: str = ""
+    task_format: TaskFormat = "isolated_proof"
+    task_class: TaskClass = "canary"
+    source_value: SourceValue = "calibration"
     source_stream: SourceStream = "human_curated"
     source_ref: SourceRef
     source_license: str
     imports: tuple[str, ...] = ("Mathlib",)
+    allowed_files: tuple[str, ...] = ()
+    allowed_imports: tuple[str, ...] = ()
     theorem_name: str
     type_expr: str
     statement: str
@@ -116,6 +133,9 @@ class LemmaTask(BaseModel):
     mathlib_rev: str
     policy: str = "restricted_helpers"
     target_sha256: str = ""
+    target_type_sha256: str = ""
+    environment_sha256: str | None = None
+    reproduction_command: str = ""
     queue_position: int | None = Field(default=None, ge=0)
     queue_depth: int = Field(default=0, ge=0)
     frontier_depth: int | None = Field(default=None, ge=0)
@@ -151,7 +171,7 @@ class LemmaTask(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def _validate_target_hash(self) -> LemmaTask:
+    def _validate_hashes(self) -> LemmaTask:
         if self.schema_version != 1:
             raise ValueError("task schema_version must be 1")
         expected = problem_target_sha256(self.to_problem())
@@ -159,7 +179,28 @@ class LemmaTask(BaseModel):
         if pinned and pinned != expected:
             raise ValueError(f"target_sha256 mismatch: got {expected}, expected {pinned}")
         self.target_sha256 = expected
+        expected_type = target_type_sha256(self.type_expr)
+        pinned_type = _normalize_sha256(self.target_type_sha256)
+        if pinned_type and pinned_type != expected_type:
+            raise ValueError(f"target_type_sha256 mismatch: got {expected_type}, expected {pinned_type}")
+        self.target_type_sha256 = expected_type
+        environment_hash = _normalize_sha256(self.environment_sha256)
+        if environment_hash and not _is_sha256(environment_hash):
+            raise ValueError("task environment_sha256 must be a sha256 hex digest")
+        self.environment_sha256 = environment_hash
         return self
+
+    @field_validator("allowed_files")
+    @classmethod
+    def _validate_allowed_files(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        paths = []
+        for item in value:
+            path = item.strip()
+            parts = path.replace("\\", "/").split("/")
+            if not path or path.startswith("/") or ".." in parts or "" in parts:
+                raise ValueError("task allowed_files must be relative manifest paths")
+            paths.append(path)
+        return tuple(paths)
 
     def to_problem(self) -> Problem:
         return Problem(
@@ -178,9 +219,17 @@ class LemmaTask(BaseModel):
                 "source_ref": self.source_ref.model_dump(exclude_none=True),
                 "source_license": self.source_license,
                 "task_version": self.task_version,
+                "task_format": self.task_format,
+                "task_class": self.task_class,
+                "source_value": self.source_value,
                 "domain_id": self.domain_id,
                 "verifier_id": self.verifier_id,
                 "verifier_version": self.verifier_version,
+                "allowed_files": self.allowed_files,
+                "allowed_imports": self.allowed_imports,
+                "target_type_sha256": self.target_type_sha256,
+                "environment_sha256": self.environment_sha256,
+                "reproduction_command": self.reproduction_command,
                 "queue_position": self.queue_position,
                 "queue_depth": self.queue_depth,
                 "frontier_depth": self.frontier_depth,
@@ -200,7 +249,7 @@ class LemmaTask(BaseModel):
             "domain_id": self.domain_id,
             "verifier_id": self.verifier_id,
             "verifier_version": self.verifier_version,
-            "task_type": "theorem_proving",
+            "task_type": self.task_format,
             "created_at_block": created_at_block,
             "source": self.source_stream,
             "prompt": {
@@ -215,6 +264,11 @@ class LemmaTask(BaseModel):
                 "lean_toolchain": self.lean_toolchain,
                 "mathlib_rev": self.mathlib_rev,
                 "target_sha256": self.target_sha256,
+                "target_type_sha256": self.target_type_sha256,
+                "allowed_files": list(self.allowed_files),
+                "allowed_imports": list(self.allowed_imports),
+                "environment_sha256": self.environment_sha256,
+                "reproduction_command": self.reproduction_command,
             },
             "scoring": {
                 "rule": "first_valid_unique_verified_artifact",
@@ -224,6 +278,9 @@ class LemmaTask(BaseModel):
             "metadata": {
                 "task_version": self.task_version,
                 "title": self.title,
+                "task_format": self.task_format,
+                "task_class": self.task_class,
+                "source_value": self.source_value,
                 "source_ref": self.source_ref.model_dump(exclude_none=True),
                 "source_license": self.source_license,
                 "queue_position": self.queue_position,

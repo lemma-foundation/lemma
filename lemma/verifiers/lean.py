@@ -8,7 +8,7 @@ from lemma.common.config import LemmaSettings
 from lemma.lean.sandbox import VerifyReason, VerifyResult
 from lemma.lean.verify_runner import run_lean_verify
 from lemma.submissions import LemmaSubmission
-from lemma.tasks import LEAN_DOMAIN_ID, LEAN_VERIFIER_ID, LemmaTask, SourceRef
+from lemma.tasks import LEAN_DOMAIN_ID, LEAN_VERIFIER_ID, LemmaTask, SourceRef, SourceValue, TaskClass, TaskFormat
 from lemma.verifiers.base import VerificationResult, VerifierAdapter
 
 
@@ -129,14 +129,24 @@ def _legacy_task_from_v2(task: dict[str, Any]) -> LemmaTask:
         if isinstance(metadata.get("source_ref"), dict)
         else {"kind": "v2", "name": str(task["source"])}
     )
+    task_type = str(task.get("task_type") or "")
+    task_format = cast(
+        TaskFormat,
+        task_type if task_type in {"isolated_proof", "patch", "helper_lemma"} else "isolated_proof",
+    )
     return LemmaTask(
         id=str(task["task_id"]),
         task_version=int(metadata.get("task_version") or 1),
         title=str(metadata.get("title") or task["task_id"]),
+        task_format=task_format,
+        task_class=cast(TaskClass, str(metadata.get("task_class") or "canary")),
+        source_value=cast(SourceValue, str(metadata.get("source_value") or "calibration")),
         source_stream=str(task.get("source") or "human_curated"),  # type: ignore[arg-type]
         source_ref=SourceRef.model_validate(source_ref_data),
         source_license=str(metadata.get("source_license") or "CC-BY-4.0"),
         imports=tuple(prompt.get("imports") or ("Mathlib",)),
+        allowed_files=tuple(constraints.get("allowed_files") or ()),
+        allowed_imports=tuple(constraints.get("allowed_imports") or ()),
         theorem_name=str(prompt["theorem_name"]),
         type_expr=str(prompt.get("type_expr") or "True"),
         statement=str(prompt["statement"]),
@@ -145,6 +155,9 @@ def _legacy_task_from_v2(task: dict[str, Any]) -> LemmaTask:
         mathlib_rev=str(constraints.get("mathlib_rev") or "unknown"),
         policy=str(constraints.get("policy") or "restricted_helpers"),
         target_sha256=str(constraints.get("target_sha256") or ""),
+        target_type_sha256=str(constraints.get("target_type_sha256") or ""),
+        environment_sha256=cast(str | None, constraints.get("environment_sha256")),
+        reproduction_command=str(constraints.get("reproduction_command") or ""),
         metadata={key: value for key, value in metadata.items() if key not in {"source_ref", "source_license"}},
     )
 

@@ -23,11 +23,16 @@ Every active task must have:
 
 - stable `task_id`
 - integer `task_version`
+- `task_format`: `isolated_proof`, `patch`, or `helper_lemma`
+- `task_class` and `source_value` for active-set stratification and public source priority
 - `domain_id`
 - `verifier_id`
 - pinned verifier version
 - `target_sha256` computed from verifier-owned `Challenge.lean`
+- `target_type_sha256` computed from the published target type
 - pinned Lean toolchain and Mathlib revision
+- allowed artifact files and allowed Lean imports
+- exact reproduction command metadata when the source environment is certified
 - explicit `source_ref` and `source_license`
 - `queue_position`, `queue_depth`, and optional `frontier_depth`
 - schema validation

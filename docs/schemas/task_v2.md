@@ -26,11 +26,17 @@ For Lean tasks:
 {
   "domain_id": "lean",
   "verifier_id": "lake-build",
-  "task_type": "theorem_proving",
+  "task_type": "isolated_proof",
   "prompt": {
     "theorem_name": "name",
     "imports": ["Mathlib"],
-    "statement": "theorem ..."
+    "statement": "theorem ...",
+    "type_expr": "..."
+  },
+  "constraints": {
+    "allowed_files": ["Submission.lean"],
+    "allowed_imports": ["Mathlib"],
+    "target_type_sha256": "..."
   }
 }
 ```

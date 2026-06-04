@@ -4,11 +4,19 @@ from __future__ import annotations
 
 import hashlib
 import json
+from pathlib import Path
 
 import httpx
 import pytest
 from lemma.common.config import LemmaSettings
-from lemma.tasks import LemmaTask, TaskError, fetch_task_registry, load_task_registry, problem_target_sha256
+from lemma.tasks import (
+    LemmaTask,
+    TaskError,
+    fetch_task_registry,
+    load_task_registry,
+    problem_target_sha256,
+    target_type_sha256,
+)
 
 
 def _submission_stub() -> str:
@@ -33,10 +41,15 @@ def _task_payload() -> dict[str, object]:
         "id": "lemma.test.true",
         "task_version": 1,
         "title": "True task",
+        "task_format": "isolated_proof",
+        "task_class": "canary",
+        "source_value": "calibration",
         "source_stream": "human_curated",
         "source_ref": {"kind": "unit_test", "name": "pytest"},
         "source_license": "CC-BY-4.0",
         "imports": ["Mathlib"],
+        "allowed_files": ["Submission.lean"],
+        "allowed_imports": ["Mathlib"],
         "theorem_name": "test_true",
         "type_expr": "True",
         "statement": "theorem test_true : True := by\n  sorry",
@@ -44,6 +57,8 @@ def _task_payload() -> dict[str, object]:
         "lean_toolchain": "leanprover/lean4:v4.30.0-rc2",
         "mathlib_rev": "5450b53e5ddc",
         "policy": "restricted_helpers",
+        "target_type_sha256": target_type_sha256("True"),
+        "reproduction_command": "lake build",
         "metadata": {"difficulty": "sample"},
     }
 
@@ -55,8 +70,108 @@ def test_task_schema_roundtrip_and_target_hash_stability() -> None:
 
     assert restored == task
     assert task.target_sha256 == problem_target_sha256(task.to_problem())
+    assert task.target_type_sha256 == target_type_sha256("True")
     assert task.task_version == 1
+    assert task.task_format == "isolated_proof"
     assert task.source_ref.name == "pytest"
+
+
+def test_real_task_manifest_fields_export_to_v2() -> None:
+    payload = _task_payload()
+    payload.update(
+        {
+            "id": "lemma.test.patch",
+            "task_format": "patch",
+            "task_class": "source_sorry",
+            "source_value": "high",
+            "source_stream": "sorrydb",
+            "allowed_files": ["Mathlib/Fixture.lean"],
+            "allowed_imports": ["Mathlib"],
+            "environment_sha256": "a" * 64,
+            "reproduction_command": "lake build Mathlib.Fixture",
+        }
+    )
+    task = LemmaTask.model_validate(payload)
+    exported = task.to_v2()
+
+    assert exported["task_type"] == "patch"
+    assert exported["constraints"]["allowed_files"] == ["Mathlib/Fixture.lean"]
+    assert exported["constraints"]["allowed_imports"] == ["Mathlib"]
+    assert exported["constraints"]["target_type_sha256"] == target_type_sha256("True")
+    assert exported["constraints"]["environment_sha256"] == "a" * 64
+    assert exported["constraints"]["reproduction_command"] == "lake build Mathlib.Fixture"
+    assert exported["metadata"]["task_class"] == "source_sorry"
+    assert exported["metadata"]["source_value"] == "high"
+
+
+def test_patch_task_fixture_manifest_is_repo_relative() -> None:
+    fixture_root = Path("tests/fixtures/lean_patch_project")
+    source_path = fixture_root / "PatchFixture.lean"
+    patch_path = fixture_root / "patches/add_zero_fixture.patch"
+    source = source_path.read_text(encoding="utf-8")
+    patch = patch_path.read_text(encoding="utf-8")
+    payload = _task_payload()
+    payload.update(
+        {
+            "id": "lemma.fixture.patch.add_zero",
+            "title": "Patch fixed Nat.add_zero fixture",
+            "task_format": "patch",
+            "task_class": "source_sorry",
+            "source_stream": "fixed_fixture",
+            "source_ref": {
+                "kind": "fixed_fixture",
+                "name": "lean_patch_project",
+                "path": source_path.as_posix(),
+            },
+            "imports": [],
+            "allowed_files": ["PatchFixture.lean"],
+            "allowed_imports": [],
+            "theorem_name": "PatchFixture.add_zero_fixture",
+            "type_expr": "forall n : Nat, n + 0 = n",
+            "statement": source,
+            "submission_stub": source,
+            "target_type_sha256": target_type_sha256("forall n : Nat, n + 0 = n"),
+            "reproduction_command": "lake build PatchFixture",
+        }
+    )
+
+    task = LemmaTask.model_validate(payload)
+    exported = task.to_v2()
+
+    assert source_path.is_file()
+    assert patch_path.is_file()
+    assert "  sorry" in source
+    assert "+  exact Nat.add_zero n" in patch
+    assert task.task_format == "patch"
+    assert task.source_ref.path == "tests/fixtures/lean_patch_project/PatchFixture.lean"
+    assert not Path(task.source_ref.path or "").is_absolute()
+    assert exported["constraints"]["allowed_files"] == ["PatchFixture.lean"]
+    assert exported["constraints"]["reproduction_command"] == "lake build PatchFixture"
+
+
+def test_task_rejects_wrong_target_type_hash() -> None:
+    payload = _task_payload()
+    payload["target_type_sha256"] = "0" * 64
+
+    with pytest.raises(ValueError, match="target_type_sha256 mismatch"):
+        LemmaTask.model_validate(payload)
+
+
+def test_task_rejects_invalid_environment_hash() -> None:
+    payload = _task_payload()
+    payload["environment_sha256"] = "not-a-sha"
+
+    with pytest.raises(ValueError, match="environment_sha256"):
+        LemmaTask.model_validate(payload)
+
+
+@pytest.mark.parametrize("allowed_file", ("/tmp/Solution.lean", "../Solution.lean", "src//Solution.lean"))
+def test_task_rejects_unsafe_allowed_files(allowed_file: str) -> None:
+    payload = _task_payload()
+    payload["allowed_files"] = [allowed_file]
+
+    with pytest.raises(ValueError, match="allowed_files"):
+        LemmaTask.model_validate(payload)
 
 
 def test_registry_loads_from_bytes() -> None:

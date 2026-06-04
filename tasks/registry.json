@@ -9,6 +9,12 @@
       "imports": [
         "Mathlib"
       ],
+      "allowed_files": [
+        "Submission.lean"
+      ],
+      "allowed_imports": [
+        "Mathlib"
+      ],
       "lean_toolchain": "leanprover/lean4:v4.30.0-rc2",
       "mathlib_rev": "5450b53e5ddc",
       "metadata": {
@@ -17,6 +23,7 @@
       },
       "policy": "restricted_helpers",
       "queue_depth": 0,
+      "reproduction_command": "lake build",
       "schema_version": 1,
       "source_license": "CC-BY-4.0",
       "source_ref": {
@@ -25,9 +32,13 @@
         "path": "tasks/registry.json"
       },
       "source_stream": "fixed_fixture",
+      "source_value": "calibration",
       "statement": "theorem true_intro_sample : True := by\n  sorry",
       "submission_stub": "import Mathlib\n\nnamespace Submission\n\ntheorem true_intro_sample : True := by\n  sorry\n\nend Submission\n",
       "target_sha256": "9b4bfc3ff8964ed0bb150c9775d9e974b5ce81560c47c33f38f73b0597a670a9",
+      "target_type_sha256": "3cbc87c7681f34db4617feaa2c8801931bc5e42d8d0f560e756dd4cd92885f18",
+      "task_class": "canary",
+      "task_format": "isolated_proof",
       "task_version": 1,
       "theorem_name": "true_intro_sample",
       "title": "Smoke-test True",

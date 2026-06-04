@@ -125,7 +125,7 @@ def build_corpus_row_v2(
         domain_id=task.domain_id,
         verifier_id=verifier_id,
         verifier_version=verifier_version,
-        task_type="theorem_proving",
+        task_type=task.task_format,
         prompt=prompt,
         accepted_artifact=artifact,
         verification={

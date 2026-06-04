@@ -41,6 +41,14 @@ def test_task_schema_requires_source_and_version() -> None:
         "triviality_status",
         "activation_status",
         "difficulty_band",
+        "task_format",
+        "task_class",
+        "source_value",
+        "allowed_files",
+        "allowed_imports",
+        "target_type_sha256",
+        "environment_sha256",
+        "reproduction_command",
     } <= props
 
 

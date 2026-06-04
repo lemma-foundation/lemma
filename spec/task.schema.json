@@ -28,6 +28,18 @@
     "verifier_id": { "type": "string", "minLength": 1 },
     "verifier_version": { "type": "string", "minLength": 1 },
     "title": { "type": "string" },
+    "task_format": {
+      "type": "string",
+      "enum": ["isolated_proof", "patch", "helper_lemma"]
+    },
+    "task_class": {
+      "type": "string",
+      "enum": ["canary", "source_sorry", "formal_conjecture", "helper_lemma"]
+    },
+    "source_value": {
+      "type": "string",
+      "enum": ["calibration", "low", "medium", "high"]
+    },
     "source_stream": {
       "type": "string",
       "enum": [
@@ -52,6 +64,11 @@
     },
     "source_license": { "type": "string", "minLength": 1 },
     "imports": { "type": "array", "items": { "type": "string" } },
+    "allowed_files": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$))(?!.*//).+" }
+    },
+    "allowed_imports": { "type": "array", "items": { "type": "string", "minLength": 1 } },
     "theorem_name": { "type": "string", "minLength": 1 },
     "type_expr": { "type": "string", "minLength": 1 },
     "statement": { "type": "string", "minLength": 1 },
@@ -60,6 +77,9 @@
     "mathlib_rev": { "type": "string", "minLength": 1 },
     "policy": { "type": "string", "minLength": 1 },
     "target_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "target_type_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "environment_sha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+    "reproduction_command": { "type": "string" },
     "queue_position": { "type": ["integer", "null"], "minimum": 0 },
     "queue_depth": { "type": "integer", "minimum": 0 },
     "frontier_depth": { "type": ["integer", "null"], "minimum": 0 },
