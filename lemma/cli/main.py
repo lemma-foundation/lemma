@@ -743,6 +743,54 @@ def verify_cmd(task_id: str, submission_path: Path, host_lean: bool) -> None:
         raise SystemExit(1)
 
 
+@main.command("verify-patch", hidden=True)
+@click.argument("task_id")
+@click.option(
+    "--source-root",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    required=True,
+    help="Clean source checkout root for the patch task.",
+)
+@click.option(
+    "--patch",
+    "patch_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    required=True,
+    help="Unified diff patch to validate.",
+)
+@click.option("--no-run-reproduction", is_flag=True, help="Apply static patch gates without running the command.")
+@click.option("--timeout", "timeout_s", type=click.IntRange(min=1), default=120, show_default=True)
+def verify_patch_cmd(
+    task_id: str,
+    source_root: Path,
+    patch_path: Path,
+    no_run_reproduction: bool,
+    timeout_s: int,
+) -> None:
+    """Verify a patch against one source-pinned patch task.
+
+    \b
+    Example:
+
+      lemma verify-patch lemma.task --source-root repo --patch solution.patch
+    """
+    from dataclasses import asdict
+
+    from lemma.lean.patch_task import validate_patch_task
+
+    _, task = _task_or_die(task_id)
+    result = validate_patch_task(
+        task,
+        source_root=source_root,
+        patch_text=_read_text(patch_path),
+        run_reproduction=not no_run_reproduction,
+        timeout_s=timeout_s,
+    )
+    click.echo(json.dumps(asdict(result), indent=2, sort_keys=True))
+    if not result.accepted:
+        raise SystemExit(1)
+
+
 @main.command("submit", hidden=True)
 @click.argument("task_id")
 @click.option(

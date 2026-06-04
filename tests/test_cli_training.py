@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,9 @@ from lemma.lean.sandbox import VerifyResult
 from lemma.operator import OperatorDiagnosticsReport, OperatorPreflightReport
 from lemma.submissions import build_submission
 from lemma.task_supply import make_task, write_registry
+from lemma.tasks import LemmaTask, target_type_sha256
+
+PATCH_FIXTURE_ROOT = Path("tests/fixtures/lean_patch_project")
 
 
 def _proof(theorem_name: str = "true_intro_sample") -> str:
@@ -46,6 +50,42 @@ def _write_registry(tmp_path: Path, *, task_count: int = 1) -> tuple[Path, str]:
     ]
     path = tmp_path / "registry.json"
     write_registry(tasks, path)
+    return path, hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _write_patch_registry(tmp_path: Path) -> tuple[Path, str]:
+    source = (PATCH_FIXTURE_ROOT / "PatchFixture.lean").read_text(encoding="utf-8")
+    task = LemmaTask(
+        id="lemma.test.patch_cli",
+        task_version=1,
+        title="CLI patch task",
+        task_format="patch",
+        task_class="source_sorry",
+        source_stream="fixed_fixture",
+        source_ref={
+            "kind": "fixed_fixture",
+            "name": "lean_patch_project",
+            "path": "tests/fixtures/lean_patch_project/PatchFixture.lean",
+        },
+        source_license="CC-BY-4.0",
+        imports=(),
+        allowed_files=("PatchFixture.lean",),
+        allowed_imports=(),
+        theorem_name="PatchFixture.add_zero_fixture",
+        type_expr="forall n : Nat, n + 0 = n",
+        statement=source,
+        submission_stub=source,
+        lean_toolchain="leanprover/lean4:v4.30.0-rc2",
+        mathlib_rev="5450b53e5ddc",
+        policy="restricted_helpers",
+        target_type_sha256=target_type_sha256("forall n : Nat, n + 0 = n"),
+        reproduction_command="lake build PatchFixture",
+    )
+    path = tmp_path / "patch-registry.json"
+    path.write_text(
+        json.dumps({"schema_version": 1, "tasks": [task.model_dump(mode="json")]}, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
     return path, hashlib.sha256(path.read_bytes()).hexdigest()
 
 
@@ -89,6 +129,77 @@ def test_verify_loads_registry_task(monkeypatch: pytest.MonkeyPatch, tmp_path: P
 
     assert result.exit_code == 0, result.output
     assert calls == {"task_id": "lemma.test.cli_0", "proof_script": _proof("cli_true_0")}
+
+
+def test_verify_patch_uses_shared_patch_validator(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    registry_path, registry_sha = _write_patch_registry(tmp_path)
+    calls: list[list[str]] = []
+
+    def fake_reproduction(command: list[str], *, cwd: Path, timeout_s: int) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        return subprocess.CompletedProcess(command, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("lemma.lean.patch_task._run_reproduction_command", fake_reproduction)
+
+    result = CliRunner().invoke(
+        main,
+        [
+            "verify-patch",
+            "lemma.test.patch_cli",
+            "--source-root",
+            str(PATCH_FIXTURE_ROOT),
+            "--patch",
+            str(PATCH_FIXTURE_ROOT / "patches/add_zero_fixture.patch"),
+            "--timeout",
+            "5",
+        ],
+        env={
+            "LEMMA_PREFER_PROCESS_ENV": "1",
+            "LEMMA_TASK_REGISTRY_URL": str(registry_path),
+            "LEMMA_TASK_REGISTRY_SHA256_EXPECTED": registry_sha,
+        },
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["accepted"] is True
+    assert payload["changed_files"] == ["PatchFixture.lean"]
+    assert calls == [["lake", "build", "PatchFixture"]]
+
+
+def test_verify_patch_rejects_disallowed_file(tmp_path: Path) -> None:
+    registry_path, registry_sha = _write_patch_registry(tmp_path)
+    patch_path = tmp_path / "bad.patch"
+    patch_path.write_text(
+        (PATCH_FIXTURE_ROOT / "patches/add_zero_fixture.patch").read_text(encoding="utf-8").replace(
+            "PatchFixture.lean",
+            "Other.lean",
+        ),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        main,
+        [
+            "verify-patch",
+            "lemma.test.patch_cli",
+            "--source-root",
+            str(PATCH_FIXTURE_ROOT),
+            "--patch",
+            str(patch_path),
+            "--no-run-reproduction",
+        ],
+        env={
+            "LEMMA_PREFER_PROCESS_ENV": "1",
+            "LEMMA_TASK_REGISTRY_URL": str(registry_path),
+            "LEMMA_TASK_REGISTRY_SHA256_EXPECTED": registry_sha,
+        },
+    )
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["accepted"] is False
+    assert payload["reason"] == "disallowed_file"
 
 
 def test_submit_writes_task_bound_package(tmp_path: Path) -> None:
