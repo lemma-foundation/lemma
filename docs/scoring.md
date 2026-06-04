@@ -39,6 +39,7 @@ The previous-weight fallback rule is removed from scoring.
 - Slot weights are deterministic registry values, not subjective validator scores.
 - `queue_depth` is a weak priority signal, not a calibrated difficulty ratio.
 - Source-derived tasks enter the serious paid pool only after cheap source-reuse and source-oracle checks fail. If the source theorem remains importable and gives a direct wrapper/source-oracle proof, the task is calibration/bootstrap work, not frontier work.
+- `known_solved`, `public_solution_known`, and `baseline_solved` tasks are not reward-eligible even if an operator accidentally leaves them in the active registry.
 - Valid alternates become accepted proof rows with `rewarded: false`.
 - Duplicate proof identities do not create extra rows or credit.
 

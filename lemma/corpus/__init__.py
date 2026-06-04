@@ -8,7 +8,7 @@ import re
 from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -51,7 +51,10 @@ class CorpusRow(BaseModel):
     policy: str = "restricted_helpers"
     target_sha256: str
     axiom_set: list[str] = Field(default_factory=list)
-    proof_script: str
+    artifact_kind: Literal["proof", "patch"] = "proof"
+    proof_script: str | None = None
+    patch_text: str | None = None
+    patch_sha256: str | None = None
     proof_sha256: str
     proof_term_hash: str | None = None
     proof_identity: str = ""
@@ -87,6 +90,18 @@ class CorpusRow(BaseModel):
             raise ValueError("corpus row schema_version must be 1")
         if not self.verification.passed:
             raise ValueError("failed proofs are not accepted proof rows")
+        if self.artifact_kind == "proof":
+            if not (self.proof_script or "").strip():
+                raise ValueError("proof rows require proof_script")
+            if self.patch_text is not None or self.patch_sha256 is not None:
+                raise ValueError("proof rows must not carry patch fields")
+        else:
+            if not (self.patch_text or "").strip():
+                raise ValueError("patch rows require patch_text")
+            if self.proof_script is not None:
+                raise ValueError("patch rows must not carry proof_script")
+            if self.patch_sha256 != self.proof_sha256:
+                raise ValueError("patch_sha256 must match proof_sha256 compatibility hash")
         if not self.proof_identity:
             self.proof_identity = self.proof_term_hash or self.proof_sha256
         if self.graph is None:
@@ -236,11 +251,9 @@ def build_corpus_row(
         model_lift_release=task.metadata.get("model_lift_release"),
     )
     row_metadata = {"title": task.title, "task_format": task.task_format, **_public_metadata(task.metadata)}
-    if submission.patch_text is not None:
-        row_metadata["artifact_kind"] = "patch"
-        row_metadata["patch_sha256"] = submission.proof_sha256
     if result.declaration_fingerprints:
         row_metadata["declaration_fingerprints"] = dict(sorted(result.declaration_fingerprints.items()))
+    artifact_kind: Literal["proof", "patch"] = "patch" if submission.patch_text is not None else "proof"
     return CorpusRow(
         task_id=task.id,
         task_version=task.task_version,
@@ -252,7 +265,10 @@ def build_corpus_row(
         mathlib_rev=task.mathlib_rev,
         policy=task.policy,
         target_sha256=task.target_sha256,
-        proof_script=submission.artifact_text,
+        artifact_kind=artifact_kind,
+        proof_script=submission.proof_script if artifact_kind == "proof" else None,
+        patch_text=submission.patch_text,
+        patch_sha256=submission.proof_sha256 if artifact_kind == "patch" else None,
         proof_sha256=submission.proof_sha256,
         proof_term_hash=term_hash,
         proof_identity=identity.value,
@@ -355,8 +371,23 @@ def write_corpus_index(corpus_dir: Path, output_path: Path) -> None:
     )
 
 
+def _artifact_record(row: CorpusRow) -> dict[str, Any]:
+    base: dict[str, Any] = {
+        "kind": row.artifact_kind,
+        "sha256": row.patch_sha256 if row.artifact_kind == "patch" else row.proof_sha256,
+        "proof_term_hash": row.proof_term_hash,
+        "identity": row.proof_identity,
+        "identity_source": row.proof_identity_source,
+        "identity_strength": row.proof_identity_strength,
+        "axiom_set": row.axiom_set,
+    }
+    if row.artifact_kind == "patch":
+        return {**base, "patch_text": row.patch_text, "patch_sha256": row.patch_sha256}
+    return {**base, "proof_script": row.proof_script, "proof_sha256": row.proof_sha256}
+
+
 def benchmark_record(row: CorpusRow) -> dict[str, Any]:
-    """Return the stable researcher-facing view of one accepted proof."""
+    """Return the stable researcher-facing view of one accepted artifact."""
     return {
         "schema_version": 1,
         "row_id": row.row_id,
@@ -375,15 +406,7 @@ def benchmark_record(row: CorpusRow) -> dict[str, Any]:
             "queue_depth": row.queue_depth,
             "frontier_depth": row.frontier_depth,
         },
-        "proof": {
-            "script": row.proof_script,
-            "sha256": row.proof_sha256,
-            "term_hash": row.proof_term_hash,
-            "identity": row.proof_identity,
-            "identity_source": row.proof_identity_source,
-            "identity_strength": row.proof_identity_strength,
-            "axiom_set": row.axiom_set,
-        },
+        "artifact": _artifact_record(row),
         "source": {
             "stream": row.source_stream,
             "ref": row.source_ref.model_dump(exclude_none=True),
@@ -484,6 +507,8 @@ def write_benchmark_export(
 def replay_jsonl(settings: LemmaSettings, path: Path) -> list[VerifyResult]:
     results: list[VerifyResult] = []
     for row in read_jsonl(path):
+        if row.artifact_kind != "proof" or row.proof_script is None:
+            raise ValueError(f"{row.task_id}: legacy replay_jsonl only supports proof rows")
         task = row.to_task()
         results.append(
             run_lean_verify(

@@ -214,7 +214,8 @@ def test_benchmark_export_writes_compact_records_and_index(tmp_path: Path) -> No
     assert len(records) == 1
     assert records[0]["task"]["id"] == "lemma.test.true"
     assert records[0]["task"]["queue_depth"] == 1
-    assert records[0]["proof"]["script"] == proof
+    assert records[0]["artifact"]["kind"] == "proof"
+    assert records[0]["artifact"]["proof_script"] == proof
     assert records[0]["source"]["stream"] == "human_curated"
     assert records[0]["reward"]["active_K"] == 10
     assert index["format"] == "lemma-benchmark-export-v1"

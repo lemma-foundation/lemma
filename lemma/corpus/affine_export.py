@@ -13,10 +13,10 @@ def affine_training_row(row: CorpusRowV2) -> dict[str, str]:
     prompt = row.prompt
     imports = "\n".join(f"import {name}" for name in prompt.get("imports", []))
     statement = str(prompt.get("statement") or "")
-    proof = str(row.accepted_artifact.get("proof") or "")
+    target = str(row.accepted_artifact.get("proof") or row.accepted_artifact.get("patch") or "")
     return {
         "input": f"{imports}\n\n{statement}".strip(),
-        "target": proof,
+        "target": target,
         "domain": row.domain_id,
         "verifier": row.verifier_id,
     }

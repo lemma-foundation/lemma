@@ -21,7 +21,8 @@ Validators reject:
 - missing hotkey-authenticated commit/reveal fields in production mode;
 - miner bucket reveals whose `(slot_index, ciphertext_sha256)` Merkle root does not match the miner's on-chain committed root;
 - miner bucket reveals whose decrypted drand payload does not match the revealed proof;
-- paid production tasks that are not registry-backed real missing-proof rows.
+- paid production tasks that are not registry-backed real missing-proof rows;
+- paid production tasks already marked `known_solved`, `public_solution_known`, or `baseline_solved`.
 
 ## Verification
 
@@ -33,7 +34,7 @@ Production validators trust a SHA-pinned task registry, signature policy, and pu
 
 ## Scoring Defenses
 
-Proofs are deduplicated for paid production by the Lean proof-term hash. Lean structural fingerprints and script hashes are labelled below strong paid identity. Public proof release should wait until the scoring window closes. Baseline-solved tasks and held-out benchmark claims are kept out of paid activation.
+Proofs are deduplicated for paid production by the Lean proof-term hash. Lean structural fingerprints and script hashes are labelled below strong paid identity. Public proof release should wait until the scoring window closes. Baseline-solved tasks, public-known solutions, and held-out benchmark claims are kept out of paid activation.
 
 First valid committed reveal wins each theorem slot. Re-submitting another miner's proof after reveal should not pay because rank is anchored to the miner's Merkle-root commit block, not local file arrival time. Validators must reproduce the active task set deterministically before scoring. Fixed fixtures are useful for local smoke tests, but SN467 burn-in and paid mainnet tasks must use registry-backed real tasks with public source references, target hashes, and production proof-identity gates.
 

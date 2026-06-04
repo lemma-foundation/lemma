@@ -7,6 +7,7 @@ import hashlib
 import pytest
 from lemma.scoring import ScoreEvent, VerificationRecord, VerificationResult, score_epoch
 from lemma.submissions import build_submission, proof_sha256, validate_submission_for_task
+from lemma.task_activation import task_reward_eligibility
 from lemma.tasks import LemmaTask
 
 
@@ -69,6 +70,16 @@ def test_commit_reveal_requires_positive_commit_block() -> None:
 
     with pytest.raises(ValueError, match="missing commit block"):
         validate_submission_for_task(submission, task, require_commit_reveal=True)
+
+
+def test_reward_eligibility_rejects_known_or_baseline_solved_tasks() -> None:
+    known = _task().model_copy(update={"metadata": {"known_solved": True}})
+    public_known = _task().model_copy(update={"metadata": {"public_solution_known": True}})
+    baseline = _task().model_copy(update={"metadata": {"baseline_solved": True}})
+
+    assert task_reward_eligibility(known).reason == "known_solved"
+    assert task_reward_eligibility(public_known).reason == "known_solved"
+    assert task_reward_eligibility(baseline).reason == "baseline_solved"
 
 
 def test_scoring_awards_first_unique_proof_per_task() -> None:

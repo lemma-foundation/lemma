@@ -13,7 +13,7 @@ from lemma.corpus.cards import write_dataset_card
 from lemma.corpus.rows import CorpusRowV2, build_corpus_row_v2
 from lemma.corpus.splits import split_for_row
 from lemma.lean.sandbox import VerifyResult
-from lemma.submissions import build_submission
+from lemma.submissions import build_patch_submission, build_submission
 
 ExportFormat = Literal["jsonl", "parquet", "hf"]
 
@@ -45,12 +45,24 @@ def rows_v2_from_legacy_dir(
                     continue
             if exclude_near_duplicates and row.quality.near_duplicate_score >= 0.9:
                 continue
-            submission = build_submission(
-                task,
-                solver_hotkey=row.solver_hotkey,
-                proof_script=row.proof_script,
-                created_at=row.accepted_at,
-            )
+            if row.artifact_kind == "patch":
+                if row.patch_text is None:
+                    raise ValueError(f"{row.task_id}: patch row is missing patch_text")
+                submission = build_patch_submission(
+                    task,
+                    solver_hotkey=row.solver_hotkey,
+                    patch_text=row.patch_text,
+                    created_at=row.accepted_at,
+                )
+            else:
+                if row.proof_script is None:
+                    raise ValueError(f"{row.task_id}: proof row is missing proof_script")
+                submission = build_submission(
+                    task,
+                    solver_hotkey=row.solver_hotkey,
+                    proof_script=row.proof_script,
+                    created_at=row.accepted_at,
+                )
             rows.append(
                 build_corpus_row_v2(
                     task,

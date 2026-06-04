@@ -179,6 +179,8 @@ def build_epoch_storage_from_rows(
         leaf_hashes.append(entry_sha256)
         entries.append(
             {
+                "artifact_kind": row.get("artifact_kind", "proof"),
+                "artifact_sha256": row.get("patch_sha256") or row.get("proof_sha256", ""),
                 "entry_sha256": entry_sha256,
                 "file": f"entries/{entry_name}",
                 "line_number": line_number,

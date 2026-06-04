@@ -201,8 +201,10 @@ def test_validator_accepts_patch_submission_through_default_verifier(
 
     assert result.score.credits == {"hk-patch": 1}
     assert result.verification_records[0].passed is True
-    assert result.corpus_rows[0].proof_script == _fixture_patch()
-    assert result.corpus_rows[0].metadata["artifact_kind"] == "patch"
+    assert result.corpus_rows[0].artifact_kind == "patch"
+    assert result.corpus_rows[0].proof_script is None
+    assert result.corpus_rows[0].patch_text == _fixture_patch()
+    assert result.corpus_rows[0].patch_sha256 == result.corpus_rows[0].proof_sha256
 
 
 def test_validator_rejects_patch_submission_cheating_through_default_verifier(tmp_path: Path) -> None:

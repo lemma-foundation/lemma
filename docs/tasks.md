@@ -48,7 +48,7 @@ The active pool is a deterministic queue window of size `K`.
 - `frontier_depth` controls how deep the task pool is open.
 - Active selection interleaves frontier and foundation levels, then balances source families inside each level.
 - Slot weights use a capped `sqrt(queue_depth + 1)` depth prior.
-- Source wrappers, baseline-solved tasks, and held-out benchmark tasks are excluded from paid activation.
+- Source wrappers, public-known solutions, baseline-solved tasks, and held-out benchmark tasks are excluded from paid activation.
 
 Validator selection uses:
 

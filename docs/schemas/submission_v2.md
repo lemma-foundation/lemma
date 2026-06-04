@@ -21,9 +21,20 @@ For Lean, `artifact` stores:
 
 ```json
 {
+  "kind": "proof",
   "proof": "string",
   "imports": ["Mathlib"],
   "full_file": "string"
+}
+```
+
+Patch tasks use:
+
+```json
+{
+  "kind": "patch",
+  "patch": "diff --git ...",
+  "patch_sha256": "sha256"
 }
 ```
 

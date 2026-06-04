@@ -16,7 +16,7 @@ MAX_PATCH_CHARS = 200_000
 
 
 def proof_sha256(proof_script: str) -> str:
-    """Return the canonical script hash used for deduplication."""
+    """Return the canonical artifact hash used for deduplication."""
     return hashlib.sha256(proof_script.encode("utf-8")).hexdigest()
 
 
@@ -194,24 +194,33 @@ def build_patch_submission(
 
 
 def submission_v2_from_lean_submission(submission: LemmaSubmission, task: LemmaTask | None = None) -> dict[str, Any]:
-    """Return the domain-neutral submission row for a legacy Lean proof."""
+    """Return the domain-neutral submission row for a Lean artifact."""
     domain_id = task.domain_id if task else LEAN_DOMAIN_ID
     verifier_id = task.verifier_id if task else LEAN_VERIFIER_ID
     verifier_version = task.verifier_version if task else LEAN_VERIFIER_VERSION
     imports = list(task.imports) if task else []
     created_at_block = int(submission.metadata.get("created_at_block") or 0)
+    artifact: dict[str, Any] = {
+        "kind": submission.artifact_kind,
+        "imports": imports,
+        "artifact_sha256": submission.proof_sha256,
+    }
+    if submission.patch_text is not None:
+        artifact.update({"patch": submission.patch_text, "patch_sha256": submission.proof_sha256})
+    else:
+        artifact.update(
+            {
+                "proof": submission.proof_script,
+                "full_file": submission.proof_script,
+                "proof_sha256": submission.proof_sha256,
+            }
+        )
     return {
         "schema_version": 2,
         "task_id": submission.task_id,
         "domain_id": domain_id,
         "miner_hotkey": submission.solver_hotkey,
-        "artifact": {
-            "proof": submission.proof_script,
-            "patch": submission.patch_text,
-            "imports": imports,
-            "full_file": submission.proof_script,
-            "proof_sha256": submission.proof_sha256,
-        },
+        "artifact": artifact,
         "created_at_block": created_at_block,
         "declared_verifier_id": verifier_id,
         "declared_verifier_version": verifier_version,

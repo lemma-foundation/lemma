@@ -33,6 +33,10 @@ def task_reward_eligibility(task: LemmaTask) -> TaskRewardEligibility:
     state = license_state_for(task.source_license, str(task.metadata.get("license_state") or ""))
     if status != "paid":
         return TaskRewardEligibility(False, f"activation_status:{status}", state, status)
+    if bool(task.metadata.get("known_solved")) or bool(task.metadata.get("public_solution_known")):
+        return TaskRewardEligibility(False, "known_solved", state, status)
+    if bool(task.metadata.get("baseline_solved")):
+        return TaskRewardEligibility(False, "baseline_solved", state, status)
     if not paid_license_allowed(state):
         return TaskRewardEligibility(False, f"license_state:{state}", state, status)
     if not task.target_sha256:

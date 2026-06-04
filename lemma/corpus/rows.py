@@ -20,7 +20,7 @@ from lemma.verifiers.base import VerificationResult
 
 
 class CorpusRowV2(BaseModel):
-    """One accepted verified theorem/proof row."""
+    """One accepted verified artifact row."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -88,7 +88,7 @@ def build_corpus_row_v2(
     repo_commit: str = "",
     rewarded: bool = True,
 ) -> CorpusRowV2:
-    """Build the canonical v2 row for an accepted Lean proof."""
+    """Build the canonical v2 row for an accepted Lean artifact."""
     accepted, verifier_id, verifier_version, stdout, stderr, metrics = _result_parts(task, result)
     identity = proof_identity(
         proof_sha256=submission.proof_sha256,
@@ -98,17 +98,25 @@ def build_corpus_row_v2(
     )
     prompt = task.to_v2()["prompt"]
     artifact = {
-        "proof": submission.proof_script,
-        "patch": submission.patch_text,
+        "kind": submission.artifact_kind,
         "imports": list(task.imports),
-        "full_file": submission.proof_script,
-        "proof_sha256": submission.proof_sha256,
+        "artifact_sha256": submission.proof_sha256,
         "proof_term_hash": identity.proof_term_hash,
         "structural_fingerprint": metrics.get("structural_fingerprint") or None,
         "proof_identity": identity.value,
         "proof_identity_source": identity.source,
         "proof_identity_strength": identity.strength,
     }
+    if submission.patch_text is not None:
+        artifact.update({"patch": submission.patch_text, "patch_sha256": submission.proof_sha256})
+    else:
+        artifact.update(
+            {
+                "proof": submission.proof_script,
+                "full_file": submission.proof_script,
+                "proof_sha256": submission.proof_sha256,
+            }
+        )
     dependencies = build_dependencies(task)
     license_state = license_state_for(task.source_license, str(task.metadata.get("license_state") or ""))
     quality = build_row_quality(

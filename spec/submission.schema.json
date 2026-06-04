@@ -9,11 +9,26 @@
     "task_version",
     "target_sha256",
     "solver_hotkey",
-    "proof_script",
     "proof_sha256",
     "created_at",
     "signature",
     "signature_payload_sha256"
+  ],
+  "oneOf": [
+    {
+      "required": ["proof_script"],
+      "properties": {
+        "proof_script": { "type": "string", "minLength": 1, "maxLength": 200000 },
+        "patch_text": { "type": "null" }
+      }
+    },
+    {
+      "required": ["patch_text"],
+      "properties": {
+        "proof_script": { "type": "string", "maxLength": 0 },
+        "patch_text": { "type": "string", "minLength": 1, "maxLength": 200000 }
+      }
+    }
   ],
   "properties": {
     "schema_version": { "type": "integer", "const": 1 },
@@ -21,7 +36,8 @@
     "task_version": { "type": "integer", "minimum": 1 },
     "target_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "solver_hotkey": { "type": "string", "minLength": 1 },
-    "proof_script": { "type": "string", "minLength": 1, "maxLength": 200000 },
+    "proof_script": { "type": "string", "maxLength": 200000 },
+    "patch_text": { "type": ["string", "null"], "maxLength": 200000 },
     "proof_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "created_at": { "type": "string", "minLength": 1 },
     "timelock_ciphertext": { "type": ["string", "null"] },

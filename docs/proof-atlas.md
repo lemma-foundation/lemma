@@ -1,10 +1,10 @@
 # Lemma Proof Atlas
 
-The Lemma Proof Atlas is the public data repository for accepted proof work and replay artifacts.
+The Lemma Proof Atlas is the public data repository for accepted Lean work and replay artifacts.
 
 It contains:
 
-- accepted proofs: Lean theorem tasks solved by miners and verified by validators;
+- accepted artifacts: Lean proof or patch tasks solved by miners and verified by validators;
 - task registries: SHA-pinned active-task registry snapshots;
 - exports: compact downstream JSONL views;
 - canonical storage artifacts: active-pool, accepted-proof, curriculum, and commitment digests.
@@ -14,15 +14,15 @@ It contains:
 The public repo is `lemma-foundation/lemma-proof-atlas`.
 
 ```text
-proofs/<netuid>/accepted/        accepted proof JSONL rows by epoch
-proofs/<netuid>/index.json       accepted proof row index
+proofs/<netuid>/accepted/        accepted artifact JSONL rows by epoch
+proofs/<netuid>/index.json       accepted artifact row index
 tasks/<netuid>/registries/       pinned task registries by hash
 exports/<netuid>/                compact downstream JSONL exports
 canonical/<netuid>/              active-pool, accepted-proof, curriculum, and commitment artifacts
 MANIFEST.sha256                  hash checklist for public snapshot files
 ```
 
-Accepted proof rows are canonical network output. Failed submissions, local verifier logs, and operator state are not Proof Atlas data.
+Accepted artifact rows are canonical network output. Failed submissions, local verifier logs, and operator state are not Proof Atlas data.
 
 ## Publishing
 
@@ -44,7 +44,7 @@ uv run python scripts/publish_proof_atlas_snapshot.py \
   --push-repo
 ```
 
-`LEMMA_CORPUS_OUTPUT_DIR` is the current internal validator setting for accepted proof JSONL output. Treat the name as legacy internal plumbing; it writes the `proofs/<netuid>/accepted/` layer in the Proof Atlas.
+`LEMMA_CORPUS_OUTPUT_DIR` is the current internal validator setting for accepted artifact JSONL output. Treat the name as legacy internal plumbing; it writes the `proofs/<netuid>/accepted/` layer in the Proof Atlas.
 
 For a no-upload preview:
 
@@ -69,15 +69,16 @@ canonical/sn467/commitments/tempo-000001.json
 
 `manifest.json` records per-entry SHA256 hashes and the accepted-proof Merkle root. `commitments/tempo-*.json` records the compact payload committed on chain.
 
-## Accepted Proof Rows
+## Accepted Artifact Rows
 
-An accepted proof row is a replayable record of a theorem task, submitted proof, validator result, provenance, quality metadata, dependencies, and graph links.
+An accepted artifact row is a replayable record of a task, submitted proof or patch, validator result, provenance, quality metadata, dependencies, and graph links.
 
 Minimal meaning:
 
 ```json
 {
   "task_id": "lemma.sample.true_intro",
+  "artifact_kind": "proof",
   "proof_script": "by trivial",
   "verification": {
     "passed": true,
@@ -88,9 +89,11 @@ Minimal meaning:
 }
 ```
 
-The full row also carries task identity, Lean imports, toolchain and Mathlib pins, proof hashes, solver and validator hotkeys, difficulty metadata, dependency metadata, graph nodes, and quality checks.
+Patch tasks use `artifact_kind: "patch"` with `patch_text` and `patch_sha256`; they do not store patch text in `proof_script`.
 
-Failed proofs are not accepted proof rows. Valid alternate proofs can be stored with `rewarded: false`.
+The full row also carries task identity, Lean imports, toolchain and Mathlib pins, artifact hashes, solver and validator hotkeys, difficulty metadata, dependency metadata, graph nodes, and quality checks.
+
+Failed submissions are not accepted artifact rows. Valid alternates can be stored with `rewarded: false`.
 
 ## Replay And Exports
 

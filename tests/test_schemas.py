@@ -54,8 +54,11 @@ def test_task_schema_requires_source_and_version() -> None:
 
 def test_submission_schema_requires_live_signature_fields() -> None:
     required = set(_schema("submission.schema.json")["required"])
+    props = set(_schema("submission.schema.json")["properties"])
 
     assert {"task_version", "signature", "signature_payload_sha256"} <= required
+    assert "proof_script" not in required
+    assert {"proof_script", "patch_text"} <= props
 
 
 def test_corpus_schema_requires_identity_attribution_and_reward_status() -> None:
@@ -70,10 +73,19 @@ def test_corpus_schema_requires_identity_attribution_and_reward_status() -> None
         "validator_hotkey",
         "accepted_at",
         "rewarded",
+        "artifact_kind",
         "proof_identity",
         "proof_identity_source",
     } <= required
-    assert {"active_K", "queue_position", "queue_depth", "frontier_depth", "ema_solve_rate"} <= props
+    assert {
+        "active_K",
+        "queue_position",
+        "queue_depth",
+        "frontier_depth",
+        "ema_solve_rate",
+        "patch_text",
+        "patch_sha256",
+    } <= props
 
 
 def test_verification_result_schema_captures_replay_identity() -> None:

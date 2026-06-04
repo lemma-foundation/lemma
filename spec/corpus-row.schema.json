@@ -16,10 +16,10 @@
     "mathlib_rev",
     "policy",
     "target_sha256",
+    "artifact_kind",
     "source_stream",
     "source_ref",
     "source_license",
-    "proof_script",
     "proof_sha256",
     "proof_term_hash",
     "proof_identity",
@@ -42,6 +42,23 @@
     "verification",
     "metadata"
   ],
+  "oneOf": [
+    {
+      "required": ["proof_script"],
+      "properties": {
+        "artifact_kind": { "const": "proof" },
+        "proof_script": { "type": "string", "minLength": 1 }
+      }
+    },
+    {
+      "required": ["patch_text", "patch_sha256"],
+      "properties": {
+        "artifact_kind": { "const": "patch" },
+        "patch_text": { "type": "string", "minLength": 1 },
+        "patch_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    }
+  ],
   "properties": {
     "schema_version": { "type": "integer", "const": 1 },
     "row_id": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
@@ -55,6 +72,7 @@
     "mathlib_rev": { "type": "string", "minLength": 1 },
     "policy": { "type": "string", "minLength": 1 },
     "target_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "artifact_kind": { "type": "string", "enum": ["proof", "patch"] },
     "source_stream": { "type": "string", "minLength": 1 },
     "source_ref": {
       "type": "object",
@@ -69,7 +87,9 @@
       }
     },
     "source_license": { "type": "string", "minLength": 1 },
-    "proof_script": { "type": "string", "minLength": 1 },
+    "proof_script": { "type": ["string", "null"] },
+    "patch_text": { "type": ["string", "null"] },
+    "patch_sha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
     "proof_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "proof_term_hash": { "type": ["string", "null"] },
     "proof_identity": { "type": "string", "minLength": 1 },

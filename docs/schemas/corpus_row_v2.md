@@ -1,4 +1,4 @@
-# Accepted Proof Row Schema v2
+# Accepted Artifact Row Schema v2
 
 `lemma/schemas/corpus_row_v2.json` is the canonical accepted artifact row.
 
@@ -40,4 +40,4 @@ Required fields:
 sha256(domain_id + "\n" + task_id + "\n" + normalized_artifact_hash)
 ```
 
-For Lean, `accepted_artifact` stores the proof, replayable full file, proof identity, and proof identity strength. `dependencies` and `graph` make each row a node in the proof corpus graph instead of a flat record.
+For Lean, `accepted_artifact.kind` is `proof` or `patch`. Proof artifacts store `proof`, replayable `full_file`, proof identity, and proof identity strength. Patch artifacts store `patch` and `patch_sha256` instead of pretending the patch is a proof script. `dependencies` and `graph` make each row a node in the proof corpus graph instead of a flat record.
