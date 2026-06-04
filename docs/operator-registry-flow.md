@@ -39,6 +39,7 @@ LEMMA_TASK_REGISTRY_URL=tasks/signed.registry.json
 LEMMA_TASK_REGISTRY_SHA256_EXPECTED=<registry-sha256>
 LEMMA_VERIFY_REGISTRY_SIGNATURES=1
 LEMMA_ACTIVE_REGISTRY_CACHE_DIR=active-registries
+LEMMA_SOURCE_CHECKOUT_ROOT=source-checkouts
 LEMMA_ACTIVE_K=10
 LEMMA_FRONTIER_DEPTH=0
 LEMMA_ACTIVE_QUEUE_SEED=lemma-active-queue
@@ -52,6 +53,14 @@ LEMMA_OPERATOR_DATA_DIR=validator-data
 `LEMMA_ACTIVE_K` is validator throughput. `LEMMA_FRONTIER_DEPTH` opens deeper task rows. Payment uses deterministic active slot weights, not subjective validator scores.
 
 When `LEMMA_ACTIVE_REGISTRY_CACHE_DIR` is set, miners and validators can hydrate `tempo-<tempo>.registry.json` files for faster startup. Cache files are distribution artifacts. The registry SHA pin remains the public task authority.
+
+Patch validation resolves public source refs under `LEMMA_SOURCE_CHECKOUT_ROOT` as:
+
+```text
+source-checkouts/<source-kind>/<source-name>/<commit>/
+```
+
+For example, `source_ref: {kind: "sorrydb", name: "owner/repo", commit: "<sha>"}` resolves to `source-checkouts/sorrydb/owner__repo/<sha>/`. The checkout must already be at the pinned commit.
 
 For live curriculum retargeting, the state log updates throughput and depth after each completed tempo:
 

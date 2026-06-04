@@ -342,17 +342,28 @@ def _commitment_receipt(
 def _default_verify(settings: LemmaSettings) -> VerifySubmission:
     def verify(task: LemmaTask, submission: LemmaSubmission) -> VerifyResult:
         if task.task_format == "patch":
-            return _verify_patch_submission(task, submission, timeout_s=settings.lean_verify_timeout_s)
+            return _verify_patch_submission(
+                task,
+                submission,
+                settings=settings,
+                timeout_s=settings.lean_verify_timeout_s,
+            )
         verifier = get_verifier(task.domain_id, settings=settings)
         return verify_result_from_adapter_result(verifier.verify(task, submission))
 
     return verify
 
 
-def _verify_patch_submission(task: LemmaTask, submission: LemmaSubmission, *, timeout_s: int) -> VerifyResult:
+def _verify_patch_submission(
+    task: LemmaTask,
+    submission: LemmaSubmission,
+    *,
+    settings: LemmaSettings,
+    timeout_s: int,
+) -> VerifyResult:
     from lemma.lean.patch_task import validate_patch_task
 
-    source_root = _patch_source_root(task)
+    source_root = _patch_source_root(task, settings)
     if source_root is None:
         return VerifyResult(passed=False, reason="invalid_source_root")
     result = validate_patch_task(
@@ -369,12 +380,14 @@ def _verify_patch_submission(task: LemmaTask, submission: LemmaSubmission, *, ti
     )
 
 
-def _patch_source_root(task: LemmaTask) -> Path | None:
+def _patch_source_root(task: LemmaTask, settings: LemmaSettings) -> Path | None:
+    if settings.source_checkout_root is not None:
+        from lemma.source_checkouts import source_checkout_path
+
+        return source_checkout_path(settings.source_checkout_root, task.source_ref)
     raw = str(task.metadata.get("source_root") or "").strip()
     if raw:
         return Path(raw)
-    if task.source_ref.path:
-        return Path(task.source_ref.path).parent
     return None
 
 

@@ -59,6 +59,7 @@ class LemmaSettings(BaseSettings):
     )
     active_registry_json: Path | None = Field(default=None, validation_alias="LEMMA_ACTIVE_REGISTRY_JSON")
     active_registry_cache_dir: Path | None = Field(default=None, validation_alias="LEMMA_ACTIVE_REGISTRY_CACHE_DIR")
+    source_checkout_root: Path | None = Field(default=None, validation_alias="LEMMA_SOURCE_CHECKOUT_ROOT")
     verify_registry_signatures: bool = Field(
         default=False,
         validation_alias="LEMMA_VERIFY_REGISTRY_SIGNATURES",

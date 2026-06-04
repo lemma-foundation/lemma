@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -11,6 +12,7 @@ import pytest
 from click.testing import CliRunner
 from lemma.cli.main import main
 from lemma.common.config import LemmaSettings
+from lemma.source_checkouts import source_checkout_path
 from lemma.source_sorries import build_patch_task_from_sorrydb_record
 from lemma.submissions import build_patch_submission
 from lemma.tasks import TaskRegistry, load_task_registry
@@ -76,6 +78,14 @@ def _settings(tmp_path: Path) -> LemmaSettings:
     )
 
 
+def _checkout_cache(tmp_path: Path, task) -> Path:
+    root = tmp_path / "checkouts"
+    checkout = source_checkout_path(root, task.source_ref)
+    assert checkout is not None
+    shutil.copytree(SOURCE_ROOT, checkout)
+    return root
+
+
 def test_sorrydb_row_builds_source_pinned_patch_task() -> None:
     task = _task()
 
@@ -97,6 +107,14 @@ def test_sorrydb_row_builds_source_pinned_patch_task() -> None:
     assert len(task.target_sha256) == 64
     assert len(task.target_type_sha256) == 64
     assert len(task.environment_sha256 or "") == 64
+
+
+def test_source_checkout_path_uses_public_source_identity() -> None:
+    task = _task()
+
+    assert source_checkout_path(Path("checkouts"), task.source_ref) == (
+        Path("checkouts") / "sorrydb" / "SorryDB__SorryDB" / ("0" * 40)
+    )
 
 
 def test_source_sorry_patch_task_validates_and_publishes_patch_artifact(
@@ -125,6 +143,32 @@ def test_source_sorry_patch_task_validates_and_publishes_patch_artifact(
     assert result.corpus_rows[0].artifact_kind == "patch"
     assert result.corpus_rows[0].patch_text == _patch()
     assert "source_root" not in result.corpus_rows[0].metadata
+
+
+def test_validator_resolves_source_sorry_from_checkout_cache(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    task = _task()
+    checkout_root = _checkout_cache(tmp_path, task)
+
+    def fake_reproduction(command: list[str], *, cwd: Path, timeout_s: int) -> subprocess.CompletedProcess[str]:
+        assert "exact Nat.add_zero n" in (cwd / "RealSource/Basic.lean").read_text(encoding="utf-8")
+        return _completed(command)
+
+    monkeypatch.setattr("lemma.lean.patch_task._run_reproduction_command", fake_reproduction)
+
+    settings = _settings(tmp_path).model_copy(update={"source_checkout_root": checkout_root})
+    result = validate_once(
+        settings,
+        [build_patch_submission(task, solver_hotkey="hk-source", patch_text=_patch())],
+        registry=TaskRegistry(schema_version=1, tasks=(task,), sha256="0" * 64),
+        tempo=1,
+        no_set_weights=True,
+    )
+
+    assert result.score.credits == {"hk-source": 1}
+    assert result.corpus_rows[0].artifact_kind == "patch"
 
 
 def test_tasks_import_sorrydb_writes_registry(tmp_path: Path) -> None:

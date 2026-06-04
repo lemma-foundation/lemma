@@ -33,6 +33,14 @@ uv run lemma tasks import-sorrydb \
 
 The importer creates patch tasks. Operators still need to pin and publish the resulting registry SHA before validators score against it.
 
+Validators do not get source roots from task metadata in production. They resolve patch-task checkouts from `LEMMA_SOURCE_CHECKOUT_ROOT` using the task's public `source_ref`:
+
+```text
+<root>/<source-kind>/<source-name>/<commit>/
+```
+
+Slashes and unsafe characters in `source-name` are encoded as `__`; for example, `owner/repo` becomes `owner__repo`.
+
 ## Task Rows
 
 Every active task must have:
