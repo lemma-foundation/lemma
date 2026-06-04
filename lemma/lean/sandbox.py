@@ -158,6 +158,19 @@ VerifyReason = Literal[
     "oom",
     "docker_error",
     "remote_error",
+    "unsupported_task_format",
+    "invalid_source_root",
+    "empty_patch",
+    "unsafe_patch_path",
+    "disallowed_file",
+    "patch_apply_failed",
+    "target_statement_missing",
+    "target_statement_changed",
+    "forbidden_import",
+    "trust_expansion",
+    "hole",
+    "missing_reproduction_command",
+    "reproduction_failed",
 ]
 
 

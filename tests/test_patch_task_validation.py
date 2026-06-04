@@ -6,8 +6,11 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from lemma.common.config import LemmaSettings
 from lemma.lean.patch_task import validate_patch_task
-from lemma.tasks import LemmaTask, target_type_sha256
+from lemma.submissions import build_patch_submission
+from lemma.tasks import LemmaTask, TaskRegistry, target_type_sha256
+from lemma.validator import validate_once
 
 FIXTURE_ROOT = Path("tests/fixtures/lean_patch_project")
 
@@ -48,6 +51,15 @@ def _fixture_patch() -> str:
 
 def _completed(command: list[str], returncode: int = 0) -> subprocess.CompletedProcess[str]:
     return subprocess.CompletedProcess(command, returncode=returncode, stdout="ok", stderr="failed")
+
+
+def _settings(tmp_path: Path) -> LemmaSettings:
+    return LemmaSettings(
+        _env_file=None,
+        operator_data_dir=tmp_path / "operator",
+        corpus_output_dir=tmp_path / "corpus",
+        lean_use_docker=False,
+    )
 
 
 def test_patch_task_validator_applies_allowed_patch_and_runs_reproduction(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -166,3 +178,46 @@ def test_patch_task_validator_reports_reproduction_failure(monkeypatch: pytest.M
     assert result.accepted is False
     assert result.reason == "reproduction_failed"
     assert result.stderr_tail == "failed"
+
+
+def test_validator_accepts_patch_submission_through_default_verifier(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    task = _task().model_copy(update={"metadata": {"source_root": str(FIXTURE_ROOT)}})
+
+    def fake_reproduction(command: list[str], *, cwd: Path, timeout_s: int) -> subprocess.CompletedProcess[str]:
+        return _completed(command)
+
+    monkeypatch.setattr("lemma.lean.patch_task._run_reproduction_command", fake_reproduction)
+
+    result = validate_once(
+        _settings(tmp_path),
+        [build_patch_submission(task, solver_hotkey="hk-patch", patch_text=_fixture_patch())],
+        registry=TaskRegistry(schema_version=1, tasks=(task,), sha256="0" * 64),
+        tempo=1,
+        no_set_weights=True,
+    )
+
+    assert result.score.credits == {"hk-patch": 1}
+    assert result.verification_records[0].passed is True
+    assert result.corpus_rows[0].proof_script == _fixture_patch()
+    assert result.corpus_rows[0].metadata["artifact_kind"] == "patch"
+
+
+def test_validator_rejects_patch_submission_cheating_through_default_verifier(tmp_path: Path) -> None:
+    task = _task().model_copy(update={"metadata": {"source_root": str(FIXTURE_ROOT)}})
+    bad_patch = _fixture_patch().replace("PatchFixture.lean", "Other.lean")
+
+    result = validate_once(
+        _settings(tmp_path),
+        [build_patch_submission(task, solver_hotkey="hk-patch", patch_text=bad_patch)],
+        registry=TaskRegistry(schema_version=1, tasks=(task,), sha256="0" * 64),
+        tempo=1,
+        no_set_weights=True,
+    )
+
+    assert result.score.credits == {}
+    assert result.verification_records[0].passed is False
+    assert result.verification_records[0].reason == "disallowed_file"
+    assert result.corpus_rows == ()

@@ -94,11 +94,12 @@ def build_corpus_row_v2(
         proof_sha256=submission.proof_sha256,
         proof_term_hash=str(metrics.get("proof_term_hash") or "") or None,
         structural_fingerprint=str(metrics.get("structural_fingerprint") or "") or None,
-        proof_script=submission.proof_script,
+        proof_script=submission.artifact_text,
     )
     prompt = task.to_v2()["prompt"]
     artifact = {
         "proof": submission.proof_script,
+        "patch": submission.patch_text,
         "imports": list(task.imports),
         "full_file": submission.proof_script,
         "proof_sha256": submission.proof_sha256,

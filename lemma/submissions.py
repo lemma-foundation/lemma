@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from lemma.tasks import LEAN_DOMAIN_ID, LEAN_VERIFIER_ID, LEAN_VERIFIER_VERSION, LemmaTask
 
 MAX_PROOF_CHARS = 200_000
+MAX_PATCH_CHARS = 200_000
 
 
 def proof_sha256(proof_script: str) -> str:
@@ -77,7 +78,8 @@ class LemmaSubmission(BaseModel):
     task_version: int = Field(default=1, ge=1)
     target_sha256: str
     solver_hotkey: str
-    proof_script: str
+    proof_script: str = ""
+    patch_text: str | None = None
     proof_sha256: str = ""
     created_at: str
     timelock_ciphertext: str | None = None
@@ -93,17 +95,24 @@ class LemmaSubmission(BaseModel):
     @field_validator("proof_script")
     @classmethod
     def _proof_size(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("proof_script is empty")
         if len(value) > MAX_PROOF_CHARS:
             raise ValueError(f"proof_script exceeds {MAX_PROOF_CHARS} characters")
+        return value
+
+    @field_validator("patch_text")
+    @classmethod
+    def _patch_size(cls, value: str | None) -> str | None:
+        if value is not None and len(value) > MAX_PATCH_CHARS:
+            raise ValueError(f"patch_text exceeds {MAX_PATCH_CHARS} characters")
         return value
 
     @model_validator(mode="after")
     def _validate_hashes(self) -> LemmaSubmission:
         if self.schema_version != 1:
             raise ValueError("submission schema_version must be 1")
-        expected = proof_sha256(self.proof_script)
+        if bool(self.proof_script.strip()) == bool((self.patch_text or "").strip()):
+            raise ValueError("submission must contain exactly one of proof_script or patch_text")
+        expected = proof_sha256(self.artifact_text)
         if self.proof_sha256 and self.proof_sha256.lower() != expected:
             raise ValueError(f"proof_sha256 mismatch: got {expected}, expected {self.proof_sha256}")
         self.proof_sha256 = expected
@@ -116,6 +125,14 @@ class LemmaSubmission(BaseModel):
             )
         self.signature_payload_sha256 = expected_payload_hash
         return self
+
+    @property
+    def artifact_text(self) -> str:
+        return self.patch_text if self.patch_text is not None else self.proof_script
+
+    @property
+    def artifact_kind(self) -> str:
+        return "patch" if self.patch_text is not None else "proof"
 
     @property
     def is_signed(self) -> bool:
@@ -153,6 +170,29 @@ def build_submission(
     )
 
 
+def build_patch_submission(
+    task: LemmaTask,
+    *,
+    solver_hotkey: str,
+    patch_text: str,
+    created_at: str | None = None,
+    metadata: dict[str, Any] | None = None,
+    signature: str | None = None,
+) -> LemmaSubmission:
+    """Build a task-bound patch submission package."""
+    return LemmaSubmission(
+        task_id=task.id,
+        task_version=task.task_version,
+        target_sha256=task.target_sha256,
+        solver_hotkey=solver_hotkey,
+        patch_text=patch_text,
+        proof_sha256=proof_sha256(patch_text),
+        created_at=created_at or datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        metadata=metadata or {},
+        signature=signature,
+    )
+
+
 def submission_v2_from_lean_submission(submission: LemmaSubmission, task: LemmaTask | None = None) -> dict[str, Any]:
     """Return the domain-neutral submission row for a legacy Lean proof."""
     domain_id = task.domain_id if task else LEAN_DOMAIN_ID
@@ -167,6 +207,7 @@ def submission_v2_from_lean_submission(submission: LemmaSubmission, task: LemmaT
         "miner_hotkey": submission.solver_hotkey,
         "artifact": {
             "proof": submission.proof_script,
+            "patch": submission.patch_text,
             "imports": imports,
             "full_file": submission.proof_script,
             "proof_sha256": submission.proof_sha256,
@@ -196,6 +237,11 @@ def validate_submission_for_task(
         raise ValueError(f"submission task_version mismatch: {submission.task_version} != {task.task_version}")
     if submission.target_sha256 != task.target_sha256:
         raise ValueError("submission target_sha256 mismatch")
+    if task.task_format == "patch":
+        if submission.patch_text is None:
+            raise ValueError("patch task submission is missing patch_text")
+    elif submission.patch_text is not None:
+        raise ValueError("non-patch task submission must not include patch_text")
     if require_signature:
         if not submission.is_signed:
             raise ValueError("live miner submission is unsigned")

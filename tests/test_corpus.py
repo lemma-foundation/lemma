@@ -160,6 +160,7 @@ def test_corpus_index_and_metadata_sanitize_private_paths(tmp_path: Path) -> Non
 
     assert row.metadata == {
         "title": "True task",
+        "task_format": "isolated_proof",
         "difficulty": "unit",
         "nested": {"safe": "kept", "items": ["public", {"note": "ok"}]},
     }

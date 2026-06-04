@@ -341,10 +341,41 @@ def _commitment_receipt(
 
 def _default_verify(settings: LemmaSettings) -> VerifySubmission:
     def verify(task: LemmaTask, submission: LemmaSubmission) -> VerifyResult:
+        if task.task_format == "patch":
+            return _verify_patch_submission(task, submission, timeout_s=settings.lean_verify_timeout_s)
         verifier = get_verifier(task.domain_id, settings=settings)
         return verify_result_from_adapter_result(verifier.verify(task, submission))
 
     return verify
+
+
+def _verify_patch_submission(task: LemmaTask, submission: LemmaSubmission, *, timeout_s: int) -> VerifyResult:
+    from lemma.lean.patch_task import validate_patch_task
+
+    source_root = _patch_source_root(task)
+    if source_root is None:
+        return VerifyResult(passed=False, reason="invalid_source_root")
+    result = validate_patch_task(
+        task,
+        source_root=source_root,
+        patch_text=submission.patch_text or "",
+        timeout_s=timeout_s,
+    )
+    return VerifyResult(
+        passed=result.accepted,
+        reason=result.reason,
+        stdout_tail=result.stdout_tail,
+        stderr_tail=result.stderr_tail,
+    )
+
+
+def _patch_source_root(task: LemmaTask) -> Path | None:
+    raw = str(task.metadata.get("source_root") or "").strip()
+    if raw:
+        return Path(raw)
+    if task.source_ref.path:
+        return Path(task.source_ref.path).parent
+    return None
 
 
 def active_tasks_for_validation(
@@ -969,7 +1000,7 @@ def validate_once(
             proof_sha256=submission.proof_sha256,
             proof_term_hash=result.proof_term_hash,
             structural_fingerprint=result.structural_fingerprint,
-            proof_script=submission.proof_script,
+            proof_script=submission.artifact_text,
         )
         eligibility = task_reward_eligibility(task)
         record = VerificationRecord(

@@ -217,7 +217,7 @@ def build_corpus_row(
         proof_sha256=submission.proof_sha256,
         proof_term_hash=term_hash,
         structural_fingerprint=structural,
-        proof_script=submission.proof_script,
+        proof_script=submission.artifact_text,
     )
     source = identity.source if term_hash is not None or structural is not None else proof_identity_source
     if source == "script_sha256":
@@ -235,7 +235,10 @@ def build_corpus_row(
         proof_identity_strength=identity.strength,
         model_lift_release=task.metadata.get("model_lift_release"),
     )
-    row_metadata = {"title": task.title, **_public_metadata(task.metadata)}
+    row_metadata = {"title": task.title, "task_format": task.task_format, **_public_metadata(task.metadata)}
+    if submission.patch_text is not None:
+        row_metadata["artifact_kind"] = "patch"
+        row_metadata["patch_sha256"] = submission.proof_sha256
     if result.declaration_fingerprints:
         row_metadata["declaration_fingerprints"] = dict(sorted(result.declaration_fingerprints.items()))
     return CorpusRow(
@@ -249,7 +252,7 @@ def build_corpus_row(
         mathlib_rev=task.mathlib_rev,
         policy=task.policy,
         target_sha256=task.target_sha256,
-        proof_script=submission.proof_script,
+        proof_script=submission.artifact_text,
         proof_sha256=submission.proof_sha256,
         proof_term_hash=term_hash,
         proof_identity=identity.value,
