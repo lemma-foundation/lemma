@@ -1,6 +1,6 @@
 diff --git a/PatchFixture.lean b/PatchFixture.lean
 --- a/PatchFixture.lean
 +++ b/PatchFixture.lean
-@@ -4 +4 @@ theorem add_zero_fixture (n : Nat) : n + 0 = n := by
+@@ -4 +4 @@
 -  sorry
 +  exact Nat.add_zero n
