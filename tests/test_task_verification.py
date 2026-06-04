@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from lemma.common.config import LemmaSettings
 from lemma.lean.sandbox import VerifyResult
@@ -60,6 +62,35 @@ def _task() -> LemmaTask:
     )
 
 
+def _original_problem_task() -> LemmaTask:
+    statement = Path("tests/fixtures/lean_isolated_proof/original_problem.lean").read_text(encoding="utf-8")
+    return LemmaTask(
+        id="lemma.test.isolated.original_problem",
+        task_version=1,
+        title="Isolated proof import guard",
+        task_format="isolated_proof",
+        task_class="canary",
+        source_stream="fixed_fixture",
+        source_ref={
+            "kind": "fixed_fixture",
+            "name": "lean_isolated_proof",
+            "path": "tests/fixtures/lean_isolated_proof/original_problem.lean",
+        },
+        source_license="CC-BY-4.0",
+        imports=("Mathlib",),
+        allowed_files=("Submission.lean",),
+        allowed_imports=("Mathlib",),
+        theorem_name="target",
+        type_expr="True",
+        statement=statement,
+        submission_stub=_proof(theorem_type="True", body="  sorry"),
+        lean_toolchain="leanprover/lean4:v4.30.0-rc2",
+        mathlib_rev="5450b53e5ddc",
+        policy="restricted_helpers",
+        reproduction_command="lake build",
+    )
+
+
 def test_verification_accepts_known_good_proof(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_verify(self: object, problem: object, submission_src: str, **kwargs: object) -> VerifyResult:
         assert problem.id == "lemma.test.true"
@@ -78,6 +109,28 @@ def test_verification_accepts_known_good_proof(monkeypatch: pytest.MonkeyPatch) 
     )
 
     assert result.passed is True
+
+
+def test_isolated_proof_rejects_importing_original_problem(monkeypatch: pytest.MonkeyPatch) -> None:
+    proof = Path("tests/fixtures/lean_isolated_proof/import_original_attack.lean").read_text(encoding="utf-8")
+    task = _original_problem_task()
+
+    def fake_verify(self: object, problem: object, submission_src: str, **kwargs: object) -> VerifyResult:  # noqa: ARG001
+        raise AssertionError("sandbox should not run for original_problem import attacks")
+
+    monkeypatch.setattr("lemma.lean.verify_runner.LeanSandbox.verify", fake_verify)
+
+    result = run_lean_verify(
+        LemmaSettings(_env_file=None, lean_use_docker=False),
+        verify_timeout_s=60,
+        problem=task.to_problem(),
+        proof_script=proof,
+        submission_policy=task.policy,
+    )
+
+    assert result.passed is False
+    assert result.reason == "policy_violation"
+    assert "imports must be exactly ['import Mathlib']" in result.stderr_tail
 
 
 @pytest.mark.parametrize(
