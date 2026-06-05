@@ -129,20 +129,25 @@ def test_isolated_proof_rejects_importing_original_problem(monkeypatch: pytest.M
     )
 
     assert result.passed is False
-    assert result.reason == "policy_violation"
+    assert result.reason == "forbidden_import"
     assert "imports must be exactly ['import Mathlib']" in result.stderr_tail
 
 
 @pytest.mark.parametrize(
-    "proof",
+    ("proof", "expected_reason"),
     [
-        _proof(body="  sorry"),
-        _proof(imports=("Mathlib", "Other")),
-        _proof(body="axiom bad : False\n\ntheorem test_true : True := by\n  trivial"),
-        _proof(theorem_type="False"),
+        (_proof(body="  sorry"), "new_sorry_detected"),
+        (_proof(body="  admit"), "new_admit_detected"),
+        (_proof(imports=("Mathlib", "Other")), "forbidden_import"),
+        (_proof(body="axiom bad : False\n\ntheorem test_true : True := by\n  trivial"), "new_axiom_detected"),
+        (_proof(theorem_type="False"), "lean_compile_error"),
     ],
 )
-def test_verification_rejects_policy_violations(monkeypatch: pytest.MonkeyPatch, proof: str) -> None:
+def test_verification_rejects_policy_violations(
+    monkeypatch: pytest.MonkeyPatch,
+    proof: str,
+    expected_reason: str,
+) -> None:
     def fake_verify(self: object, problem: object, submission_src: str, **kwargs: object) -> VerifyResult:  # noqa: ARG001
         raise AssertionError("sandbox should not run for policy violations")
 
@@ -157,4 +162,4 @@ def test_verification_rejects_policy_violations(monkeypatch: pytest.MonkeyPatch,
     )
 
     assert result.passed is False
-    assert result.reason == "policy_violation"
+    assert result.reason == expected_reason

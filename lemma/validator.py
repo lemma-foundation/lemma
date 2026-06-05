@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Container, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -28,8 +28,6 @@ from lemma.supply.queue import initial_active_pool
 from lemma.supply.slot_weight import slot_weight_receipt_for_kernel_dependencies
 from lemma.task_activation import task_reward_eligibility, task_slot_weight
 from lemma.tasks import LemmaTask, TaskRegistry, fetch_task_registry, load_task_registry
-from lemma.verifiers.lean import verify_result_from_adapter_result
-from lemma.verifiers.registry import get_verifier
 
 VerifySubmission = Callable[[LemmaTask, LemmaSubmission], VerifyResult]
 SubmitWeights = Callable[[LemmaSettings, dict[str, float]], ChainWeightSubmission]
@@ -340,55 +338,12 @@ def _commitment_receipt(
 
 
 def _default_verify(settings: LemmaSettings) -> VerifySubmission:
+    from lemma.preflight import verify_task_submission
+
     def verify(task: LemmaTask, submission: LemmaSubmission) -> VerifyResult:
-        if task.task_format == "patch":
-            return _verify_patch_submission(
-                task,
-                submission,
-                settings=settings,
-                timeout_s=settings.lean_verify_timeout_s,
-            )
-        verifier = get_verifier(task.domain_id, settings=settings)
-        return verify_result_from_adapter_result(verifier.verify(task, submission))
+        return verify_task_submission(task, submission, settings=settings)
 
     return verify
-
-
-def _verify_patch_submission(
-    task: LemmaTask,
-    submission: LemmaSubmission,
-    *,
-    settings: LemmaSettings,
-    timeout_s: int,
-) -> VerifyResult:
-    from lemma.lean.patch_task import validate_patch_task
-
-    source_root = _patch_source_root(task, settings)
-    if source_root is None:
-        return VerifyResult(passed=False, reason="invalid_source_root")
-    result = validate_patch_task(
-        task,
-        source_root=source_root,
-        patch_text=submission.patch_text or "",
-        timeout_s=timeout_s,
-    )
-    return VerifyResult(
-        passed=result.accepted,
-        reason=result.reason,
-        stdout_tail=result.stdout_tail,
-        stderr_tail=result.stderr_tail,
-    )
-
-
-def _patch_source_root(task: LemmaTask, settings: LemmaSettings) -> Path | None:
-    if settings.source_checkout_root is not None:
-        from lemma.source_checkouts import source_checkout_path
-
-        return source_checkout_path(settings.source_checkout_root, task.source_ref)
-    raw = str(task.metadata.get("source_root") or "").strip()
-    if raw:
-        return Path(raw)
-    return None
 
 
 def active_tasks_for_validation(
@@ -396,8 +351,16 @@ def active_tasks_for_validation(
     settings: LemmaSettings,
     *,
     tempo: int | None = None,
+    solved_task_ids: Container[str] = frozenset(),
 ) -> tuple[LemmaTask, ...]:
-    """Select the deterministic active K-window from a registry."""
+    """Select the deterministic active K-window from a registry.
+
+    With ``active_selection_mode="balanced"`` (default) this keeps the rotating
+    level/family-balanced window. With ``active_selection_mode="class_stratified"``
+    it instead draws a class-stratified set from the unsolved backlog, honoring
+    ``active_canary_quota``. Both paths are deterministic from the same public
+    seed; the stratified path additionally excludes ``solved_task_ids``.
+    """
     active_tempo = current_active_tempo(settings) if tempo is None else tempo
     settings = curriculum_controlled_settings(settings, tempo=active_tempo)
     candidates = tuple(task for task in registry.tasks if task.queue_depth <= settings.frontier_depth)
@@ -415,11 +378,35 @@ def active_tasks_for_validation(
         enforce_production_invariants(settings, registry)
     if active_k == 0:
         return ()
+    seed = active_selection_seed(registry, settings, tempo=active_tempo, epoch_randomness=epoch_randomness)
+
+    if settings.active_selection_mode == "class_stratified":
+        from lemma.supply.stratified import class_stratified_tasks
+
+        quotas = {0: settings.active_canary_quota} if settings.active_canary_quota else None
+        selected = class_stratified_tasks(
+            candidates,
+            active_K=active_k,
+            seed=seed,
+            quotas=quotas,
+            solved_task_ids=solved_task_ids,
+        )
+        return tuple(
+            task.model_copy(
+                update={
+                    "queue_position": position,
+                    "queue_depth": task.queue_depth,
+                    "frontier_depth": settings.frontier_depth,
+                }
+            )
+            for position, task in enumerate(selected)
+        )
+
     pool = initial_active_pool(
         candidates,
         active_K=active_k,
         tempo=active_tempo,
-        seed=active_selection_seed(registry, settings, tempo=active_tempo, epoch_randomness=epoch_randomness),
+        seed=seed,
         frontier_depth=settings.frontier_depth,
     )
     by_id = {task.id: task for task in pool.queue}

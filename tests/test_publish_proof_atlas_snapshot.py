@@ -145,6 +145,127 @@ def test_publish_dry_run_prepares_accepted_proof_snapshot(tmp_path: Path, monkey
     assert (repo / "canonical/sn467/storage-index.json").exists()
 
 
+def _write_registry_for_accepted_task(repo: Path) -> None:
+    task = make_task(
+        task_id="lemma.sn467.true_test",
+        title="Smoke true",
+        theorem_name="smoke_true",
+        type_expr="True",
+        source_stream="sorrydb",
+        source_name="pytest",
+        source_license="Apache-2.0",
+    ).model_copy(
+        update={
+            "source_ref": SourceRef(
+                kind="sorrydb",
+                name="pytest",
+                url="https://example.test/repo",
+                commit="abc123",
+                path="Smoke.lean",
+            )
+        }
+    )
+    payload = {"schema_version": 1, "tasks": [task.model_dump(mode="json", exclude_none=True)]}
+    raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    sha = hashlib.sha256(raw).hexdigest()
+    registries = repo / "tasks" / "sn467" / "registries"
+    registries.mkdir(parents=True, exist_ok=True)
+    (registries / f"{sha}.json").write_bytes(raw)
+    _write(
+        registries / "index.json",
+        json.dumps(
+            {"schema_version": 1, "netuid": "sn467", "registries": {"1": {"sha256": sha, "path": f"{sha}.json"}}},
+            sort_keys=True,
+        )
+        + "\n",
+    )
+
+
+def test_publish_dry_run_builds_real_task_layer_when_registry_present(tmp_path: Path, monkeypatch, capsys) -> None:  # noqa: ANN001, E501
+    repo = tmp_path / "lemma-proof-atlas"
+    _write(repo / "README.md", "- accepted proof rows: `0`\n")
+    _write(
+        repo / "ATLAS_CARD.md",
+        "The checked-in artifact set contains 0 accepted Lean proof rows,\n"
+        "The validator accepted all 0 proofs with the pinned Lean verifier.\n",
+    )
+    _write_accepted_proof_row(repo)
+    _write_registry_for_accepted_task(repo)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "publish_proof_atlas_snapshot.py",
+            "--repo",
+            str(repo),
+            "--netuid",
+            "sn467",
+            "--snapshot",
+            "2026-06-02T00-00-00Z",
+            "--dry-run",
+            "--skip-hippius",
+            "--skip-github",
+            "--skip-huggingface",
+        ],
+    )
+
+    assert main() == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["real_task"]["bundle_count"] == 1
+    assert payload["real_task"]["solved_count"] == 1
+    assert payload["real_task"]["environment_count"] >= 0
+
+    bundles = json.loads((repo / "tasks/sn467/bundles/index.json").read_text(encoding="utf-8"))
+    solved = json.loads((repo / "proofs/sn467/solved-ledger.json").read_text(encoding="utf-8"))
+    assert bundles["bundles"][0]["task_id"] == "lemma.sn467.true_test"
+    assert bundles["bundles"][0]["source_ref"]["url"] == "https://example.test/repo"
+    assert solved["solved"][0]["task_id"] == "lemma.sn467.true_test"
+    assert "reproduce the validator check" in solved["solved"][0]["apply_instructions"].lower()
+
+    manifest = (repo / "MANIFEST.sha256").read_text(encoding="utf-8")
+    assert "tasks/sn467/bundles/index.json" in manifest
+    assert "proofs/sn467/solved-ledger.json" in manifest
+    assert "envs/sn467/index.json" in manifest
+    assert str(tmp_path) not in manifest
+
+
+def test_publish_skip_real_task_omits_real_task_layer(tmp_path: Path, monkeypatch, capsys) -> None:  # noqa: ANN001
+    repo = tmp_path / "lemma-proof-atlas"
+    _write(repo / "README.md", "- accepted proof rows: `0`\n")
+    _write(
+        repo / "ATLAS_CARD.md",
+        "The checked-in artifact set contains 0 accepted Lean proof rows,\n"
+        "The validator accepted all 0 proofs with the pinned Lean verifier.\n",
+    )
+    _write_accepted_proof_row(repo)
+    _write_registry_for_accepted_task(repo)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "publish_proof_atlas_snapshot.py",
+            "--repo",
+            str(repo),
+            "--netuid",
+            "sn467",
+            "--snapshot",
+            "2026-06-02T00-00-00Z",
+            "--dry-run",
+            "--skip-real-task",
+            "--skip-hippius",
+            "--skip-github",
+            "--skip-huggingface",
+        ],
+    )
+
+    assert main() == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["real_task"] is None
+    assert not (repo / "tasks/sn467/bundles/index.json").exists()
+
+
 def test_snapshot_labels_are_release_safe() -> None:
     now = datetime(2026, 5, 20, 2, 32, 8, tzinfo=UTC)
 
@@ -232,7 +353,8 @@ def test_commit_repo_changes_stages_only_public_atlas_paths(tmp_path: Path) -> N
     subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
     subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
     subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
-    subprocess.run(["git", "add", "--", *public_repo_paths("sn467")], cwd=repo, check=True)
+    existing_paths = [path for path in public_repo_paths("sn467") if (repo / path).exists()]
+    subprocess.run(["git", "add", "--", *existing_paths], cwd=repo, check=True)
     subprocess.run(["git", "commit", "-m", "initial"], cwd=repo, check=True, capture_output=True)
     _write(repo / "proofs/sn467/accepted/epoch-000002.jsonl", '{"row": 2}\n')
     _write(repo / "scratch.txt", "updated scratch\n")

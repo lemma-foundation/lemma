@@ -251,14 +251,14 @@ def test_openai_compatible_repair_prompt_includes_verifier_failure(
         _settings(tmp_path).model_copy(update={"prover_base_url": "https://example.test", "prover_model": "model"}),
         _task(),
         failed_proof=ProverResult(task_id="lemma.test.true", proof_script="bad proof"),
-        failed_verification=VerifyResult(passed=False, reason="compile_error", stderr_tail="unsolved goals"),
+        failed_verification=VerifyResult(passed=False, reason="lean_compile_error", stderr_tail="unsolved goals"),
     )
 
     system_prompt = captured["json"]["messages"][0]["content"]
     assert "Nat.prime_iff.mpr pp" in system_prompt
     user_payload = json.loads(captured["json"]["messages"][1]["content"])
     assert user_payload["failed_attempt"]["proof_script"] == "bad proof"
-    assert user_payload["failed_attempt"]["reason"] == "compile_error"
+    assert user_payload["failed_attempt"]["reason"] == "lean_compile_error"
     assert user_payload["failed_attempt"]["stderr_tail"] == "unsolved goals"
 
 
@@ -280,7 +280,7 @@ def test_mine_once_rejects_local_verify_failure(monkeypatch: pytest.MonkeyPatch,
     )
 
     def fake_verify(*args: object, **kwargs: object) -> VerifyResult:
-        return VerifyResult(passed=False, reason="compile_error", stderr_tail="unknown identifier `bad`")
+        return VerifyResult(passed=False, reason="lean_compile_error", stderr_tail="unknown identifier `bad`")
 
     monkeypatch.setattr("lemma.verifiers.lean.run_lean_verify", fake_verify)
 
@@ -297,7 +297,7 @@ def test_mine_once_rejects_local_verify_failure(monkeypatch: pytest.MonkeyPatch,
             "target_sha256": rows[0]["target_sha256"],
             "task_id": "lemma.test.true",
             "task_version": rows[0]["task_version"],
-            "verify_reason": "compile_error",
+            "verify_reason": "lean_compile_error",
         }
     ]
 
@@ -321,7 +321,7 @@ def test_mine_once_repairs_hosted_proof_after_compile_error(
     def fake_verify(task: object, submission: object) -> VerifyResult:
         assert isinstance(submission, LemmaSubmission)
         if "exact bad" in submission.proof_script:
-            return VerifyResult(passed=False, reason="compile_error", stderr_tail="unknown identifier")
+            return VerifyResult(passed=False, reason="lean_compile_error", stderr_tail="unknown identifier")
         return VerifyResult(passed=True, reason="ok")
 
     class FakeVerifier:
@@ -1628,7 +1628,7 @@ def test_validator_zero_credit_epoch_routes_unearned_share(tmp_path: Path) -> No
         _settings(tmp_path),
         [submission],
         registry=_registry(),
-        verify_submission=lambda task, submission: VerifyResult(passed=False, reason="compile_error"),
+        verify_submission=lambda task, submission: VerifyResult(passed=False, reason="lean_compile_error"),
         no_set_weights=False,
     )
 

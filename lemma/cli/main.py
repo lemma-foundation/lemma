@@ -18,6 +18,7 @@ _ROOT_COMMAND_ORDER = (
     "setup",
     "status",
     "mine",
+    "preflight",
     "validate",
 )
 
@@ -900,6 +901,229 @@ def _row_string(row: dict[str, object], field: str, default: str | None) -> str 
     return value.strip()
 
 
+@tasks_cmd.command("ingest-sorrydb", hidden=True)
+@click.option(
+    "--sorry-json",
+    "sorry_json_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    required=True,
+    help="One SorryDB row, a row array, or a SorryDB dataset object with sorries.",
+)
+@click.option(
+    "--source-root",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=None,
+    help="Single local checkout shared by every row (use for one-repo batches).",
+)
+@click.option(
+    "--source-checkout-root",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=None,
+    help="Root holding deterministic per-row checkouts (<kind>/<name>/<commit>).",
+)
+@click.option("--theorem-name", default=None, help="Default theorem name for rows lacking one.")
+@click.option("--type-expr", default=None, help="Default target type for rows lacking one.")
+@click.option("--source-license", required=True)
+@click.option("--mathlib-rev", required=True)
+@click.option("--lean-toolchain", default=None)
+@click.option("--reproduction-command", default="lake build", show_default=True)
+@click.option("--allow-extra-holes", is_flag=True, help="Allow source files with more than one sorry/admit hole.")
+@click.option("--allow-unstable-toolchain", is_flag=True, help="Accept nightly/unpinned Lean toolchains.")
+@click.option("--run-baseline", is_flag=True, help="Screen out tasks a baseline tactic closes (needs Lean).")
+@click.option(
+    "--output",
+    "output_path",
+    type=click.Path(dir_okay=False, path_type=Path),
+    required=True,
+    help="Registry path for accepted candidate tasks.",
+)
+@click.option(
+    "--report",
+    "report_path",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="Optional path to write the full ingestion report JSON.",
+)
+def tasks_ingest_sorrydb_cmd(
+    sorry_json_path: Path,
+    source_root: Path | None,
+    source_checkout_root: Path | None,
+    theorem_name: str | None,
+    type_expr: str | None,
+    source_license: str,
+    mathlib_rev: str,
+    lean_toolchain: str | None,
+    reproduction_command: str,
+    allow_extra_holes: bool,
+    allow_unstable_toolchain: bool,
+    run_baseline: bool,
+    output_path: Path,
+    report_path: Path | None,
+) -> None:
+    """Filter SorryDB rows into a task registry + a quarantine/env report.
+
+    Unlike import-sorrydb, this never crashes on a bad row: each row is either
+    accepted as a candidate or quarantined with a structured reason.
+    """
+    from typing import Any
+
+    from lemma.ingest.sorrydb import ingest_sorrydb_rows
+    from lemma.source_checkouts import source_checkout_path
+    from lemma.source_sorries import source_ref_from_sorrydb_record
+    from lemma.task_supply import write_registry
+
+    if (source_root is None) == (source_checkout_root is None):
+        raise click.ClickException("pass exactly one of --source-root or --source-checkout-root")
+
+    payload = json.loads(sorry_json_path.read_text(encoding="utf-8"))
+    rows = _sorrydb_rows(payload)
+    if not rows:
+        raise click.ClickException("sorry-json must contain at least one SorryDB row")
+
+    def resolve_source_root(row: dict[str, Any]) -> Path | None:
+        if source_root is not None:
+            return source_root
+        assert source_checkout_root is not None
+        try:
+            return source_checkout_path(source_checkout_root, source_ref_from_sorrydb_record(row))
+        except ValueError:
+            return None
+
+    baseline_prober = None
+    if run_baseline:
+        from lemma.ingest.baseline import PreflightBaselineProber
+
+        baseline_prober = PreflightBaselineProber()
+
+    result = ingest_sorrydb_rows(
+        rows,
+        resolve_source_root=resolve_source_root,
+        source_license=source_license,
+        mathlib_rev=mathlib_rev,
+        default_theorem_name=theorem_name,
+        default_type_expr=type_expr,
+        lean_toolchain=lean_toolchain,
+        reproduction_command=reproduction_command,
+        allow_extra_holes=allow_extra_holes,
+        allow_unstable_toolchain=allow_unstable_toolchain,
+        baseline_prober=baseline_prober,
+    )
+
+    write_registry(result.tasks, output_path)
+    if report_path is not None:
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(
+            json.dumps(result.report.model_dump(mode="json"), indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+    response: dict[str, object] = {
+        "output": str(output_path),
+        "registry_sha256": hashlib.sha256(output_path.read_bytes()).hexdigest(),
+        **result.report.summary(),
+        "task_ids": [task.id for task in result.tasks],
+    }
+    if report_path is not None:
+        response["report"] = str(report_path)
+    click.echo(json.dumps(response, indent=2, sort_keys=True))
+
+
+@tasks_cmd.command("ingest-formal-conjectures", hidden=True)
+@click.option(
+    "--records-json",
+    "records_json_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    required=True,
+    help="One pre-extracted Formal Conjectures record, a record array, or {\"records\": [...]}.",
+)
+@click.option("--source-license", required=True)
+@click.option("--mathlib-rev", required=True)
+@click.option("--lean-toolchain", default=None, help="Default toolchain for records lacking one.")
+@click.option("--allow-unstable-toolchain", is_flag=True, help="Accept nightly/unpinned Lean toolchains.")
+@click.option(
+    "--paid-default",
+    is_flag=True,
+    help="Treat records as paid unless they say otherwise (default: benchmark).",
+)
+@click.option("--run-baseline", is_flag=True, help="Screen out tasks a baseline tactic closes (needs Lean).")
+@click.option(
+    "--output",
+    "output_path",
+    type=click.Path(dir_okay=False, path_type=Path),
+    required=True,
+    help="Registry path for accepted candidate tasks.",
+)
+@click.option(
+    "--report",
+    "report_path",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="Optional path to write the full ingestion report JSON.",
+)
+def tasks_ingest_formal_conjectures_cmd(
+    records_json_path: Path,
+    source_license: str,
+    mathlib_rev: str,
+    lean_toolchain: str | None,
+    allow_unstable_toolchain: bool,
+    paid_default: bool,
+    run_baseline: bool,
+    output_path: Path,
+    report_path: Path | None,
+) -> None:
+    """Filter Formal Conjectures records into a safely-restated task registry.
+
+    New candidates default to held-out benchmark framing; pass --paid-default or
+    set ``"paid": true`` per record to opt into paid work.
+    """
+    from lemma.ingest.formal_conjectures import ingest_formal_conjecture_records
+    from lemma.task_supply import write_registry
+
+    payload = json.loads(records_json_path.read_text(encoding="utf-8"))
+    if isinstance(payload, dict) and isinstance(payload.get("records"), list):
+        records = list(payload["records"])
+    elif isinstance(payload, list):
+        records = payload
+    else:
+        records = [payload]
+    if not records:
+        raise click.ClickException("records-json must contain at least one record")
+
+    baseline_prober = None
+    if run_baseline:
+        from lemma.ingest.baseline import IsolatedProofBaselineProber
+
+        baseline_prober = IsolatedProofBaselineProber()
+
+    result = ingest_formal_conjecture_records(
+        records,
+        source_license=source_license,
+        mathlib_rev=mathlib_rev,
+        default_toolchain=lean_toolchain,
+        default_paid=paid_default,
+        allow_unstable_toolchain=allow_unstable_toolchain,
+        baseline_prober=baseline_prober,
+    )
+
+    write_registry(result.tasks, output_path)
+    if report_path is not None:
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(
+            json.dumps(result.report.model_dump(mode="json"), indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+    response: dict[str, object] = {
+        "output": str(output_path),
+        "registry_sha256": hashlib.sha256(output_path.read_bytes()).hexdigest(),
+        **result.report.summary(),
+        "task_ids": [task.id for task in result.tasks],
+    }
+    if report_path is not None:
+        response["report"] = str(report_path)
+    click.echo(json.dumps(response, indent=2, sort_keys=True))
+
+
 @tasks_cmd.command("show")
 @click.argument("task_id")
 def tasks_show_cmd(task_id: str) -> None:
@@ -1022,6 +1246,108 @@ def verify_patch_cmd(
     click.echo(json.dumps(asdict(result), indent=2, sort_keys=True))
     if not result.accepted:
         raise SystemExit(1)
+
+
+@main.command("preflight")
+@click.argument("task_id")
+@click.option(
+    "--submission",
+    "submission_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Isolated-proof Submission.lean to check.",
+)
+@click.option(
+    "--patch",
+    "patch_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Unified diff to check for a patch task.",
+)
+@click.option(
+    "--source-root",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=None,
+    help="Clean source checkout root for a patch task (defaults to the configured checkout).",
+)
+@click.option(
+    "--solved-tasks",
+    "solved_tasks_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Public JSON array of already-solved task ids (Proof Atlas).",
+)
+@click.option(
+    "--solved-hashes",
+    "solved_hashes_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Public JSON array of already-accepted proof/patch sha256 hashes (Proof Atlas).",
+)
+@click.option("--no-run-reproduction", is_flag=True, help="Run static gates without the pinned build command.")
+@click.option("--check-project-builds", is_flag=True, help="Confirm the unpatched base builds first (patch tasks).")
+@click.option("--timeout", "timeout_s", type=click.IntRange(min=1), default=None, help="Override verify timeout.")
+def preflight_cmd(
+    task_id: str,
+    submission_path: Path | None,
+    patch_path: Path | None,
+    source_root: Path | None,
+    solved_tasks_path: Path | None,
+    solved_hashes_path: Path | None,
+    no_run_reproduction: bool,
+    check_project_builds: bool,
+    timeout_s: int | None,
+) -> None:
+    """Return the same accept/reject verdict a validator would, for one task.
+
+    The verdict uses the canonical rejection vocabulary and is reproducible from
+    public inputs, so a local pass matches what a validator records.
+
+    \b
+    Examples:
+
+      lemma preflight lemma.sample.true_intro --submission Submission.lean
+      lemma preflight lemma.sorrydb.task --patch fix.patch --source-root repo
+    """
+    from dataclasses import asdict
+
+    from lemma.preflight import preflight_submission
+    from lemma.submissions import build_patch_submission, build_submission
+
+    if bool(submission_path) == bool(patch_path):
+        raise click.ClickException("pass exactly one of --submission or --patch")
+
+    _, task = _task_or_die(task_id)
+    settings = LemmaSettings()
+    if patch_path is not None:
+        submission = build_patch_submission(task, solver_hotkey="preflight", patch_text=_read_text(patch_path))
+    else:
+        assert submission_path is not None
+        submission = build_submission(task, solver_hotkey="preflight", proof_script=_read_text(submission_path))
+
+    verdict = preflight_submission(
+        task,
+        submission,
+        settings=settings,
+        source_root=source_root,
+        solved_task_ids=frozenset(_read_str_list(solved_tasks_path)),
+        solved_proof_hashes=frozenset(_read_str_list(solved_hashes_path)),
+        run_reproduction=not no_run_reproduction,
+        check_project_builds=check_project_builds,
+        timeout_s=timeout_s,
+    )
+    click.echo(json.dumps(asdict(verdict), indent=2, sort_keys=True))
+    if not verdict.accepted:
+        raise SystemExit(1)
+
+
+def _read_str_list(path: Path | None) -> list[str]:
+    if path is None:
+        return []
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, list) or not all(isinstance(item, str) for item in payload):
+        raise click.ClickException(f"{path}: expected a JSON array of strings")
+    return payload
 
 
 @main.command("submit", hidden=True)
@@ -1164,6 +1490,83 @@ def corpus_index_cmd(input_dir: Path, output_path: Path) -> None:
     corpus_export_cmd(input_dir, output_path)
 
 
+@main.group("atlas", cls=LemmaGroup, hidden=True)
+def atlas_cmd() -> None:
+    """Build the public real-task Proof Atlas artifacts."""
+
+
+@atlas_cmd.command("snapshot")
+@click.option(
+    "--registry",
+    "registry_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    required=True,
+    help="Pinned task registry JSON with the real task bundles.",
+)
+@click.option(
+    "--accepted",
+    "accepted_path",
+    type=click.Path(exists=True, path_type=Path),
+    required=True,
+    help="Accepted proof JSONL file or accepted/ directory.",
+)
+@click.option(
+    "--source-report",
+    "source_report_paths",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    multiple=True,
+    help="Source ingest report JSON (repeatable).",
+)
+@click.option("--netuid", default="sn467", show_default=True, help="Proof Atlas namespace.")
+@click.option(
+    "--repo",
+    "repo",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=None,
+    help="Write the artifacts into this Proof Atlas checkout. Omit for a dry run.",
+)
+def atlas_snapshot_cmd(
+    registry_path: Path,
+    accepted_path: Path,
+    source_report_paths: tuple[Path, ...],
+    netuid: str,
+    repo: Path | None,
+) -> None:
+    """Build the real-task Atlas layer from public inputs.
+
+    By default this is a dry run: it prints a snapshot manifest (every file it
+    would write plus its SHA256) without touching any repo or network. Pass
+    --repo to write the artifacts into a Proof Atlas checkout.
+
+    \b
+    Example:
+
+      lemma atlas snapshot --registry registry.json --accepted proofs/sn467/accepted
+    """
+    from lemma.atlas import build_snapshot_from_paths, write_real_task_snapshot
+    from lemma.tasks import load_task_registry
+
+    if repo is None:
+        manifest, _payloads = build_snapshot_from_paths(
+            netuid=netuid,
+            registry_path=registry_path,
+            accepted_path=accepted_path,
+            source_report_paths=list(source_report_paths),
+        )
+    else:
+        from lemma.atlas.realtask import _load_source_reports, read_accepted_rows
+
+        registry = load_task_registry(registry_path.read_bytes())
+        manifest = write_real_task_snapshot(
+            repo,
+            netuid=netuid,
+            registry=registry,
+            accepted_rows=read_accepted_rows(accepted_path),
+            source_reports=_load_source_reports(list(source_report_paths)),
+        )
+    click.echo(json.dumps(manifest.model_dump(), indent=2, sort_keys=True))
+
+
 @main.command("export-corpus", hidden=True)
 @click.option("--domain", default="lean", show_default=True, help="Domain to export.")
 @click.option(
@@ -1207,6 +1610,92 @@ def export_corpus_cmd(
     )
     metadata = export_rows(rows, output=output_path, fmt=cast(ExportFormat, fmt))
     click.echo(stylize(f"Wrote {metadata['num_rows']} {domain} rows to {output_path}", fg="green", bold=True))
+
+
+@main.group("site", cls=LemmaGroup, hidden=True)
+def site_cmd() -> None:
+    """Render the static real-task board and solved-proof explorer."""
+
+
+@site_cmd.command("build")
+@click.option(
+    "--atlas",
+    "atlas_repo",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    required=True,
+    help="Proof Atlas checkout containing the real-task artifacts.",
+)
+@click.option(
+    "--out",
+    "out_dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    required=True,
+    help="Output directory for the static preview pages.",
+)
+@click.option("--netuid", default="sn467", show_default=True, help="Proof Atlas namespace.")
+@click.option("--atlas-base-url", default=None, help="Public base URL for Proof Atlas links.")
+@click.option("--hippius-url", default=None, help="Optional Hippius mirror URL for solved proofs.")
+@click.option("--huggingface-url", default=None, help="Optional Hugging Face mirror URL for solved proofs.")
+def site_build_cmd(
+    atlas_repo: Path,
+    out_dir: Path,
+    netuid: str,
+    atlas_base_url: str | None,
+    hippius_url: str | None,
+    huggingface_url: str | None,
+) -> None:
+    """Render the task board and solved-proof explorer from Atlas artifacts.
+
+    The output is plain static HTML with no build step and no client-side data
+    fetch, suitable for the lemmasub.net static deployment.
+
+    \b
+    Example:
+
+      lemma site build --atlas ~/lemma-proof-atlas --out ~/lemma-proof-atlas/site
+    """
+    from lemma.site import SiteConfig, build_site_from_atlas
+
+    defaults = SiteConfig(netuid=netuid)
+    config = SiteConfig(
+        netuid=netuid,
+        atlas_base_url=atlas_base_url or defaults.atlas_base_url,
+        hippius_url=hippius_url,
+        huggingface_url=huggingface_url,
+    )
+    manifest = build_site_from_atlas(atlas_repo, out_dir, config=config)
+    click.echo(json.dumps(manifest, indent=2, sort_keys=True))
+
+
+@main.command("launch-check", hidden=True)
+@click.option(
+    "--registry",
+    "registry_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    required=True,
+    help="Pinned task registry JSON to assess.",
+)
+@click.option("--min-tasks", type=click.IntRange(min=0), default=100, show_default=True, help="Minimum packaged tasks.")
+@click.option("--epochs", type=click.IntRange(min=1), default=3, show_default=True, help="Local epochs to simulate.")
+@click.option("--active-k", type=click.IntRange(min=1), default=8, show_default=True, help="Active tasks per epoch.")
+def launch_check_cmd(registry_path: Path, min_tasks: int, epochs: int, active_k: int) -> None:
+    """Run the end-to-end launch-readiness assessment and print a report.
+
+    Exits non-zero when any automatically-checkable launch criterion fails.
+
+    \b
+    Example:
+
+      lemma launch-check --registry registry.json --min-tasks 100
+    """
+    from lemma.launch import assess_launch_readiness
+    from lemma.tasks import load_task_registry
+
+    registry = load_task_registry(registry_path.read_bytes())
+    report = assess_launch_readiness(registry, min_tasks=min_tasks, epochs=epochs, active_K=active_k)
+    click.echo(json.dumps(report.model_dump(), indent=2, sort_keys=True))
+    if not report.ready:
+        raise SystemExit(1)
 
 
 @main.group("operator", hidden=True)

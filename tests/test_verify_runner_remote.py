@@ -96,7 +96,7 @@ def test_remote_verify_transport_error(monkeypatch: pytest.MonkeyPatch, tiny_pro
     proof = "import Mathlib\n\nnamespace Submission\n\ntheorem p : True := by\n  trivial\n\nend Submission\n"
     vr = run_lean_verify(s, verify_timeout_s=60, problem=tiny_problem, proof_script=proof)
     assert vr.passed is False
-    assert vr.reason == "remote_error"
+    assert vr.reason == "validator_internal_error"
 
 
 def test_remote_verify_policy_scan_happens_before_http(
@@ -111,7 +111,7 @@ def test_remote_verify_policy_scan_happens_before_http(
     s = LemmaSettings().model_copy(update={"lean_verify_remote_url": "http://localhost:8787"})
     vr = run_lean_verify(s, verify_timeout_s=60, problem=tiny_problem, proof_script="theorem p : True := by sorry")
     assert vr.passed is False
-    assert vr.reason == "policy_violation"
+    assert vr.reason == "new_sorry_detected"
 
 
 def test_remote_verify_skipped_when_url_unset(tiny_problem: Problem, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -152,4 +152,4 @@ def test_local_verify_policy_scan_happens_before_sandbox(
     )
     vr = run_lean_verify(s, verify_timeout_s=300, problem=tiny_problem, proof_script="theorem p : True := by sorry")
     assert vr.passed is False
-    assert vr.reason == "policy_violation"
+    assert vr.reason == "new_sorry_detected"

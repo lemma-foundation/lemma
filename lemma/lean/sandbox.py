@@ -11,7 +11,7 @@ import threading
 import time
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 from loguru import logger
 from pydantic import BaseModel, Field
@@ -25,9 +25,11 @@ from lemma.lean.cheats import (
     proof_term_hash_from_lean_output,
     structural_fingerprint_from_lean_output,
 )
+from lemma.lean.rejection import RejectionClass
 from lemma.lean.submission_policy import (
     scan_submission_policy,
     submission_policy_for_problem,
+    submission_policy_reason_class,
     submission_policy_stderr_tail,
 )
 from lemma.lean.workspace import materialize_workspace, workspace_verify_cache_key
@@ -148,30 +150,8 @@ def _dir_size_bytes(root: Path) -> int:
     return total
 
 
-VerifyReason = Literal[
-    "ok",
-    "compile_error",
-    "axiom_violation",
-    "cheat_token",
-    "policy_violation",
-    "timeout",
-    "oom",
-    "docker_error",
-    "remote_error",
-    "unsupported_task_format",
-    "invalid_source_root",
-    "empty_patch",
-    "unsafe_patch_path",
-    "disallowed_file",
-    "patch_apply_failed",
-    "target_statement_missing",
-    "target_statement_changed",
-    "forbidden_import",
-    "trust_expansion",
-    "hole",
-    "missing_reproduction_command",
-    "reproduction_failed",
-]
+#: Lean verification reports the canonical miner-facing rejection vocabulary.
+VerifyReason = RejectionClass
 
 
 class VerifyResult(BaseModel):
@@ -231,7 +211,7 @@ class LeanSandbox:
         if not scan.ok:
             return VerifyResult(
                 passed=False,
-                reason="policy_violation",
+                reason=submission_policy_reason_class(scan),
                 stderr_tail=submission_policy_stderr_tail(scan),
             )
 
@@ -295,7 +275,7 @@ class LeanSandbox:
         """Keep dependency warmup even when the submitted proof itself failed."""
         if self.workspace_cache_dir is None or not (work / ".lake" / "packages" / "mathlib").is_dir():
             return False
-        return result.reason not in {"timeout", "oom", "docker_error", "remote_error"}
+        return result.reason not in {"timeout", "memory_limit", "validator_internal_error"}
 
     def _publish_workspace_cache(self, slot: Path, work: Path, key: str) -> None:
         """First passing verify for this template — keep the verified workspace as the warm slot."""
@@ -408,7 +388,7 @@ class LeanSandbox:
         except subprocess.TimeoutExpired:
             return VerifyResult(passed=False, reason="timeout", stderr_tail="lake build timeout")
         except OSError as e:
-            return VerifyResult(passed=False, reason="docker_error", stderr_tail=str(e))
+            return VerifyResult(passed=False, reason="validator_internal_error", stderr_tail=str(e))
 
         elapsed = time.monotonic() - t0
         if r.returncode != 0:
@@ -416,7 +396,7 @@ class LeanSandbox:
             combined = ((r.stderr or "") + "\n" + (r.stdout or ""))[-16_000:]
             return VerifyResult(
                 passed=False,
-                reason="compile_error",
+                reason="lean_compile_error",
                 stderr_tail=combined,
                 build_seconds=elapsed,
             )
@@ -445,7 +425,7 @@ class LeanSandbox:
         if lake_build_environment_failed(out):
             return VerifyResult(
                 passed=False,
-                reason="compile_error",
+                reason="lean_compile_error",
                 stderr_tail=out[-4000:],
                 stdout_tail=out[-4000:],
                 build_seconds=elapsed,
@@ -457,14 +437,14 @@ class LeanSandbox:
             if found is None or lean_driver_failed(out):
                 return VerifyResult(
                     passed=False,
-                    reason="compile_error",
+                    reason="lean_compile_error",
                     stderr_tail=(out[-4000:] + extra),
                     stdout_tail=out[-4000:],
                     build_seconds=elapsed,
                 )
             return VerifyResult(
                 passed=False,
-                reason="axiom_violation",
+                reason="new_axiom_detected",
                 stderr_tail=(out[-4000:] + extra),
                 stdout_tail=out[-4000:],
                 build_seconds=elapsed,
@@ -544,14 +524,14 @@ class LeanSandbox:
             if exit_status == 137:
                 return VerifyResult(
                     passed=False,
-                    reason="oom",
+                    reason="memory_limit",
                     stderr_tail=diagnostic_tail,
                     build_seconds=elapsed,
                 )
             if lake_build_environment_failed(text):
                 return VerifyResult(
                     passed=False,
-                    reason="compile_error",
+                    reason="lean_compile_error",
                     stderr_tail=diagnostic_tail,
                     build_seconds=elapsed,
                 )
@@ -560,20 +540,20 @@ class LeanSandbox:
                 if found_ax is None or lean_driver_failed(text):
                     return VerifyResult(
                         passed=False,
-                        reason="compile_error",
+                        reason="lean_compile_error",
                         stderr_tail=diagnostic_tail,
                         build_seconds=elapsed,
                     )
                 extra_ax = f" axioms={found_ax}"
                 return VerifyResult(
                     passed=False,
-                    reason="axiom_violation",
+                    reason="new_axiom_detected",
                     stderr_tail=diagnostic_tail + extra_ax,
                     build_seconds=elapsed,
                 )
             return VerifyResult(
                 passed=False,
-                reason="compile_error",
+                reason="lean_compile_error",
                 stderr_tail=diagnostic_tail,
                 build_seconds=elapsed,
             )
@@ -581,7 +561,7 @@ class LeanSandbox:
         if lake_build_environment_failed(text):
             return VerifyResult(
                 passed=False,
-                reason="compile_error",
+                reason="lean_compile_error",
                 stderr_tail=diagnostic_tail,
                 build_seconds=elapsed,
             )
@@ -598,13 +578,13 @@ class LeanSandbox:
             if found is None or lean_driver_failed(text):
                 return VerifyResult(
                     passed=False,
-                    reason="compile_error",
+                    reason="lean_compile_error",
                     stderr_tail=diagnostic_tail + extra,
                     build_seconds=elapsed,
                 )
             return VerifyResult(
                 passed=False,
-                reason="axiom_violation",
+                reason="new_axiom_detected",
                 stdout_tail=_verification_stdout_tail(text, limit=4000) + extra,
                 build_seconds=elapsed,
             )
@@ -640,7 +620,7 @@ class LeanSandbox:
             elapsed = time.monotonic() - t0
             return VerifyResult(
                 passed=False,
-                reason="docker_error",
+                reason="validator_internal_error",
                 stderr_tail=str(e),
                 build_seconds=elapsed,
             )
@@ -667,7 +647,7 @@ class LeanSandbox:
         if rc != 0 and _docker_cli_infrastructure_failed(text):
             return VerifyResult(
                 passed=False,
-                reason="docker_error",
+                reason="validator_internal_error",
                 stderr_tail=_verification_stdout_tail(text, limit=log_tail),
                 build_seconds=elapsed,
             )
@@ -678,7 +658,7 @@ class LeanSandbox:
             import docker.errors
             from requests.exceptions import ReadTimeout
         except ImportError:
-            return VerifyResult(passed=False, reason="docker_error", stderr_tail="docker SDK missing")
+            return VerifyResult(passed=False, reason="validator_internal_error", stderr_tail="docker SDK missing")
 
         import docker
 
@@ -767,7 +747,7 @@ class LeanSandbox:
             elapsed = time.monotonic() - t0
             return VerifyResult(
                 passed=False,
-                reason="docker_error",
+                reason="validator_internal_error",
                 stderr_tail=str(e)[-8000:],
                 build_seconds=elapsed,
             )
@@ -777,8 +757,10 @@ class LeanSandbox:
             if "timeout" in err.lower() or "timed out" in err.lower():
                 return VerifyResult(passed=False, reason="timeout", stderr_tail=err, build_seconds=elapsed)
             if "137" in err or "OOM" in err or "non-zero exit: 137" in err:
-                return VerifyResult(passed=False, reason="oom", stderr_tail=err, build_seconds=elapsed)
-            return VerifyResult(passed=False, reason="docker_error", stderr_tail=err[-8000:], build_seconds=elapsed)
+                return VerifyResult(passed=False, reason="memory_limit", stderr_tail=err, build_seconds=elapsed)
+            return VerifyResult(
+                passed=False, reason="validator_internal_error", stderr_tail=err[-8000:], build_seconds=elapsed
+            )
         finally:
             if container is not None:
                 try:

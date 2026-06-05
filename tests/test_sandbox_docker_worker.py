@@ -174,7 +174,7 @@ def test_docker_worker_exec_reports_cli_connection_failures_as_docker_error(
     )
 
     assert vr.passed is False
-    assert vr.reason == "docker_error"
+    assert vr.reason == "validator_internal_error"
     assert "docker API" in vr.stderr_tail
 
 

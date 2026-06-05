@@ -88,7 +88,8 @@ def test_patch_task_validator_rejects_disallowed_files() -> None:
     result = validate_patch_task(_task(), source_root=FIXTURE_ROOT, patch_text=patch, run_reproduction=False)
 
     assert result.accepted is False
-    assert result.reason == "disallowed_file"
+    assert result.reason == "patch_apply_failed"
+    assert result.detail == "disallowed_file"
     assert result.stderr_tail == "Other.lean"
 
 
@@ -108,7 +109,8 @@ def test_patch_task_validator_rejects_statement_changes() -> None:
     result = validate_patch_task(_task(), source_root=FIXTURE_ROOT, patch_text=patch, run_reproduction=False)
 
     assert result.accepted is False
-    assert result.reason == "target_statement_changed"
+    assert result.reason == "target_type_changed"
+    assert result.detail == "target_statement_changed"
 
 
 def test_patch_task_validator_rejects_remaining_holes() -> None:
@@ -127,7 +129,7 @@ def test_patch_task_validator_rejects_remaining_holes() -> None:
     result = validate_patch_task(_task(), source_root=FIXTURE_ROOT, patch_text=patch, run_reproduction=False)
 
     assert result.accepted is False
-    assert result.reason == "hole"
+    assert result.reason == "new_sorry_detected"
 
 
 def test_patch_task_validator_rejects_trust_expansion() -> None:
@@ -146,7 +148,8 @@ def test_patch_task_validator_rejects_trust_expansion() -> None:
     result = validate_patch_task(_task(), source_root=FIXTURE_ROOT, patch_text=patch, run_reproduction=False)
 
     assert result.accepted is False
-    assert result.reason == "trust_expansion"
+    assert result.reason == "new_axiom_detected"
+    assert result.detail == "axiom"
 
 
 def test_patch_task_validator_rejects_forbidden_imports() -> None:
@@ -267,7 +270,8 @@ def test_patch_task_validator_reports_reproduction_failure(monkeypatch: pytest.M
     result = validate_patch_task(_task(), source_root=FIXTURE_ROOT, patch_text=_fixture_patch())
 
     assert result.accepted is False
-    assert result.reason == "reproduction_failed"
+    assert result.reason == "lean_compile_error"
+    assert result.detail == "reproduction_failed"
     assert result.stderr_tail == "failed"
 
 
@@ -312,5 +316,5 @@ def test_validator_rejects_patch_submission_cheating_through_default_verifier(tm
 
     assert result.score.credits == {}
     assert result.verification_records[0].passed is False
-    assert result.verification_records[0].reason == "disallowed_file"
+    assert result.verification_records[0].reason == "patch_apply_failed"
     assert result.corpus_rows == ()

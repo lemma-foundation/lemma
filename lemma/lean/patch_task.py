@@ -2,34 +2,18 @@
 
 from __future__ import annotations
 
-import re
 import shlex
 import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
 
+from lemma.lean.rejection import RejectionClass, hole_class
 from lemma.tasks import LemmaTask
 
-PatchValidationReason = Literal[
-    "ok",
-    "unsupported_task_format",
-    "invalid_source_root",
-    "empty_patch",
-    "unsafe_patch_path",
-    "disallowed_file",
-    "patch_apply_failed",
-    "target_statement_missing",
-    "target_statement_changed",
-    "forbidden_import",
-    "trust_expansion",
-    "hole",
-    "missing_reproduction_command",
-    "reproduction_failed",
-    "timeout",
-]
+#: Patch validation reports the canonical miner-facing rejection vocabulary.
+PatchValidationReason = RejectionClass
 
 _FORBIDDEN_PREFIXES = (
     "axiom ",
@@ -43,13 +27,13 @@ _FORBIDDEN_PREFIXES = (
     "initialize ",
     "builtin_initialize ",
 )
-_HOLE_RE = re.compile(r"\b(sorry|admit)\b")
 
 
 @dataclass(frozen=True)
 class PatchValidationResult:
     accepted: bool
     reason: PatchValidationReason
+    detail: str = ""
     changed_files: tuple[str, ...] = ()
     stdout_tail: str = ""
     stderr_tail: str = ""
@@ -65,20 +49,30 @@ def validate_patch_task(
 ) -> PatchValidationResult:
     """Apply and statically validate a patch task in a clean source copy."""
     if task.task_format != "patch":
-        return PatchValidationResult(False, "unsupported_task_format")
+        return PatchValidationResult(False, "validator_internal_error", detail="unsupported_task_format")
     if not source_root.is_dir():
-        return PatchValidationResult(False, "invalid_source_root", stderr_tail=str(source_root))
+        return PatchValidationResult(
+            False, "validator_internal_error", detail="invalid_source_root", stderr_tail=str(source_root)
+        )
 
     changed_files = _changed_files(patch_text)
     if not changed_files:
-        return PatchValidationResult(False, "empty_patch")
+        return PatchValidationResult(False, "patch_apply_failed", detail="empty_patch")
     unsafe = [path for path in changed_files if not _safe_manifest_path(path)]
     if unsafe:
-        return PatchValidationResult(False, "unsafe_patch_path", changed_files=changed_files, stderr_tail=unsafe[0])
+        return PatchValidationResult(
+            False, "patch_apply_failed", detail="unsafe_patch_path", changed_files=changed_files, stderr_tail=unsafe[0]
+        )
     allowed = set(task.allowed_files)
     disallowed = [path for path in changed_files if path not in allowed]
     if disallowed:
-        return PatchValidationResult(False, "disallowed_file", changed_files=changed_files, stderr_tail=disallowed[0])
+        return PatchValidationResult(
+            False,
+            "patch_apply_failed",
+            detail="disallowed_file",
+            changed_files=changed_files,
+            stderr_tail=disallowed[0],
+        )
 
     with tempfile.TemporaryDirectory(prefix="lemma-patch-") as tmp:
         work = Path(tmp) / "source"
@@ -103,7 +97,12 @@ def validate_patch_task(
         if run_reproduction:
             command = shlex.split(task.reproduction_command)
             if not command:
-                return PatchValidationResult(False, "missing_reproduction_command", changed_files=changed_files)
+                return PatchValidationResult(
+                    False,
+                    "validator_internal_error",
+                    detail="missing_reproduction_command",
+                    changed_files=changed_files,
+                )
             try:
                 reproduced = _run_reproduction_command(command, cwd=work, timeout_s=timeout_s)
             except subprocess.TimeoutExpired:
@@ -111,14 +110,16 @@ def validate_patch_task(
             except OSError as e:
                 return PatchValidationResult(
                     False,
-                    "reproduction_failed",
+                    "validator_internal_error",
+                    detail="reproduction_command_unavailable",
                     changed_files=changed_files,
                     stderr_tail=str(e),
                 )
             if reproduced.returncode != 0:
                 return PatchValidationResult(
                     False,
-                    "reproduction_failed",
+                    "lean_compile_error",
+                    detail="reproduction_failed",
                     changed_files=changed_files,
                     stdout_tail=_tail(reproduced.stdout),
                     stderr_tail=_tail(reproduced.stderr),
@@ -174,24 +175,34 @@ def _validate_static(
     old_decl = _target_decl(source_root, changed_files, task.theorem_name)
     new_decl = _target_decl(work, changed_files, task.theorem_name)
     if old_decl is None or new_decl is None:
-        return PatchValidationResult(False, "target_statement_missing", changed_files=changed_files)
+        return PatchValidationResult(
+            False, "target_type_changed", detail="target_statement_missing", changed_files=changed_files
+        )
     if old_decl != new_decl:
-        return PatchValidationResult(False, "target_statement_changed", changed_files=changed_files)
+        return PatchValidationResult(
+            False, "target_type_changed", detail="target_statement_changed", changed_files=changed_files
+        )
 
     for rel in changed_files:
         original_imports = _imports(source_root / rel)
         original_forbidden = _forbidden_lines(source_root / rel)
         allowed_imports = set(task.allowed_imports) | original_imports
         source = (work / rel).read_text(encoding="utf-8")
-        for line in _code_lines(source):
+        code_lines = _code_lines(source)
+        for line in code_lines:
             if line.startswith("import "):
                 imported = line.removeprefix("import ").strip()
                 if imported not in allowed_imports:
-                    return PatchValidationResult(False, "forbidden_import", changed_files=changed_files)
+                    return PatchValidationResult(
+                        False, "forbidden_import", detail=imported, changed_files=changed_files
+                    )
             if line.startswith(_FORBIDDEN_PREFIXES) and line not in original_forbidden:
-                return PatchValidationResult(False, "trust_expansion", changed_files=changed_files)
-        if _HOLE_RE.search("\n".join(_code_lines(source))):
-            return PatchValidationResult(False, "hole", changed_files=changed_files)
+                return PatchValidationResult(
+                    False, "new_axiom_detected", detail=line.split()[0], changed_files=changed_files
+                )
+        hole = hole_class("\n".join(code_lines))
+        if hole is not None:
+            return PatchValidationResult(False, hole, changed_files=changed_files)
     return PatchValidationResult(True, "ok", changed_files=changed_files)
 
 

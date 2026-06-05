@@ -38,6 +38,13 @@ For a live website feed, run `uv run python scripts/serve_current_problems.py --
 
 1. Load the active task registry.
 2. Load the latest eligible public curriculum row when retargeting is enabled. A retarget row must be at least one full tempo old (`record.tempo < active_tempo - 1`) before it can affect active selection. Then select the deterministic active set from the pinned registry, active `K`, frontier depth, `LEMMA_ACTIVE_QUEUE_SEED`, and production chain/drand epoch randomness.
+
+### Active selection mode
+
+`LEMMA_ACTIVE_SELECTION_MODE` controls how the active `K` set is drawn from the registry. Both modes are deterministic from the same public seed.
+
+- `balanced` (default): the rotating level/family-balanced window. Unchanged behavior.
+- `class_stratified`: draws a reward-class-stratified set (Class 0 canary / 1 micro / 2 small-medium / 3 prestige) from the unsolved backlog, so an active set mixes paid classes instead of clustering in one. `LEMMA_ACTIVE_CANARY_QUOTA` forces a minimum number of Class 0 canaries. Solved tasks passed to the selector are excluded (retired from the paid pool).
 3. Read miner bucket reveals in production, or local smoke submissions in development.
 4. Reject submissions outside the active window.
 5. Reject task-version and target-hash mismatches.
@@ -52,6 +59,29 @@ For a live website feed, run `uv run python scripts/serve_current_problems.py --
 ## Internal Worker
 
 Remote Lean workers are an internal scaling surface for validators. Non-loopback worker binds require `LEMMA_LEAN_VERIFY_REMOTE_BEARER` unless explicitly allowed for development.
+
+## Rejection Classes
+
+Verification returns one canonical, miner-facing verdict. `ok` accepts; every
+rejection is one of: `patch_apply_failed`, `target_type_changed`,
+`new_sorry_detected`, `new_admit_detected`, `new_axiom_detected`,
+`forbidden_import`, `lean_compile_error`, `timeout`, `memory_limit`,
+`project_already_broken`, `duplicate_solution`, `task_already_solved`, or
+`validator_internal_error`. The human-readable specifics travel in
+`detail`/`stderr_tail`; the class itself stays stable so two validators reading
+the same public inputs report the same verdict. `timeout`, `memory_limit`, and
+`validator_internal_error` are validator-side/infra outcomes, not the miner's
+fault.
+
+## Miner Preflight
+
+`lemma preflight <task_id> --submission Submission.lean` (isolated proof) or
+`lemma preflight <task_id> --patch fix.patch --source-root <checkout>` (patch)
+returns the identical verdict a validator would record, computed from the same
+shared path (`lemma.preflight.preflight_submission`). Pass `--solved-tasks` /
+`--solved-hashes` (public Proof Atlas exports) to reproduce
+`task_already_solved` / `duplicate_solution`, and `--check-project-builds` to
+confirm the unpatched base builds before blaming a miner for a broken project.
 
 ## No Subjective Scoring
 

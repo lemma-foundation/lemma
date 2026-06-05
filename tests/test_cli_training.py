@@ -204,7 +204,8 @@ def test_verify_patch_rejects_disallowed_file(tmp_path: Path) -> None:
     assert result.exit_code == 1
     payload = json.loads(result.output)
     assert payload["accepted"] is False
-    assert payload["reason"] == "disallowed_file"
+    assert payload["reason"] == "patch_apply_failed"
+    assert payload["detail"] == "disallowed_file"
 
 
 def test_tasks_checkout_path_prints_source_cache_location(tmp_path: Path) -> None:

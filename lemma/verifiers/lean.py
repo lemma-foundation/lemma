@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 from lemma.common.config import LemmaSettings
+from lemma.lean.rejection import MINER_FACING_REJECTION_CLASSES
 from lemma.lean.sandbox import VerifyReason, VerifyResult
 from lemma.lean.verify_runner import run_lean_verify
 from lemma.submissions import LemmaSubmission
@@ -165,15 +166,6 @@ def _legacy_task_from_v2(task: dict[str, Any]) -> LemmaTask:
 def _legacy_reason(result: VerificationResult) -> VerifyReason:
     if result.accepted:
         return "ok"
-    raw = str(result.error_type or "compile_error")
-    allowed: set[VerifyReason] = {
-        "compile_error",
-        "axiom_violation",
-        "cheat_token",
-        "policy_violation",
-        "timeout",
-        "oom",
-        "docker_error",
-        "remote_error",
-    }
-    return cast(VerifyReason, raw) if raw in allowed else "compile_error"
+    raw = str(result.error_type or "lean_compile_error")
+    allowed: set[VerifyReason] = set(MINER_FACING_REJECTION_CLASSES)
+    return cast(VerifyReason, raw) if raw in allowed else "lean_compile_error"

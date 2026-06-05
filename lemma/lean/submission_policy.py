@@ -6,6 +6,7 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
+from lemma.lean.rejection import RejectionClass
 from lemma.problems.base import Problem
 
 SubmissionPolicy = Literal["strict_envelope", "restricted_helpers"]
@@ -44,10 +45,40 @@ _DECL_RE = re.compile(rf"^(theorem|lemma|def)\s+({_LEAN_DECL_NAME})\b")
 _AXIOM_DECL_RE = re.compile(rf"^(theorem|lemma)\s+({_LEAN_DECL_NAME})\b")
 
 
+#: Trust-relevant forbidden prefixes that count as an added assumption/axiom.
+_TRUST_PREFIXES = (
+    "@[",
+    "attribute ",
+    "axiom ",
+    "constant ",
+    "unsafe ",
+    "extern ",
+    "implemented_by ",
+    "set_option ",
+    "opaque ",
+)
+#: Tokens that smuggle in native/unsafe trust (treated as added-axiom trust).
+_TRUST_TOKENS = ("native_decide", "unsafeCast", "reduceBool")
+
+
 @dataclass(frozen=True)
 class SubmissionPolicyScan:
     ok: bool
     reason: str | None = None
+    reason_class: RejectionClass | None = None
+
+
+def submission_policy_reason_class(scan: SubmissionPolicyScan) -> RejectionClass:
+    """Map a failed submission-policy scan to a canonical rejection class.
+
+    Structural envelope violations that are neither holes, added trust, nor
+    import problems are reported as ``lean_compile_error``: from the miner's
+    side the fix is the same (produce a clean, compiling, well-formed proof of
+    the exact target), and the human-readable specifics travel in ``reason``.
+    """
+    if scan.ok:
+        return "ok"
+    return scan.reason_class or "lean_compile_error"
 
 
 @dataclass(frozen=True)
@@ -87,35 +118,35 @@ def scan_submission_policy(
     try:
         selected = submission_policy_for_problem(problem, policy)
     except ValueError as e:
-        return SubmissionPolicyScan(False, str(e))
+        return SubmissionPolicyScan(False, str(e), "validator_internal_error")
 
     lines = _code_lines(source)
     if lines is None:
-        return SubmissionPolicyScan(False, "block comments are not allowed")
+        return SubmissionPolicyScan(False, "block comments are not allowed", "lean_compile_error")
     if not lines:
-        return SubmissionPolicyScan(False, "empty Submission.lean")
+        return SubmissionPolicyScan(False, "empty Submission.lean", "lean_compile_error")
 
     dangerous = _dangerous_construct(lines)
     if dangerous:
-        return SubmissionPolicyScan(False, dangerous)
+        return SubmissionPolicyScan(False, dangerous[0], dangerous[1])
 
     imports = [f"import {m}" for m in problem.imports]
     actual_imports = [line.code for line in lines if line.code.startswith("import ")]
     if actual_imports != imports:
-        return SubmissionPolicyScan(False, f"imports must be exactly {imports}")
+        return SubmissionPolicyScan(False, f"imports must be exactly {imports}", "forbidden_import")
 
     try:
         first_body = len(imports)
         if lines[first_body].code != "namespace Submission":
-            return SubmissionPolicyScan(False, "expected `namespace Submission` after imports")
+            return SubmissionPolicyScan(False, "expected `namespace Submission` after imports", "lean_compile_error")
         if lines[-1].code != "end Submission":
-            return SubmissionPolicyScan(False, "expected final `end Submission`")
+            return SubmissionPolicyScan(False, "expected final `end Submission`", "lean_compile_error")
     except IndexError:
-        return SubmissionPolicyScan(False, "incomplete Submission namespace")
+        return SubmissionPolicyScan(False, "incomplete Submission namespace", "lean_compile_error")
 
     body = lines[first_body + 1 : -1]
     if not body:
-        return SubmissionPolicyScan(False, "Submission namespace has no theorem")
+        return SubmissionPolicyScan(False, "Submission namespace has no theorem", "lean_compile_error")
 
     if selected == "strict_envelope":
         return _scan_strict(problem, body)
@@ -159,14 +190,27 @@ def _code_lines(source: str) -> list[_Line] | None:
     return out
 
 
-def _dangerous_construct(lines: list[_Line]) -> str | None:
+def _dangerous_construct(lines: list[_Line]) -> tuple[str, RejectionClass] | None:
     for line in lines:
-        if _DANGEROUS_TOKENS.search(line.code):
-            return f"line {line.no}: forbidden token"
+        token = _DANGEROUS_TOKENS.search(line.code)
+        if token:
+            return f"line {line.no}: forbidden token `{token.group(0)}`", _token_reason_class(token.group(0))
         for prefix in _FORBIDDEN_PREFIXES:
             if line.code.startswith(prefix):
-                return f"line {line.no}: `{prefix.strip()}` is not allowed"
+                message = f"line {line.no}: `{prefix.strip()}` is not allowed"
+                reason_class: RejectionClass = (
+                    "new_axiom_detected" if prefix in _TRUST_PREFIXES else "lean_compile_error"
+                )
+                return message, reason_class
     return None
+
+
+def _token_reason_class(token: str) -> RejectionClass:
+    if token == "sorry":
+        return "new_sorry_detected"
+    if token == "admit":
+        return "new_admit_detected"
+    return "new_axiom_detected"
 
 
 def _target_decl(problem: Problem) -> str:
@@ -206,19 +250,21 @@ def _target_decl_end_index(start: int, body: list[_Line]) -> int:
 def _scan_strict(problem: Problem, body: list[_Line]) -> SubmissionPolicyScan:
     target_indexes = _top_level_target_indexes(problem, body)
     if len(target_indexes) != 1:
-        return SubmissionPolicyScan(False, "expected exactly one exact target theorem")
+        return SubmissionPolicyScan(False, "expected exactly one exact target theorem", "lean_compile_error")
     if target_indexes[0] != 0:
-        return SubmissionPolicyScan(False, "target theorem must be the only top-level declaration")
+        return SubmissionPolicyScan(
+            False, "target theorem must be the only top-level declaration", "lean_compile_error"
+        )
     target_end = _target_decl_end_index(target_indexes[0], body)
     for line in body[target_end + 1 :]:
         if line.top_level:
-            return SubmissionPolicyScan(False, f"line {line.no}: extra top-level command")
+            return SubmissionPolicyScan(False, f"line {line.no}: extra top-level command", "lean_compile_error")
     return SubmissionPolicyScan(True)
 
 
 def _scan_restricted_helpers(problem: Problem, body: list[_Line]) -> SubmissionPolicyScan:
     if len(_top_level_target_indexes(problem, body)) != 1:
-        return SubmissionPolicyScan(False, "expected exactly one exact target theorem")
+        return SubmissionPolicyScan(False, "expected exactly one exact target theorem", "lean_compile_error")
     for line in body:
         if not line.top_level:
             continue
@@ -226,5 +272,7 @@ def _scan_restricted_helpers(problem: Problem, body: list[_Line]) -> SubmissionP
             continue
         if _DECL_RE.match(line.code):
             continue
-        return SubmissionPolicyScan(False, f"line {line.no}: top-level command is not allowlisted")
+        return SubmissionPolicyScan(
+            False, f"line {line.no}: top-level command is not allowlisted", "lean_compile_error"
+        )
     return SubmissionPolicyScan(True)

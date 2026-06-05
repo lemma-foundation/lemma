@@ -20,6 +20,12 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from lemma.atlas.realtask import (  # noqa: E402
+    load_atlas_registry_union,
+    read_accepted_rows,
+    read_source_reports,
+    write_real_task_snapshot,
+)
 from lemma.corpus.storage import build_storage_index  # noqa: E402
 from lemma.tasks import load_task_registry  # noqa: E402
 from scripts.prepare_proof_atlas_publish import prepare  # noqa: E402
@@ -56,6 +62,35 @@ def public_dirs(repo: Path, netuid: str) -> tuple[tuple[str, Path], ...]:
     )
 
 
+def real_task_public_dirs(repo: Path, netuid: str) -> tuple[tuple[str, Path], ...]:
+    """Optional real-task layer directories, published only when present."""
+    return (
+        (f"tasks/{netuid}/bundles", repo / "tasks" / netuid / "bundles"),
+        (f"envs/{netuid}", repo / "envs" / netuid),
+        (f"sources/{netuid}", repo / "sources" / netuid),
+    )
+
+
+def build_real_task_layer(repo: Path, netuid: str) -> dict[str, object] | None:
+    """Write the real-task Atlas artifacts from the synced public inputs.
+
+    Builds task bundles, the solved ledger, the environment index, and the
+    sources index from the pinned registries plus accepted proof rows. Returns
+    the snapshot manifest, or ``None`` when no registry is present yet.
+    """
+    registry = load_atlas_registry_union(repo / "tasks" / netuid / "registries")
+    if registry is None:
+        return None
+    manifest = write_real_task_snapshot(
+        repo,
+        netuid=netuid,
+        registry=registry,
+        accepted_rows=read_accepted_rows(repo / "proofs" / netuid / "accepted"),
+        source_reports=read_source_reports(repo / "sources" / netuid),
+    )
+    return manifest.model_dump()
+
+
 def write_manifest(repo: Path, netuid: str, manifest_path: Path | None = None) -> Path:
     target = manifest_path or repo / "MANIFEST.sha256"
     paths: list[Path] = []
@@ -63,6 +98,9 @@ def write_manifest(repo: Path, netuid: str, manifest_path: Path | None = None) -
         if not directory.is_dir():
             raise SystemExit(f"missing public Proof Atlas directory: {directory}")
         paths.extend(item for item in directory.rglob("*") if item.is_file())
+    for _name, directory in real_task_public_dirs(repo, netuid):
+        if directory.is_dir():
+            paths.extend(item for item in directory.rglob("*") if item.is_file())
     lines: list[str] = []
     for path in sorted(paths, key=lambda item: item.relative_to(repo).as_posix()):
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
@@ -178,7 +216,9 @@ def hippius_commands(
 ) -> list[list[str]]:
     base_uri = f"s3://{bucket}/snapshots/{snapshot}"
     commands: list[list[str]] = []
-    for remote_prefix, directory in public_dirs(repo, netuid):
+    sync_dirs = list(public_dirs(repo, netuid))
+    sync_dirs.extend((name, directory) for name, directory in real_task_public_dirs(repo, netuid) if directory.is_dir())
+    for remote_prefix, directory in sync_dirs:
         commands.append(
             [
                 *aws,
@@ -280,7 +320,9 @@ def release_notes(*, bucket: str, netuid: str, snapshot: str) -> str:
             "Contents:",
             "",
             f"- `proofs/{netuid}/`",
-            f"- `tasks/{netuid}/registries/`",
+            f"- `tasks/{netuid}/`",
+            f"- `envs/{netuid}/`",
+            f"- `sources/{netuid}/`",
             f"- `exports/{netuid}/`",
             f"- `canonical/{netuid}/`",
             "- `MANIFEST.sha256`",
@@ -326,6 +368,8 @@ def public_repo_paths(netuid: str) -> tuple[str, ...]:
         "MANIFEST.sha256",
         f"proofs/{netuid}",
         f"tasks/{netuid}",
+        f"envs/{netuid}",
+        f"sources/{netuid}",
         f"exports/{netuid}",
         f"canonical/{netuid}",
     )
@@ -372,7 +416,7 @@ def commit_repo_changes(
     push: bool,
     dry_run: bool,
 ) -> bool:
-    paths = public_repo_paths(netuid)
+    paths = tuple(path for path in public_repo_paths(netuid) if (repo / path).exists())
     if dry_run:
         print("$ " + shlex.join(["git", "-C", str(repo), "add", "--", *paths]))
         commit_command = ["git", "-C", str(repo), "commit", "-m", f"Publish {netuid} Proof Atlas snapshot {snapshot}"]
@@ -453,6 +497,11 @@ def main() -> int:
         action="store_true",
         help="publish only synced registry cache files and their public index",
     )
+    parser.add_argument(
+        "--skip-real-task",
+        action="store_true",
+        help="skip building the real-task bundles, solved ledger, and environment index",
+    )
     parser.add_argument("--skip-hippius", action="store_true", help="prepare files but do not upload to Hippius")
     parser.add_argument("--skip-github", action="store_true", help="prepare files but do not create the GitHub release")
     parser.add_argument(
@@ -509,6 +558,7 @@ def main() -> int:
         registry_cache_dir=args.sync_registry_cache_dir.resolve() if args.sync_registry_cache_dir else None,
     )
     summary = prepare(repo, args.netuid)
+    real_task = None if args.skip_real_task else build_real_task_layer(repo, args.netuid)
     storage_index = build_storage_index(repo, args.netuid, resolver=args.resolver)
     manifest_path = write_manifest(repo, args.netuid)
     storage_index_path, storage_epoch_count = storage_index_path_and_epoch_count(storage_index)
@@ -580,6 +630,7 @@ def main() -> int:
                 "huggingface_repo": args.hf_repo_id,
                 "hippius_uri": f"s3://{args.bucket}/snapshots/{args.snapshot}/",
                 "manifest": str(manifest_path),
+                "real_task": real_task,
                 "repo_committed": committed_repo,
                 "repo_pushed": bool(args.push_repo and committed_repo),
                 "snapshot": args.snapshot,

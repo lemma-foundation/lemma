@@ -102,6 +102,11 @@ class LemmaSettings(BaseSettings):
     active_task_count: int = Field(default=20, ge=1, validation_alias="LEMMA_ACTIVE_K")
     frontier_depth: int = Field(default=0, ge=0, validation_alias="LEMMA_FRONTIER_DEPTH")
     active_queue_seed: str = Field(default="lemma-active-queue", validation_alias="LEMMA_ACTIVE_QUEUE_SEED")
+    active_selection_mode: Literal["balanced", "class_stratified"] = Field(
+        default="balanced",
+        validation_alias="LEMMA_ACTIVE_SELECTION_MODE",
+    )
+    active_canary_quota: int = Field(default=0, ge=0, validation_alias="LEMMA_ACTIVE_CANARY_QUOTA")
     active_seed_mode: Literal["static", "epoch_randomness"] = Field(
         default="static",
         validation_alias="LEMMA_ACTIVE_SEED_MODE",

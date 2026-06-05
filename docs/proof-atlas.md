@@ -16,7 +16,11 @@ The public repo is `lemma-foundation/lemma-proof-atlas`.
 ```text
 proofs/<netuid>/accepted/        accepted artifact JSONL rows by epoch
 proofs/<netuid>/index.json       accepted artifact row index
+proofs/<netuid>/solved-ledger.json  real tasks that have an accepted, rewarded proof
 tasks/<netuid>/registries/       pinned task registries by hash
+tasks/<netuid>/bundles/index.json   public real task bundles (source + environment + replay)
+envs/<netuid>/index.json         certified validation environments keyed by hash
+sources/<netuid>/index.json      source ingest reports, repo pins, and licenses
 exports/<netuid>/                compact downstream JSONL exports
 canonical/<netuid>/              active-pool, accepted-proof, curriculum, and commitment artifacts
 MANIFEST.sha256                  hash checklist for public snapshot files
@@ -106,6 +110,46 @@ uv run lemma corpus benchmark-export --input proofs/sn467/accepted --output expo
 The CLI group is still named `lemma corpus` internally for now. Its job is validating and exporting accepted proof rows in the Proof Atlas.
 
 `benchmark-export` writes compact JSONL records for downstream training or evaluation. It is an export surface, not a claim that the rows are held-out benchmark tasks.
+
+## Real-Task Layer
+
+Lemma's product is verified Lean progress on real, public, useful formalization tasks. The real-task layer makes that progress reproducible from public inputs alone: the pinned task registry plus the accepted proof rows. It is pure data tooling and performs no upload, commit, or chain write.
+
+It builds four artifacts:
+
+- `tasks/<netuid>/bundles/index.json` — one public **task bundle** per pinned task. A bundle carries the real source reference (`source_ref`: kind, name, url, commit, path), license, imports, editable files, the exact target (`target_sha256`, `target_type_sha256`), the certified environment (`environment_sha256`, `lean_toolchain`, `mathlib_rev`), and the `reproduction_command`. It carries no operator state, secrets, or local paths.
+- `proofs/<netuid>/solved-ledger.json` — the **solved ledger**: each real task that earned an accepted, rewarded proof, joined by `task_id` to its bundle. Each entry names the winning miner and validator hotkeys, block, artifact kind, artifact hash, proof identity, and plain-language **apply/replay instructions** for putting the proof or patch back on the original source.
+- `envs/<netuid>/index.json` — the **environment index**: certified validation environments keyed by `environment_sha256`, with the toolchain, Mathlib revision, source kinds, and the task IDs that share each environment.
+- `sources/<netuid>/index.json` — the **sources index**: the source ingest reports (repo pins, licenses, quarantine counts) for the tasks in the snapshot.
+
+Build a dry-run snapshot (prints a manifest of every file it would write with its SHA256, touches nothing):
+
+```bash
+uv run lemma atlas snapshot \
+  --registry tasks/sn467/registries/<hash>.json \
+  --accepted proofs/sn467/accepted \
+  --source-report sources/sn467/sorrydb-report.json
+```
+
+Add `--repo ~/lemma-proof-atlas` to write the artifacts into a Proof Atlas checkout. Two validators that start from the same registry hash and accepted rows produce byte-identical artifacts.
+
+`scripts/publish_proof_atlas_snapshot.py` builds this layer automatically: after preparing the accepted-row indexes it merges the pinned registries (`tasks/<netuid>/registries/`, newest wins on a task-id collision), reads the accepted rows, and writes the bundles, solved ledger, environment index, and sources index. Those files then flow through `MANIFEST.sha256`, the Hippius/GitHub/Hugging Face mirrors, and the public commit like the rest of the snapshot. The step is skipped automatically when no registry is present yet, and can be turned off with `--skip-real-task`. Drop source ingest reports into `sources/<netuid>/` to have them indexed (the builder ignores `index.json` and `snapshot.json`).
+
+## Static Site Preview
+
+The public site (`lemmasub.net`) is a real-task board and solved-proof explorer rendered directly from the real-task artifacts. The generator reads the task bundles and solved ledger and writes plain static HTML with no build step and no client-side data fetch, matching the site's static deployment.
+
+```bash
+uv run lemma site build --atlas ~/lemma-proof-atlas --out ~/lemma-proof-atlas/site
+```
+
+It writes three pages into the output directory:
+
+- `index.html` — the product statement and headline open/solved counts;
+- `board.html` — each real task with its source project and type, task class, validation environment, open/solved status, a link to the task bundle, a link to the source repo at the pinned commit, and the reproduction command;
+- `solved.html` — each accepted proof or patch with its source commit, proof identity, plain-language apply instructions, the replay command, and mirror links.
+
+All dynamic content is HTML-escaped, and the pages render only public bundle/ledger fields. Pass `--atlas-base-url`, `--hippius-url`, and `--huggingface-url` to point the links and mirror badges at the real public locations. When no artifacts are present yet, the pages render honest empty states.
 
 ## Privacy Boundary
 

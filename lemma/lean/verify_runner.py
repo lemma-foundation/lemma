@@ -13,6 +13,7 @@ from lemma.lean.sandbox import LeanSandbox, VerifyResult
 from lemma.lean.submission_policy import (
     scan_submission_policy,
     submission_policy_for_problem,
+    submission_policy_reason_class,
     submission_policy_stderr_tail,
 )
 from lemma.problems.base import Problem
@@ -49,7 +50,7 @@ def run_lean_verify(
     if not scan.ok:
         return VerifyResult(
             passed=False,
-            reason="policy_violation",
+            reason=submission_policy_reason_class(scan),
             stderr_tail=submission_policy_stderr_tail(scan),
         )
 
@@ -95,7 +96,7 @@ def _verify_via_http(
         logger.warning("lean remote verify transport failed: {}", e)
         return VerifyResult(
             passed=False,
-            reason="remote_error",
+            reason="validator_internal_error",
             stderr_tail=str(e)[:8000],
         )
 
@@ -104,14 +105,14 @@ def _verify_via_http(
     except json.JSONDecodeError:
         return VerifyResult(
             passed=False,
-            reason="remote_error",
+            reason="validator_internal_error",
             stderr_tail=(r.text or "")[:8000],
         )
 
     if r.status_code == 401:
         return VerifyResult(
             passed=False,
-            reason="remote_error",
+            reason="validator_internal_error",
             stderr_tail="remote verify: 401 unauthorized (check LEMMA_LEAN_VERIFY_REMOTE_BEARER)",
         )
 
@@ -120,14 +121,14 @@ def _verify_via_http(
         detail = err.get("detail") or err.get("message") or r.text
         return VerifyResult(
             passed=False,
-            reason="remote_error",
+            reason="validator_internal_error",
             stderr_tail=str(detail)[:8000],
         )
 
     if not isinstance(data, dict):
         return VerifyResult(
             passed=False,
-            reason="remote_error",
+            reason="validator_internal_error",
             stderr_tail="remote verify: expected JSON object body",
         )
 
@@ -136,6 +137,6 @@ def _verify_via_http(
     except Exception as e:  # noqa: BLE001
         return VerifyResult(
             passed=False,
-            reason="remote_error",
+            reason="validator_internal_error",
             stderr_tail=f"invalid VerifyResult from worker: {e}"[:8000],
         )

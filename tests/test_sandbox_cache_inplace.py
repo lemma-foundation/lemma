@@ -98,7 +98,7 @@ end Submission
 
     def fake_host(self: LeanSandbox, work: Path) -> VerifyResult:  # noqa: ARG001
         (work / ".lake" / "packages" / "mathlib").mkdir(parents=True)
-        return VerifyResult(passed=False, reason="compile_error")
+        return VerifyResult(passed=False, reason="lean_compile_error")
 
     monkeypatch.setattr(LeanSandbox, "_verify_host", fake_host)
     sb = LeanSandbox(use_docker=False, timeout_s=30, workspace_cache_dir=cache)
