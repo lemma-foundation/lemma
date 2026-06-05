@@ -37,7 +37,7 @@ def decay_weight(age_epochs: int, *, half_life_epochs: float) -> float:
     """Return the exponential decay multiplier for credit ``age_epochs`` old."""
     if age_epochs < 0:
         raise ValueError("age_epochs must be non-negative")
-    return 0.5 ** (age_epochs / half_life_epochs)
+    return float(0.5 ** (age_epochs / half_life_epochs))
 
 
 def rolling_scores(

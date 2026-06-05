@@ -164,6 +164,27 @@ def test_build_site_from_atlas_reads_artifacts(tmp_path: Path) -> None:
     assert (out / "board.html").is_file()
 
 
+def test_pages_share_theme_toggle_and_clean_nav(tmp_path: Path) -> None:
+    build_site(tmp_path, bundles=[_bundle("lemma.a")], solved=[_solved("lemma.a")], config=SiteConfig())
+    for page in ("index.html", "board.html", "solved.html"):
+        html = (tmp_path / page).read_text(encoding="utf-8")
+        # Day/night toggle identical to the homepage, on every page.
+        assert "data-theme-toggle" in html
+        assert 'localStorage.getItem("lemma-theme")' in html
+        assert 'data-theme="dark"' in html
+        # Data + Docs nav point at the bare repos, no tree/main or blob/main.
+        assert ">Data<" in html and ">Docs<" in html
+        assert "lemma-proof-atlas/blob/main" not in html
+        assert "lemma-proof-atlas/tree/main" not in html
+        assert "/lemma/tree/main" not in html
+
+
+def test_nav_data_and_docs_are_bare_repo_urls() -> None:
+    html = render_board([_bundle("lemma.a")], solved_ids=set(), config=SiteConfig())
+    assert 'href="https://github.com/lemma-foundation/lemma-proof-atlas"' in html
+    assert 'href="https://github.com/lemma-foundation/lemma"' in html
+
+
 def test_build_site_from_atlas_handles_missing_artifacts(tmp_path: Path) -> None:
     manifest = build_site_from_atlas(tmp_path / "empty-atlas", tmp_path / "site", config=SiteConfig())
     assert manifest["bundle_count"] == 0

@@ -101,10 +101,12 @@ class PreflightBaselineProber:
     tactics: tuple[str, ...] = DEFAULT_BASELINE_TACTICS
     timeout_s: int = 120
 
-    def __call__(self, task: LemmaTask, source_root: Path) -> BaselineProbe:
+    def __call__(self, task: LemmaTask, source_root: Path | None = None) -> BaselineProbe:
         from lemma.common.config import LemmaSettings
         from lemma.preflight import preflight_submission
 
+        if source_root is None:
+            return BaselineProbe(trivial=False)
         rel_path = task.allowed_files[0] if task.allowed_files else ""
         target = source_root / rel_path
         if not rel_path or not target.is_file():

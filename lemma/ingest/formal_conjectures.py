@@ -167,7 +167,8 @@ def _ingest_record(
     if original_name and _references(type_expr, original_name):
         return _Outcome(quarantine=QuarantinedRow(row_ref=row_ref, reason="references_original", detail=original_name))
 
-    repo = record.get("repo") if isinstance(record.get("repo"), Mapping) else {}
+    repo_raw = record.get("repo")
+    repo: Mapping[str, Any] = repo_raw if isinstance(repo_raw, Mapping) else {}
     remote = _str(repo.get("remote"))
     commit = _str(repo.get("commit"))
     environment_sha256 = formal_conjecture_environment_sha256(toolchain, mathlib_rev, imports)

@@ -965,6 +965,7 @@ def tasks_ingest_sorrydb_cmd(
     Unlike import-sorrydb, this never crashes on a bad row: each row is either
     accepted as a candidate or quarantined with a structured reason.
     """
+    from collections.abc import Mapping
     from typing import Any
 
     from lemma.ingest.sorrydb import ingest_sorrydb_rows
@@ -980,7 +981,7 @@ def tasks_ingest_sorrydb_cmd(
     if not rows:
         raise click.ClickException("sorry-json must contain at least one SorryDB row")
 
-    def resolve_source_root(row: dict[str, Any]) -> Path | None:
+    def resolve_source_root(row: Mapping[str, Any]) -> Path | None:
         if source_root is not None:
             return source_root
         assert source_checkout_root is not None
@@ -989,10 +990,10 @@ def tasks_ingest_sorrydb_cmd(
         except ValueError:
             return None
 
-    baseline_prober = None
-    if run_baseline:
-        from lemma.ingest.baseline import PreflightBaselineProber
+    from lemma.ingest.baseline import BaselineProber, PreflightBaselineProber
 
+    baseline_prober: BaselineProber | None = None
+    if run_baseline:
         baseline_prober = PreflightBaselineProber()
 
     result = ingest_sorrydb_rows(

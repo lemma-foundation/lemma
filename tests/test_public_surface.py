@@ -27,6 +27,8 @@ PUBLIC_DOC_NAMES = {
     "production.md",
     "testing.md",
     "faq.md",
+    "launch-readiness.md",
+    "launch-runbook.md",
 }
 
 

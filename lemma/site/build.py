@@ -15,17 +15,16 @@ PRODUCT_STATEMENT = (
 
 _STYLE = """
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
   --bg: #f7faf8; --paper: #ffffff; --ink: #1f2622; --muted: #58665f;
   --line: #d7e2dc; --soft: #e8f1ec; --green: #18745f; --blue: #325e9d;
   --gold: #a96727; --code: #171b18; --code-ink: #eef7f1; --radius: 8px; --max: 1120px;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #121714; --paper: #19201b; --ink: #eef3ef; --muted: #9fb0a6;
-    --line: #2b352e; --soft: #1f2822; --green: #5fd0b0; --blue: #8fb4ee; --gold: #e0a868;
-    --code: #0d100e; --code-ink: #eef7f1;
-  }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #121714; --paper: #19201b; --ink: #eef3ef; --muted: #9fb0a6;
+  --line: #2b352e; --soft: #1f2822; --green: #5fd0b0; --blue: #8fb4ee; --gold: #e0a868;
+  --code: #0d100e; --code-ink: #eef7f1;
 }
 * { box-sizing: border-box; }
 body {
@@ -40,7 +39,7 @@ a { color: var(--blue); }
 }
 .site-header .wrap { display: flex; align-items: center; gap: 18px; height: 60px; }
 .brand { font-weight: 700; font-size: 18px; color: var(--ink); text-decoration: none; }
-.site-nav { margin-left: auto; display: flex; gap: 16px; }
+.site-nav { margin-left: auto; display: flex; align-items: center; gap: 16px; }
 .site-nav a { text-decoration: none; color: var(--muted); font-weight: 600; }
 .site-nav a[aria-current="page"] { color: var(--green); }
 h1 { font-size: 28px; margin: 28px 0 6px; }
@@ -80,7 +79,83 @@ pre.cmd {
 }
 .site-footer { border-top: 1px solid var(--line); background: var(--paper); margin-top: 40px; }
 .site-footer .wrap { padding: 20px; color: var(--muted); font-size: 14px; }
+.theme-toggle {
+  display: inline-flex; width: 3.45rem; height: 1.9rem; flex: 0 0 auto;
+  align-items: center; border: 1px solid var(--line); border-radius: 999px;
+  background: var(--paper); padding: .18rem; cursor: pointer;
+}
+.theme-toggle-track {
+  position: relative; display: block; width: 100%; height: 100%;
+  overflow: hidden; border-radius: inherit;
+  background: linear-gradient(135deg, #b7d8ff, #f8d58b); transition: background .24s ease;
+}
+.theme-toggle-thumb {
+  position: absolute; top: .18rem; left: .2rem; width: 1.16rem; height: 1.16rem;
+  border-radius: 50%; background: #fff8c7;
+  box-shadow: 0 0 0 .22rem rgba(255, 248, 199, .25), 0 .15rem .4rem rgba(31, 38, 34, .2);
+  transition: transform .24s ease, background .24s ease, box-shadow .24s ease;
+}
+.theme-toggle-sun, .theme-toggle-moon {
+  position: absolute; inset: 0; transition: opacity .24s ease, transform .24s ease;
+}
+.theme-toggle-sun::before, .theme-toggle-moon::before { position: absolute; content: ""; }
+.theme-toggle-sun::before {
+  top: .38rem; right: .55rem; width: .28rem; height: .28rem; border-radius: 50%; background: #fff6ad;
+  box-shadow: -.5rem .18rem 0 -.08rem rgba(255, 246, 173, .75), -.18rem .58rem 0 -.1rem rgba(255, 246, 173, .65);
+}
+.theme-toggle-moon { opacity: 0; transform: translateX(.35rem); }
+.theme-toggle-moon::before {
+  top: .38rem; left: .52rem; width: .54rem; height: .54rem; border-radius: 50%;
+  background: #dce9ff; box-shadow: .22rem -.05rem 0 0 #23344b;
+}
+:root[data-theme="dark"] .theme-toggle-track { background: linear-gradient(135deg, #12233d, #213a31); }
+:root[data-theme="dark"] .theme-toggle-thumb {
+  background: #dce9ff; transform: translateX(1.54rem);
+  box-shadow: 0 0 0 .2rem rgba(157, 186, 255, .16), 0 .15rem .4rem rgba(0, 0, 0, .35);
+}
+:root[data-theme="dark"] .theme-toggle-sun { opacity: 0; transform: translateX(-.35rem); }
+:root[data-theme="dark"] .theme-toggle-moon { opacity: 1; transform: translateX(0); }
 """
+
+_THEME_SCRIPT = """
+(function () {
+  var storageKey = "lemma-theme";
+  var root = document.documentElement;
+  var toggle = document.querySelector("[data-theme-toggle]");
+  var themeMeta = document.querySelector('meta[name="theme-color"]');
+  function chosenTheme() { return localStorage.getItem(storageKey) || "light"; }
+  function setTheme(theme) {
+    root.dataset.theme = theme;
+    try { localStorage.setItem(storageKey, theme); } catch (e) {}
+    if (themeMeta) { themeMeta.setAttribute("content", theme === "dark" ? "#101712" : "#f7faf8"); }
+    if (toggle) {
+      toggle.setAttribute("aria-pressed", String(theme === "dark"));
+      toggle.setAttribute("aria-label", theme === "dark" ? "Switch to light mode" : "Switch to dark mode");
+    }
+  }
+  setTheme(chosenTheme());
+  if (toggle) {
+    toggle.addEventListener("click", function () {
+      setTheme(root.dataset.theme === "dark" ? "light" : "dark");
+    });
+  }
+})();
+"""
+
+_THEME_BOOT = (
+    '(function(){try{document.documentElement.dataset.theme='
+    'localStorage.getItem("lemma-theme")||"light";}catch(e){}})();'
+)
+
+_THEME_TOGGLE_BUTTON = (
+    '<button class="theme-toggle" type="button" data-theme-toggle '
+    'aria-label="Switch to dark mode" aria-pressed="false">'
+    '<span class="theme-toggle-track" aria-hidden="true">'
+    '<span class="theme-toggle-sun"></span>'
+    '<span class="theme-toggle-moon"></span>'
+    '<span class="theme-toggle-thumb"></span>'
+    "</span></button>"
+)
 
 
 @dataclass(frozen=True)
@@ -88,8 +163,8 @@ class SiteConfig:
     """Public link configuration for the rendered preview."""
 
     netuid: str = "sn467"
-    atlas_base_url: str = "https://github.com/lemma-foundation/lemma-proof-atlas/blob/main"
-    docs_url: str = "https://github.com/lemma-foundation/lemma/tree/main/docs"
+    atlas_base_url: str = "https://github.com/lemma-foundation/lemma-proof-atlas"
+    docs_url: str = "https://github.com/lemma-foundation/lemma"
     github_repo_url: str = "https://github.com/lemma-foundation/lemma"
     hippius_url: str | None = None
     huggingface_url: str | None = None
@@ -131,8 +206,10 @@ def _page(title: str, body: str, *, active_nav: str, config: SiteConfig) -> str:
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="{escape(PRODUCT_STATEMENT, quote=True)}">
+  <meta name="theme-color" content="#f7faf8">
   <title>{escape(title)}</title>
   <style>{_STYLE}</style>
+  <script>{_THEME_BOOT}</script>
 </head>
 <body>
   <header class="site-header">
@@ -140,6 +217,7 @@ def _page(title: str, body: str, *, active_nav: str, config: SiteConfig) -> str:
       <a class="brand" href="index.html">Lemma</a>
       <nav class="site-nav" aria-label="Primary">
         {nav_links}
+        {_THEME_TOGGLE_BUTTON}
       </nav>
     </div>
   </header>
@@ -149,6 +227,7 @@ def _page(title: str, body: str, *, active_nav: str, config: SiteConfig) -> str:
   <footer class="site-footer">
     <div class="wrap">{escape(PRODUCT_STATEMENT)}</div>
   </footer>
+  <script>{_THEME_SCRIPT}</script>
 </body>
 </html>
 """
@@ -178,7 +257,8 @@ def render_index(*, bundle_count: int, solved_count: int, config: SiteConfig) ->
 
 
 def _board_card(bundle: Mapping[str, Any], *, solved: bool, config: SiteConfig) -> str:
-    source_ref = bundle.get("source_ref") if isinstance(bundle.get("source_ref"), Mapping) else {}
+    source_ref_raw = bundle.get("source_ref")
+    source_ref: Mapping[str, Any] = source_ref_raw if isinstance(source_ref_raw, Mapping) else {}
     title = str(bundle.get("title") or bundle.get("task_id") or "task")
     task_id = str(bundle.get("task_id") or "")
     status_tag = (
@@ -192,7 +272,7 @@ def _board_card(bundle: Mapping[str, Any], *, solved: bool, config: SiteConfig) 
     ]
     env = _short(str(bundle.get("environment_sha256") or "")) or "unpinned"
     repro = str(bundle.get("reproduction_command") or "")
-    bundle_url = f"{config.atlas_base_url.rstrip('/')}/tasks/{config.netuid}/bundles/index.json"
+    bundle_url = config.atlas_base_url
     links = [f'<a href="{escape(bundle_url, quote=True)}" rel="noopener noreferrer" target="_blank">Task bundle</a>']
     if source_ref.get("url"):
         links.append(_source_link(source_ref) + " repo")
@@ -234,7 +314,8 @@ def render_board(bundles: Sequence[Mapping[str, Any]], solved_ids: set[str], *, 
 
 
 def _solved_card(entry: Mapping[str, Any], *, config: SiteConfig) -> str:
-    source_ref = entry.get("source_ref") if isinstance(entry.get("source_ref"), Mapping) else {}
+    source_ref_raw = entry.get("source_ref")
+    source_ref: Mapping[str, Any] = source_ref_raw if isinstance(source_ref_raw, Mapping) else {}
     task_id = str(entry.get("task_id") or "")
     kind = str(entry.get("artifact_kind") or "proof")
     commit = str(source_ref.get("commit") or "")
