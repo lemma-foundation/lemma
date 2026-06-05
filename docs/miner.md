@@ -6,7 +6,7 @@ Your job is to fetch active tasks, produce Lean proof code, check it locally, an
 
 This guide is intentionally sparse. The CLI proves the protocol can be used end to end; it is not a mining strategy.
 
-The competition is in the prover you build around it. Use Cursor, Claude Code, Codex, Antigravity, or any other agentic tool that helps you set up `lemma`, configure `btcli`, inspect active tasks, run Lean, repair failures, and improve your search loop. Miners with the best strategies win.
+The competition is in the prover you build around it. Coding assistants (Cursor, Claude Code, Codex, and similar) are useful for *building* that tooling — setting up `lemma`, configuring `btcli`, inspecting tasks, running Lean, and improving your search code. The runtime prover that generates proofs is your own system; if it calls a model API, use a provider whose terms permit automated, competitive use. Miners with the best strategies win.
 
 ## Basic Flow
 
@@ -64,7 +64,7 @@ LEMMA_PROVER_MODEL
 LEMMA_PROVER_REPAIR_ATTEMPTS
 ```
 
-The provider is not scored. Lemma only checks the final Lean proof. Set `LEMMA_PROVER_REPAIR_ATTEMPTS` to let the reference miner send Lean verifier errors back to the hosted endpoint for bounded repair retries.
+The provider is not scored; Lemma only checks the final Lean proof. Use a provider whose terms permit automated, competitive use — not every consumer AI subscription does. Set `LEMMA_PROVER_REPAIR_ATTEMPTS` to let the reference miner send Lean verifier errors back to the hosted endpoint for bounded repair retries.
 
 ## Reward Rule
 

@@ -51,6 +51,8 @@ This is provider-neutral. Provider metadata is optional and is not part of scori
 
 OpenAI-compatible endpoints can point at OpenAI, Chutes, Gemini-compatible gateways, local vLLM servers, or custom HTTP prover services. The only required output is a Lean proof script for the requested task.
 
+Because the prover runs in an automated loop tied to on-chain rewards, use a provider whose terms permit that — self-hosted/open-weight models, or an API whose terms explicitly allow automated, competitive use. Consumer coding-assistant subscriptions (e.g. Cursor/Codex/Claude) are for building tooling, not for serving the runtime prover.
+
 ## Custom HTTP Provers
 
 Adapters should keep provider credentials outside submission packages. A validator scores only the task-bound proof and its Lean verification result, not the model name, prompt, chain of thought, or informal explanation.

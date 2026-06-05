@@ -20,7 +20,7 @@ Bittensor supplies the open miner/validator network. Lemma supplies the mathemat
 
 ## Can miners use AI APIs?
 
-Yes. Miners can use local models, hosted APIs, tactic search, retrieval, custom heuristics, or any other proof-search stack. Validators only check the final Lean proof.
+Yes. Miners can use local models, hosted APIs, tactic search, retrieval, custom heuristics, or any other proof-search stack. Validators only check the final Lean proof. The prover runs in an automated loop, so if you use a hosted API, pick a provider whose terms permit automated, competitive use.
 
 ## What do validators score?
 

@@ -48,7 +48,7 @@ uv run lemma status
 uv run lemma mine --once --prover-command "python prover.py" --output submission.json
 ```
 
-The mining docs are intentionally sparse. `lemma mine` is the setup and smoke path, not the strategy. The goal is to build an agent or system that proves active tasks; use Cursor, Claude Code, Codex, Antigravity, or any other tool that helps you set up `lemma`, configure `btcli`, inspect tasks, and improve your prover. Miners with the best strategies win.
+The mining docs are intentionally sparse: `lemma mine` is the setup and smoke path, not a strategy. Build your own prover around it. Coding assistants (Cursor, Claude Code, Codex, and similar) are useful for *writing* that tooling — configuring `btcli`, inspecting tasks, and improving your prover code. The runtime prover that actually generates proofs is your own system; if it calls a model, use a provider whose terms permit automated, competitive use. Miners with the best strategies win.
 
 ## Quick Start: Validators
 
