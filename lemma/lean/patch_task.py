@@ -178,15 +178,17 @@ def _validate_static(
     if old_decl != new_decl:
         return PatchValidationResult(False, "target_statement_changed", changed_files=changed_files)
 
-    allowed_imports = set(task.allowed_imports)
     for rel in changed_files:
+        original_imports = _imports(source_root / rel)
+        original_forbidden = _forbidden_lines(source_root / rel)
+        allowed_imports = set(task.allowed_imports) | original_imports
         source = (work / rel).read_text(encoding="utf-8")
         for line in _code_lines(source):
             if line.startswith("import "):
                 imported = line.removeprefix("import ").strip()
                 if imported not in allowed_imports:
                     return PatchValidationResult(False, "forbidden_import", changed_files=changed_files)
-            if line.startswith(_FORBIDDEN_PREFIXES):
+            if line.startswith(_FORBIDDEN_PREFIXES) and line not in original_forbidden:
                 return PatchValidationResult(False, "trust_expansion", changed_files=changed_files)
         if _HOLE_RE.search("\n".join(_code_lines(source))):
             return PatchValidationResult(False, "hole", changed_files=changed_files)
@@ -195,15 +197,43 @@ def _validate_static(
 
 def _target_decl(root: Path, files: tuple[str, ...], theorem_name: str) -> str | None:
     short_name = theorem_name.rsplit(".", 1)[-1]
-    prefixes = (f"theorem {short_name} ", f"lemma {short_name} ")
     for rel in files:
         path = root / rel
         if not path.is_file():
             continue
+        parts: list[str] = []
         for line in _code_lines(path.read_text(encoding="utf-8")):
-            if line.startswith(prefixes) and ":=" in line:
-                return " ".join(line.split(":=", 1)[0].split())
+            if not parts:
+                if not _starts_decl(line, short_name):
+                    continue
+                parts.append(line)
+            else:
+                parts.append(line)
+            joined = " ".join(" ".join(parts).split())
+            if ":=" in joined:
+                return joined.split(":=", 1)[0].strip()
     return None
+
+
+def _starts_decl(line: str, short_name: str) -> bool:
+    prefixes = (f"theorem {short_name}", f"lemma {short_name}")
+    return any(line == prefix or line.startswith(prefix + " ") for prefix in prefixes)
+
+
+def _imports(path: Path) -> set[str]:
+    if not path.is_file():
+        return set()
+    return {
+        line.removeprefix("import ").strip()
+        for line in _code_lines(path.read_text(encoding="utf-8"))
+        if line.startswith("import ")
+    }
+
+
+def _forbidden_lines(path: Path) -> set[str]:
+    if not path.is_file():
+        return set()
+    return {line for line in _code_lines(path.read_text(encoding="utf-8")) if line.startswith(_FORBIDDEN_PREFIXES)}
 
 
 def _code_lines(source: str) -> list[str]:

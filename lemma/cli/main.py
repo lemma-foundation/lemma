@@ -799,6 +799,7 @@ def tasks_sign_registry_cmd(
 @click.option("--mathlib-rev", required=True)
 @click.option("--lean-toolchain", default=None)
 @click.option("--reproduction-command", default="lake build", show_default=True)
+@click.option("--allow-extra-holes", is_flag=True, help="Allow source files with more than one sorry/admit hole.")
 @click.option("--output", "output_path", type=click.Path(dir_okay=False, path_type=Path), required=True)
 def tasks_import_sorrydb_cmd(
     sorry_json_path: Path,
@@ -811,6 +812,7 @@ def tasks_import_sorrydb_cmd(
     mathlib_rev: str,
     lean_toolchain: str | None,
     reproduction_command: str,
+    allow_extra_holes: bool,
     output_path: Path,
 ) -> None:
     """Create a patch registry from pinned SorryDB row data."""
@@ -845,17 +847,21 @@ def tasks_import_sorrydb_cmd(
                 raise click.ClickException("source_ref.commit is required for every SorryDB row")
             if not row_source_root.is_dir():
                 raise click.ClickException(f"source checkout missing: {row_source_root}")
-        task = build_patch_task_from_sorrydb_record(
-            row,
-            source_root=row_source_root,
-            theorem_name=row_theorem_name,
-            type_expr=row_type_expr,
-            source_license=source_license,
-            mathlib_rev=mathlib_rev,
-            task_id=_row_string(row, "task_id", task_id),
-            lean_toolchain=lean_toolchain,
-            reproduction_command=reproduction_command,
-        )
+        try:
+            task = build_patch_task_from_sorrydb_record(
+                row,
+                source_root=row_source_root,
+                theorem_name=row_theorem_name,
+                type_expr=row_type_expr,
+                source_license=source_license,
+                mathlib_rev=mathlib_rev,
+                task_id=_row_string(row, "task_id", task_id),
+                lean_toolchain=lean_toolchain,
+                reproduction_command=reproduction_command,
+                allow_extra_holes=allow_extra_holes,
+            )
+        except ValueError as e:
+            raise click.ClickException(str(e)) from e
         tasks.append(task.model_copy(update={"queue_position": index}))
 
     write_registry(tasks, output_path)

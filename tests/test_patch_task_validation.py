@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -165,6 +166,96 @@ def test_patch_task_validator_rejects_forbidden_imports() -> None:
 
     assert result.accepted is False
     assert result.reason == "forbidden_import"
+
+
+def test_patch_task_validator_allows_existing_source_imports(tmp_path: Path) -> None:
+    source_root = tmp_path / "source"
+    shutil.copytree(FIXTURE_ROOT, source_root)
+    source_file = source_root / "PatchFixture.lean"
+    source_file.write_text("import Mathlib\n\n" + source_file.read_text(encoding="utf-8"), encoding="utf-8")
+    patch = "\n".join(
+        [
+            "diff --git a/PatchFixture.lean b/PatchFixture.lean",
+            "--- a/PatchFixture.lean",
+            "+++ b/PatchFixture.lean",
+            "@@ -6 +6 @@",
+            "-  sorry",
+            "+  exact Nat.add_zero n",
+            "",
+        ]
+    )
+
+    result = validate_patch_task(_task(), source_root=source_root, patch_text=patch, run_reproduction=False)
+
+    assert result.accepted is True
+    assert result.reason == "ok"
+
+
+def test_patch_task_validator_allows_existing_source_axioms(tmp_path: Path) -> None:
+    source_root = tmp_path / "source"
+    shutil.copytree(FIXTURE_ROOT, source_root)
+    source_file = source_root / "PatchFixture.lean"
+    source_file.write_text("axiom existing : True\n\n" + source_file.read_text(encoding="utf-8"), encoding="utf-8")
+    patch = "\n".join(
+        [
+            "diff --git a/PatchFixture.lean b/PatchFixture.lean",
+            "--- a/PatchFixture.lean",
+            "+++ b/PatchFixture.lean",
+            "@@ -6 +6 @@",
+            "-  sorry",
+            "+  exact Nat.add_zero n",
+            "",
+        ]
+    )
+
+    result = validate_patch_task(_task(), source_root=source_root, patch_text=patch, run_reproduction=False)
+
+    assert result.accepted is True
+    assert result.reason == "ok"
+
+
+def test_patch_task_validator_preserves_multiline_target_declaration(tmp_path: Path) -> None:
+    source_root = tmp_path / "source"
+    shutil.copytree(FIXTURE_ROOT, source_root)
+    source = "\n".join(
+        [
+            "namespace PatchFixture",
+            "",
+            "theorem multi_line",
+            "  (n : Nat)",
+            "  : n = n := by",
+            "  sorry",
+            "",
+            "end PatchFixture",
+            "",
+        ]
+    )
+    (source_root / "PatchFixture.lean").write_text(source, encoding="utf-8")
+    task = _task().model_copy(
+        update={
+            "statement": source,
+            "submission_stub": source,
+            "theorem_name": "PatchFixture.multi_line",
+            "type_expr": "forall n : Nat, n = n",
+            "target_type_sha256": target_type_sha256("forall n : Nat, n = n"),
+        }
+    )
+    patch = "\n".join(
+        [
+            "diff --git a/PatchFixture.lean b/PatchFixture.lean",
+            "--- a/PatchFixture.lean",
+            "+++ b/PatchFixture.lean",
+            "@@ -6 +6 @@",
+            "-  sorry",
+            "+  rfl",
+            "",
+        ]
+    )
+
+    result = validate_patch_task(task, source_root=source_root, patch_text=patch, run_reproduction=False)
+
+    assert result.accepted is True
+    assert result.reason == "ok"
 
 
 def test_patch_task_validator_reports_reproduction_failure(monkeypatch: pytest.MonkeyPatch) -> None:

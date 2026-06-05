@@ -42,6 +42,7 @@ def build_patch_task_from_sorrydb_record(
     allowed_imports: Sequence[str] = (),
     queue_depth: int = 0,
     source_value: str = "medium",
+    allow_extra_holes: bool = False,
 ) -> LemmaTask:
     """Turn one SorryDB row plus a local pinned checkout into a patch task."""
     repo = _mapping(record.get("repo"), "repo")
@@ -54,8 +55,11 @@ def build_patch_task_from_sorrydb_record(
     if not source_path.is_file():
         raise ValueError(f"source file does not exist in checkout: {rel_path}")
     source = source_path.read_text(encoding="utf-8")
-    if _HOLE_RE.search(_code_text(source)) is None:
+    hole_count = _hole_count(source)
+    if hole_count == 0:
         raise ValueError(f"source file has no sorry/admit hole: {rel_path}")
+    if hole_count > 1 and not allow_extra_holes:
+        raise ValueError(f"source file has extra sorry/admit holes: {rel_path}")
     decl_header = _target_decl_header(source, theorem_name)
     if decl_header is None:
         raise ValueError(f"target declaration not found: {theorem_name}")
@@ -93,6 +97,7 @@ def build_patch_task_from_sorrydb_record(
         metadata={
             "sorrydb_id": row_id,
             "source_file_sha256": hashlib.sha256(source.encode("utf-8")).hexdigest(),
+            "source_hole_count": hole_count,
             "source_start_line": _int_or_none(location.get("start_line")),
             "source_start_column": _int_or_none(location.get("start_column")),
             "source_decl_header": decl_header,
@@ -148,13 +153,29 @@ def _code_text(source: str) -> str:
     return "\n".join(lines)
 
 
+def _hole_count(source: str) -> int:
+    return len(_HOLE_RE.findall(_code_text(source)))
+
+
 def _target_decl_header(source: str, theorem_name: str) -> str | None:
     short_name = theorem_name.rsplit(".", 1)[-1]
-    prefixes = (f"theorem {short_name} ", f"lemma {short_name} ")
+    parts: list[str] = []
     for line in _code_text(source).splitlines():
-        if line.startswith(prefixes) and ":=" in line:
-            return " ".join(line.split(":=", 1)[0].split())
+        if not parts:
+            if not _starts_decl(line, short_name):
+                continue
+            parts.append(line)
+        else:
+            parts.append(line)
+        joined = " ".join(" ".join(parts).split())
+        if ":=" in joined:
+            return joined.split(":=", 1)[0].strip()
     return None
+
+
+def _starts_decl(line: str, short_name: str) -> bool:
+    prefixes = (f"theorem {short_name}", f"lemma {short_name}")
+    return any(line == prefix or line.startswith(prefix + " ") for prefix in prefixes)
 
 
 def _lean_toolchain_from_version(lean_version: str) -> str:

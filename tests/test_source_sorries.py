@@ -60,6 +60,17 @@ def _batch_source_root(tmp_path: Path) -> Path:
                 "theorem add_zero_real_source (n : Nat) : n + 0 = n := by",
                 "  sorry",
                 "",
+                "end PublicSource",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (root / "RealSource/ZeroAdd.lean").write_text(
+        "\n".join(
+            [
+                "namespace PublicSource",
+                "",
                 "theorem zero_add_real_source (n : Nat) : 0 + n = n := by",
                 "  sorry",
                 "",
@@ -82,6 +93,7 @@ def _batch_rows() -> list[dict[str, object]]:
         {
             **_sorrydb_row(),
             "id": "sorrydb-fixture-zero-add",
+            "location": {**dict(_sorrydb_row()["location"]), "path": "RealSource/ZeroAdd.lean"},
             "theorem_name": "PublicSource.zero_add_real_source",
             "type_expr": "forall n : Nat, 0 + n = n",
         },
@@ -323,6 +335,110 @@ def test_tasks_import_sorrydb_reads_dataset_object_from_checkout_root(tmp_path: 
     registry = load_task_registry(registry_path.read_bytes())
     assert payload["task_count"] == 2
     assert [task.source_ref.name for task in registry.tasks] == ["SorryDB/SorryDB", "SorryDB/SorryDB"]
+
+
+def test_tasks_import_sorrydb_rejects_extra_source_holes_by_default(tmp_path: Path) -> None:
+    source_root = tmp_path / "source"
+    shutil.copytree(SOURCE_ROOT, source_root)
+    (source_root / "RealSource/Basic.lean").write_text(
+        "\n".join(
+            [
+                "namespace PublicSource",
+                "",
+                "def extra_gap : Nat := by",
+                "  sorry",
+                "",
+                "theorem add_zero_real_source (n : Nat) : n + 0 = n := by",
+                "  sorry",
+                "",
+                "end PublicSource",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    row_path = tmp_path / "sorry.json"
+    registry_path = tmp_path / "registry.json"
+    row_path.write_text(json.dumps(_batch_rows()[0]), encoding="utf-8")
+
+    result = CliRunner().invoke(
+        main,
+        [
+            "tasks",
+            "import-sorrydb",
+            "--sorry-json",
+            str(row_path),
+            "--source-root",
+            str(source_root),
+            "--source-license",
+            "Apache-2.0",
+            "--mathlib-rev",
+            "fixture-mathlib-rev",
+            "--reproduction-command",
+            "lake build RealSource",
+            "--output",
+            str(registry_path),
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "source file has extra sorry/admit holes" in result.output
+
+
+def test_sorrydb_import_accepts_multiline_target_declaration(tmp_path: Path) -> None:
+    source_root = tmp_path / "source"
+    shutil.copytree(SOURCE_ROOT, source_root)
+    (source_root / "RealSource/Multi.lean").write_text(
+        "\n".join(
+            [
+                "namespace PublicSource",
+                "",
+                "theorem multi_line",
+                "  (n : Nat)",
+                "  : n = n := by",
+                "  sorry",
+                "",
+                "end PublicSource",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    row = {
+        **_sorrydb_row(),
+        "id": "sorrydb-fixture-multiline",
+        "location": {**dict(_sorrydb_row()["location"]), "path": "RealSource/Multi.lean"},
+        "theorem_name": "PublicSource.multi_line",
+        "type_expr": "forall n : Nat, n = n",
+    }
+    row_path = tmp_path / "sorry.json"
+    registry_path = tmp_path / "registry.json"
+    row_path.write_text(json.dumps(row), encoding="utf-8")
+
+    result = CliRunner().invoke(
+        main,
+        [
+            "tasks",
+            "import-sorrydb",
+            "--sorry-json",
+            str(row_path),
+            "--source-root",
+            str(source_root),
+            "--source-license",
+            "Apache-2.0",
+            "--mathlib-rev",
+            "fixture-mathlib-rev",
+            "--reproduction-command",
+            "lake build RealSource",
+            "--output",
+            str(registry_path),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    task = load_task_registry(registry_path.read_bytes()).tasks[0]
+    assert task.theorem_name == "PublicSource.multi_line"
+    assert task.metadata["source_decl_header"] == "theorem multi_line (n : Nat) : n = n"
 
 
 def test_imported_sorrydb_batch_rotates_active_task_window(tmp_path: Path) -> None:
