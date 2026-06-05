@@ -27,9 +27,17 @@ _STYLE = """
   --code: #0d100e; --code-ink: #eef7f1;
 }
 * { box-sizing: border-box; }
+@view-transition { navigation: auto; }
+html { background: var(--bg); }
 body {
   margin: 0; background: var(--bg); color: var(--ink);
   font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  transition: background-color .22s ease, color .22s ease;
+}
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .18s; }
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
+  body { transition: none; }
 }
 a { color: var(--blue); }
 .wrap { max-width: var(--max); margin: 0 auto; padding: 0 20px; }
@@ -164,7 +172,7 @@ class SiteConfig:
 
     netuid: str = "sn467"
     atlas_base_url: str = "https://github.com/lemma-foundation/lemma-proof-atlas"
-    docs_url: str = "https://github.com/lemma-foundation/lemma"
+    docs_url: str = "https://github.com/lemma-foundation/lemma/tree/main/docs"
     github_repo_url: str = "https://github.com/lemma-foundation/lemma"
     hippius_url: str | None = None
     huggingface_url: str | None = None
@@ -214,7 +222,7 @@ def _page(title: str, body: str, *, active_nav: str, config: SiteConfig) -> str:
 <body>
   <header class="site-header">
     <div class="wrap">
-      <a class="brand" href="index.html">Lemma</a>
+      <a class="brand" href="index.html" aria-label="Lemma home">Lemma</a>
       <nav class="site-nav" aria-label="Primary">
         {nav_links}
         {_THEME_TOGGLE_BUTTON}
