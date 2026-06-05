@@ -3,9 +3,21 @@
 from __future__ import annotations
 
 import re
+import subprocess
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from lemma.tasks import LemmaTask, SourceRef
+
+CheckoutAction = Literal["ready", "cloned", "updated"]
+
+
+@dataclass(frozen=True)
+class SourceCheckoutResult:
+    path: Path
+    commit: str
+    action: CheckoutAction
 
 
 def source_checkout_path(root: Path, source_ref: SourceRef) -> Path | None:
@@ -40,8 +52,60 @@ def source_checkout_status(root: Path | None, tasks: tuple[LemmaTask, ...]) -> t
     return True, f"{len(patch_tasks)} active patch checkouts ready"
 
 
+def materialize_source_checkout(
+    root: Path,
+    source_ref: SourceRef,
+    *,
+    timeout_s: int = 300,
+) -> SourceCheckoutResult:
+    """Clone/fetch one public source checkout and verify the pinned commit."""
+    path = source_checkout_path(root, source_ref)
+    if path is None:
+        raise ValueError("source_ref.commit is required")
+    remote = (source_ref.url or "").strip()
+    if not remote:
+        raise ValueError("source_ref.url is required")
+    commit = source_ref.commit or ""
+
+    if path.exists():
+        if not path.is_dir() or path.is_symlink():
+            raise ValueError(f"source checkout path is not a directory: {path}")
+        if _current_commit(path, timeout_s=timeout_s) == commit:
+            return SourceCheckoutResult(path=path, commit=commit, action="ready")
+        _run_git(["git", "-C", str(path), "fetch", "--depth", "1", "origin", commit], timeout_s=timeout_s)
+        action: CheckoutAction = "updated"
+    else:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _run_git(["git", "clone", "--no-checkout", remote, str(path)], timeout_s=timeout_s)
+        _run_git(["git", "-C", str(path), "fetch", "--depth", "1", "origin", commit], timeout_s=timeout_s)
+        action = "cloned"
+
+    _run_git(["git", "-C", str(path), "checkout", "--detach", commit], timeout_s=timeout_s)
+    current = _current_commit(path, timeout_s=timeout_s)
+    if current != commit:
+        raise RuntimeError(f"source checkout commit mismatch: got {current or '<none>'}, expected {commit}")
+    return SourceCheckoutResult(path=path, commit=commit, action=action)
+
+
 def _segment(value: str) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "__", value.strip()).strip("._-")
     if not cleaned:
         raise ValueError("source checkout path segment is empty")
     return cleaned[:160]
+
+
+def _current_commit(path: Path, *, timeout_s: int) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(path), "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        timeout=timeout_s,
+    )
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def _run_git(command: list[str], *, timeout_s: int) -> None:
+    result = subprocess.run(command, capture_output=True, text=True, timeout=timeout_s)
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        raise RuntimeError(f"{' '.join(command)} failed" + (f": {detail[-4000:]}" if detail else ""))

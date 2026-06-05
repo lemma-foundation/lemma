@@ -53,7 +53,7 @@ def build_patch_task_from_sorrydb_record(
     source_ref = SourceRef(
         kind="sorrydb",
         name=_source_name(remote),
-        url=_debug_url(record, remote),
+        url=remote,
         commit=commit,
         path=rel_path,
     )
@@ -90,6 +90,7 @@ def build_patch_task_from_sorrydb_record(
             "source_decl_header": decl_header,
             "repo_branch": str(repo.get("branch") or ""),
             "repo_lean_version": lean_version,
+            "source_debug_url": _debug_url(record),
             **_public_record_metadata(metadata),
         },
     )
@@ -156,11 +157,11 @@ def _lean_toolchain_from_version(lean_version: str) -> str:
     return "leanprover/lean4:v4.30.0-rc2"
 
 
-def _debug_url(record: Mapping[str, Any], remote: str) -> str:
+def _debug_url(record: Mapping[str, Any]) -> str:
     debug_info = record.get("debug_info")
     if isinstance(debug_info, Mapping) and isinstance(debug_info.get("url"), str):
         return str(debug_info["url"])
-    return remote
+    return ""
 
 
 def _source_name(remote: str) -> str:

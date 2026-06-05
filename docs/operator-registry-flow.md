@@ -68,6 +68,12 @@ Operators can inspect the exact location for one task with:
 uv run lemma tasks checkout-path <task-id>
 ```
 
+They can prepare that checkout from the task's public source URL and commit with:
+
+```bash
+uv run lemma tasks materialize-checkout <task-id>
+```
+
 `lemma operator preflight` reports `source_checkouts` as failing when active patch tasks cannot resolve to existing checkout directories.
 
 For live curriculum retargeting, the state log updates throughput and depth after each completed tempo:

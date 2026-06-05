@@ -47,6 +47,12 @@ To inspect one task's expected checkout location:
 uv run lemma tasks checkout-path <task-id>
 ```
 
+To clone or update that checkout from the task's public `source_ref.url` and pinned `source_ref.commit`:
+
+```bash
+uv run lemma tasks materialize-checkout <task-id>
+```
+
 ## Task Rows
 
 Every active task must have:

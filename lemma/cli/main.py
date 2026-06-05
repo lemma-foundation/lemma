@@ -636,6 +636,43 @@ def tasks_checkout_path_cmd(task_id: str, root_path: Path | None) -> None:
     click.echo(str(path))
 
 
+@tasks_cmd.command("materialize-checkout", hidden=True)
+@click.argument("task_id")
+@click.option(
+    "--root",
+    "root_path",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=None,
+    help="Source checkout root. Defaults to LEMMA_SOURCE_CHECKOUT_ROOT.",
+)
+@click.option("--timeout", "timeout_s", type=click.IntRange(min=1), default=300, show_default=True)
+def tasks_materialize_checkout_cmd(task_id: str, root_path: Path | None, timeout_s: int) -> None:
+    """Clone/fetch a task source checkout at its deterministic cache path."""
+    from lemma.source_checkouts import materialize_source_checkout
+
+    _, task = _task_or_die(task_id)
+    settings = LemmaSettings()
+    root = root_path or settings.source_checkout_root
+    if root is None:
+        raise click.ClickException("LEMMA_SOURCE_CHECKOUT_ROOT is not configured")
+    try:
+        result = materialize_source_checkout(root, task.source_ref, timeout_s=timeout_s)
+    except (RuntimeError, ValueError) as e:
+        raise click.ClickException(str(e)) from e
+    click.echo(
+        json.dumps(
+            {
+                "action": result.action,
+                "commit": result.commit,
+                "path": str(result.path),
+                "task_id": task.id,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+
+
 @tasks_cmd.command("sign-registry")
 @click.option(
     "--input",
