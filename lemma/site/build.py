@@ -83,7 +83,8 @@ def _page(title: str, body: str, *, active_nav: str, page_class: str, config: Si
     </a>
     <nav aria-label="Primary navigation">
       {nav_links}
-      <button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch to dark mode" aria-pressed="false">
+      <button class="theme-toggle" type="button" data-theme-toggle
+        aria-label="Switch to dark mode" aria-pressed="false">
         <span class="theme-toggle-track" aria-hidden="true">
           <span class="theme-toggle-sun"></span>
           <span class="theme-toggle-moon"></span>
@@ -121,7 +122,8 @@ def render_index(*, bundle_count: int, solved_count: int, config: SiteConfig) ->
           <article class="task-card">
             <h3>Task board</h3>
             <p class="task-meta"><b>{open_count}</b> open · <b>{bundle_count}</b> total real tasks</p>
-            <p class="task-meta">Source project, task class, validation environment, and replay command for each task.</p>
+            <p class="task-meta">Source project, task class, validation environment, and replay command
+            for each task.</p>
             <p class="task-links"><a href="board.html">Open the task board</a></p>
           </article>
           <article class="task-card">
