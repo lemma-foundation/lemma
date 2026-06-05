@@ -190,10 +190,13 @@ def render_board(bundles: Sequence[Mapping[str, Any]], solved_ids: set[str], *, 
             f'        <div class="task-cards">\n{cards}\n        </div>\n'
         )
     else:
+        atlas = escape(config.atlas_base_url, quote=True)
         body = (
             '        <p class="eyebrow">Active real tasks</p>\n'
             "        <h1>Task board</h1>\n"
-            '        <p class="explorer-empty">No real tasks are published yet.</p>\n'
+            '        <p class="explorer-empty">No real tasks are published yet. '
+            "Tasks will appear here when validators publish packaged tasks to the "
+            f'<a href="{atlas}" rel="noopener noreferrer" target="_blank">Proof Atlas</a>.</p>\n'
         )
     return _page("Lemma - task board", body, active_nav="board", page_class="explorer-page", config=config)
 
@@ -252,10 +255,13 @@ def render_solved(solved: Sequence[Mapping[str, Any]], *, config: SiteConfig) ->
             f'        <div class="task-cards">\n{cards}\n        </div>\n'
         )
     else:
+        atlas = escape(config.atlas_base_url, quote=True)
         body = (
             '        <p class="eyebrow">Verified, reusable proofs</p>\n'
             "        <h1>Solved proof explorer</h1>\n"
-            '        <p class="explorer-empty">No accepted proofs are published yet.</p>\n'
+            '        <p class="explorer-empty">No accepted proofs are published yet. '
+            "Verified solutions will appear here after validators publish them to the "
+            f'<a href="{atlas}" rel="noopener noreferrer" target="_blank">Proof Atlas</a>.</p>\n'
         )
     return _page(
         "Lemma - solved proof explorer",

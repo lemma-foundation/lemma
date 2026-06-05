@@ -140,7 +140,9 @@ def test_build_site_empty_states(tmp_path: Path) -> None:
     board = (tmp_path / "board.html").read_text(encoding="utf-8")
     solved = (tmp_path / "solved.html").read_text(encoding="utf-8")
     assert "No real tasks are published yet." in board
+    assert "Tasks will appear here when validators publish packaged tasks to the" in board
     assert "No accepted proofs are published yet." in solved
+    assert "Verified solutions will appear here after validators publish them to the" in solved
 
 
 def test_build_site_from_atlas_reads_artifacts(tmp_path: Path) -> None:
