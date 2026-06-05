@@ -734,7 +734,7 @@ def tasks_sign_registry_cmd(
     "sorry_json_path",
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
     required=True,
-    help="One SorryDB row JSON object.",
+    help="One SorryDB row JSON object, or a JSON array of row objects.",
 )
 @click.option(
     "--source-root",
@@ -743,8 +743,8 @@ def tasks_sign_registry_cmd(
     help="Local checkout of the row's pinned repository commit.",
 )
 @click.option("--task-id", default=None)
-@click.option("--theorem-name", required=True)
-@click.option("--type-expr", required=True)
+@click.option("--theorem-name", default=None, help="Default theorem name. Required when a row lacks theorem_name.")
+@click.option("--type-expr", default=None, help="Default target type. Required when a row lacks type_expr.")
 @click.option("--source-license", required=True)
 @click.option("--mathlib-rev", required=True)
 @click.option("--lean-toolchain", default=None)
@@ -754,45 +754,74 @@ def tasks_import_sorrydb_cmd(
     sorry_json_path: Path,
     source_root: Path,
     task_id: str | None,
-    theorem_name: str,
-    type_expr: str,
+    theorem_name: str | None,
+    type_expr: str | None,
     source_license: str,
     mathlib_rev: str,
     lean_toolchain: str | None,
     reproduction_command: str,
     output_path: Path,
 ) -> None:
-    """Create a one-task patch registry from a pinned SorryDB row."""
+    """Create a patch registry from pinned SorryDB row data."""
     from lemma.source_sorries import build_patch_task_from_sorrydb_record
     from lemma.task_supply import write_registry
 
     payload = json.loads(sorry_json_path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict) or not isinstance(payload.get("repo"), dict):
-        raise click.ClickException("sorry-json must be one SorryDB row object")
-    task = build_patch_task_from_sorrydb_record(
-        payload,
-        source_root=source_root,
-        theorem_name=theorem_name,
-        type_expr=type_expr,
-        source_license=source_license,
-        mathlib_rev=mathlib_rev,
-        task_id=task_id,
-        lean_toolchain=lean_toolchain,
-        reproduction_command=reproduction_command,
-    )
-    write_registry([task], output_path)
+    rows = payload if isinstance(payload, list) else [payload]
+    if not rows:
+        raise click.ClickException("sorry-json must contain at least one SorryDB row")
+    if task_id is not None and len(rows) != 1:
+        raise click.ClickException("--task-id can only be used with one SorryDB row")
+
+    tasks = []
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict) or not isinstance(row.get("repo"), dict):
+            raise click.ClickException("sorry-json must contain SorryDB row object(s)")
+        row_theorem_name = _row_string(row, "theorem_name", theorem_name)
+        row_type_expr = _row_string(row, "type_expr", type_expr)
+        if row_theorem_name is None:
+            raise click.ClickException("theorem_name is required for every SorryDB row")
+        if row_type_expr is None:
+            raise click.ClickException("type_expr is required for every SorryDB row")
+        task = build_patch_task_from_sorrydb_record(
+            row,
+            source_root=source_root,
+            theorem_name=row_theorem_name,
+            type_expr=row_type_expr,
+            source_license=source_license,
+            mathlib_rev=mathlib_rev,
+            task_id=_row_string(row, "task_id", task_id),
+            lean_toolchain=lean_toolchain,
+            reproduction_command=reproduction_command,
+        )
+        tasks.append(task.model_copy(update={"queue_position": index}))
+
+    write_registry(tasks, output_path)
+    response = {
+        "output": str(output_path),
+        "registry_sha256": hashlib.sha256(output_path.read_bytes()).hexdigest(),
+        "task_count": len(tasks),
+        "task_ids": [task.id for task in tasks],
+    }
+    if len(tasks) == 1:
+        response["task_id"] = tasks[0].id
+        response["target_sha256"] = tasks[0].target_sha256
     click.echo(
         json.dumps(
-            {
-                "output": str(output_path),
-                "registry_sha256": hashlib.sha256(output_path.read_bytes()).hexdigest(),
-                "task_id": task.id,
-                "target_sha256": task.target_sha256,
-            },
+            response,
             indent=2,
             sort_keys=True,
         )
     )
+
+
+def _row_string(row: dict[str, object], field: str, default: str | None) -> str | None:
+    value = row.get(field)
+    if value is None:
+        return default
+    if not isinstance(value, str) or not value.strip():
+        raise click.ClickException(f"{field} must be a non-empty string")
+    return value.strip()
 
 
 @tasks_cmd.command("show")

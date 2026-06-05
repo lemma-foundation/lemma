@@ -21,6 +21,7 @@ uv run lemma tasks import-sorrydb \
 ```
 
 The importer records public source metadata and hashes from the checkout. It does not store the local checkout path in the task row.
+`--sorry-json` can also be a JSON array; batch rows should carry their own `theorem_name`, `type_expr`, and optional `task_id`.
 
 ```bash
 uv run lemma tasks sign-registry \

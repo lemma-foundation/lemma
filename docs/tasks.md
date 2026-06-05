@@ -33,6 +33,8 @@ uv run lemma tasks import-sorrydb \
 
 The importer creates patch tasks. Operators still need to pin and publish the resulting registry SHA before validators score against it.
 
+`--sorry-json` may also be a JSON array. For batch imports, put `theorem_name`, `type_expr`, and optional `task_id` on each row when those values differ across tasks.
+
 Validators do not get source roots from task metadata in production. They resolve patch-task checkouts from `LEMMA_SOURCE_CHECKOUT_ROOT` using the task's public `source_ref`:
 
 ```text

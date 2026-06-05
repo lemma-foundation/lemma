@@ -9,14 +9,14 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from click.testing import CliRunner
+from click.testing import CliRunner, Result
 from lemma.cli.main import main
 from lemma.common.config import LemmaSettings
 from lemma.source_checkouts import source_checkout_path
 from lemma.source_sorries import build_patch_task_from_sorrydb_record
 from lemma.submissions import build_patch_submission
 from lemma.tasks import TaskRegistry, load_task_registry
-from lemma.validator import validate_once
+from lemma.validator import active_tasks_for_validation, validate_once
 
 SOURCE_ROOT = Path("tests/fixtures/lean_real_source_project")
 
@@ -47,6 +47,75 @@ def _sorrydb_row() -> dict[str, object]:
         },
         "id": "sorrydb-fixture-add-zero",
     }
+
+
+def _batch_source_root(tmp_path: Path) -> Path:
+    root = tmp_path / "source"
+    shutil.copytree(SOURCE_ROOT, root)
+    (root / "RealSource/Basic.lean").write_text(
+        "\n".join(
+            [
+                "namespace PublicSource",
+                "",
+                "theorem add_zero_real_source (n : Nat) : n + 0 = n := by",
+                "  sorry",
+                "",
+                "theorem zero_add_real_source (n : Nat) : 0 + n = n := by",
+                "  sorry",
+                "",
+                "end PublicSource",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return root
+
+
+def _batch_rows() -> list[dict[str, object]]:
+    return [
+        {
+            **_sorrydb_row(),
+            "theorem_name": "PublicSource.add_zero_real_source",
+            "type_expr": "forall n : Nat, n + 0 = n",
+        },
+        {
+            **_sorrydb_row(),
+            "id": "sorrydb-fixture-zero-add",
+            "theorem_name": "PublicSource.zero_add_real_source",
+            "type_expr": "forall n : Nat, 0 + n = n",
+        },
+    ]
+
+
+def _write_batch_registry(tmp_path: Path) -> tuple[Result, TaskRegistry]:
+    source_root = _batch_source_root(tmp_path)
+    row_path = tmp_path / "sorry-batch.json"
+    registry_path = tmp_path / "registry.json"
+    row_path.write_text(json.dumps(_batch_rows()), encoding="utf-8")
+
+    result = CliRunner().invoke(
+        main,
+        [
+            "tasks",
+            "import-sorrydb",
+            "--sorry-json",
+            str(row_path),
+            "--source-root",
+            str(source_root),
+            "--source-license",
+            "Apache-2.0",
+            "--mathlib-rev",
+            "fixture-mathlib-rev",
+            "--reproduction-command",
+            "lake build RealSource",
+            "--output",
+            str(registry_path),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    return result, load_task_registry(registry_path.read_bytes())
 
 
 def _task():
@@ -204,3 +273,30 @@ def test_tasks_import_sorrydb_writes_registry(tmp_path: Path) -> None:
     registry = load_task_registry(registry_path.read_bytes())
     assert registry.tasks[0].id == "lemma.sorrydb.sorrydb-fixture-add-zero"
     assert json.loads(result.output)["registry_sha256"] == hashlib.sha256(registry_path.read_bytes()).hexdigest()
+
+
+def test_tasks_import_sorrydb_writes_batch_registry(tmp_path: Path) -> None:
+    result, registry = _write_batch_registry(tmp_path)
+    payload = json.loads(result.output)
+
+    assert payload["task_count"] == 2
+    assert payload["task_ids"] == [task.id for task in registry.tasks]
+    assert [task.queue_position for task in registry.tasks] == [0, 1]
+    assert [task.theorem_name for task in registry.tasks] == [
+        "PublicSource.add_zero_real_source",
+        "PublicSource.zero_add_real_source",
+    ]
+
+
+def test_imported_sorrydb_batch_rotates_active_task_window(tmp_path: Path) -> None:
+    _, registry = _write_batch_registry(tmp_path)
+    settings = LemmaSettings(
+        _env_file=None,
+        active_task_count=1,
+        active_queue_seed="sorrydb-batch-rotation",
+        frontier_depth=0,
+    )
+
+    active_ids = {active_tasks_for_validation(registry, settings, tempo=tempo)[0].id for tempo in range(6)}
+
+    assert active_ids == {task.id for task in registry.tasks}
