@@ -1254,6 +1254,54 @@ def operator_diagnostics_cmd(ctx: click.Context, output_path: Path) -> None:
         ctx.exit(1)
 
 
+@operator_cmd.command("write-active-registry-cache", hidden=True)
+@click.option("--tempo", type=int, default=None, help="Tempo to cache; defaults to the current active tempo.")
+@click.option(
+    "--output-dir",
+    "cache_dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=None,
+    help="Active registry cache dir. Defaults to LEMMA_ACTIVE_REGISTRY_CACHE_DIR.",
+)
+def operator_write_active_registry_cache_cmd(tempo: int | None, cache_dir: Path | None) -> None:
+    """Write the deterministic active registry cache file for one tempo."""
+    from lemma.task_supply import write_registry
+    from lemma.tasks import fetch_task_registry, load_task_registry
+    from lemma.validator import active_registry_cache_path, active_tasks_for_validation, current_active_tempo
+
+    settings = LemmaSettings()
+    active_tempo = current_active_tempo(settings) if tempo is None else tempo
+    cache_root = cache_dir or settings.active_registry_cache_dir
+    if cache_root is None:
+        raise click.ClickException("LEMMA_ACTIVE_REGISTRY_CACHE_DIR is not configured")
+    cache_settings = settings.model_copy(update={"active_registry_cache_dir": cache_root, "active_registry_json": None})
+    path = active_registry_cache_path(cache_settings, tempo=active_tempo)
+    if path is None:
+        raise click.ClickException("active registry cache path is not configured")
+
+    registry = fetch_task_registry(settings, verify_signature=settings.verify_registry_signatures)
+    active_tasks = active_tasks_for_validation(registry, settings, tempo=active_tempo)
+    if len(active_tasks) != settings.active_task_count:
+        raise click.ClickException(
+            f"active window has {len(active_tasks)} tasks, expected LEMMA_ACTIVE_K={settings.active_task_count}"
+        )
+    write_registry(active_tasks, path)
+    active_registry = load_task_registry(path.read_bytes())
+    click.echo(
+        json.dumps(
+            {
+                "active_task_count": len(active_tasks),
+                "path": str(path),
+                "registry_sha256": active_registry.sha256,
+                "source_registry_sha256": registry.sha256,
+                "tempo": active_tempo,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+
+
 @operator_cmd.command("alerts")
 @click.option("--recent-runs", type=int, default=5, show_default=True)
 @click.option("--recent-failures", type=int, default=3, show_default=True)

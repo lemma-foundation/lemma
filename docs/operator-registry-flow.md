@@ -55,6 +55,12 @@ LEMMA_OPERATOR_DATA_DIR=validator-data
 
 When `LEMMA_ACTIVE_REGISTRY_CACHE_DIR` is set, miners and validators can hydrate `tempo-<tempo>.registry.json` files for faster startup. Cache files are distribution artifacts. The registry SHA pin remains the public task authority.
 
+Operators can write the deterministic active cache for a known tempo from the configured full registry:
+
+```bash
+uv run lemma operator write-active-registry-cache --tempo <tempo>
+```
+
 Patch validation resolves public source refs under `LEMMA_SOURCE_CHECKOUT_ROOT` as:
 
 ```text

@@ -6,6 +6,7 @@ import hashlib
 import json
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -19,6 +20,7 @@ from lemma.task_supply import make_task, write_registry
 from lemma.tasks import LemmaTask, load_task_registry, target_type_sha256
 
 PATCH_FIXTURE_ROOT = Path("tests/fixtures/lean_patch_project")
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _proof(theorem_name: str = "true_intro_sample") -> str:
@@ -251,6 +253,64 @@ def test_operator_preflight_checks_active_patch_source_checkouts(tmp_path: Path)
     assert ready.exit_code == 0, ready.output
     ready_report = OperatorPreflightReport.model_validate_json(ready.output)
     assert any(check.name == "source_checkouts" and check.ok for check in ready_report.checks)
+
+
+def test_operator_writes_active_registry_cache_for_site_snapshot(tmp_path: Path) -> None:
+    registry_path, registry_sha = _write_registry(tmp_path, task_count=2)
+    cache_dir = tmp_path / "active-registries"
+    site_repo = tmp_path / "lemmasub.net"
+    site_repo.mkdir()
+    env = {
+        "LEMMA_PREFER_PROCESS_ENV": "1",
+        "LEMMA_TASK_REGISTRY_URL": str(registry_path),
+        "LEMMA_TASK_REGISTRY_SHA256_EXPECTED": registry_sha,
+        "LEMMA_ACTIVE_K": "1",
+        "LEMMA_FRONTIER_DEPTH": "0",
+        "LEMMA_ACTIVE_QUEUE_SEED": "pytest-cache",
+    }
+
+    result = CliRunner().invoke(
+        main,
+        ["operator", "write-active-registry-cache", "--tempo", "7", "--output-dir", str(cache_dir)],
+        env=env,
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    cache_path = cache_dir / "tempo-7.registry.json"
+    active_registry = load_task_registry(cache_path.read_bytes())
+    assert payload["path"] == str(cache_path)
+    assert payload["source_registry_sha256"] == registry_sha
+    assert payload["registry_sha256"] == active_registry.sha256
+    assert len(active_registry.tasks) == 1
+    assert active_registry.tasks[0].frontier_depth == 0
+    assert active_registry.tasks[0].queue_position is not None
+
+    refresh = subprocess.run(
+        [
+            sys.executable,
+            "scripts/refresh_site_current_problems.py",
+            "--site-repo",
+            str(site_repo),
+            "--tempo",
+            "7",
+            "--current-cache-dir",
+            str(cache_dir),
+            "--skip-randomness-hashes",
+        ],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+        env=env,
+    )
+    summary = json.loads(refresh.stdout)
+    snapshot = json.loads((site_repo / "data/current-problems.json").read_text(encoding="utf-8"))
+    assert summary["task_count"] == 1
+    assert snapshot["registry_sha256"] == active_registry.sha256
+    assert snapshot["registry_task_count"] == 1
+    assert snapshot["task_count"] == 1
+    assert snapshot["tempo"] == 7
 
 
 def test_submit_writes_task_bound_package(tmp_path: Path) -> None:
