@@ -13,6 +13,20 @@ from lemma.tasks import LemmaTask, SourceRef, target_type_sha256
 _HOLE_RE = re.compile(r"\b(sorry|admit)\b")
 
 
+def source_ref_from_sorrydb_record(record: Mapping[str, Any]) -> SourceRef:
+    """Return the public source ref encoded by one SorryDB row."""
+    repo = _mapping(record.get("repo"), "repo")
+    location = _mapping(record.get("location"), "location")
+    remote = _required_str(repo, "remote")
+    return SourceRef(
+        kind="sorrydb",
+        name=_source_name(remote),
+        url=remote,
+        commit=_required_str(repo, "commit"),
+        path=_safe_relative_path(_required_str(location, "path")),
+    )
+
+
 def build_patch_task_from_sorrydb_record(
     record: Mapping[str, Any],
     *,
@@ -34,7 +48,8 @@ def build_patch_task_from_sorrydb_record(
     location = _mapping(record.get("location"), "location")
     metadata = record.get("metadata")
 
-    rel_path = _safe_relative_path(_required_str(location, "path"))
+    source_ref = source_ref_from_sorrydb_record(record)
+    rel_path = str(source_ref.path or "")
     source_path = source_root / rel_path
     if not source_path.is_file():
         raise ValueError(f"source file does not exist in checkout: {rel_path}")
@@ -50,13 +65,6 @@ def build_patch_task_from_sorrydb_record(
     row_id = str(record.get("id") or hashlib.sha256(f"{remote}:{commit}:{rel_path}".encode()).hexdigest()[:12])
     lean_version = str(repo.get("lean_version") or "").strip()
     resolved_toolchain = lean_toolchain or _lean_toolchain_from_version(lean_version)
-    source_ref = SourceRef(
-        kind="sorrydb",
-        name=_source_name(remote),
-        url=remote,
-        commit=commit,
-        path=rel_path,
-    )
     return LemmaTask(
         id=task_id or f"lemma.sorrydb.{_safe_id(row_id)}",
         task_version=1,

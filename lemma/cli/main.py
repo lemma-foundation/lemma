@@ -778,13 +778,19 @@ def tasks_sign_registry_cmd(
     "sorry_json_path",
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
     required=True,
-    help="One SorryDB row JSON object, or a JSON array of row objects.",
+    help="One SorryDB row, a row array, or a SorryDB dataset object with sorries.",
 )
 @click.option(
     "--source-root",
     type=click.Path(exists=True, file_okay=False, path_type=Path),
-    required=True,
+    default=None,
     help="Local checkout of the row's pinned repository commit.",
+)
+@click.option(
+    "--source-checkout-root",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=None,
+    help="Root containing deterministic source checkouts for each SorryDB row.",
 )
 @click.option("--task-id", default=None)
 @click.option("--theorem-name", default=None, help="Default theorem name. Required when a row lacks theorem_name.")
@@ -796,7 +802,8 @@ def tasks_sign_registry_cmd(
 @click.option("--output", "output_path", type=click.Path(dir_okay=False, path_type=Path), required=True)
 def tasks_import_sorrydb_cmd(
     sorry_json_path: Path,
-    source_root: Path,
+    source_root: Path | None,
+    source_checkout_root: Path | None,
     task_id: str | None,
     theorem_name: str | None,
     type_expr: str | None,
@@ -807,15 +814,18 @@ def tasks_import_sorrydb_cmd(
     output_path: Path,
 ) -> None:
     """Create a patch registry from pinned SorryDB row data."""
-    from lemma.source_sorries import build_patch_task_from_sorrydb_record
+    from lemma.source_checkouts import source_checkout_path
+    from lemma.source_sorries import build_patch_task_from_sorrydb_record, source_ref_from_sorrydb_record
     from lemma.task_supply import write_registry
 
     payload = json.loads(sorry_json_path.read_text(encoding="utf-8"))
-    rows = payload if isinstance(payload, list) else [payload]
+    rows = _sorrydb_rows(payload)
     if not rows:
         raise click.ClickException("sorry-json must contain at least one SorryDB row")
     if task_id is not None and len(rows) != 1:
         raise click.ClickException("--task-id can only be used with one SorryDB row")
+    if (source_root is None) == (source_checkout_root is None):
+        raise click.ClickException("pass exactly one of --source-root or --source-checkout-root")
 
     tasks = []
     for index, row in enumerate(rows):
@@ -827,9 +837,17 @@ def tasks_import_sorrydb_cmd(
             raise click.ClickException("theorem_name is required for every SorryDB row")
         if row_type_expr is None:
             raise click.ClickException("type_expr is required for every SorryDB row")
+        row_source_root = source_root
+        if row_source_root is None:
+            assert source_checkout_root is not None
+            row_source_root = source_checkout_path(source_checkout_root, source_ref_from_sorrydb_record(row))
+            if row_source_root is None:
+                raise click.ClickException("source_ref.commit is required for every SorryDB row")
+            if not row_source_root.is_dir():
+                raise click.ClickException(f"source checkout missing: {row_source_root}")
         task = build_patch_task_from_sorrydb_record(
             row,
-            source_root=source_root,
+            source_root=row_source_root,
             theorem_name=row_theorem_name,
             type_expr=row_type_expr,
             source_license=source_license,
@@ -857,6 +875,14 @@ def tasks_import_sorrydb_cmd(
             sort_keys=True,
         )
     )
+
+
+def _sorrydb_rows(payload: object) -> list[object]:
+    if isinstance(payload, list):
+        return payload
+    if isinstance(payload, dict) and isinstance(payload.get("sorries"), list):
+        return list(payload["sorries"])
+    return [payload]
 
 
 def _row_string(row: dict[str, object], field: str, default: str | None) -> str | None:

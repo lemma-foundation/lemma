@@ -13,7 +13,7 @@ from click.testing import CliRunner, Result
 from lemma.cli.main import main
 from lemma.common.config import LemmaSettings
 from lemma.source_checkouts import source_checkout_path
-from lemma.source_sorries import build_patch_task_from_sorrydb_record
+from lemma.source_sorries import build_patch_task_from_sorrydb_record, source_ref_from_sorrydb_record
 from lemma.submissions import build_patch_submission
 from lemma.tasks import TaskRegistry, load_task_registry
 from lemma.validator import active_tasks_for_validation, validate_once
@@ -286,6 +286,43 @@ def test_tasks_import_sorrydb_writes_batch_registry(tmp_path: Path) -> None:
         "PublicSource.add_zero_real_source",
         "PublicSource.zero_add_real_source",
     ]
+
+
+def test_tasks_import_sorrydb_reads_dataset_object_from_checkout_root(tmp_path: Path) -> None:
+    source_root = _batch_source_root(tmp_path)
+    checkout_root = tmp_path / "checkouts"
+    checkout = source_checkout_path(checkout_root, source_ref_from_sorrydb_record(_batch_rows()[0]))
+    assert checkout is not None
+    shutil.copytree(source_root, checkout)
+    row_path = tmp_path / "sorrydb-dataset.json"
+    registry_path = tmp_path / "registry.json"
+    row_path.write_text(json.dumps({"documentation": "pytest", "sorries": _batch_rows()}), encoding="utf-8")
+
+    result = CliRunner().invoke(
+        main,
+        [
+            "tasks",
+            "import-sorrydb",
+            "--sorry-json",
+            str(row_path),
+            "--source-checkout-root",
+            str(checkout_root),
+            "--source-license",
+            "Apache-2.0",
+            "--mathlib-rev",
+            "fixture-mathlib-rev",
+            "--reproduction-command",
+            "lake build RealSource",
+            "--output",
+            str(registry_path),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    registry = load_task_registry(registry_path.read_bytes())
+    assert payload["task_count"] == 2
+    assert [task.source_ref.name for task in registry.tasks] == ["SorryDB/SorryDB", "SorryDB/SorryDB"]
 
 
 def test_imported_sorrydb_batch_rotates_active_task_window(tmp_path: Path) -> None:
