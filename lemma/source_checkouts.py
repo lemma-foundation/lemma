@@ -87,6 +87,20 @@ def materialize_source_checkout(
     return SourceCheckoutResult(path=path, commit=commit, action=action)
 
 
+def materialize_source_checkouts(
+    root: Path,
+    tasks: tuple[LemmaTask, ...],
+    *,
+    timeout_s: int = 300,
+) -> tuple[tuple[LemmaTask, SourceCheckoutResult], ...]:
+    """Clone/fetch source checkouts for every patch task in a registry."""
+    return tuple(
+        (task, materialize_source_checkout(root, task.source_ref, timeout_s=timeout_s))
+        for task in tasks
+        if task.task_format == "patch"
+    )
+
+
 def _segment(value: str) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "__", value.strip()).strip("._-")
     if not cleaned:

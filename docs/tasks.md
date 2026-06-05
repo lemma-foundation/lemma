@@ -55,6 +55,12 @@ To clone or update that checkout from the task's public `source_ref.url` and pin
 uv run lemma tasks materialize-checkout <task-id>
 ```
 
+To prepare every patch-task checkout in the configured registry:
+
+```bash
+uv run lemma tasks materialize-checkouts
+```
+
 ## Task Rows
 
 Every active task must have:

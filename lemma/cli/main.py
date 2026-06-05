@@ -673,6 +673,50 @@ def tasks_materialize_checkout_cmd(task_id: str, root_path: Path | None, timeout
     )
 
 
+@tasks_cmd.command("materialize-checkouts", hidden=True)
+@click.option(
+    "--root",
+    "root_path",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=None,
+    help="Source checkout root. Defaults to LEMMA_SOURCE_CHECKOUT_ROOT.",
+)
+@click.option("--timeout", "timeout_s", type=click.IntRange(min=1), default=300, show_default=True)
+def tasks_materialize_checkouts_cmd(root_path: Path | None, timeout_s: int) -> None:
+    """Clone/fetch all patch-task source checkouts in the configured registry."""
+    from lemma.source_checkouts import materialize_source_checkouts
+
+    registry = _load_registry()
+    settings = LemmaSettings()
+    root = root_path or settings.source_checkout_root
+    if root is None:
+        raise click.ClickException("LEMMA_SOURCE_CHECKOUT_ROOT is not configured")
+    try:
+        results = materialize_source_checkouts(root, registry.tasks, timeout_s=timeout_s)
+    except (RuntimeError, ValueError) as e:
+        raise click.ClickException(str(e)) from e
+    click.echo(
+        json.dumps(
+            {
+                "patch_task_count": len(results),
+                "registry_sha256": registry.sha256,
+                "results": [
+                    {
+                        "action": result.action,
+                        "commit": result.commit,
+                        "path": str(result.path),
+                        "task_id": task.id,
+                    }
+                    for task, result in results
+                ],
+                "task_count": len(registry.tasks),
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+
+
 @tasks_cmd.command("sign-registry")
 @click.option(
     "--input",

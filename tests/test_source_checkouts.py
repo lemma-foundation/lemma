@@ -108,3 +108,38 @@ def test_tasks_materialize_checkout_command_writes_expected_cache(tmp_path: Path
     assert payload["action"] == "cloned"
     assert payload["commit"] == commit
     assert _run(["git", "-C", payload["path"], "rev-parse", "HEAD"]) == commit
+
+
+def test_tasks_materialize_checkouts_command_writes_all_patch_caches(tmp_path: Path) -> None:
+    repo, commit = _upstream_repo(tmp_path)
+    first = _task(repo, commit)
+    second_source = _source_ref(repo, commit).model_copy(update={"name": "example/project-second"})
+    second = first.model_copy(
+        update={
+            "id": "lemma.test.materialize_patch_second",
+            "source_ref": second_source,
+        }
+    )
+    registry_path = tmp_path / "registry.json"
+    write_registry([first, second], registry_path)
+    registry_sha = hashlib.sha256(registry_path.read_bytes()).hexdigest()
+    root = tmp_path / "source-checkouts"
+
+    result = CliRunner().invoke(
+        main,
+        ["tasks", "materialize-checkouts", "--root", str(root), "--timeout", "30"],
+        env={
+            "LEMMA_PREFER_PROCESS_ENV": "1",
+            "LEMMA_TASK_REGISTRY_URL": str(registry_path),
+            "LEMMA_TASK_REGISTRY_SHA256_EXPECTED": registry_sha,
+        },
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["task_count"] == 2
+    assert payload["patch_task_count"] == 2
+    assert [row["task_id"] for row in payload["results"]] == [first.id, second.id]
+    assert [row["action"] for row in payload["results"]] == ["cloned", "cloned"]
+    assert len({row["path"] for row in payload["results"]}) == 2
+    assert {_run(["git", "-C", row["path"], "rev-parse", "HEAD"]) for row in payload["results"]} == {commit}

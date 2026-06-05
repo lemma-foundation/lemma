@@ -75,6 +75,12 @@ They can prepare that checkout from the task's public source URL and commit with
 uv run lemma tasks materialize-checkout <task-id>
 ```
 
+For a batch registry, operators can prepare all patch-task checkouts with:
+
+```bash
+uv run lemma tasks materialize-checkouts
+```
+
 `lemma operator preflight` reports `source_checkouts` as failing when active patch tasks cannot resolve to existing checkout directories.
 
 For live curriculum retargeting, the state log updates throughput and depth after each completed tempo:
