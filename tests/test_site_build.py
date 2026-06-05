@@ -168,10 +168,11 @@ def test_pages_share_theme_toggle_and_clean_nav(tmp_path: Path) -> None:
     build_site(tmp_path, bundles=[_bundle("lemma.a")], solved=[_solved("lemma.a")], config=SiteConfig())
     for page in ("index.html", "board.html", "solved.html"):
         html = (tmp_path / page).read_text(encoding="utf-8")
-        # Day/night toggle identical to the homepage, on every page.
+        # Shared site assets and theme boot, matching the homepage.
+        assert 'href="assets/styles.css?v=20260605c"' in html
+        assert 'src="assets/site.js?v=20260605c"' in html
         assert "data-theme-toggle" in html
         assert 'localStorage.getItem("lemma-theme")' in html
-        assert 'data-theme="dark"' in html
         # Nav targets are uniform: Data -> bare atlas repo, Docs -> docs folder.
         assert ">Data<" in html and ">Docs<" in html
         assert 'href="https://github.com/lemma-foundation/lemma-proof-atlas"' in html
@@ -180,6 +181,7 @@ def test_pages_share_theme_toggle_and_clean_nav(tmp_path: Path) -> None:
         assert "lemma-proof-atlas/tree/main" not in html
         # Same brand link on every page so the header is identical.
         assert '<a class="brand" href="index.html" aria-label="Lemma home">' in html
+        assert "<span>Lemma</span>" in html
 
 
 def test_nav_data_and_docs_targets_are_uniform() -> None:
