@@ -62,6 +62,14 @@ source-checkouts/<source-kind>/<source-name>/<commit>/
 
 For example, `source_ref: {kind: "sorrydb", name: "owner/repo", commit: "<sha>"}` resolves to `source-checkouts/sorrydb/owner__repo/<sha>/`. The checkout must already be at the pinned commit.
 
+Operators can inspect the exact location for one task with:
+
+```bash
+uv run lemma tasks checkout-path <task-id>
+```
+
+`lemma operator preflight` reports `source_checkouts` as failing when active patch tasks cannot resolve to existing checkout directories.
+
 For live curriculum retargeting, the state log updates throughput and depth after each completed tempo:
 
 ```bash

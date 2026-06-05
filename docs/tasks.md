@@ -41,6 +41,12 @@ Validators do not get source roots from task metadata in production. They resolv
 
 Slashes and unsafe characters in `source-name` are encoded as `__`; for example, `owner/repo` becomes `owner__repo`.
 
+To inspect one task's expected checkout location:
+
+```bash
+uv run lemma tasks checkout-path <task-id>
+```
+
 ## Task Rows
 
 Every active task must have:

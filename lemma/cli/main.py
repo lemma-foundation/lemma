@@ -612,6 +612,30 @@ def tasks_pull_cmd(output_path: Path) -> None:
     click.echo(stylize(f"Wrote {len(registry.tasks)} tasks to {output_path}", fg="green", bold=True))
 
 
+@tasks_cmd.command("checkout-path", hidden=True)
+@click.argument("task_id")
+@click.option(
+    "--root",
+    "root_path",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=None,
+    help="Source checkout root. Defaults to LEMMA_SOURCE_CHECKOUT_ROOT.",
+)
+def tasks_checkout_path_cmd(task_id: str, root_path: Path | None) -> None:
+    """Print the expected local source checkout path for a patch task."""
+    from lemma.source_checkouts import source_checkout_path
+
+    _, task = _task_or_die(task_id)
+    settings = LemmaSettings()
+    root = root_path or settings.source_checkout_root
+    if root is None:
+        raise click.ClickException("LEMMA_SOURCE_CHECKOUT_ROOT is not configured")
+    path = source_checkout_path(root, task.source_ref)
+    if path is None:
+        raise click.ClickException("task source_ref.commit is missing")
+    click.echo(str(path))
+
+
 @tasks_cmd.command("sign-registry")
 @click.option(
     "--input",

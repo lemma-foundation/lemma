@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -12,9 +13,10 @@ from click.testing import CliRunner
 from lemma.cli.main import main
 from lemma.lean.sandbox import VerifyResult
 from lemma.operator import OperatorDiagnosticsReport, OperatorPreflightReport
+from lemma.source_checkouts import source_checkout_path
 from lemma.submissions import build_submission
 from lemma.task_supply import make_task, write_registry
-from lemma.tasks import LemmaTask, target_type_sha256
+from lemma.tasks import LemmaTask, load_task_registry, target_type_sha256
 
 PATCH_FIXTURE_ROOT = Path("tests/fixtures/lean_patch_project")
 
@@ -65,6 +67,7 @@ def _write_patch_registry(tmp_path: Path) -> tuple[Path, str]:
         source_ref={
             "kind": "fixed_fixture",
             "name": "lean_patch_project",
+            "commit": "fixture-commit",
             "path": "tests/fixtures/lean_patch_project/PatchFixture.lean",
         },
         source_license="CC-BY-4.0",
@@ -200,6 +203,54 @@ def test_verify_patch_rejects_disallowed_file(tmp_path: Path) -> None:
     payload = json.loads(result.output)
     assert payload["accepted"] is False
     assert payload["reason"] == "disallowed_file"
+
+
+def test_tasks_checkout_path_prints_source_cache_location(tmp_path: Path) -> None:
+    registry_path, registry_sha = _write_patch_registry(tmp_path)
+    root = tmp_path / "source-checkouts"
+
+    result = CliRunner().invoke(
+        main,
+        ["tasks", "checkout-path", "lemma.test.patch_cli", "--root", str(root)],
+        env={
+            "LEMMA_PREFER_PROCESS_ENV": "1",
+            "LEMMA_TASK_REGISTRY_URL": str(registry_path),
+            "LEMMA_TASK_REGISTRY_SHA256_EXPECTED": registry_sha,
+        },
+    )
+
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() == str(root / "fixed_fixture" / "lean_patch_project" / "fixture-commit")
+
+
+def test_operator_preflight_checks_active_patch_source_checkouts(tmp_path: Path) -> None:
+    registry_path, registry_sha = _write_patch_registry(tmp_path)
+    registry = load_task_registry(registry_path.read_bytes())
+    checkout_root = tmp_path / "source-checkouts"
+    checkout = source_checkout_path(checkout_root, registry.tasks[0].source_ref)
+    assert checkout is not None
+
+    env = {
+        "LEMMA_PREFER_PROCESS_ENV": "1",
+        "LEMMA_TASK_REGISTRY_URL": str(registry_path),
+        "LEMMA_TASK_REGISTRY_SHA256_EXPECTED": registry_sha,
+        "LEMMA_ACTIVE_K": "1",
+        "LEMMA_FRONTIER_DEPTH": "0",
+        "LEMMA_SOURCE_CHECKOUT_ROOT": str(checkout_root),
+        "LEMMA_CORPUS_OUTPUT_DIR": str(tmp_path / "corpus"),
+        "LEMMA_OPERATOR_DATA_DIR": str(tmp_path / "operator"),
+    }
+    missing = CliRunner().invoke(main, ["operator", "preflight"], env=env)
+    assert missing.exit_code == 1, missing.output
+    missing_report = OperatorPreflightReport.model_validate_json(missing.output)
+    assert missing_report.ok is False
+    assert any(check.name == "source_checkouts" and not check.ok for check in missing_report.checks)
+
+    shutil.copytree(PATCH_FIXTURE_ROOT, checkout)
+    ready = CliRunner().invoke(main, ["operator", "preflight"], env=env)
+    assert ready.exit_code == 0, ready.output
+    ready_report = OperatorPreflightReport.model_validate_json(ready.output)
+    assert any(check.name == "source_checkouts" and check.ok for check in ready_report.checks)
 
 
 def test_submit_writes_task_bound_package(tmp_path: Path) -> None:

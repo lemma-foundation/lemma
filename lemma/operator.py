@@ -24,6 +24,7 @@ PreflightCheckName = Literal[
     "corpus_output_dir",
     "operator_data_dir",
     "submission_spool_dir",
+    "source_checkouts",
     "lean_verifier",
     "production_domains",
     "lean_network",
@@ -699,6 +700,10 @@ def _build_operator_state(
                     ),
                 )
             )
+            from lemma.source_checkouts import source_checkout_status
+
+            checkout_ok, checkout_detail = source_checkout_status(settings.source_checkout_root, active_tasks)
+            checks.append(_check("source_checkouts", checkout_ok, checkout_detail))
 
     corpus_ok, corpus_detail = _ensure_dir(settings.corpus_output_dir)
     checks.append(_check("corpus_output_dir", corpus_ok, corpus_detail))
